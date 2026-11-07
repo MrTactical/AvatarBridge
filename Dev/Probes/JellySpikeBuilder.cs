@@ -31,7 +31,7 @@
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Build
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Bench -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Verify -jellyOut <dir>
-//   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.VerifyBreasts -jellyScene <scene> [-jellyPrefab <prefab> [-jellySquash]] -jellyOut <dir>
+//   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.VerifyBreasts -jellyScene <scene> [-jellyPrefab <prefab> [-jellySquash [-jellyPaint | -jellyRandom <seed>]]] -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.TuneBreasts -jellyScene <scene> -jellyPrefab <prefab> -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.FilmBreasts -jellyScene <scene> -jellyPrefab <prefab>
 //
@@ -1309,6 +1309,100 @@ namespace AvatarBridge.Regression
             Debug.Log("[Jelly] painted: " + string.Join(", ", settings.pairs.Select(p => $"{p.name} {p.a.Count(x => x > 127)}/{p.b.Count(x => x > 127)}")));
         }
 
+        // -jellyRandom <seed>: in place of the named parts, one patch of skin grown from a seeded
+        // vertex over the body's own edges, a seam's copies one point, out to a seeded size; mirrored
+        // across the avatar's middle into a pair when its mirror lands clear of it and the seed says
+        // so, else a part alone. Never on the head, neck, hands or feet. Named "Random".
+        static void PaintRandom(Transform root, int seed)
+        {
+            var rng = new System.Random(seed);
+            var settings = YapsSquash.Ensure(root);
+            var body = YapsSquash.NamedBody(root);
+            var anim = root.GetComponentInChildren<Animator>();
+            var mesh = body.sharedMesh;
+            int n = mesh.vertexCount;
+            var baked = new Mesh();
+            body.BakeMesh(baked);
+            var at = baked.vertices;
+            Object.DestroyImmediate(baked);
+            var world = at.Select(v => body.transform.position + body.transform.rotation * v).ToArray();
+            var local = world.Select(w => root.InverseTransformPoint(w)).ToArray();
+            var next = Enumerable.Range(0, n).Select(_ => new List<int>()).ToArray();
+            var tris = mesh.triangles;
+            for (int i = 0; i < tris.Length; i += 3)
+                for (int e = 0; e < 3; e++)
+                {
+                    int a = tris[i + e], b = tris[i + (e + 1) % 3];
+                    next[a].Add(b);
+                    next[b].Add(a);
+                }
+            foreach (var weld in YapsSquash.Welds(mesh))
+                foreach (int a in weld)
+                    foreach (int b in weld)
+                        if (a != b) next[a].Add(b);
+            var off = new[] { HumanBodyBones.Head, HumanBodyBones.Neck, HumanBodyBones.LeftHand, HumanBodyBones.RightHand,
+                    HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot }
+                .Select(anim.GetBoneTransform).Where(x => x != null).ToList();
+            var weights = mesh.boneWeights;
+            bool Allowed(int v)
+            {
+                var bone = body.bones[weights[v].boneIndex0];
+                return bone != null && !off.Any(o => bone == o || bone.IsChildOf(o));
+            }
+            var allowed = Enumerable.Range(0, n).Where(Allowed).ToArray();
+            int start = allowed[rng.Next(allowed.Length)];
+            float radius = 0.06f + 0.08f * (float) rng.NextDouble();
+            var patch = new HashSet<int> { start };
+            var queue = new Queue<int>(patch);
+            while (queue.Count > 0)
+                foreach (int u in next[queue.Dequeue()])
+                    if (!patch.Contains(u) && Allowed(u) && (world[u] - world[start]).magnitude < radius)
+                    {
+                        patch.Add(u);
+                        queue.Enqueue(u);
+                    }
+            // The mirror: each patch vertex's nearest across the middle, through a 2 cm grid.
+            const float Cell = 0.02f;
+            Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            for (int v = 0; v < n; v++)
+            {
+                var k = Key(local[v]);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            int Nearest(Vector3 p)
+            {
+                var k = Key(p);
+                int best = -1;
+                float bestD = float.MaxValue;
+                for (int x = -1; x <= 1; x++)
+                    for (int y = -1; y <= 1; y++)
+                        for (int z = -1; z <= 1; z++)
+                            if (grid.TryGetValue(k + new Vector3Int(x, y, z), out var list))
+                                foreach (int v in list)
+                                {
+                                    float d = (local[v] - p).sqrMagnitude;
+                                    if (d < bestD) { bestD = d; best = v; }
+                                }
+                return best;
+            }
+            var mirror = new HashSet<int>(patch.Select(v => Nearest(new Vector3(-local[v].x, local[v].y, local[v].z))).Where(v => v >= 0 && Allowed(v)));
+            bool pair = !mirror.Overlaps(patch) && mirror.Count > patch.Count / 2 && rng.NextDouble() < 0.6;
+            byte[] Bytes(HashSet<int> s) => Enumerable.Range(0, n).Select(v => s.Contains(v) ? (byte) 255 : (byte) 0).ToArray();
+            bool left = local[start].x < 0f;
+            settings.pairs.Clear();
+            settings.body = body;
+            settings.vertexCount = n;
+            settings.fingerprint = YapsSquash.Fingerprint(mesh);
+            settings.pairs.Add(pair
+                ? new Yaps.YapsSquashSettings.Pair { name = "Random", a = Bytes(left ? patch : mirror), b = Bytes(left ? mirror : patch) }
+                : new Yaps.YapsSquashSettings.Pair { name = "Random", a = Bytes(patch) });
+            EditorUtility.SetDirty(settings);
+            Debug.Log($"[Jelly] painted at random, seed {seed}: {(pair ? "a pair" : "a part alone")}, {patch.Count} vertices a side round " +
+                      $"{body.bones[weights[start].boneIndex0].name}, {200f * radius:0} cm across, at {local[start].x:0.00}, {local[start].y:0.00}, {local[start].z:0.00} on the avatar");
+        }
+
         // Batch: the user's route on -jellyPrefab's avatar, alone in -jellyScene: the squash's own
         // Build, which puts the jelly on over it, twice, then its Strip. Each build one jelly a part,
         // each on its own slot, and the squash materials reading it; stripped, nothing of the jelly
@@ -2492,6 +2586,12 @@ namespace AvatarBridge.Regression
                 {
                     PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
                     if (args.Contains("-jellyPaint")) PaintTest(made.GetComponentInChildren<CVRAvatar>(true).transform);
+                    int randomAt = Array.IndexOf(args, "-jellyRandom");
+                    if (randomAt >= 0 && randomAt + 1 < args.Length)
+                    {
+                        PaintRandom(made.GetComponentInChildren<CVRAvatar>(true).transform, int.Parse(args[randomAt + 1]));
+                        SessionState.SetString(K + "pair", "Random");
+                    }
                     string squash = YapsSquash.Add(made.GetComponentInChildren<CVRAvatar>(true).transform, "Assets/__JellySquash", out bool built);
                     YapsShaderPatcher.EndPass(null, null);
                     Debug.Log($"[Jelly] squash built {built}: {squash}");
@@ -3049,7 +3149,7 @@ namespace AvatarBridge.Regression
         }
 
         static Vector3Int breastN;
-        static float breastSpacing, restMost, swingMost, noise, poked;
+        static float breastSpacing, restMost, swingMost, swingSquare, noise, poked;
         // The poke: how far out along the first region's middle its skin lies, how far the skin under
         // the finger went in and the whole with it, and where the whole was before.
         static float skinOut = float.NaN, pokeDent, pokeWhole;
@@ -3062,9 +3162,40 @@ namespace AvatarBridge.Regression
         static Vector3 secondAt;
         // The own arm's stage: the arm's rest, the state before it, and what it found.
         static Quaternion[] armRest;
+        // -jellySit: the legs posed seated until the rest is read at frame 119, then stood up.
+        static bool sitting;
+        // How far off the front the probes' ball waits: 7 cm, or past their reach.
+        static float probeGap = 0.07f;
+        static Quaternion[] sitWas;
+
+        // Seated: each thigh a quarter turn forward at the hip, the shin back down, as on a chair;
+        // false puts the four bones back.
+        static void Sit(Animator a, bool down)
+        {
+            var bones = new[] { HumanBodyBones.LeftUpperLeg, HumanBodyBones.RightUpperLeg, HumanBodyBones.LeftLowerLeg, HumanBodyBones.RightLowerLeg }.Select(a.GetBoneTransform).ToArray();
+            if (bones.Any(b => b == null)) return;
+            if (!down)
+            {
+                for (int i = 0; i < 4; i++) bones[i].localRotation = sitWas[i];
+                return;
+            }
+            sitWas = bones.Select(b => b.localRotation).ToArray();
+            var right = a.transform.right;
+            for (int i = 0; i < 2; i++) bones[i].rotation = Quaternion.AngleAxis(-90f, right) * bones[i].rotation;
+            for (int i = 2; i < 4; i++) bones[i].rotation = Quaternion.AngleAxis(90f, right) * bones[i].rotation;
+        }
         static Vector4[] ownBefore;
         static string ownSaid = "not reached", ownReach = "not reached";
+        // How far short of where it was sent the wearer's wrist stopped, and how much the part's
+        // outward faces the avatar's front: own through is asked only where an arm goes.
+        static float ownMiss = float.PositiveInfinity, ownFacing;
+        // The part rides the arm sent through it, which no hand can reach through.
+        static bool ownRides;
         static Vector4[] throughBefore;
+        static Matrix4x4 throughOn;
+        // The first frame any particle read not a number, how many and the first's place: a NaN stays.
+        static int nanFrame = -1, nanCount;
+        static string nanAt = "";
         static readonly float[] ownThrough = new float[3];
         static readonly float[] clap = new float[3];
         static float clapCell;
@@ -3079,6 +3210,9 @@ namespace AvatarBridge.Regression
         static int grabbed;
         static Vector3 grabFrom, grabMass;
         static int grabAt;
+        // The two ring slots as the fist let go, each ring's depth and age: a stronger ring still
+        // sounding keeps a weaker one out.
+        static string grabSlots = "";
         static float ownShake, ownMost;
         static float handsApart, handsCloser, handsOuter, handsInner, handsVolume, slapMost, slapLater, solid0, pair0;
         static readonly float[] pressShake = new float[3], pressMost = new float[3], pressAnchor = new float[3], pressRise = new float[3];
@@ -3225,6 +3359,8 @@ namespace AvatarBridge.Regression
             wasStepping = true;
             secondAt = breastRegions[1].position;
             regionsAt = breastRegions.Select(r => swing.InverseTransformPoint(r.position)).ToArray();
+            sitting = Environment.GetCommandLineArgs().Contains("-jellySit");
+            if (sitting) Sit(animator, true);
             innerOff = innerOn = null;
             foreach (var rt in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
             {
@@ -3380,6 +3516,24 @@ namespace AvatarBridge.Regression
             bool running = frame - lastStep < 3;
             if (breastParser != null && running != wasStepping && restSaid.Count < 40 && frame < BreastFrames - ViewFrames + 260) restSaid.Add($"{(running ? "on" : "off")} {frame}");
             wasStepping = running;
+            if (nanFrame < 0 && frame % 10 == 0)
+            {
+                var st = ReadState();
+                for (int r = 0; r < 2; r++)
+                    for (int q = 0; q < n.x * n.y * n.z; q++)
+                    {
+                        var v = Particle(st, r, q);
+                        if (!float.IsNaN(v.x + v.y + v.z + v.w)) continue;
+                        if (nanCount++ == 0) nanAt = $"region {r}, cell {q % n.x}, {q / n.x % n.y}, {q / (n.x * n.y)}";
+                    }
+                if (nanCount > 0)
+                {
+                    nanFrame = frame;
+                    // And every texel not a number, by row and column, the first eight.
+                    var bad = Enumerable.Range(0, st.Length).Where(i => float.IsNaN(st[i].x + st[i].y + st[i].z + st[i].w)).ToList();
+                    nanAt += $"; {bad.Count} texels, at {string.Join(" ", bad.Take(8).Select(i => $"{i / Wide}:{i % Wide}"))}";
+                }
+            }
             // Last, the viewer's camera 3 m in front of the pair: looking at it, away, back at it, and
             // then 1.2 m off looking away, within the near limit.
             if (frame >= BreastFrames - ViewFrames)
@@ -3504,13 +3658,16 @@ namespace AvatarBridge.Regression
                                       $"{100f * Vector3.Dot(probeTs[0].position - breastRegions[0].position, breastRegions[0].forward):0.0} cm out on its region, " +
                                       $"{100f * probeTs.Take(probeTs.Count / 2).Average(pa => probeTs.Take(probeTs.Count / 2).Where(pq => pq != pa).Min(pq => (pa.position - pq.position).magnitude)):0.0} cm from its nearest on average, reaching " +
                                       $"{100f * jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(pv => pv.transforms != null && pv.transforms.Length > 0).materials[0].GetFloat("_JellyProbeReach"):0.0} cm");
+                        // Out of the probes' reach before it presses, which grows with their spacing: on
+                        // a big part 7 cm off already held two slots.
+                        probeGap = Mathf.Max(0.07f, jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(pv => pv.transforms != null && pv.transforms.Length > 0).materials[0].GetFloat("_JellyProbeReach") + 0.02f);
                     }
                     var front = 0.5f * (probeHang[0].TransformPoint(probeRest[0]) + probeHang[probePair].TransformPoint(probeRest[probePair]));
                     // The second slap from 15 cm off, the hand with it: from 7 cm a palm already
                     // touches the box, so it closed on nothing and its ring was the frame it came.
                     float slapped = Mathf.Clamp01(1f - Mathf.Abs(v - 517) / 4f);
                     float pressed = Mathf.Clamp01((v - 370) / 30f) - Mathf.Clamp01((v - 430) / 30f) + Mathf.Clamp01(1f - Mathf.Abs(v - 487) / 3f);
-                    float off = v >= 505 ? 0.15f - 0.18f * slapped : 0.07f - 0.1f * pressed;
+                    float off = v >= 505 ? Mathf.Max(0.15f, probeGap + 0.08f) - (Mathf.Max(0.15f, probeGap + 0.08f) + 0.03f) * slapped : probeGap - (probeGap + 0.03f) * pressed;
                     remoteBall.position = front + breastRegions[0].forward * (0.045f + off);
                     remoteHand = v >= 505 && v < 535;
                     remoteWrist = front + breastRegions[0].forward * (0.126f + off);
@@ -3536,7 +3693,7 @@ namespace AvatarBridge.Regression
                     int mine = probeTs.Count / 2;
                     var read = Enumerable.Range(0, Mathf.Min(mine, ProbesMax)).Select(k => st[Side(n) * Wide + Readout + k].w).ToList();
                     if (v == 365 || v == 410 || v == 450)
-                        probeSaid.Add($"{v}: the ball {100f * (0.07f - 0.1f * pressed):0.0} cm off, the probes moved {1000f * moved:0.0} mm, the step reads them " +
+                        probeSaid.Add($"{v}: the ball {100f * (probeGap - (probeGap + 0.03f) * pressed):0.0} cm off, the probes moved {1000f * moved:0.0} mm, the step reads them " +
                                       $"{string.Join(" ", read.Select(g => $"{1000f * g:0.0}"))} mm, {slots} slots held");
                     if (v < 370)
                     {
@@ -3628,7 +3785,8 @@ namespace AvatarBridge.Regression
                 {
                     var o = side == 0 ? outward : -outward;
                     var at = breastRegions[side].position + breastRegions[side].forward * (0.5f * (n.z - 1) * breastSpacing) + o * half;
-                    var palm = at + fwd * 0.1f + o * (r + Mathf.Lerp(0.03f, -0.13f, squeezing));
+                    // Never past the lattice's front, where a shallow part's hands would miss it.
+                    var palm = at + fwd * Mathf.Min(0.1f, 0.5f * (n.z - 1) * breastSpacing) + o * (r + Mathf.Lerp(0.03f, -0.13f, squeezing));
                     hand[side] = palm;
                     chestAt[side] = palm + fwd * 0.45f;
                     root[side] = new Vector4(palm.x, swing.position.y, palm.z, 1.6f) + (Vector4) (fwd * 0.45f);
@@ -3705,6 +3863,9 @@ namespace AvatarBridge.Regression
                     var heldAt = (Vector3) heldSt[heldQ / Row * Wide + heldQ % Row];
                     var armAlong = wristBone.position - lowerArm.position;
                     var onArm = lowerArm.position + armAlong * Mathf.Clamp01(Vector3.Dot(heldAt - lowerArm.position, armAlong) / armAlong.sqrMagnitude);
+                    ownMiss = Vector3.Distance(wristBone.position, target);
+                    ownFacing = Vector3.Dot(outward, swing.forward);
+                    ownRides = breastBones[0] != null && breastBones[0].IsChildOf(upperArm);
                     ownReach = $"the wrist {100f * Vector3.Distance(wristBone.position, target):0.0} cm off where it was sent, {100f * Vector3.Dot(front - wristBone.position, outward):0.0} cm in from the front; " +
                                $"the furthest particle {100f * Vector3.Distance(heldAt, wristBone.position):0.0} cm off the wrist, {100f * Vector3.Distance(heldAt, onArm):0.0} cm off the forearm";
                 }
@@ -3758,6 +3919,7 @@ namespace AvatarBridge.Regression
                 RenderTexture.active = was;
                 breastShots.Add(png);
             }
+            if (frame == 120 && sitting) Sit(swing.GetComponentInChildren<Animator>(), false);
             if (frame == 119)
             {
                 var s = ReadState();
@@ -3873,16 +4035,18 @@ namespace AvatarBridge.Regression
                 pokeCost = ChainCost(jelly);
             }
             if (frame == 1839) ownBefore = ReadState();
-            if (frame == 2039) throughBefore = ReadState();
+            // Off where the part's own anchor carries it: a part on the arm that moves rides along.
+            if (frame == 2039) { throughBefore = ReadState(); throughOn = breastRegions[0].localToWorldMatrix; }
             if (frame >= 2040 && frame < 2340)
             {
                 var st = ReadState();
                 float moved = 0f;
                 int torn = 0;
+                var carry = breastRegions[0].localToWorldMatrix * throughOn.inverse;
                 for (int q = 0; q < n.x * n.y * n.z; q++)
                 {
                     int i = q / Row * Wide + q % Row;
-                    float d = ((Vector3) st[i] - (Vector3) throughBefore[i]).magnitude;
+                    float d = ((Vector3) st[i] - carry.MultiplyPoint3x4(throughBefore[i])).magnitude;
                     moved = Mathf.Max(moved, d);
                     torn += d > 0.1f ? 1 : 0;
                 }
@@ -3966,6 +4130,7 @@ namespace AvatarBridge.Regression
                 var toldNow = Read((RenderTexture) jelly.GetComponentInChildren<CVRTexturePropertyParser>(true).texture);
                 if (frame == 2445) { told[0] = toldNow[3].x; told[1] = toldNow[4].x; }
                 if (frame >= 2530 && frame < 2560) { told[2] = Mathf.Max(told[2], toldNow[3].x); told[3] = Mathf.Max(told[3], toldNow[4].x); }
+                if (frame == 2559) grabSlots = string.Join(" and ", Enumerable.Range(0, 2).Select(k => $"{1000f * st[sr + 81 + 2 * k].w:0.0} mm {Time.timeSinceLevelLoad - st[sr + 80 + 2 * k].w:0.00} s old"));
                 if (frame >= 2560 && frame < 2600)
                     for (int k = 0; k < 2; k++)
                         if (Time.timeSinceLevelLoad - st[sr + 80 + 2 * k].w < 0.05f) grab[2] = Mathf.Max(grab[2], st[sr + 81 + 2 * k].w);
@@ -3995,7 +4160,11 @@ namespace AvatarBridge.Regression
             }
             if (frame > 230 && frame <= 330)
             {
-                swingMost = Mathf.Max(swingMost, Furthest(ReadState(), breastRegions));
+                var turning = ReadState();
+                swingMost = Mathf.Max(swingMost, Furthest(turning, breastRegions));
+                // The bulk's squash with nothing on the part: how far off square the swing alone leaves it.
+                for (int k = 0; k < 3; k++)
+                    for (int c = 0; c < 3; c++) swingSquare = Mathf.Max(swingSquare, Mathf.Abs(turning[Side(n) * Wide + 32 + k][c] - (k == c ? 1f : 0f)));
                 // Riding bones, the cloth swings the anchors: how far, in the avatar's own frame.
                 for (int r = 0; r < 2; r++) swingMost = Mathf.Max(swingMost, (swing.InverseTransformPoint(breastRegions[r].position) - regionsAt[r]).magnitude);
             }
@@ -4060,7 +4229,7 @@ namespace AvatarBridge.Regression
             // matrices once a frame, and this is one frame. Its skinned copy, left on the host, then
             // disagrees, so the shader reads every slot from the matrices.
             string plugSaid = "no squash slots, so no plug";
-            bool plugOk = true;
+            bool plugOk = true, plugReaches = true;
             var follow = swing.GetComponentsInChildren<CVRMaterialDataProvider>(true).FirstOrDefault(q => q.shaderPropertyName == "_YAPS_SquashFollow");
             int slot = 18 + JellySpikeBuilder.chain;
             var socket = follow != null && follow.transforms.Length > slot ? follow.transforms[slot] : null;
@@ -4142,6 +4311,7 @@ namespace AvatarBridge.Regression
                           (m0 != null ? $"; plug gain {m0.GetFloat("_YAPS_SquashPlug"):0.00}, tune {m0.GetVector("_YAPS_SquashTune")}, out {m0.GetVector("_YAPS_SquashOut")}, parts {m0.GetVector("_YAPS_JellyParts")}, " +
                                         $"lattice {m0.GetVector(Slot("_YAPS_JellyLattice"))}, state {(m0.GetTexture(Slot("_YAPS_JellyState")) is Texture tx ? tx.name : "none")}, shader {m0.shader.name}" : ""));
                 plugOk = plugShare[0] > 3f * plugShare[2] + 1e-4f && plugShare[0] > 0.3f * plugShare[1];
+                plugReaches = Mathf.Max(plugShare[0], plugShare[1]) > 3f * plugShare[2] + 1e-4f;
                 plugSaid = $"a plug through {(testSocket != null ? "a socket put between the pair" : socket.name)} moved {100f * plugShare[0]:0.000}% of the picture with the jelly on, " +
                            $"{100f * plugShare[1]:0.000}% on the squash alone (twice alike {100f * plugShare[2]:0.000}%)";
             }
@@ -4162,10 +4332,11 @@ namespace AvatarBridge.Regression
             }
             Object.DestroyImmediate(bareCopy);
             Debug.Log($"[Jelly] the wearer's own arm across one, held: {ownSaid}");
-            Debug.Log($"[Jelly] a fist closed on the first's front and pulled 8 cm straight out: gripped {grabbed} frames; the skin it held came {1000f * grab[0]:0.0} mm, the whole {1000f * grab[1]:0.0} mm; let go, a ring {1000f * grab[2]:0.0} mm, the skin {1000f * grab[3]:0.0} mm off its rest two seconds on ({1000f * grab[4]:0.0} as the hand came); the strain {taut[0]:0.00} as it came, {taut[1]:0.00} pulled");
+            Debug.Log($"[Jelly] a fist closed on the first's front and pulled 8 cm straight out: gripped {grabbed} frames; the skin it held came {1000f * grab[0]:0.0} mm, the whole {1000f * grab[1]:0.0} mm; let go, a ring {1000f * grab[2]:0.0} mm (the slots held {grabSlots} as it let go), the skin {1000f * grab[3]:0.0} mm off its rest two seconds on ({1000f * grab[4]:0.0} as the hand came); the strain {taut[0]:0.00} as it came, {taut[1]:0.00} pulled");
             Debug.Log($"[Jelly] told the animator: squeeze {told[0]:0.00} and grab {told[1]:0.00} as the hand came, {told[2]:0.00} and {told[3]:0.00} pulled, the clap's slap {told[4]:0.00}; " +
                       (twitchSeen ? $"a 2 cm twitch swung the masses {1000f * twitched[0]:0.0} and {1000f * twitched[1]:0.0} mm, {1000f * twitched[2]:0.0} mm off two seconds on" : "no twitch"));
             Debug.Log($"[Jelly] the pair clapped together by two hands in six frames, their skins {1000f * clap[0]:0.0} mm apart (a cell {1000f * clapCell:0.0} mm): a ring from between them on the first {1000f * clap[1]:0.0} mm and the second {1000f * clap[2]:0.0} mm");
+            Debug.Log(nanFrame < 0 ? "[Jelly] every particle a number throughout" : $"[Jelly] particles not a number from frame {nanFrame}: {nanCount}, the first at {nanAt}");
             Debug.Log($"[Jelly] the wearer's own hand pushed on through one: its particles moved {1000f * ownThrough[0]:0.0} mm at most, {ownThrough[1]:0} over 10 cm, {1000f * ownThrough[2]:0.0} mm with the hand at the chest; {ownReach}");
             Debug.Log($"[Jelly] the picture's pixels the squash changes with the jelly on: {string.Join(", ", squashOver)}");
             Debug.Log($"[Jelly] breasts' cost at rest on {SystemInfo.graphicsDeviceName}: {chain.Count} passes, {Spread(chainTimes)} ms a frame ({Median(chainSubmits):0.000} to submit); " +
@@ -4345,19 +4516,36 @@ namespace AvatarBridge.Regression
                 && halfFrames > 0 && Mathf.Abs((float) halfOn / halfFrames - Share(rate.y)) < 0.1f && Mathf.Abs(halfMost - 1f / Share(rate.y)) < 1f;
             bool walled = wallRest != null;
             if (walled) Debug.Log($"[Jelly] its probes feeling the world, a wall 3 cm into the first's front: the first dented {1000f * wallDent[0]:0.0} mm, the second {1000f * wallDent[1]:0.0} mm; the wall gone two thirds of a second, the first {1000f * wallDent[2]:0.0} mm off its rest; its skin {1000f * wallDent[3]:0.0} mm past the wall");
-            bool wallOk = !walled || wallDent[0] > 0.01f && wallDent[1] < 0.005f && wallDent[2] < 0.006f && wallDent[3] < 0.008f;
+            // A part alone is its own second: the wall's press on it is the first's.
+            bool wallOk = !walled || wallDent[0] > 0.01f && (wallDent[1] < 0.005f || breastRegions[0] == breastRegions[1]) && wallDent[2] < 0.006f && wallDent[3] < 0.008f;
             // Split, the cloth's twelve probes sit further apart than the 1.25 reaches that make a
             // second collider, so a ball between two can lead both: a slot more, never one lost.
             int oneBall = walled ? 2 : 1;
             bool probeOk = wallOk && (!probed || probeDent > probeBefore + 0.005f && probeSlots > probeSlotsBefore && probeSlots <= probeSlotsBefore + oneBall && probePushed >= 2 && bothSlots >= 1 && bothSlots <= oneBall && ringsSlow == 0 && ringsProbe == 1 && ringsBoth == 1);
+            // A part alone has no partner to clap against or hold off. Own through asks the wearer's
+            // hand through to the body only where an arm goes: the wrist got where it was sent and
+            // the part faces the front. Behind the body or between the legs the forearm lies through
+            // the part however the hand goes, which is the forearm pressing, not a tear.
+            bool lone = breastRegions[0] == breastRegions[1];
+            bool armGoes = ownMiss < 0.03f && ownFacing > 0.3f && !ownRides;
+            var notAsked = new List<string>();
+            if (lone) notAsked.Add("plug, clap, contact, the clap's slap told and the wall on the second (a part alone)");
+            // A pair apart further than a cell never meets, and a plug that moved neither the jelly nor
+            // the squash alone went between them without touching either.
+            bool meets = lone || clap[0] < clapCell;
+            if (!meets) notAsked.Add($"clap, contact and the clap's slap told (the pair's skins {1000f * clap[0]:0} mm apart, a cell {1000f * clapCell:0} mm)");
+            if (!lone && !plugReaches) notAsked.Add("plug (it touched neither)");
+            if (ownRides) notAsked.Add($"own through (the part rides {breastBones[0].name}, the arm sent through it)");
+            else if (!armGoes) notAsked.Add($"own through (no arm goes there: the wrist {100f * ownMiss:0.0} cm short, the part facing the front by {ownFacing:0.00})");
+            if (notAsked.Count > 0) Debug.Log($"[Jelly] not asked: {string.Join("; ", notAsked)}");
             // Each by name, so a FAIL says which.
             var passes = new (string name, bool pass)[]
             {
-                ("plug", plugOk), ("anchor", anchorOk), ("told", told[0] < 0.05f && told[1] < 0.5f && told[2] > 0.3f && told[3] > 0.5f && told[4] > 0.1f),
-                ("twitch", !twitchSeen || twitched[0] > 0.004f && twitched[1] > 0.004f && twitched[2] < 0.002f), ("clap", clap[1] > 0.005f && clap[2] > 0.005f),
+                ("plug", lone || !plugReaches || plugOk), ("anchor", anchorOk), ("told", told[0] < 0.05f && told[1] < 0.5f && told[2] > 0.3f && told[3] > 0.5f && (lone || !meets || told[4] > 0.1f)),
+                ("twitch", !twitchSeen || twitched[0] > 0.004f && twitched[1] > 0.004f && twitched[2] < 0.002f), ("clap", lone || !meets || clap[1] > 0.005f && clap[2] > 0.005f),
                 ("grab", grabbed > 60 && grab[0] > 0.04f && grab[1] > 0.002f && grab[2] > 0.005f && grab[3] < 0.006f), ("strain", taut[0] < 0.05f && taut[1] > 0.3f),
-                ("rest", restMost < 0.006f), ("poke", pokeDent > 0.01f && poked > 3f * noise + 0.002f), ("swing", swingMost > 0.005f), ("contact", bodies > 0.003f),
-                ("hands outer", handsOuter > 0.05f), ("view", viewOk), ("probes", probeOk), ("own through", ownThrough[1] <= 20 && ownThrough[2] < 0.02f),
+                ("rest", restMost < 0.006f), ("poke", pokeDent > 0.01f && poked > 3f * noise + 0.002f), ("swing", swingMost > 0.005f), ("contact", lone || !meets || bodies > 0.003f),
+                ("hands outer", handsOuter > 0.05f), ("view", viewOk), ("probes", probeOk), ("own through", !armGoes || ownThrough[1] <= 20 && ownThrough[2] < 0.02f), ("numbers", nanFrame < 0),
             };
             bool ok = passes.All(q => q.pass);
             if (!ok) Debug.Log($"[Jelly] failed: {string.Join(", ", passes.Where(q => !q.pass).Select(q => q.name))}");
@@ -4369,8 +4557,8 @@ namespace AvatarBridge.Regression
             File.WriteAllBytes(Path.Combine(dir, "breasts.png"), sheet.EncodeToPNG());
             File.WriteAllLines(Path.Combine(dir, "centres.csv"), new[] { "frame,c0x,c0y,c0z,c1x,c1y,c1z,furthest (mm)" }.Concat(breastTrace));
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} breasts after {frame} frames with the CCK's render controller: the step's anchor {(anchorOk ? "is" : "is NOT")} the rig's; " +
-                      $"settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); {(headPoke ? "a head" : "a finger")} 3 cm into the skin took the skin under it {1000f * pokeDent:0.0} mm in, the whole {1000f * pokeWhole:0.0} mm, " +
-                      $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm; " +
+                      $"{(sitting ? "seated, " : "")}settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); {(headPoke ? "a head" : "a finger")} 3 cm into the skin took the skin under it {1000f * pokeDent:0.0} mm in, the whole {1000f * pokeWhole:0.0} mm, " +
+                      $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm, its bulk {swingSquare:0.000} off square at most; " +
                       $"squeezed together, the pair's contact held the side facing the other {1000f * bodies:0.0} mm further off than without");
             Debug.Log($"[Jelly] the steps switched by the parser: {(restSaid.Count > 0 ? string.Join(", ", restSaid) : "never")}");
             Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most); " +

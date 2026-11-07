@@ -60,9 +60,10 @@ namespace AvatarBridge
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
         static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides", "probeMarkers" };
         // The squash's dent alone reads these, and every part it dents is on the live tissue once
-        // that is built: the tissue takes the hand size, volume, meet and grip, and its own reach
-        // for every hand and limb. Shown there, "0 leaves them out" left every hand pressing.
-        static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush", "lyingBack", "stretchInMotion", "ownArms", "othersHands" };
+        // that is built: the tissue takes the hand size, volume, meet, grip, the stretch in motion and
+        // other players' hands in or out, and its own reach for every limb. Shown there, "0 leaves
+        // them out" left the wearer's arms pressing.
+        static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush", "lyingBack", "ownArms" };
 
         static readonly string[] FeelLabels = { "Firmness", "Settle", "Give", "Swing", "Spring back", "Taut", "Press depth", "Slap" };
         static readonly string[] FeelTips =

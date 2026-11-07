@@ -156,6 +156,9 @@ namespace AvatarBridge.Regression
                 {
                     if (validate.IsFaulted) Log($"validate threw {validate.Exception?.GetBaseException().Message}");
                     else Log($"validate success {validate.Result.IsSuccess}");
+                    // What it found, each step that said anything: a failure names its reason.
+                    if (!validate.IsFaulted)
+                        foreach (var step in validate.Result.StepResults.Where(r => r.Severity >= ValidationSeverity.Warning)) Log($"validate {step.Severity}: {step.Message}");
                     Lap("validate");
                     Log("BEGIN " + label);
                     string bundle = asset.BuildAssetBundle(new BuildConfig

@@ -33,6 +33,8 @@ namespace AvatarBridge
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
         // On each copy's importer, before the material it was copied from, for Strip to put back.
         internal const string Mark = "squash:";
+        // The stretch in motion as real flesh's: 0.6 a reach of swing past a tenth of it, at most 1.12.
+        internal static readonly Vector4 Stretch = new Vector4(0.6f, 0.1f, 1.12f, 0f);
         static readonly Regex Soft = new Regex("breast|boob|butt|booty|glute", RegexOptions.IgnoreCase);
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
 
@@ -184,7 +186,7 @@ namespace AvatarBridge
             m.SetFloat("_YAPS_SquashPlug", s.plugs);
             // Like real flesh: the stretch per reach of swing, the swing ignored as the sag the physics
             // settle into, and the longest it gets. An anime style stretched every hop into a teardrop.
-            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion ? new Vector4(0.6f, 0.1f, 1.12f, 0f) : Vector4.zero);
+            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion ? Stretch : Vector4.zero);
         }
 
         // Every material the build's providers write, alternates included.

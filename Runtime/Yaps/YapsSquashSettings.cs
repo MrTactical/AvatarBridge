@@ -48,7 +48,7 @@ namespace AvatarBridge.Yaps
         [Header("What presses it")]
         [Range(0f, 2f), Tooltip("The wearer's own arms and hands. 0 leaves them out.")]
         public float ownArms = 1f;
-        [Range(0f, 2f), Tooltip("Other players' hands, from the hand positions ChilloutVR gives every shader.")]
+        [Range(0f, 2f), Tooltip("Other players' hands, from the hand positions ChilloutVR gives every shader. On the live tissue, any value above 0 lets them press and 0 leaves them out.")]
         public float othersHands = 1f;
         [Range(0.02f, 0.1f), Tooltip("Another player's hand, as a ball of this radius in metres on a 1.6 m player, scaled to their height.")]
         public float handSize = 0.05f;

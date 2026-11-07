@@ -3268,6 +3268,67 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    alone against the jelly with k parts, cold and warm (UploadCostProbe needs a prefab of the
    jellied avatar). Baselines: one pair's chain 0.043 ms at rest, sixteen 0.605 ms, the step's
    heaviest variant 1 to 5 s in fxc, driver 0.61 + 0.20 + 0.07 s.
+   **2026-11-07, the rest of item 29** (Joe: "do everything on item 29 then").
+   **The home shear (3208): done.** The bulk fits the particles against the swung homes (`HomeOn`
+   with the identity shape), not against `Rest(l)`, so a swing with nothing on the part no longer
+   reads as squash. Breasts turning, the bulk's furthest off square 0.013 before, 0.012 after: most
+   of what is left is the mass's own lag behind the turn, which is real.
+   **Stretch in motion and other players' hands: live.** `Live()` sets `_Motion` (the stretch) and
+   `_JellyArrays` (the hand arrays) from the settings on every refresh, so the knobs that need a
+   rebuild are down to six (`DentOnly`). The cost probe turned both off and back on a built Kar and
+   read each part's materials: as built, off and back, all as asked.
+   **Thighs.** Each lattice skips the capsule of the limb it rides (`_JellyCarrier`), so the other
+   leg's capsule keeps its true width (thinned to clear the thigh's own lattice, it met the other
+   leg 27 mm wide). A region whose ridden bone runs through it holds a core round that bone, four
+   tenths of the limb's radius (`_JellyCore*`, 39 and 38 particles held), instead of its back face.
+   The lift, measured seated (`-jellySit`, seated while it settles, standing at frame 120): settled
+   32.4 mm off its rest against 0.6 standing, the lift pushing along the anchor's up, which points
+   forward once the thigh lies level. Cored, it lifts along world up: seated 0.6 mm.
+   **3225, the quick slap on the seat and thighs: rings.** It has since the probes spread over all
+   the skin (28574e4): the ball's slap alone rings 1 of 1 on both, and 1 with a hand in the arrays.
+   The check still failed the thighs, its ball parked 7 cm off, inside their 5.6 cm reach plus the
+   ball, holding two slots before it came; it now parks at the reach plus 2 cm.
+   **Remote twin: passes** (`RemoteTwinProbe`, 18bbb3a).
+   **Step 5, run s5d** (Kar, this commit's code but the last rule): breasts, seat, thighs and the
+   thighs seated PASS. The check says what it did not ask and why: a part alone has no plug,
+   clap, contact or second wall; a pair whose skins sit further apart than a cell never meets, so
+   no clap or contact; a plug that moved neither the jelly nor the squash alone went between them
+   without touching; own through only where an arm goes, and (added after the run) never through
+   a part on the arm sent. Two checks it gained: every particle a number (scanned every 10
+   frames, the first NaN's frame, cell and texels), and own through read off where the part's
+   anchor carries it, so a part on a moving limb rides along. The squeezing hands never start past
+   a shallow part's lattice front.
+   Random patches, eight seeds (`-jellyRandom`): 3 and 4 PASS. Open, each with its numbers:
+   - **Belly and small patches, own through.** The belly 46 particles over 10 cm (the breasts 6),
+     16.4 mm with the hand at the chest; seeds 1, 2, 6 and 7 28 to 42 over 10 cm, 24 to 39 mm.
+     The forearm, 13 cm across on Kar, is as wide as a 14 cm patch, so it fills it at the chest;
+     whether the count over 10 cm is a tear or the forearm's own volume is not read yet. Next:
+     count only particles clear of the limb's capsules.
+   - **A let-go rings none** on seeds 1, 2 and 6 (5.7 to 12.5 mm on 3, 5 and 8, 8.4 on the
+     breasts). On seed 2 both ring slots were 25 s old and empty as it let go, so it never fired;
+     the skin it held still came 58 mm and went back. Not read yet: which of `Fist`, the slip or
+     the release speed against `_Slap.x` fails.
+   - **Hands outer** on seeds 1, 2, 5, 6 and 8: the outer side 10 to 46 mm (50 asked; the belly
+     153, the breasts 140). The squeeze aims along the pair's apart axis at the lattice's outer
+     columns, which is the lattice's x only on parts side by side and facing out.
+   - **A part on a limb the probe swings.** Seed 8 rides each upper arm. Sent through its own arm,
+     the two-bone solve thrashed, the anchor moving 190 to 235 mm a frame for five seconds, and the
+     tissue flung particles 0.5 to 1.5 m off their rest (back within 32 mm by frame 2400). In the
+     run before, the same part read NaN in that test and the grab (the scan was not in yet);
+     `Fresh` resets a particle more than a metre off its home, but the homes go with the mass. A
+     tracking glitch on a real arm could do this. Next: the anchor's jump each frame capped, or
+     taken as a teleport, and the run repeated with the scan.
+   **Step 6, the cost pass.** Kar with four painted parts (breasts, seat, belly, thighs), at rest:
+   RTX 4080 0.030 ms one part, 0.042 two, 0.066 three, 0.090 four; the processor's own Radeon
+   0.104, 0.148, 0.251, 0.358. Eight hands in reach cost nothing measurable on either. Two parts by
+   bone name 0.049 ms on the 4080. Upload, warm: 18.07 MB and 13.9 s for the squash alone, 18.80 MB
+   with two tissue parts, 19.03 MB with four, 13.7 to 13.8 s each. Cold, the first upload compiles
+   every patched shader: 306 s for the squash alone, 350 for two tissue parts built after it (the
+   shared ones cached), so about 45 s for the tissue's own. **Open:** the CCK's validation fails
+   both jellied prefabs and passes the squash alone; the upload probe now logs each step's
+   warnings and errors, and the next run says why.
+   Still open: films of the seat from above, the thighs and the crossed legs for Joe (rendering),
+   presets tuned on his verdict, and Joe in game.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

@@ -150,6 +150,14 @@ namespace AvatarBridge
             mat.SetFloat("_Pair", (s == null || s.meet) && mat.GetFloat("_Regions") > 1.5f ? 1f : 0f);
             // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.
             mat.SetFloat("_GripSlip", slide || s != null && s.gripSlides ? 0.02f : 0f);
+            // The stretch in motion, on a part a cloth swings: w 1, or x on from a build before w was kept.
+            var motion = mat.GetVector("_Motion");
+            bool swung = motion.w > 0f || motion.x > 0f;
+            mat.SetVector("_Motion", swung && (s == null || s.stretchInMotion) ? YapsSquash.Stretch + new Vector4(0f, 0f, 0f, 1f) : new Vector4(0f, motion.y, motion.z, swung ? 1f : 0f));
+            // Other players' hands, in or out: the tissue keeps a hand out of the skin, so a share has
+            // nothing to scale.
+            float hands = s == null || s.othersHands > 0f ? 1f : 0f;
+            mat.SetVector("_JellyArrays", new Vector4(hands, hands, hands, hands));
             EditorUtility.SetDirty(mat);
         }
 
@@ -509,6 +517,8 @@ namespace AvatarBridge
             var motion = mats[0].GetVector("_YAPS_SquashMotion");
             bool clothed = PairCloth(root, part).Count > 0;
             if (!clothed) motion.x = 0f;
+            // w marks a part a cloth swings, for Live to turn the stretch back on.
+            motion.w = clothed ? 1f : 0f;
             var depthMap = DepthMap(sides, shares, at, body, chest, undo, los, his, into);
             // The third pass too, which judges the same reach to wake a rest.
             foreach (var mat in core.provider.materials)
@@ -562,6 +572,7 @@ namespace AvatarBridge
             // The region stays out of the bone's tree, where the cloth would take it for a bone of
             // its own and bend the chain toward it.
             var carriers = new string[sides];
+            var carrierBones = new Transform[sides];
             int probes = 0;
             string probed = "";
             Transform rides = chest;
@@ -589,6 +600,7 @@ namespace AvatarBridge
                     }
                     provider.transforms[side] = bone;
                     carriers[side] = bone.name;
+                    carrierBones[side] = bone;
                     if (side == 0) rides = bone;
                 }
                 // And each region held still where it hangs on the chest, for how far the cloth has
@@ -720,6 +732,48 @@ namespace AvatarBridge
             // there it would hold the tissue dented for good, as the thighs held a seat 18.7 mm in. Each
             // is thinned to clear them by half a centimetre, so it presses only past where it rests.
             var thinned = new List<string>();
+            // Except the limb a region rides, which lies through it and moves with it: left out of
+            // that region's step, plus one a region. Thinned to clear its own lattice, a thigh met the
+            // other leg 27 mm wide.
+            var rideOn = new int[2];
+            var ridden = new List<string>();
+            for (int side = 0; side < sides; side++)
+                for (int c = 0; c < 8 && carrierBones[side] != null; c++)
+                {
+                    int s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
+                    if (ownBones[s0] == null || ownBones[s0 + 1] == null || !carrierBones[side].IsChildOf(ownBones[s0]) || carrierBones[side].IsChildOf(ownBones[s0 + 1])) continue;
+                    rideOn[side] = c + 1;
+                    ridden.Add(ownBones[s0].name);
+                }
+            // A region whose ridden bone runs through it, as a thigh's, holds a core round that bone
+            // instead of its back face: the flesh rides its bone all round, and a held back face kept
+            // the back of the thigh rigid however it was pressed. Four tenths of the limb's own
+            // radius, at least enough that every layer along the bone holds a particle.
+            var cores = new Vector4[4];
+            var cored = new List<string>();
+            for (int side = 0; side < sides; side++)
+            {
+                if (rideOn[side] == 0 || !(ownRadii[rideOn[side] - 1] > 0f)) continue;
+                int c = rideOn[side] - 1, s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
+                var region = made.transform.Find($"Jelly Region {side}");
+                Vector3 a = region.InverseTransformPoint(ownBones[s0].position), b = region.InverseTransformPoint(ownBones[s0 + 1].position);
+                float zmax = (n.z - 1) * spacing, halfX = 0.5f * (n.x - 1) * spacing;
+                var mid = new Vector3(0f, 0f, 0.5f * zmax);
+                var foot = a + (b - a) * Mathf.Clamp01(Vector3.Dot(mid - a, b - a) / Mathf.Max((b - a).sqrMagnitude, 1e-12f));
+                if (foot.z < 0.25f * zmax || foot.z > zmax || Mathf.Abs(foot.x) > halfX) continue;
+                float rc = Mathf.Max(0.4f * ownRadii[c], 0.75f * spacing);
+                cores[2 * side] = new Vector4(a.x, a.y, a.z, rc);
+                cores[2 * side + 1] = new Vector4(b.x, b.y, b.z, 0f);
+                int held = 0;
+                for (int x = 0; x < n.x; x++)
+                    for (int y = 0; y < n.y; y++)
+                        for (int z = 0; z < n.z; z++)
+                        {
+                            var r = new Vector3((x - 0.5f * (n.x - 1)) * spacing, (y - 0.5f * (n.y - 1)) * spacing, z * spacing);
+                            if (Vector3.Distance(r, a + (b - a) * Mathf.Clamp01(Vector3.Dot(r - a, b - a) / Mathf.Max((b - a).sqrMagnitude, 1e-12f))) < rc) held++;
+                        }
+                cored.Add($"{held} particles within {1000f * rc:0} mm of {ownBones[s0].name}");
+            }
             for (int c = 0; c < 8; c++)
             {
                 int s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
@@ -728,6 +782,7 @@ namespace AvatarBridge
                 float was = ownRadii[c];
                 for (int side = 0; side < sides; side++)
                 {
+                    if (rideOn[side] == c + 1) continue;
                     var region = made.transform.Find($"Jelly Region {side}");
                     var centre = region.TransformPoint(0f, 0f, 0.5f * (n.z - 1) * spacing);
                     for (int x = 0; x < n.x; x++)
@@ -805,6 +860,11 @@ namespace AvatarBridge
             {
                 mat.SetVector("_JellyOwn0", new Vector4(ownRadii[0], ownRadii[1], ownRadii[2], ownRadii[3]));
                 mat.SetVector("_JellyOwn1", new Vector4(ownRadii[4], ownRadii[5], ownRadii[6], ownRadii[7]));
+                mat.SetVector("_JellyCarrier", new Vector4(rideOn[0], rideOn[1], 0f, 0f));
+                mat.SetVector("_JellyCoreA0", cores[0]);
+                mat.SetVector("_JellyCoreB0", cores[1]);
+                mat.SetVector("_JellyCoreA1", cores[2]);
+                mat.SetVector("_JellyCoreB1", cores[3]);
                 mat.SetVector("_JellyCol0", new Vector4(colRadii[0], colRadii[1], colRadii[2], colRadii[3]));
                 mat.SetVector("_JellyCol1", new Vector4(colRadii[4], colRadii[5], colRadii[6], colRadii[7]));
                 mat.SetFloat("_JellyTwitch", twitch != null ? handed.Count - 1 : 0);
@@ -878,7 +938,7 @@ namespace AvatarBridge
                    probed + $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : clothed ? "its cloth left on" : "no cloth on it")
                        : off.Count > 0 ? "switched off: " + string.Join(", ", off) : "no cloth or dynamic bones found on the pair, so if anything else swings it, switch that off") +
-                   $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}; {wired}; {stale} earlier jelly taken off.";
+                   $"; {collided}; {(thinned.Count > 0 ? "thinned to clear it as built: " + string.Join(", ", thinned) : "none of the wearer's limbs reaching it as built")}{(ridden.Count > 0 ? $", each lattice left out of the limb it rides ({string.Join(", ", ridden)})" : "")}{(cored.Count > 0 ? $", held round its bone instead of its back face ({string.Join("; ", cored)})" : "")}; {wired}; {stale} earlier jelly taken off.";
         }
 
         // Slot s's state and lattice on the body's materials: the first part's, then the second's.
@@ -1936,6 +1996,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _PairSkin (""Each region's skin's reach toward the other off its centre at rest; x 0 none"", Vector) = (0, 0, 0, 0)
         _JellyOwn0 (""The wearer's own capsules' radii: the left upper arm, forearm, hand and thigh; 0 none"", Vector) = (0, 0, 0, 0)
         _JellyOwn1 (""The same for the right"", Vector) = (0, 0, 0, 0)
+        _JellyCarrier (""Which of those eight each region rides, plus one, left out of its own: x the first region's, y the second's; 0 none"", Vector) = (0, 0, 0, 0)
+        _JellyCoreA0 (""The first region's held core, one end of its bone on the anchor, w its radius; w 0 holds the back face"", Vector) = (0, 0, 0, 0)
+        _JellyCoreB0 (""Its other end"", Vector) = (0, 0, 0, 0)
+        _JellyCoreA1 (""The same for the second region"", Vector) = (0, 0, 0, 0)
+        _JellyCoreB1 (""Its other end"", Vector) = (0, 0, 0, 0)
         _JellyCol0 (""The avatar's own colliders' radii, those pressing; 0 none"", Vector) = (0, 0, 0, 0)
         _JellyCol1 (""The next four"", Vector) = (0, 0, 0, 0)
         _JellyBox0 (""The first region's skin on its anchor: half width, half height, depth, w 1 with its depth map; 0 the lattice's box"", Vector) = (0, 0, 0, 0)
@@ -1993,7 +2058,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             ByteAddressBuffer _JellySkin;
             Texture2D<float> _JellyDepth;
             float _JellySkinStride, _JellyProbes, _JellyProbeReach, _Deepest, _GripSlip, _JellySolid, _JellySolidFrom, _JellyProbePatch;
-            float4 _JellyArrays;
+            float4 _JellyArrays, _JellyCarrier, _JellyCoreA0, _JellyCoreB0, _JellyCoreA1, _JellyCoreB1;
             float4 _Floor;
             // The most probes a region has, YapsJelly.ProbesMax, and their readout's first column on
             // the side row, YapsJelly.Readout: columns of their own past the particles'.
@@ -2463,6 +2528,16 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 tip -= in_;
             }
 
+            // Which particles ride the anchor: the back face, on the chest wall; on a limb, those within
+            // the core's radius of its bone, as a thigh's flesh rides its bone all round.
+            bool Pinned(int3 l)
+            {
+                if (!Cored) return l.z == 0;
+                float4 a = Region == 0 ? _JellyCoreA0 : _JellyCoreA1, b = Region == 0 ? _JellyCoreB0 : _JellyCoreB1;
+                float3 r = Rest(l), s = b.xyz - a.xyz;
+                return distance(r, a.xyz + s * saturate(dot(r - a.xyz, s) / max(dot(s, s), 1e-12))) < a.w;
+            }
+
             // The wearer's own capsule c of the sixteen, end to end after the four anchors: the left
             // upper arm, forearm, hand and thigh, then the right's, bone to bone; then the avatar's
             // colliders, each between its two ends. r 0 for none.
@@ -2472,6 +2547,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 a = _JellyAnchor[s]._m03_m13_m23;
                 b = _JellyAnchor[s + 1]._m03_m13_m23;
                 r = (c < 4 ? _JellyOwn0[c & 3] : c < 8 ? _JellyOwn1[c & 3] : c < 12 ? _JellyCol0[c & 3] : _JellyCol1[c & 3]) * scale;
+                // The limb a region rides lies through it and moves with it, so it presses only the other.
+                if (c + 1 == (uint) round(Region == 0 ? _JellyCarrier.x : _JellyCarrier.y)) r = 0;
             }
 
             // How much of the pair's plane holds, from the turn between the two frames, the partner's
@@ -2967,6 +3044,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
                 if (distant) return none;
                 int3 n = Count();
+                // Each particle against its home with no squash: fitted to the rest alone, the mass's
+                // swing and stretch, which turn the front more than the back, read as a shear.
+                float4 tip = _MainTex.Load(int3(30, side, 0)), unused;
+                bool swings = _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1;
+                float3 hung = Hung(Base / (side - Base + 1));
                 float3 pc = 0, qc = 0, qq = 0, c0 = 0, c1 = 0, c2 = 0;
                 // Summed as each is loaded, not held, so the pass keeps few registers. Rolled, and
                 // divided by as many as it took: Shader Filtering cuts it short, to the back layers.
@@ -2974,7 +3056,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [loop] for (int i = 0; i < 64; i++)
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
-                    float3 p = Into(m, _MainTex.Load(Texel((uint) Index(l), 0)).xyz), q = Rest(l);
+                    float3 q = Rest(l), p = Into(m, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
+                        + q - Into(m, HomeOn(l, m, tip, swings, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), hung, unused));
                     pc += p;
                     qc += q;
                     qq += q * q;
@@ -3206,8 +3289,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float3 Moved(uint p, int3 l, float4x4 m, float scale, float h, float3 home, bool predicted, bool distant, uint side, float4 swing, out float4 q)
             {
                 q = Mul(swing, Quat((float3x3) m / scale));
-                // The back face rides the anchor.
-                if (l.z == 0 || distant) return home;
+                // The back face rides the anchor, or on a limb the core round its bone.
+                if (Pinned(l) || distant) return home;
                 float4 s = _MainTex.Load(Texel(p, 0));
                 float3 ahead, base;
                 float kh = 0;
@@ -3245,9 +3328,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // across fold under its own weight, 42 cm at the front.
                 float spring = 6.2831853 * _Hz * h;
                 // Upright, gravity hangs the tissue g (1 - spring^2) / w^2 below where this pull holds
-                // it; tissue modelled on a body hangs already, so it is held as far above.
+                // it; tissue modelled on a body hangs already, so it is held as far above. Held round
+                // a limb's bone, against the world's up: a seated thigh lifted along its bone sat
+                // 32 mm off its modelled shape, toward the hip and down. Firm flesh on a limb keeps
+                // its shape however the limb lies and still swings with it.
                 float3 lift = 0;
-                if (_Lift > 0) lift = _Lift * normalize(m._m01_m11_m21) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _Hz * _Hz);
+                if (_Lift > 0) lift = _Lift * (Cored ? float3(0, 1, 0) : normalize(m._m01_m11_m21)) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _Hz * _Hz);
                 // The pair meet at a plane between them, moving and tilting with them, with no friction,
                 // so they slide along it and never stick: they push together.
                 // Each home past it is eased back behind it in order, the face it meets flat, and the
@@ -3646,6 +3732,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if ((uint) px.x >= 2 * Row && (uint) px.y != side) return 0;
                 Region = region;
                 MineOf = region;
+                Cored = (region == 0 ? _JellyCoreA0.w : _JellyCoreA1.w) > 0;
                 Mine = AnchorOf(region);
                 // The other region's only where it is read: the far switch measures from the first's,
                 // and the side row's pair plane. Built for every pixel, far-off steps cost half again.
@@ -3940,7 +4027,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         bool rest = Fresh(s, was, home);
                         if (half_ == 1) return float4(rest ? home : s.xyz, h);
                         if (rest) return float4(home, 0);
-                        if (l.z == 0) return float4(home, 1);
+                        if (Pinned(l)) return float4(home, 1);
                         return float4(Ahead(s, was, l, side, home, h) + Gravity * h * h, 1);
                     }
                     // A whole step's right half only moves along, so half the texture does next to no work.
@@ -3979,6 +4066,8 @@ static uint Base = 0;
 
 static const uint Row = 64;
 static const float Window = 0.5;
+// This pixel's region holds a core round its bone instead of its back face.
+static bool Cored = false;
 // The step's share of gravity: 1 hangs like flesh, 0 keeps the modelled shape however the body lies.
 float _Gravity;
 #define Gravity float3(0, -9.81 * _Gravity, 0)
@@ -4070,7 +4159,7 @@ float4 Fit(uint p, int3 l, float3 ahead, float3 base, float kh, float4x4 m, floa
             float3 x = _MainTex.Load(Texel(o, 0)).xyz, w = x;
             [branch] if (!predicted) w = _MainTex.Load(Texel(o, 1)).xyz;
             float3 d = predicted ? x - ahead : x + (x - w) * kh - base;
-            if (!predicted && dz < 0) d = l.z == 1 ? behind + dx * mx + dy * my - base : d;
+            if (!predicted && dz < 0 && !Cored) d = l.z == 1 ? behind + dx * mx + dy * my - base : d;
             d = ok ? d : 0;
             sd += d;
             if (dx != 0) ax += dx * d;

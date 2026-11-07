@@ -1688,9 +1688,9 @@ testing in the Avatar Tester, one place each. Its knobs write straight to the ma
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
 pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). The stretch is real flesh's: a small one, with small swings
-ignored. With the live tissue on, the eight knobs only the squash's own dent reads (how flat and how wide,
-the spill, the physics' colliders, lying back, the stretch in motion, your own arms and other players' hands)
-are hidden, and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
+ignored. With the live tissue on, the six knobs only the squash's own dent reads (how flat and how wide,
+the spill, the physics' colliders, lying back and your own arms) are hidden; the tissue takes the stretch in
+motion on parts their physics swing, and other players' hands as in (above 0) or out (0), and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
 squash preview running under **Interaction lab ▸ Squash**. On parts still on the squash it starts half squeezed
 outside Play mode, so every knob shows as it moves there; the live tissue presses in Play mode only. **Squeeze** is another
 player's two open hands pushing each pair together from outside (on the squash, *Other players' hands* scales it), **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
