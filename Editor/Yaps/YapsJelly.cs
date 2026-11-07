@@ -240,6 +240,109 @@ namespace AvatarBridge
         // it (found, when given, the parts as YapsSquash.PartsOf reads them). Its assets in folder,
         // the nth part's in folder_n; the step shader in shaders. What was done, starting "On " when
         // it was.
+        // How deep each region's skin lies under each face of its box, on a DepthGrid square over
+        // the face: a hand is held by how far it is past the skin, not the face. A face touches the
+        // skin at its outermost point only; where a poke came in on a seat it lay 8 cm off it, so the
+        // whole of _Deepest went before the finger met the skin, and nothing dented. Each spot is the
+        // outermost skin right over it, from the triangles: the outermost of a spot's whole cell, on a
+        // round cheek, read 6 of those 8 cm short. Rows of a face each, x then y then z, plus then
+        // minus, the first region's six faces then the second's.
+        internal const int DepthGrid = 16;
+
+        static Texture2D DepthMap(int sides, float[][] shares, Vector3[] at, SkinnedMeshRenderer body, Transform chest, Quaternion undo, Vector3[] los, Vector3[] his, string folder)
+        {
+            const int G = DepthGrid;
+            var cells = Enumerable.Repeat(float.PositiveInfinity, 2 * 6 * G * G).ToArray();
+            var binned = Enumerable.Repeat(float.PositiveInfinity, cells.Length).ToArray();
+            var tris = body.sharedMesh.triangles;
+            for (int side = 0; side < sides; side++)
+            {
+                Vector3 lo = los[side], hi = his[side];
+                var half = 0.5f * (hi - lo);
+                var origin = new Vector3(0.5f * (lo.x + hi.x), 0.5f * (lo.y + hi.y), lo.z);
+                // On the region's anchor, from the middle of its box; null off the part.
+                var on = new Vector3?[at.Length];
+                for (int v = 0; v < at.Length && v < shares[side].Length; v++)
+                    if (shares[side][v] >= 0.5f) on[v] = undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - origin - new Vector3(0f, 0f, half.z);
+                // A face's spot coordinates and depth for a point on the anchor.
+                Vector3 Spot(Vector3 l, int k, int s)
+                {
+                    int i = k == 0 ? 1 : 0, j = k == 2 ? 1 : 2;
+                    return new Vector3((l[i] / half[i] + 1f) * 0.5f * (G - 1), (l[j] / half[j] + 1f) * 0.5f * (G - 1), half[k] - (s == 0 ? l[k] : -l[k]));
+                }
+                // Each vertex for its nearest spot, for a spot no triangle covers.
+                for (int v = 0; v < on.Length; v++)
+                    if (on[v] is Vector3 l)
+                        for (int f = 0; f < 6; f++)
+                        {
+                            var q = Spot(l, f >> 1, f & 1);
+                            int c = ((side * 6 + f) * G + Mathf.Clamp(Mathf.RoundToInt(q.y), 0, G - 1)) * G + Mathf.Clamp(Mathf.RoundToInt(q.x), 0, G - 1);
+                            binned[c] = Mathf.Min(binned[c], Mathf.Max(q.z, 0f));
+                        }
+                for (int t = 0; t + 2 < tris.Length; t += 3)
+                {
+                    if (tris[t] >= on.Length || tris[t + 1] >= on.Length || tris[t + 2] >= on.Length) continue;
+                    if (!(on[tris[t]] is Vector3 la) || !(on[tris[t + 1]] is Vector3 lb) || !(on[tris[t + 2]] is Vector3 lc)) continue;
+                    for (int f = 0; f < 6; f++)
+                    {
+                        Vector3 A = Spot(la, f >> 1, f & 1), B = Spot(lb, f >> 1, f & 1), C = Spot(lc, f >> 1, f & 1);
+                        float area = (B.x - A.x) * (C.y - A.y) - (C.x - A.x) * (B.y - A.y);
+                        if (Mathf.Abs(area) < 1e-9f) continue;
+                        int x0 = Mathf.Max(0, Mathf.CeilToInt(Mathf.Min(A.x, Mathf.Min(B.x, C.x)))), x1 = Mathf.Min(G - 1, Mathf.FloorToInt(Mathf.Max(A.x, Mathf.Max(B.x, C.x))));
+                        int y0 = Mathf.Max(0, Mathf.CeilToInt(Mathf.Min(A.y, Mathf.Min(B.y, C.y)))), y1 = Mathf.Min(G - 1, Mathf.FloorToInt(Mathf.Max(A.y, Mathf.Max(B.y, C.y))));
+                        for (int y = y0; y <= y1; y++)
+                            for (int x = x0; x <= x1; x++)
+                            {
+                                float u = ((B.x - x) * (C.y - y) - (C.x - x) * (B.y - y)) / area, w = ((C.x - x) * (A.y - y) - (A.x - x) * (C.y - y)) / area;
+                                if (u < -1e-4f || w < -1e-4f || u + w > 1f + 1e-4f) continue;
+                                int c = ((side * 6 + f) * G + y) * G + x;
+                                cells[c] = Mathf.Min(cells[c], Mathf.Max(u * A.z + w * B.z + (1f - u - w) * C.z, 0f));
+                            }
+                    }
+                }
+            }
+            for (int c = 0; c < cells.Length; c++)
+                if (float.IsPositiveInfinity(cells[c])) cells[c] = binned[c];
+            // A spot of a face with no skin under it takes its shallowest neighbour's: held a little
+            // early at a rim, never let through to tear it.
+            for (int f = 0; f < 12; f++)
+                for (int pass = 0; pass < 2 * G; pass++)
+                {
+                    bool empty = false;
+                    var was = (float[]) cells.Clone();
+                    for (int y = 0; y < G; y++)
+                        for (int x = 0; x < G; x++)
+                        {
+                            int c = (f * G + y) * G + x;
+                            if (!float.IsPositiveInfinity(was[c])) continue;
+                            float near = float.PositiveInfinity;
+                            if (x > 0) near = Mathf.Min(near, was[c - 1]);
+                            if (x < G - 1) near = Mathf.Min(near, was[c + 1]);
+                            if (y > 0) near = Mathf.Min(near, was[c - G]);
+                            if (y < G - 1) near = Mathf.Min(near, was[c + G]);
+                            cells[c] = near;
+                            empty |= float.IsPositiveInfinity(near);
+                        }
+                    if (!empty) break;
+                }
+            var pixels = cells.Select(d => new Color(float.IsPositiveInfinity(d) ? 0f : d, 0f, 0f, 0f)).ToArray();
+            // Kept in place when it exists: remade at the same path, the materials would read it Missing.
+            string path = folder + "/Jelly_Depth.asset";
+            var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            if (tex == null)
+            {
+                tex = new Texture2D(G, 12 * G, TextureFormat.RFloat, false, true);
+                AssetDatabase.CreateAsset(tex, path);
+            }
+            else tex.Reinitialize(G, 12 * G, TextureFormat.RFloat, false);
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.SetPixels(pixels);
+            tex.Apply(false);
+            EditorUtility.SetDirty(tex);
+            return tex;
+        }
+
         internal static string PairOn(Transform picked, Regex want, string folder, string shaders, Options o, BridgeReport report, YapsSquash.SoftParts found = null)
         {
             var root = AvatarOf(picked);
@@ -406,6 +509,7 @@ namespace AvatarBridge
             var motion = mats[0].GetVector("_YAPS_SquashMotion");
             bool clothed = PairCloth(root, part).Count > 0;
             if (!clothed) motion.x = 0f;
+            var depthMap = DepthMap(sides, shares, at, body, chest, undo, los, his, into);
             // The third pass too, which judges the same reach to wake a rest.
             foreach (var mat in core.provider.materials)
             {
@@ -424,7 +528,8 @@ namespace AvatarBridge
                 // Each breast's skin on its region's frame, what the own capsules and hands are kept
                 // in reach of: the lattice is the larger's box, past the smaller's skin.
                 for (int side = 0; side < sides; side++)
-                    mat.SetVector($"_JellyBox{side}", new Vector4(0.5f * (his[side].x - los[side].x), 0.5f * (his[side].y - los[side].y), his[side].z - los[side].z, 0f));
+                    mat.SetVector($"_JellyBox{side}", new Vector4(0.5f * (his[side].x - los[side].x), 0.5f * (his[side].y - los[side].y), his[side].z - los[side].z, 1f));
+                mat.SetTexture("_JellyDepth", depthMap);
                 mat.SetVector("_JellyOffsetAt0", Vector4.zero);
                 mat.SetVector("_JellyOffsetAt1", Vector4.zero);
                 mat.SetFloat("_JellySkinStride", 0f);
@@ -802,8 +907,12 @@ namespace AvatarBridge
             string Of(string name, string suffix) => mats.Where(m => m.HasProperty(name)).Select(m => m.GetTexture(name)).Where(t => t != null)
                 .Select(t => Path.GetDirectoryName(AssetDatabase.GetAssetPath(t)).Replace('\\', '/')).Where(d => d.EndsWith(suffix))
                 .Select(d => d.Substring(0, d.Length - suffix.Length)).FirstOrDefault();
-            return Enumerable.Range(0, YapsSquash.JellySlots).Select(s => Of(StateOf(s), s > 0 ? "_" + (s + 1) : "")).FirstOrDefault(d => d != null)
-                   ?? AssetDatabase.GenerateUniqueAssetPath(folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly");
+            string found = Enumerable.Range(0, YapsSquash.JellySlots).Select(s => Of(StateOf(s), s > 0 ? "_" + (s + 1) : "")).FirstOrDefault(d => d != null);
+            if (found != null) return found;
+            // Unity names nothing under a folder that is not there yet: on a project's first build
+            // the answer was empty, and the jelly's folder of "" threw.
+            YapsNativeBuilder.EnsureFolderPublic(folder);
+            return AssetDatabase.GenerateUniqueAssetPath(folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly");
         }
 
         // Every pair the squash found put on the jelly with a user's defaults, its assets in the
@@ -1825,8 +1934,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyOwn1 (""The same for the right"", Vector) = (0, 0, 0, 0)
         _JellyCol0 (""The avatar's own colliders' radii, those pressing; 0 none"", Vector) = (0, 0, 0, 0)
         _JellyCol1 (""The next four"", Vector) = (0, 0, 0, 0)
-        _JellyBox0 (""The first region's skin on its anchor: half width, half height, depth; 0 the lattice's box"", Vector) = (0, 0, 0, 0)
+        _JellyBox0 (""The first region's skin on its anchor: half width, half height, depth, w 1 with its depth map; 0 the lattice's box"", Vector) = (0, 0, 0, 0)
         _JellyBox1 (""The same for the second"", Vector) = (0, 0, 0, 0)
+        _JellyDepth (""How deep each region's skin lies under each face of its box, YapsJelly.DepthGrid square a face"", 2D) = ""black"" {}
         _JellyOffsetAt0 (""The first region's place on the bone it rides, in the bone's units, w its scale on it; w 0 rides none"", Vector) = (0, 0, 0, 0)
         _JellyOffsetTurn0 (""The first region's turn on that bone"", Vector) = (0, 0, 0, 1)
         _JellyOffsetAt1 (""The second region's place on its bone"", Vector) = (0, 0, 0, 0)
@@ -1877,6 +1987,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
+            Texture2D<float> _JellyDepth;
             float _JellySkinStride, _JellyProbes, _JellyProbeReach, _Deepest, _GripSlip, _JellySolid, _JellySolidFrom, _JellyProbePatch;
             float4 _JellyArrays;
             float4 _Floor;
@@ -1884,6 +1995,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // the side row, YapsJelly.Readout: columns of their own past the particles'.
             #define PROBES 64
             #define READOUT 128
+            // The depth map's spots along a face, YapsJelly.DepthGrid.
+            #define DEPTH_GRID 16
             // A world probe's ball radius, as the builder's Solid() makes it.
             #define BALL 0.01
 
@@ -2281,6 +2394,24 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return face;
             }
 
+            // How deep the skin lies under face at l, a point on the anchor as Into gives it: the
+            // region's depth map between its spots. 0 with no map, the face then taken for the skin.
+            float Skin(float3 face, float3 l)
+            {
+                float4 box = Region == 0 ? _JellyBox0 : _JellyBox1;
+                if (!(box.w > 0.5) || !(box.z > 0)) return 0;
+                float3 half = float3(box.xy, 0.5 * box.z), q = (l - float3(0, 0, half.z)) / half;
+                uint k = abs(face.x) > 0.5 ? 0 : abs(face.y) > 0.5 ? 1 : 2;
+                float2 uv = k == 0 ? q.yz : k == 1 ? q.xz : q.xy;
+                float2 g = saturate(0.5 * uv + 0.5) * (DEPTH_GRID - 1);
+                int2 g0 = min((int2) g, DEPTH_GRID - 2);
+                float2 t = g - g0;
+                int row = (int) ((Region * 6 + 2 * k + (face.x + face.y + face.z < 0 ? 1 : 0)) * DEPTH_GRID) + g0.y;
+                float a = _JellyDepth.Load(int3(g0.x, row, 0)), b = _JellyDepth.Load(int3(g0.x + 1, row, 0));
+                float c = _JellyDepth.Load(int3(g0.x, row + 1, 0)), d = _JellyDepth.Load(int3(g0.x + 1, row + 1, 0));
+                return lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
+            }
+
             // A hand past _Deepest into the skin, or a third of the tissue, is held there, as skin
             // would stop a real one; in VR it goes on through, and once its tip is past the tissue's
             // middle it lets go over its radius, as a body a hand has passed into springs back.
@@ -2294,6 +2425,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // was held 8.6 cm up and dented the skin above it, none under it. The tip has its own
             // radius rTip, a finger's when one is out: by the palm's, a finger 2.6 cm into a seat read
             // as at its 7.9 cm and was held there, the rest of a poke sinking into the skin.
+            // Both depths are past the skin, which lies under the face by the region's depth map: past
+            // the face, a poke on a seat used its whole 7.9 cm before the finger met the skin 8 cm under
+            // it, and dented nothing. The middle it lets go at, and a third of the tissue, are the box's.
             void Held(inout float3 wrist, inout float3 tip, float r, float rTip, bool other, float3 fromWrist, float3 fromTip, float4x4 m, float scale, out float hold)
             {
                 float3 mid;
@@ -2301,11 +2435,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 face = Facing(fromWrist, fromTip, r, other, m, scale, mid, across);
                 hold = 0;
                 if (!any(face) || !(r > 0)) return;
-                float inW = (across - dot(Into(m, wrist) - mid, face)) * scale, inT = (across - dot(Into(m, tip) - mid, face)) * scale;
+                float3 lw = Into(m, wrist), lt = Into(m, tip);
+                float pastW = across - dot(lw - mid, face), pastT = across - dot(lt - mid, face), skin = Skin(face, lt);
+                float inW = (pastW - Skin(face, lw)) * scale, inT = (pastT - skin) * scale;
                 float deep = max(inW + r, inT + rTip);
-                float most = min(_Deepest * scale, 2 * across * scale / 3), go = saturate((max(inW, inT) - across * scale) / r);
+                float most = min(_Deepest * scale, 2 * max(across - skin, 0) * scale / 3), go = saturate((max(pastW, pastT) - across) * scale / r);
                 float back = max(deep - most, 0) + most * go;
-                hold = back - deep * go;
+                // Never more than it is held back: short of skin under the middle, deep is below 0.
+                hold = clamp(back - deep * go, 0, back);
                 float3 out_ = normalize(mul((float3x3) m, face));
                 wrist += out_ * back;
                 tip += out_ * back;

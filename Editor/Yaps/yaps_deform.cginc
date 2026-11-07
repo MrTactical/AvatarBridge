@@ -754,8 +754,15 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
 #ifdef YAPS_DUPLICATE
     // A path ending in a portal gives the second copy to the portal, so it
-    // keeps the first copy's path to come out of the exit below.
-    bool viaPortal = copy2 && socket.chain.portal != 0;
+    // keeps the first copy's path to come out of the exit below. Every hole on
+    // an avatar carries its owner and number, so a key alone is no portal: only
+    // a hole whose exit is published is one. Taken for the key, the second copy
+    // hid at every ordinary hole and never went on into the next.
+    // The exit is read against the entrance, which its cell unwraps around: against the origin, a
+    // portal past 41 m of it came out 82 m off.
+    float3 portalAt = socket.position, portalFwd = rootForward;
+    bool viaPortal = false;
+    if (copy2 && socket.chain.portal != 0) viaPortal = YapsPortalExit(socket.chain.portal, portalAt, portalFwd);
     // Nested, never "copy2 && !YapsCopyPath(...)": HLSL does not short-circuit,
     // so the call ran on the first copy too and its inout shift sent the first
     // copy down the second's path.
@@ -1051,13 +1058,11 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 #ifdef YAPS_DUPLICATE
     if (viaPortal)
     {
-        float3 exitAt = p3;
-        float3 exitFwd = frame.forward;
+        // The exit as read where the portal was decided.
+        float3 exitAt = portalAt;
+        float3 exitFwd = portalFwd;
         bool open = _YAPS_Enabled >= 1 && socket.engaged * engage >= 0.999 && _YAPS_PortalSpan > 0;
-        // Nested rather than one &&: HLSL runs both sides, and the read
-        // belongs to this branch alone.
-        if (open) open = YapsPortalExit(socket.chain.portal, exitAt, exitFwd);
-        // Engaging, fading or no exit: the first copy is the whole plug.
+        // Engaging or fading: the first copy is the whole plug.
         if (!open)
         {
             YapsCopyHide(position, normal, tangent);

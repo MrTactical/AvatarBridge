@@ -36,6 +36,14 @@ namespace AvatarBridge
                     "carries PhysBones.");
                 return report;
             }
+            // A prefab asset from the Project window: Unity refuses to parent the cloth's holder into
+            // it, which left the holder loose in the scene and the PhysBones undeletable.
+            if (EditorUtility.IsPersistent(target))
+            {
+                report.Warning(Category, "This is a prefab asset",
+                    "Drag the avatar in from the scene instead, or open the prefab and pick it there.");
+                return report;
+            }
             var physBones = target.GetComponentsInChildren<VRCPhysBone>(true);
             if (physBones.Length == 0) return report;
             // With Delete off a second press would add a second set on the same bones.

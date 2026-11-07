@@ -28,7 +28,7 @@ namespace AvatarBridge
         static string TwinNote() => _twin == null
             ? "The copy hears synced parameters, movement, gestures and voice from you, and nothing else: \"#\" locals stay at their defaults and IsLocal is off. Where it differs from you, other players see it."
             : _twinDropped > 0
-                ? $"The copy is running. {_twinDropped} parameter(s) past the sync budget stay at their defaults on it, as for everyone else."
+                ? $"The copy is running. {BridgeElements.Count(_twinDropped, "parameter past the sync budget stays at its default", "parameters past the sync budget stay at their defaults")} on it, as for everyone else."
                 : "The copy is running. Contacts and the CCK's own drivers do nothing in the editor, on either copy.";
 
         static bool IsTwin(Component c) => _twin != null && c != null && c.transform.IsChildOf(_twin.transform);

@@ -1378,7 +1378,7 @@ deform on and off, animate the material property `_YAPS_Enabled` on its renderer
 hiding the mesh, toggle the object for that, and because animated material properties live in
 the renderer's property block, the material inspector keeps showing whatever was baked. The
 property reaches every material on the renderer, so plugs sharing one mesh share one switch, and
-their menu toggle is one entry named for whichever plug baked last.
+their menu toggle is one entry, named for all of them.
 
 If you animated the component before reading any of that, **Bake fixes it for you**: it finds
 curves on a plug component's `Enabled` field in your own clips and writes the matching
@@ -1617,7 +1617,8 @@ without also shoving the bone, and the avatar's own MagicaCloth and Dynamic Bone
 pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed, a net of
 probes spread over the skin also feels other players' MagicaCloth colliders, any shape, each
 pressing at about its own size, a fingertip's to a palm's, and the world's solid surfaces: walls,
-tables, dropped props. Past 6 m from a viewer it stops stepping and holds its shape. Nothing
+tables, dropped props. Past 4 m from a viewer, or well behind where the viewer looks, it stops
+stepping and holds its shape. Nothing
 is synced: each viewer's game steps its own copy. It tells the animator three floats a part, from 0
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
 `#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component
@@ -2133,7 +2134,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; on a humanoid avatar the parts also become live tissue the graphics card steps every frame, which any hand dents, grips and slaps; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; on a humanoid avatar the parts also become live tissue the graphics card steps every frame, which any hand dents, grips and slaps, the parts' own cloth no longer feeling hands; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -2302,7 +2303,8 @@ Bipeds are unaffected by any of it.
 - **Blendshape-based gaze**: bone-based eye look converts (gaze limits measured from the VRChat
   poses), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
   blendshape face tracking *are* handled.)
-- **PhysBone posing, stretch & squish** and their `_Stretch` / `_Squish` / `_IsPosed` parameters
+- **PhysBone posing and stretch**, and the `_Stretch` / `_Squish` / `_IsPosed` parameters (squish
+  itself carries over, as how firmly a chain's bones hold their length)
 - **Some VRC state behaviours**: Temporary Pose Space, Playable Layer Control, and a Layer Control
   aimed at the Action layer, are removed and counted. Parameter Driver, Tracking and Locomotion
   Control (which become `BodyControl`), Play Audio and the other Layer Controls convert; see

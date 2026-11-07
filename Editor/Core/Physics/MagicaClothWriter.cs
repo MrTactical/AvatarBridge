@@ -500,12 +500,16 @@ namespace AvatarBridge
                     sdata.rootBones.Remove(dead);
                 }
                 var names = sdata.rootBones.Select(b => b.name).Take(6).ToList();
-                ctx.Report.Approximated(Category, data.Label,
+                // With no Ignore Transforms this is Multi Child Type Ignore alone, VRChat's default,
+                // which the per-branch row already says: "0 honoured" read as a fault on most skirts.
+                string honoured = data.Ignores.Count == 0 ? "" :
                     $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} honoured by rooting the cloth at " +
                     $"{BridgeElements.Count(sdata.rootBones.Count, "branch", "branches")} instead: {string.Join(", ", names)}" +
                     $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. Each branch bends from its second " +
-                    "joint, so it may feel stiff at the base." +
-                    (deadRoots.Count > 0 ? $" {BridgeElements.Count(deadRoots.Count, "childless branch", "childless branches")} dropped." : ""));
+                    "joint, so it may feel stiff at the base.";
+                string dropped = deadRoots.Count > 0 ? $"{BridgeElements.Count(deadRoots.Count, "childless branch", "childless branches")} dropped." : "";
+                if (honoured.Length > 0 || dropped.Length > 0)
+                    ctx.Report.Approximated(Category, data.Label, honoured + (honoured.Length > 0 && dropped.Length > 0 ? " " : "") + dropped);
                 return false;
             }
 

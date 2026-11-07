@@ -60,8 +60,9 @@ namespace AvatarBridge
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
         static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides", "probeMarkers" };
         // The squash's dent alone reads these, and every part it dents is on the live tissue once
-        // that is built.
-        static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush" };
+        // that is built: the tissue takes the hand size, volume, meet and grip, and its own reach
+        // for every hand and limb. Shown there, "0 leaves them out" left every hand pressing.
+        static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush", "lyingBack", "stretchInMotion", "ownArms", "othersHands" };
 
         static readonly string[] FeelLabels = { "Firmness", "Settle", "Give", "Swing", "Spring back", "Taut", "Press depth", "Slap" };
         static readonly string[] FeelTips =
@@ -76,6 +77,9 @@ namespace AvatarBridge
             "How deep a slap ripples.",
         };
 
+        // On the live tissue the dent's switches move nothing; plugs still part it.
+        const string AnimatableJelly =
+            "material._YAPS_SquashPlug       plugs";
         const string Animatable =
             "material._YAPS_DentPower        0 off, 1 on\n" +
             "material._YAPS_SquashTune.y     strength\n" +
@@ -181,17 +185,24 @@ namespace AvatarBridge
             var it = serializedObject.GetIterator();
             it.NextVisible(true);   // m_Script
             BridgeElements.Card fold = null;
-            bool jellied = settings.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Region"));
+            // The jelly hangs under the trunk bone above the part, which can be above this component.
+            bool jellied = root != null && root.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Region"));
+            // A header opens its fold at the first field shown under it, so a hidden first field
+            // neither drops the fold nor hands its fields to the one before.
+            string header = null;
             while (it.NextVisible(false))
             {
-                if (HereNotKnobs.Contains(it.name) || !jellied && JellyOnly.Contains(it.name) || jellied && DentOnly.Contains(it.name)) continue;
+                if (HereNotKnobs.Contains(it.name)) continue;
                 var field = typeof(YapsSquashSettings).GetField(it.name);
-                if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h)
+                if (field?.GetCustomAttributes(typeof(HeaderAttribute), false).FirstOrDefault() is HeaderAttribute h) header = h.header;
+                if (!jellied && JellyOnly.Contains(it.name) || jellied && DentOnly.Contains(it.name)) continue;
+                if (header != null)
                 {
-                    FoldSummaries.TryGetValue(h.header, out string summary);
-                    fold = new BridgeElements.Card(h.header, summary, fold == null).Nested().Remember("Yaps.Squash." + h.header);
+                    FoldSummaries.TryGetValue(header, out string summary);
+                    fold = new BridgeElements.Card(header, summary, fold == null).Nested().Remember("Yaps.Squash." + header);
                     feel.Body.Add(fold);
-                    if (FoldHints.TryGetValue(h.header, out string hint)) fold.Body.Add(BridgeElements.Hint(hint));
+                    if (FoldHints.TryGetValue(header, out string hint)) fold.Body.Add(BridgeElements.Hint(hint));
+                    header = null;
                 }
                 (fold != null ? fold.Body : feel.Body).Add(YapsInspectorStyle.Field(it.Copy(), field));
             }
@@ -202,7 +213,7 @@ namespace AvatarBridge
             feel.Body.Add(animate);
             animate.Body.Add(BridgeElements.Hint(
                 "Key these under each renderer the squash reaches ▸ Material, on all of them alike: a layer left squashing over skin that is not comes apart from it."));
-            animate.Body.Add(BridgeElements.Code(Animatable));
+            animate.Body.Add(BridgeElements.Code(jellied ? AnimatableJelly : Animatable));
 
             var build = new BridgeElements.Card(built ? "Rebuild" : "Build").Step(3, 3, BridgeTheme.Span.Cvr);
             body.Add(build);

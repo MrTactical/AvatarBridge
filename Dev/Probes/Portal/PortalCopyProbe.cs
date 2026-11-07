@@ -10,6 +10,9 @@
 //       [-portalHosts Poiyomi]                only hosts whose name contains it
 //       [-portalPoses 50]
 //       [-portalDump <dir>]                   each host's first corridor frame as a PNG
+//       [-portalFilm <dir>]                   every pose at full enable from beside each mouth,
+//                                             the mouths ringed, as PNGs for a film
+//       [-portalFilmHost <name>]              the copy host it films; the first by default
 //
 // S3's band probe, its plug, hosts, poses and cameras, with the plug given a
 // second copy as the duplicate builds one: every vertex copied, on one point
@@ -342,6 +345,48 @@ namespace AvatarBridge.Regression
                 cb.Release();
             }
 
+            // -portalFilm: its own cameras beside each mouth on a target the size measured, so
+            // the atlas's layout is the same, and a ring round each mouth drawn only for them.
+            string film = Arg("-portalFilm");
+            string filmOnly = Arg("-portalFilmHost");
+            var filmHost = film == null ? null : hosts.FirstOrDefault(x => x.copy && (filmOnly == null || x.name.Contains(filmOnly)));
+            var rings = new List<MeshRenderer>();
+            var filmCams = new List<(Camera, string)>();
+            RenderTexture filmRt = null;
+            Texture2D filmShot = null;
+            if (filmHost != null)
+            {
+                Directory.CreateDirectory(film);
+                var ringMesh = Made(Ring(Radius * 1.25f, Radius * 1.6f, 48));
+                foreach (var (ringAt, ringWay, ringColour) in new[] { (Entrance, Vector3.back, new Color(0.2f, 0.9f, 0.4f, 1)), (Exit, ExitFwd, new Color(1f, 0.6f, 0.15f, 1)) })
+                {
+                    var ringGo = Made(new GameObject("__PortalFilmRing") { hideFlags = HideFlags.DontSave, layer = Layer });
+                    ringGo.transform.SetPositionAndRotation(ringAt, Quaternion.LookRotation(ringWay));
+                    ringGo.AddComponent<MeshFilter>().sharedMesh = ringMesh;
+                    var ringDrawn = ringGo.AddComponent<MeshRenderer>();
+                    ringDrawn.sharedMaterial = Made(new Material(Shader.Find("Unlit/Color")) { color = ringColour });
+                    ringDrawn.enabled = false;
+                    rings.Add(ringDrawn);
+                }
+                Camera FilmCam(Vector3 camAt, Vector3 camLook)
+                {
+                    var camGoFilm = Made(new GameObject("__PortalFilmCamera") { hideFlags = HideFlags.DontSave });
+                    var filmCam = camGoFilm.AddComponent<Camera>();
+                    filmCam.CopyFrom(cam);
+                    filmCam.enabled = false;
+                    filmCam.allowHDR = false;
+                    camGoFilm.transform.position = camAt;
+                    camGoFilm.transform.LookAt(camLook);
+                    return filmCam;
+                }
+                var filmSide = Vector3.Cross(Vector3.up, ExitFwd).normalized;
+                filmCams.Add((FilmCam(Entrance + new Vector3(0.34f, 0.12f, -0.2f), Entrance - Vector3.forward * 0.12f), "entrance"));
+                filmCams.Add((FilmCam(Exit + ExitFwd * 0.2f - filmSide * 0.34f + Vector3.up * 0.12f, Exit + ExitFwd * 0.14f), "exit"));
+                filmRt = Made(new RenderTexture(W, H, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default));
+                filmShot = Made(new Texture2D(W, H, TextureFormat.RGBA32, false, false));
+                Log($"filming {filmHost.name} into {film}");
+            }
+
             var worstExit = new double[2];
             var worstPlain = new double[2];
             var worstRoll = new double[2];
@@ -628,6 +673,18 @@ namespace AvatarBridge.Regression
                                     File.WriteAllBytes($"{dump}/{Regex.Replace(h.name, "[^A-Za-z0-9]+", "-")}-{fname}-pose{pose}.png", shot.EncodeToPNG());
                                     Object.DestroyImmediate(shot);
                                 }
+                                if (h == filmHost && e >= 1 && !hdr)
+                                    foreach (var (fc, filmView) in filmCams)
+                                    {
+                                        foreach (var shown in rings) shown.enabled = true;
+                                        fc.targetTexture = filmRt;
+                                        fc.Render();
+                                        foreach (var shown in rings) shown.enabled = false;
+                                        RenderTexture.active = filmRt;
+                                        filmShot.ReadPixels(new Rect(0, 0, W, H), 0, 0);
+                                        RenderTexture.active = null;
+                                        File.WriteAllBytes($"{film}/{filmView}-{pose:0000}.png", filmShot.EncodeToPNG());
+                                    }
                                 if (!hostOk && h.failures++ < 8)
                                     Log($"FAIL {h.name}, {fname}, pose {pose} (hole {d / Length:0.000} L from the root), enabled {e}: " +
                                         $"{drawn} drawn, {corridor} in the corridor" +
@@ -842,6 +899,28 @@ namespace AvatarBridge.Regression
             var oc = c - r.origin;
             float t = Vector3.Dot(oc, r.direction);
             return t > 0 && oc.sqrMagnitude - t * t <= Reach * Reach;
+        }
+
+        // A flat ring round z, both faces, for the film's mouths.
+        static Mesh Ring(float inner, float outer, int steps)
+        {
+            var at = new List<Vector3>();
+            var tris = new List<int>();
+            for (int k = 0; k <= steps; k++)
+            {
+                float a = 2 * Mathf.PI * k / steps;
+                var u = new Vector3(Mathf.Cos(a), Mathf.Sin(a), 0);
+                at.Add(u * inner);
+                at.Add(u * outer);
+                if (k == steps) continue;
+                int b = 2 * k;
+                tris.AddRange(new[] { b, b + 1, b + 2, b + 1, b + 3, b + 2, b, b + 2, b + 1, b + 1, b + 2, b + 3 });
+            }
+            var mesh = new Mesh();
+            mesh.SetVertices(at);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         // YapsAtlas.LevelQuads, in memory: corners in UV0, quad index in z, positions zero.

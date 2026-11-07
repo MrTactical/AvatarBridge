@@ -8,7 +8,7 @@
 // Where a region is not running the part keeps its rest shape: far off, in the editor, or for a
 // viewer whose client runs no blitters (the Cameras content filter), whose state is never written.
 //
-// The state, as Dev/Probes/JellySpikeBuilder.cs writes it: a block of rows a region, each rows of
+// The state, as YapsJelly.cs lays it out: a block of rows a region, each rows of
 // 64 particles, each where it is in the left half (w the _Time.y of the last pass), then a side
 // row: the hands in reach in texels 0 to 15, the far switch in 18 (resting, switched off too, in its y), the anchor the last pass stepped
 // on in 26 to 29 (its x, y and z axes with its scale, then its place, w 1), the swing's centre in 30,
@@ -19,7 +19,20 @@
 #define YAPS_JELLY_INCLUDED
 #ifndef YAPS_NO_JELLY
 
-float4 YapsJellyTexel(Texture2D<float4> state, uint p, uint base) { return state.Load(int3(p % 64, p / 64 + base, 0)); }
+// A texel of a slot's state. The region is compiled once for all four slots, its texture picked here
+// at each read: compiled once a slot, its four copies beside the squash took a body's vertex program
+// past Unity's compile time limit (346 s for one variant, 49 s like this, 18 s without the tissue).
+float4 YapsJellyLoad(uint slot, int3 at)
+{
+    float4 v;
+    [branch] if (slot == 0) v = _YAPS_JellyState.Load(at);
+    else [branch] if (slot == 1) v = _YAPS_JellyState2.Load(at);
+    else [branch] if (slot == 2) v = _YAPS_JellyState3.Load(at);
+    else v = _YAPS_JellyState4.Load(at);
+    return v;
+}
+
+float4 YapsJellyTexel(uint slot, uint p, uint base) { return YapsJellyLoad(slot, int3(p % 64, p / 64 + base, 0)); }
 
 // A kept hand from its slot's texels a (wrist, radius) and b (an open hand's tip, 10 plus the
 // gesture, and 10 a millimetre the skin holds it back), as the squash reads one (yaps_dent.cginc):
@@ -109,13 +122,13 @@ float3 YapsJellyJoined(YapsJellyPushes p, float3 nw, inout float3 bend)
 // lattice is too coarse to carry a ripple. A slap is two texels, 80 and 81 then 82 and 83: where it
 // landed and when (its _Time.y), then how deep in w, 0 for none. Its slope tilts the normal through
 // bend, which is where a ripple shows. Drawn, not stepped, so a ring costs the same however long.
-float3 YapsJellySlap(Texture2D<float4> state, uint side, float3 world, float3 nw, inout float3 bend)
+float3 YapsJellySlap(uint slot, uint side, float3 world, float3 nw, inout float3 bend)
 {
     float3 move = 0;
     float speed = _YAPS_JellySlap.y, len = max(_YAPS_JellySlap.z, 1e-3), fade = max(_YAPS_JellySlap.w, 1e-3), k2 = 6.2831853 / len;
     [unroll] for (int k = 0; k < 2; k++)
     {
-        float4 hit = state.Load(int3(80 + 2 * k, side, 0)), how = state.Load(int3(81 + 2 * k, side, 0));
+        float4 hit = YapsJellyLoad(slot, int3(80 + 2 * k, side, 0)), how = YapsJellyLoad(slot, int3(81 + 2 * k, side, 0));
         float age = _Time.y - hit.w;
         [branch] if (how.w > 0 && age >= 0 && age < 4 * fade)
         {
@@ -136,22 +149,22 @@ float3 YapsJellySlap(Texture2D<float4> state, uint side, float3 world, float3 nw
 }
 
 // m is the squash's own part for it (yaps_dent.cginc's), -1 for one the squash does not carry.
-float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, float3 world, float3 nw, out float3 bend)
+float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, float3 nw, out float3 bend)
 {
     bend = 0;
     if (!(lattice.x > 0)) return 0;
     int3 n = int3(lattice.xyz);
-    // Padded to a whole number of eight with the side row (JellySpikeBuilder's Side).
+    // Padded to a whole number of eight with the side row.
     uint rows = ((uint) (n.x * n.y * n.z + 63) / 64 + 8) / 8 * 8 - 1;
     uint base = r * (rows + 1), side = base + rows;
-    float4 place = state.Load(int3(29, side, 0));
+    float4 place = YapsJellyLoad(slot, int3(29, side, 0));
     // Far, where the parser switches the steps off, it keeps its rest shape; resting, switched off
     // too, the state as it lies, any dent in it included, however long ago it was stepped.
-    float2 off = state.Load(int3(18, side, 0)).xy;
-    if (!(place.w > 0.5) || off.x > 0.5 || !(off.y > 0.5 || abs(_Time.y - YapsJellyTexel(state, 0, base).w) < 0.25)) return 0;
-    float3 ax = state.Load(int3(26, side, 0)).xyz;
-    float3 ay = state.Load(int3(27, side, 0)).xyz;
-    float3 az = state.Load(int3(28, side, 0)).xyz;
+    float2 off = YapsJellyLoad(slot, int3(18, side, 0)).xy;
+    if (!(place.w > 0.5) || off.x > 0.5 || !(off.y > 0.5 || abs(_Time.y - YapsJellyTexel(slot, 0, base).w) < 0.25)) return 0;
+    float3 ax = YapsJellyLoad(slot, int3(26, side, 0)).xyz;
+    float3 ay = YapsJellyLoad(slot, int3(27, side, 0)).xyz;
+    float3 az = YapsJellyLoad(slot, int3(28, side, 0)).xyz;
     float spacing = lattice.w;
     // The anchor's axes carry its scale, so one over the scale squared takes a world offset into
     // its own units.
@@ -167,8 +180,8 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
     // on at its last speed: its move over the last step less the anchor's (texel 85), for as long as
     // it has been since. Its give, not where it is: carried on whole, the body's own walk pushed the
     // skin ahead of it. Stepped this frame, none; stalled a tenth of a second, none.
-    float since = _Time.y - YapsJellyTexel(state, 0, base).w;
-    float3 carried = state.Load(int3(85, side, 0)).xyz;
+    float since = _Time.y - YapsJellyTexel(slot, 0, base).w;
+    float3 carried = YapsJellyLoad(slot, int3(85, side, 0)).xyz;
     bool between = since > 1e-4 && since < 0.1;
     [unroll] for (int k = 0; k < 8; k++)
     {
@@ -177,12 +190,12 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
         float3 rest = float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * spacing;
         float3 home = place.xyz + ax * rest.x + ay * rest.y + az * rest.z;
         uint pi = (uint) ((l.z * n.y + l.y) * n.x + l.x);
-        float4 pt = YapsJellyTexel(state, pi, base);
+        float4 pt = YapsJellyTexel(slot, pi, base);
         float3 off = pt.xyz - home;
         // The step's right half: where it was before the step, and the step's time.
         [branch] if (between)
         {
-            float4 was = state.Load(int3(pi % 64 + 64, pi / 64 + base, 0));
+            float4 was = YapsJellyLoad(slot, int3(pi % 64 + 64, pi / 64 + base, 0));
             off += ((pt.xyz - was.xyz) / max(was.w, 1e-4) - carried) * since;
         }
         float3 w = d ? t : 1 - t;
@@ -193,25 +206,25 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
         gz += way.z * w.x * w.y * off;
     }
     bend = per * (ax * dot(gx, nw) + ay * dot(gy, nw) + az * dot(gz, nw));
-    [branch] if (_YAPS_JellySlap.x > 0) move += YapsJellySlap(state, side, world, nw, bend);
+    [branch] if (_YAPS_JellySlap.x > 0) move += YapsJellySlap(slot, side, world, nw, bend);
     // The hands in reach push the skin itself on too, the palm and any finger out: the particles sit
     // a few centimetres apart, so a finger between them would sink into the skin. The way the hand
     // presses, toward the region's centre, as the particles go: out of its nearest side, skin went
     // round a hand pushed in deep. Eased, not snapped onto the radius, so layers keep their order:
     // snapped, skin and a bra met on one surface and the skin came through. Slots fill in order, so
     // an empty first one means there are none.
-    [branch] if (state.Load(int3(1, side, 0)).w > 0.5)
+    [branch] if (YapsJellyLoad(slot, int3(1, side, 0)).w > 0.5)
     {
         float3 at = world + move;
-        float4 mass = state.Load(int3(30, side, 0));
+        float4 mass = YapsJellyLoad(slot, int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
         YapsJellyPushes hands = (YapsJellyPushes) 0;
         [unroll] for (int e = 0; e < 8; e++)
         {
-            float4 a = state.Load(int3(2 * e, side, 0)), b = state.Load(int3(2 * e + 1, side, 0));
+            float4 a = YapsJellyLoad(slot, int3(2 * e, side, 0)), b = YapsJellyLoad(slot, int3(2 * e + 1, side, 0));
             if (!(b.w > 0.5)) continue;
             // A hand gripping the skin holds it out, and dents nothing.
-            if (state.Load(int3(112 + e, side, 0)).w > 0) continue;
+            if (YapsJellyLoad(slot, int3(112 + e, side, 0)).w > 0) continue;
             float3 pb, fa, fb, way, grad;
             float rf;
             YapsJellyHand(a, b, pb, fa, fb, rf);
@@ -227,11 +240,11 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
     }
     // The wearer's own arms, hands and thighs, with no rim: an arm resting at the side would dent
     // it from a hand's width off.
-    uint own = (uint) state.Load(int3(41, side, 0)).x;
+    uint own = (uint) YapsJellyLoad(slot, int3(41, side, 0)).x;
     [branch] if (own != 0)
     {
         float3 at = world + move;
-        float4 mass = state.Load(int3(30, side, 0));
+        float4 mass = YapsJellyLoad(slot, int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
         YapsJellyPushes limbs = (YapsJellyPushes) 0;
         [unroll] for (uint c = 0; c < 16; c++)
@@ -239,7 +252,7 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
             [branch] if (own & (1u << c))
             {
                 uint t = c < 8 ? 42 + 2 * c : 48 + 2 * c;
-                float4 a = state.Load(int3(t, side, 0)), b = state.Load(int3(t + 1, side, 0));
+                float4 a = YapsJellyLoad(slot, int3(t, side, 0)), b = YapsJellyLoad(slot, int3(t + 1, side, 0));
                 float3 way, grad;
                 float f = YapsJellyPush(at, a.xyz, b.xyz, a.w, centre, 0, way, grad);
                 YapsJellyAdd(limbs, f, way, grad);
@@ -259,7 +272,7 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
         // The squash sets this per vertex, and leaves a vertex the jelly carries before it does.
         yapsSkin = YapsSkinState();
         float3 socket = YapsSlot(18 + (m >> 1));
-        float4 mass = state.Load(int3(30, side, 0));
+        float4 mass = YapsJellyLoad(slot, int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
         // The squash's own part, from its own centre: its reaches are measured from there, and a
         // wide part's lattice box is centred elsewhere, which left the shaft short of a seat.
@@ -289,10 +302,10 @@ float3 YapsJellyRegion(Texture2D<float4> state, float4 lattice, int m, uint r, f
     // to within its give of it, the deeper the further, so layers keep their order: the lattice keeps
     // the two apart a few centimetres coarse, and here they cannot cross. By give's y, how much the
     // pair still meet there: a limb turned across the other lies past it with nothing to meet.
-    float4 give = state.Load(int3(59, side, 0));
+    float4 give = YapsJellyLoad(slot, int3(59, side, 0));
     [branch] if (give.x > 0)
     {
-        float4 plane = state.Load(int3(58, side, 0));
+        float4 plane = YapsJellyLoad(slot, int3(58, side, 0));
         float x = dot(world + move, plane.xyz) - plane.w;
         if (x > 0) move -= plane.xyz * ((x - give.x * (1 - exp(-x / give.x))) * give.y);
     }
@@ -313,7 +326,7 @@ void YapsJellyDeform(inout float3 position, inout float3 normal, inout float3 ta
     float3 nw = hasNormal ? normalize(n0) : 0;
     float3 move = 0, bend = 0;
     // Skin between two parts takes each one's move by its share; a part with no lattice, none.
-    // Rolled, the four slots' calls in it once: unrolled, each would be drawn twice.
+    // Rolled, the region's call in it once: unrolled, it would be drawn twice.
     [loop] for (uint j = 0; j < 2; j++)
     {
         uint p = part[j];
@@ -323,17 +336,9 @@ void YapsJellyDeform(inout float3 position, inout float3 normal, inout float3 ta
             uint slot = (p - 1) >> 1, r = (p - 1) & 1;
             int m = -1;
             [unroll] for (int c = 0; c < 4; c++) if ((uint) round(_YAPS_JellyParts[c]) == p) m = c;
-            float3 b, mv;
-            [branch] if (slot == 0) mv = YapsJellyRegion(_YAPS_JellyState, _YAPS_JellyLattice, m, r, world, nw, b);
-            else
-            {
-                [branch] if (slot == 1) mv = YapsJellyRegion(_YAPS_JellyState2, _YAPS_JellyLattice2, m, r, world, nw, b);
-                else
-                {
-                    [branch] if (slot == 2) mv = YapsJellyRegion(_YAPS_JellyState3, _YAPS_JellyLattice3, m, r, world, nw, b);
-                    else mv = YapsJellyRegion(_YAPS_JellyState4, _YAPS_JellyLattice4, m, r, world, nw, b);
-                }
-            }
+            float3 b;
+            float4 lattice = slot == 0 ? _YAPS_JellyLattice : slot == 1 ? _YAPS_JellyLattice2 : slot == 2 ? _YAPS_JellyLattice3 : _YAPS_JellyLattice4;
+            float3 mv = YapsJellyRegion(slot, lattice, m, r, world, nw, b);
             move += s * mv;
             bend += s * b;
         }

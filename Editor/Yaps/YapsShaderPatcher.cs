@@ -376,6 +376,20 @@ namespace AvatarBridge
             finally { EditorUtility.ClearProgressBar(); }
             foreach (var m in Resources.FindObjectsOfTypeAll<Material>())
                 if (m != null && m.shader != null) used.Add(AssetDatabase.GetAssetPath(m.shader));
+            // A copy draws through its patched lender by name (UsePass), which no dependency lists:
+            // left out, the lender went to the trash and every copy borrowing its passes stopped drawing.
+            var lent = new Queue<string>(used.Where(p => p.EndsWith(".shader", StringComparison.OrdinalIgnoreCase)));
+            while (lent.Count > 0)
+            {
+                string path = lent.Dequeue();
+                if (!path.StartsWith(folder + "/", StringComparison.OrdinalIgnoreCase) || !File.Exists(path)) continue;
+                foreach (Match use in Regex.Matches(File.ReadAllText(path), @"^[ \t]*UsePass\s+""([^""]+)/([^""/]+)""", RegexOptions.Multiline))
+                {
+                    var lender = Shader.Find(use.Groups[1].Value);
+                    string at = lender != null ? AssetDatabase.GetAssetPath(lender) : null;
+                    if (!string.IsNullOrEmpty(at) && used.Add(at)) lent.Enqueue(at);
+                }
+            }
 
             var groups = Directory.GetFiles(folder).Select(f => f.Replace('\\', '/'))
                 .Select(f => (path: f, tag: GeneratedTag.Match(Path.GetFileName(f))))

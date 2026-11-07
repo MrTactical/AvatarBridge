@@ -902,7 +902,7 @@ namespace AvatarBridge
                 "In the body shader: pressed together they flatten and meet, anyone's hand presses them as soft tissue solved when the squash is built, and a plug in a socket between them parts them. " +
                 "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
                 "Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. " +
-                "On a humanoid avatar the parts also become live tissue the graphics card steps every frame: any hand dents, grips and slaps them. No sync cost.",
+                "On a humanoid avatar the parts also become live tissue the graphics card steps every frame: any hand dents, grips and slaps them, and the parts' own cloth stops feeling hands, the tissue taking every touch. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
             optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press."));
             if (settings.squashSoftParts)

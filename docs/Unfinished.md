@@ -3291,6 +3291,45 @@ client sees the same; on Index the trigger still does it. In-game checklist R13.
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
+### 32. The 5.0.0 review, what it left for 5.0.1. 2026-11-06, Joe: "do one giant like review of everything we've done in 5.0.0"
+
+Seven reviewers over every shipped file of main..dev, each finding checked by a second reader against
+the code: 29 held. Fixed for 5.0.0 the same day: the release notes (a removed setting and card still
+advertised, the YAPS menu path, the live tissue missing), Two At Once's second copy hiding at every
+ordinary hole on an avatar, Remove unused patched shaders trashing the lender lilToon copies draw
+through, the squash inspector's jelly check and the knobs the tissue ignores, the jelly's folder on a
+project's first build, the "0 Ignore Transforms honoured" row, a prefab asset in PhysBones to cloth, the
+README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
+1. **The copy as others see it starts from the wearer's animated state** (`CckAnimatorTester.Remote.cs`
+   ShowTwin instantiates the live object), so a state writing no curve shows the wearer's value on the
+   copy where a remote client shows the rest value. Reset the copy's animated values to the prefab's.
+2. **PhysBones to cloth never pins each cloth's start scale** (`PhysBonesInPlace.cs`; the converter runs
+   `MagicaClothWriter.PinStartScale`). Uncertain: MagicaCloth may write it itself. Settle in game.
+3. **KeepOut rewrites a hand-painted cloth selection with no Undo** (`MagicaClothKeepOut.cs`): only Invalid
+   points survive, every other bone back to Fixed or Move.
+4. **"Since the last conversion" names settings by their field names** and lists a version update under
+   "You changed" (`ConversionDiff.cs`). Use the window labels; give the version its own line.
+5. **A refused squash rebuild still tears the working one down** (`YapsSquash.Add` strips before it
+   checks), and the card then blames a hand deletion. Check first, strip after.
+6. **Below shader target 4.5 the squash reads the matrix slots**, which by its own comment never see the
+   cloth move (`yaps_dent.cginc`). YAPS Standard is at 3.0. Uncertain; parts on the jelly are unaffected.
+7. **The painter takes a nested VRChat avatar's parent for the avatar** (`YapsNativeBuilder.AvatarRoot`
+   falls back to `t.root` with no CVRAvatar): Copy to other side splits about the parent's middle.
+8. **Toy length meshes pile up on every reconvert** (`YapsNativeBuilder.ToyModLength` names each one
+   afresh with GenerateUniqueAssetPath into the reused output folder).
+9. **Taking the jelly off puts the pressing colliders into every cloth of the pair**, not only those
+   they came from (`YapsJelly.Unworn`, its ponytail note).
+10. **No check times a fresh compile of a patched body.** Unity's shader cache survives a renamed
+    shader, so a body whose vertex program took 346 s in fxc (past Unity's limit, magenta) passed every
+    run for days until an include's line numbers moved. Fixed for 5.0.0 (the jelly region compiled once
+    for all four slots, 49 s); left: a release step that compiles one body variant of each patched
+    host fresh in fxc and fails past a set time.
+
+Withdrawn: the Console's timing lines are the release notes' "a few short lines saying how long each
+step took", not debug left in; the "Jelly probes (debug)" menu entry appears only when the user ticks
+Probe markers; FX layers kept off the body applying only a swap's first slot is in the notes and warned
+of in the report.
+
 ### 23. Squash swaps: repoint at upload, planned for 5.1 (Joe, 2026-10-25)
 The record is in `archive/Closed-2026-10.md`, "Squash turned swapped-in materials pink".
 - **A: leave user clips untouched** and repoint on the upload copy through
