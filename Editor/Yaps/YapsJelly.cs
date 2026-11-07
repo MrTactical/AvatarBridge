@@ -3717,9 +3717,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // A grip let go, or slipped: the skin it held springs back from as far as it was
                 // pulled, at the speed the tissue's own spring gives that far out, ringing from where
-                // it was gripped. 120 on keep each one's last pull.
+                // it was gripped. 120 on keep each one's last pull. A pull is held to half the
+                // tissue's depth, so on a thin soft part even the furthest pull came back slower than
+                // a slap's line and never rang: three quarters of that furthest rings it.
                 [branch] if (!fired && timed && !distant)
                 {
+                    float least = min(_Slap.x, 0.75 * 0.5 * (Count().z - 1) * _Lattice.w * scale * 6.2831853 * _Hz);
                     [loop] for (uint gi = 0; gi < 8; gi++)
                     {
                         float3 gat;
@@ -3728,7 +3731,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float4 hb = _MainTex.Load(int3(2 * gi + 1, side, 0)), pull = _MainTex.Load(int3(120 + gi, side, 0));
                         bool gripped = _MainTex.Load(int3(112 + gi, side, 0)).w > 0;
                         float back = length(pull.xyz) * scale * 6.2831853 * _Hz;
-                        [flatten] if (gripped && (!Fist(hb) || graw > (Count().z - 1) * _Lattice.w) && back > max(fired ? speed : 0, _Slap.x))
+                        [flatten] if (gripped && (!Fist(hb) || graw > (Count().z - 1) * _Lattice.w) && back > max(fired ? speed : 0, least))
                         {
                             at = mul(m, float4(gat, 1)).xyz;
                             speed = back;

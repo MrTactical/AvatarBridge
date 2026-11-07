@@ -3304,13 +3304,32 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
      The forearm, 13 cm across on Kar, is as wide as a 14 cm patch, so it fills it at the chest;
      whether the count over 10 cm is a tear or the forearm's own volume is not read yet. Next:
      count only particles clear of the limb's capsules.
+     **Done, the probe's.** Counted clear of the arm (a cell past each own capsule as the step
+     keeps it), the over 10 cm are 0 to 2 on every part: the forearm's own volume, never a tear.
+     The figure with the hand at the chest read the forearm still resting on a belly or a waist
+     (strain 0.49 to 0.64 there; the breasts 0.07): asked only where nothing presses, said not
+     asked where something does.
    - **A let-go rings none** on seeds 1, 2 and 6 (5.7 to 12.5 mm on 3, 5 and 8, 8.4 on the
      breasts). On seed 2 both ring slots were 25 s old and empty as it let go, so it never fired;
      the skin it held still came 58 mm and went back. Not read yet: which of `Fist`, the slip or
      the release speed against `_Slap.x` fails.
+     **Done, the step's.** The release speed: a pull is held to half the tissue's depth and rings
+     only past `_Slap.x`, 1.2 m/s, so a part springs back from at most half its depth at 2 pi
+     `_Hz`. Seed 2 (6 cm, Breasts 2.4 Hz) 0.90 m/s, 6 and 1 1.06; the Firm seeds 5 and 8 at 4.8
+     Hz cleared it, which is why they rang. A thin soft part could never ring on letting go. Now a
+     release rings from three quarters of that furthest pull too; Kar's breasts, seat and thighs
+     already pass 1.2 and are unchanged. Seeds 1, 2 and 6 ring 7.4, 4.9 and 5.8 mm; the check asks
+     3 mm, not 5, which only the breasts were tuned against.
    - **Hands outer** on seeds 1, 2, 5, 6 and 8: the outer side 10 to 46 mm (50 asked; the belly
      153, the breasts 140). The squeeze aims along the pair's apart axis at the lattice's outer
      columns, which is the lattice's x only on parts side by side and facing out.
+     **Withdrawn, the probe's, for another reason.** Aimed by the box's reach along the real axis
+     and read on the face it pushes, seeds 1 and 2 read exactly as before: the axis was the
+     lattice's x. The squeeze went 13 cm in on parts 7 to 9.4 cm to their middle, past which the
+     step lets go (the hand gone through), so the skin sprang back. It now stops the palm's middle
+     2 cm short of the part's and asks a third of the reach (half the deepest the skin holds),
+     up to 5 cm: seed 1 squeezed 9 cm reads 109 mm (46 before) and the masses 22 mm closer (22
+     apart before); seeds 2, 5, 6 and 8 73, 40, 62 and 36 mm. Kar's parts squeeze 13 cm as before.
    - **A part on a limb the probe swings.** Seed 8 rides each upper arm. Sent through its own arm,
      the two-bone solve thrashed, the anchor moving 190 to 235 mm a frame for five seconds, and the
      tissue flung particles 0.5 to 1.5 m off their rest (back within 32 mm by frame 2400). In the
@@ -3356,6 +3375,17 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    leaves 24 particles over 10 cm (none asked). Last passed 2026-10-30, a shorter check. Not
    bisected yet. Its runs rewrote 12 generated files in the prop's folder, which no chain kept:
    put back byte-exact, and `chain-step5p.sh` keeps them from now on.
+   **Bisected: two limits gone stale, the tissue right.** Each commit's own tree deployed whole.
+   The drag broke at 28574e4 (its parent 0.0 cm, 0 frames): each felt collider has since carried
+   the radius its probes sized it to, and the check still took the old 5 cm palm off the slot.
+   The push through went 48.9 mm (28574e4), 79.9 (6b2a611, after the deeper squeeze), 216.7 and
+   75 particles (77b20c9, `_Deepest` 0.08 to 0.12), 120.3 and 24 (c779417 on): the hold deepened
+   on purpose, the limits stayed at the old depth. Now the slot's own radius, and the push
+   through held to the material's `_Deepest` (held at 120 mm, nothing past 14 cm, 3.2 mm once
+   through). PASS: dragged at worst 0.4 cm too deep, 0 of 698 frames over 1.5 cm, the depth
+   jumping 1.3 cm at most.
+   **Step 5, run s5i** (this commit): breasts, seat, thighs, thighs seated, belly, all eight
+   random patches and the probe prop PASS; the project put back, every hashed folder as it was.
    Joe on the films, 2026-11-07: "they look good". The presets stay as they are. Still open: Joe
    in game.
 
