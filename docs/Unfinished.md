@@ -138,7 +138,7 @@ The record is in `archive/Closed-2026-10.md`, "YAPS against every popular shader
 - **Run 427's three metallic-map avatars** should build on YAPS Standard now; the next full run
   checks them.
 
-### 8. The MagicaCloth2 review: findings not yet acted on
+### 8. The MagicaCloth2 review: ~~findings not yet acted on~~ items 1 to 7 fixed, 8 kept as a report (heading corrected 2026-11-07)
 
 
 Joe called the MagicaCloth2 output "really bad". Six reviewers read the writer against the MC2 source
@@ -1055,7 +1055,7 @@ plane collider"; and take a playbook from Poiyomi's glass squish.
      `SoftBodyContact.cs` are gone; an avatar converted with it keeps its spheres until converted
      again. Joe, the same day, of the squash on Kar: "FINALLY, BEAUTIFUL!!"
 
-### 25. Mesh-to-mesh squash contact. Joe, 2026-10-25. PLAN, to start 2026-10-26
+### 25. Mesh-to-mesh squash contact. Joe, 2026-10-25. ~~PLAN, to start 2026-10-26~~ Built; on humanoid avatars the live tissue replaced it (item 29) (heading corrected 2026-11-07)
 
 Joe: "boob mesh to boob mesh squishy, genuine soft body", then "plan that for tomorrow". Ask him
 first: 5.0.0 or 5.1.0 (on 10-24 he put new squash ideas in 5.1.0). **Decided 2026-10-26 (Joe): 5.0.0.**
@@ -2425,7 +2425,8 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
     - The source PhysBone's settings driving the mass (pull, momentum, stiffness, gravity, falloff,
       immobile, limits, radius), the volume's mass where a part has none.
 - **Order, Joe 2026-10-27:** the squash shader working on MagicaCloth first and 5.0.0 shipped; the
-  live tissue and the rest of his ideas after, in 5.1.
+  live tissue and the rest of his ideas after, in 5.1. **Superseded 2026-10-31:** the live tissue
+  went into YAPS for 5.0.0 (`000d307`, item 29).
 - The menu item rebuilt the assets with the preview scene, which replaced the open scene: it now
   only adds the prefab, building it without the scene if it is missing.
 - **Cheapest full-body soft body, a design shoot-out (Joe, 2026-10-29).** Joe's brief: full body,
@@ -2944,8 +2945,9 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
        carrying them, `PartFrom`, and they ride what the squash rides, `Carrier`'s quarter rule);
        the twitch clip's folder was missing when the first pair was refused. Checked on Kar: the
        breasts as before the move (rest 0.8 mm, poke 95.3, turning 103.9, contact 88.1), the
-       seat failing the same three, the squash's Build twice then Remove leaving nothing. OPEN: a conversion with the opt-in on has not been run with it; the
-       twitch toggle a conversion adds is not yet checked against the passes after it.
+       seat failing the same three, the squash's Build twice then Remove leaving nothing. ~~OPEN: a conversion with the opt-in on has not been run with it;~~ (the corpus re-time of
+       2026-11-07 converted 15 avatars with it on) the
+       twitch toggle a conversion adds is not yet checked against the passes after it (in game: S26.6).
     4. **A grip that slides** (Joe, 2026-10-31: "grab but also move your hand up and down? left
        and right? a mobile grab point?", and "make it also an option ... oh you want this?"). A
        fist gripped the skin where it closed and dragged it any way the hand went, but the spot
