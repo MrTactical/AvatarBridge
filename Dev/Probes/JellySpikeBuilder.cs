@@ -3388,6 +3388,15 @@ namespace AvatarBridge.Regression
         }
 
         // Particle p of region r in a read state, packed a block of rows a region.
+        // The wearer's arm on the first part's side, or the other where the part rides that arm: a hand
+        // sent through its own arm drove the arm into itself, and the solve thrashed 20 cm a frame.
+        static bool OwnLeft(Animator anim)
+        {
+            bool left = Vector3.Dot(breastRegions[0].position - swing.position, swing.right) < 0f;
+            var upper = anim.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+            return breastBones[0] != null && upper != null && breastBones[0].IsChildOf(upper) ? !left : left;
+        }
+
         static Vector4 Particle(Vector4[] s, int r, int p) => s[(r * (Side(breastN) + 1) + p / Row) * Wide + p % Row];
 
         // How far the furthest particle of any region is from its rest on its anchor, from column x0 up
@@ -3824,7 +3833,7 @@ namespace AvatarBridge.Regression
             if (frame >= 1840)
             {
                 var anim = swing.GetComponentInChildren<Animator>();
-                bool left = Vector3.Dot(breastRegions[0].position - swing.position, swing.right) < 0f;
+                bool left = OwnLeft(anim);
                 var upperArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
                 var lowerArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
                 var wristBone = anim.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
@@ -3841,7 +3850,7 @@ namespace AvatarBridge.Regression
             if (frame >= 2040 && frame < 2340)
             {
                 var anim = swing.GetComponentInChildren<Animator>();
-                bool left = Vector3.Dot(breastRegions[0].position - swing.position, swing.right) < 0f;
+                bool left = OwnLeft(anim);
                 var upperArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
                 var lowerArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
                 var wristBone = anim.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);

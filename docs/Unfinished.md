@@ -3316,8 +3316,16 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
      tissue flung particles 0.5 to 1.5 m off their rest (back within 32 mm by frame 2400). In the
      run before, the same part read NaN in that test and the grab (the scan was not in yet);
      `Fresh` resets a particle more than a metre off its home, but the homes go with the mass. A
-     tracking glitch on a real arm could do this. Next: the anchor's jump each frame capped, or
-     taken as a teleport, and the run repeated with the scan.
+     tracking glitch on a real arm could do this. The probe now sends the other arm (s5e): no
+     thrash, own through 19 particles over 10 cm, every particle a number, the arm across 84.8 mm
+     at most. What is left is on the second part, which rides the arm sent: at each frame its pose
+     jumps (the probe starting or letting go of the arm, the two-bone solve flipping mid-swing:
+     1874, 2009, 2043, 2343) the mass is thrown up to 0.31 m off its rest (13 frames over 0.1 m in
+     all; the first part's never past 6 mm) and the particles 0.49 to 0.65 m, for 6 to 8 frames,
+     then settle. In game a pose that snaps does the same: an emote, sitting, an arm's tracking
+     coming back. Proposed, for Joe: a frame whose anchor accelerates past about 30 g (no limb
+     does) carries the tissue and its mass with the anchor, as `_MassCarried` carries the mass
+     under cloth. Flying fast is steady, so it stays as it is.
    **Step 6, the cost pass.** Kar with four painted parts (breasts, seat, belly, thighs), at rest:
    RTX 4080 0.030 ms one part, 0.042 two, 0.066 three, 0.090 four; the processor's own Radeon
    0.104, 0.148, 0.251, 0.358. Eight hands in reach cost nothing measurable on either. Two parts by
