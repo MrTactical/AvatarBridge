@@ -337,16 +337,31 @@ namespace AvatarBridge
             // Kept in place when it exists: remade at the same path, the materials would read it Missing.
             string path = folder + "/Jelly_Depth.asset";
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+            // Flagged as the CCK's upload checks ask: left Read/Write enabled, it failed validation
+            // and blocked the upload. Readable again while it is rewritten. Never streamed, unlike
+            // the squash's: the step's materials are on no mesh, where the CCK warns of streaming.
+            void Flags(bool readable)
+            {
+                var flags = new SerializedObject(tex);
+                flags.FindProperty("m_IsReadable").boolValue = readable;
+                flags.FindProperty("m_StreamingMipmaps").boolValue = false;
+                flags.ApplyModifiedPropertiesWithoutUndo();
+            }
             if (tex == null)
             {
                 tex = new Texture2D(G, 12 * G, TextureFormat.RFloat, false, true);
                 AssetDatabase.CreateAsset(tex, path);
             }
-            else tex.Reinitialize(G, 12 * G, TextureFormat.RFloat, false);
+            else
+            {
+                Flags(true);
+                tex.Reinitialize(G, 12 * G, TextureFormat.RFloat, false);
+            }
             tex.filterMode = FilterMode.Point;
             tex.wrapMode = TextureWrapMode.Clamp;
             tex.SetPixels(pixels);
             tex.Apply(false);
+            Flags(false);
             EditorUtility.SetDirty(tex);
             return tex;
         }

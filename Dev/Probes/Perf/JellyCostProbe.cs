@@ -83,8 +83,19 @@ namespace AvatarBridge.Regression
                     YapsShaderPatcher.EndPass("cost probe, the tissue", null);
                     Log($"tissue on {on.Count} in {clock.ElapsedMilliseconds} ms: {string.Join("; ", on)}" + (refused.Count > 0 ? $"; refused {string.Join("; ", refused)}" : ""));
                     Knobs(root);
+                    // Built again on the same avatar, as a user's rebuild is: its assets rewritten in place.
+                    if (Flag("-costTwice"))
+                    {
+                        clock.Restart();
+                        (on, refused) = YapsJelly.On(root, Folder + "/Jelly", null);
+                        YapsShaderPatcher.EndPass("cost probe, the tissue again", null);
+                        Log($"tissue again on {on.Count} in {clock.ElapsedMilliseconds} ms" + (refused.Count > 0 ? $"; refused {string.Join("; ", refused)}" : ""));
+                    }
                 }
                 Log($"{YapsSquash.Materials(root).Count} squash materials, {Chains(root).Count} chains");
+                // Every texture it carries left Read/Write enabled, which the CCK's upload check refuses.
+                var readable = EditorUtility.CollectDependencies(new Object[] { root.gameObject }).OfType<Texture2D>().Where(t => t.isReadable).Select(t => AssetDatabase.GetAssetPath(t) is string at && at.Length > 0 ? at : t.name).Distinct().ToList();
+                Log($"readable textures: {readable.Count}{(readable.Count > 0 ? " (" + string.Join(", ", readable.Take(8)) + ")" : "")}");
                 string save = Arg("-costSave");
                 if (save != null)
                 {

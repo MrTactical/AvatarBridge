@@ -3324,11 +3324,20 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    bone name 0.049 ms on the 4080. Upload, warm: 18.07 MB and 13.9 s for the squash alone, 18.80 MB
    with two tissue parts, 19.03 MB with four, 13.7 to 13.8 s each. Cold, the first upload compiles
    every patched shader: 306 s for the squash alone, 350 for two tissue parts built after it (the
-   shared ones cached), so about 45 s for the tissue's own. **Open:** the CCK's validation fails
-   both jellied prefabs and passes the squash alone; the upload probe now logs each step's
-   warnings and errors, and the next run says why.
-   Still open: films of the seat from above, the thighs and the crossed legs for Joe (rendering),
-   presets tuned on his verdict, and Joe in game.
+   shared ones cached), so about 45 s for the tissue's own.
+   **The upload was blocked: fixed.** The CCK's validation passed the squash alone and failed both
+   jellied prefabs: "Found Texture(s) that are set to Read/Write enabled", an Error. The CCK checks
+   every texture on the avatar's materials, generated ones too, and the depth map (`Jelly_Depth`,
+   new in e87ff0a, never shipped) was the one left readable; the squash's textures were always
+   flagged. Now Read/Write off, readable again while a rebuild rewrites it in place, and never
+   streamed (the step's material is on no mesh, where the CCK warns of streaming). Kar, built
+   twice and uploaded: validation passes, no readable texture, the rebuild in place clean. The
+   upload probe logs each validation step's warnings and errors; the cost probe counts readable
+   textures and builds twice with `-costTwice`.
+   Films sent to Joe (f29d): the seat with the camera from above (the tail covers the middle of
+   the seat from there; the hands show at the sides) and the thighs seated, knees together, apart,
+   crossed right over left, a press from above, a slap, standing and hopping.
+   Still open: Joe on the films, presets tuned on his verdict, and Joe in game.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 
