@@ -264,7 +264,7 @@ namespace AvatarBridge
         // the default its block declares.
         public static bool Refresh(Material patched, BridgeReport report)
         {
-            var current = Repatch(patched, RolesOf(patched.shader), report);
+            var current = Repatch(patched, RolesOf(patched.shader), report, out _);
             if (current == null) return false;
             Wear(patched, current);
             return true;
@@ -278,18 +278,26 @@ namespace AvatarBridge
         // plug baked into a squashed body kept the squash-only copy and would never bend, and a
         // stale copy that had the role kept the old code: the jelly went on with none of a newer
         // draw's properties. Null when the original is gone from the project.
-        public static Shader WithRole(Material patched, Roles role, BridgeReport report)
+        public static Shader WithRole(Material patched, Roles role, BridgeReport report) => WithRole(patched, role, report, out _);
+
+        // With why it came back null, if it did.
+        public static Shader WithRole(Material patched, Roles role, BridgeReport report, out string refusal)
         {
+            refusal = null;
             var have = RolesOf(patched.shader);
-            return (have & role) == role && !IsStale(patched) ? patched.shader : Repatch(patched, have | role, report);
+            return (have & role) == role && !IsStale(patched) ? patched.shader : Repatch(patched, have | role, report, out refusal);
         }
 
-        static Shader Repatch(Material patched, Roles roles, BridgeReport report)
+        static Shader Repatch(Material patched, Roles roles, BridgeReport report, out string refusal)
         {
             var original = OriginalShaderOf(patched);
-            if (original == null) return null;
+            if (original == null)
+            {
+                refusal = "its original shader is gone from the project";
+                return null;
+            }
             var stand = new Material(original) { name = patched.name };
-            try { return Patch(stand, report, out _, out _, allowSps: true, duplicate: Duplicate(patched), roles: roles); }
+            try { return Patch(stand, report, out refusal, out _, allowSps: true, duplicate: Duplicate(patched), roles: roles); }
             finally { UnityEngine.Object.DestroyImmediate(stand); }
         }
 
@@ -521,12 +529,12 @@ namespace AvatarBridge
         // Never the report: its lines must not move between two runs of the same avatar.
         sealed class Timings
         {
-            public long ErrorMs, MessagesMs, ImportMs;
-            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Loads;
+            public long ErrorMs, MessagesMs, ImportMs, CompileMs;
+            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Loads, Compiled;
             public bool Any => Patches + Loads + Imported > 0;
 
             public override string ToString() =>
-                $"error check {ErrorMs} ({ErrorCalls} calls), messages {MessagesMs} ({MessagesCalls} calls), " +
+                $"compile {CompileMs} ({Compiled} copies), error check {ErrorMs} ({ErrorCalls} calls), messages {MessagesMs} ({MessagesCalls} calls), " +
                 $"prewrite import {ImportMs} ({Imported} files), patches {Patches} ({Reused} from Prewrite), " +
                 $"YAPS source loads {Loads}";
         }
@@ -757,6 +765,7 @@ namespace AvatarBridge
             }
 
             var patched = WriteAndVerify(unit, sourcePath, SharedFolder, hash, out string compileError);
+            if (patched != null && (compileError = Compiled(patched, asked)) != null) patched = null;
             if (patched == null)
             {
                 refusal = "the patched shader did not compile: " + compileError;
@@ -1642,6 +1651,28 @@ namespace AvatarBridge
                 return null;
             }
             return result;
+        }
+
+        // Why the copy would not draw on a material like `like`, once compiled as wearing it compiles
+        // it: every pass, in the material's variant. The import compiles too little to tell (no
+        // warning shows until a material wears the copy), so a copy whose compile then timed out
+        // passed the check below and drew garbage. A compiled copy is reused, so checking it again
+        // costs nothing, and the wear that follows compiles nothing more.
+        static string Compiled(Shader shader, Material like)
+        {
+            var stand = new Material(shader) { hideFlags = HideFlags.HideAndDontSave, shaderKeywords = like.shaderKeywords };
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            try
+            {
+                for (int pass = 0; pass < stand.passCount; pass++) ShaderUtil.CompilePass(stand, pass, true);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(stand);
+                Timing.CompileMs += clock.ElapsedMilliseconds;
+                Timing.Compiled++;
+            }
+            return Broken(shader);
         }
 
         // Why the copy would not draw, or null. A pass Unity's upgrader drops for DX11 is only a

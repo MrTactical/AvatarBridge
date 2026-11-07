@@ -847,10 +847,14 @@ namespace AvatarBridge
             int patched = 0;
             foreach (var m in mats)
             {
-                var shader = YapsShaderPatcher.WithRole(m, YapsShaderPatcher.Roles.Jelly, report);
+                var shader = YapsShaderPatcher.WithRole(m, YapsShaderPatcher.Roles.Jelly, report, out string why);
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                 {
-                    left.Add(m.name);
+                    // Unity's message runs on into advice; its first sentence says what happened.
+                    if (why != null) why = why.Split(new[] { ". " }, 2, StringSplitOptions.None)[0];
+                    left.Add(why == null ? m.name : $"{m.name}, as {why}");
+                    if (why != null) report?.Warning(YapsSquash.Category, "A material is not on the jelly",
+                        $"{m.name} keeps the squash alone for {names[pair]}: {why}. The next conversion tries it again.");
                     continue;
                 }
                 Undo.RecordObject(m, "Put the breasts on the jelly");

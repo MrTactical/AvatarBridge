@@ -3337,24 +3337,18 @@ README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
     a denser part), there is nothing to draw a finger-sized dent with, so it reads as no dent. Not the
     preset: the denser part's values pressed only 10-20% further. A finer dent needs either more
     vertices there or a dent drawn in the fragment stage.
-14. **The live tissue's first conversion is slow on locked Poiyomi, and Poiyomi Pro can time out.**
-    Measured 2026-11-07 (corpus, squash and tissue on): every squash material's body shader is
-    patched for the tissue and checked with `ShaderHasError`, which compiles it, outside the
-    patcher's own timing (its log line reads 11 ms). Per shader, the first time: 58-98 s on
-    Poiyomi and Poiyomi Toon, 134-202 s on Poiyomi Pro, against about 10 s for the squash alone.
-    Locked Poiyomi gives every material its own shader, so six first conversions took 6 min 38 s to
-    79 min start to finish (middle 30 min; the 79 was 30 Poiyomi Pro shaders). Versions of an avatar
-    already converted took 35 s to 3 min, reusing every shader. **On both Poiyomi Pro avatars the
-    run reached, one clothing layer's shader timed out** (Base, Add and ShadowCaster vertex programs)
-    **and the guard missed it**: the first part's pass checked it with `ShaderHasError`, put the
-    material on it and reported every squash material reading it ("14 of 14", "35 of 35"); only the
-    second part's pass saw the error, and its "left as they were" kept the material on the timed-out
-    shader (each output .mat's guid is its timed-out shader's). Unity draws a timed-out shader as garbage; whether upload's own compile gets through
-    is untried. Likely why, unproven: the check sees the default variant the import compiled
-    (`YapsShaderPatcher.Broken` says as much), while the material's own keyword variants compile
-    later, on use, and those are the ones that timed out.
-    Options: fewer paths in the tissue's vertex program for the heavy hosts, the check
-    deferred or shared, or the tissue off by default on Poiyomi Pro until it fits.
+14. **The live tissue's first compile: what the 2026-11-07 fix left.** The record, and two claims
+    this item made withdrawn, is in `archive/Closed-2026-11.md`: a tissue shader's first compile
+    is now two and a half to four times faster, and the check compiles a copy before reading its
+    errors, so a shader that fails keeps that material on the squash alone, with a warning. Left:
+    - A real timeout was never forced (a bloated include compiled 292 s without one). That the new
+      check catches one rests on the corpus run, where a check after the wear's compile saw it.
+    - In the editor window, Unity may compile a shader in the background where batch mode waits;
+      the check now compiles it in place either way. Timed in batch only (first time 27-49 s a
+      Poiyomi Pro material, again 0.7-1.1 s); in the window, untimed.
+    - Each state read now takes four texture reads where one ran. Unmeasured in game.
+    - The first-conversion times start to finish (notes, add-on card and film) are the corpus
+      run's on the old code; a fresh one needs a corpus run.
 
 Withdrawn: the Console's timing lines are the release notes' "a few short lines saying how long each
 step took", not debug left in; the "Jelly probes (debug)" menu entry appears only when the user ticks

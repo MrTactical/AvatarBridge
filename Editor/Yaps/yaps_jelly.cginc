@@ -21,15 +21,14 @@
 
 // A texel of a slot's state. The region is compiled once for all four slots, its texture picked here
 // at each read: compiled once a slot, its four copies beside the squash took a body's vertex program
-// past Unity's compile time limit (346 s for one variant, 49 s like this, 18 s without the tissue).
+// past Unity's compile time limit (346 s for one variant). All four are read, the other three off
+// the texture, where a Load returns 0: a branch at every read, with the loops below rolled, took a
+// Poiyomi Pro body's vertex program from 20 s to 28 s in fxc.
 float4 YapsJellyLoad(uint slot, int3 at)
 {
-    float4 v;
-    [branch] if (slot == 0) v = _YAPS_JellyState.Load(at);
-    else [branch] if (slot == 1) v = _YAPS_JellyState2.Load(at);
-    else [branch] if (slot == 2) v = _YAPS_JellyState3.Load(at);
-    else v = _YAPS_JellyState4.Load(at);
-    return v;
+    int3 none = int3(-1, -1, 0);
+    return _YAPS_JellyState.Load(slot == 0 ? at : none) + _YAPS_JellyState2.Load(slot == 1 ? at : none)
+         + _YAPS_JellyState3.Load(slot == 2 ? at : none) + _YAPS_JellyState4.Load(slot == 3 ? at : none);
 }
 
 float4 YapsJellyTexel(uint slot, uint p, uint base) { return YapsJellyLoad(slot, int3(p % 64, p / 64 + base, 0)); }
@@ -219,7 +218,9 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         float4 mass = YapsJellyLoad(slot, int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
         YapsJellyPushes hands = (YapsJellyPushes) 0;
-        [unroll] for (int e = 0; e < 8; e++)
+        // Rolled, as the limbs' and the plug's lights' below: unrolled, the three cost a third of
+        // the vertex program's compile. Cut short by Shader Filtering, the first hands still push.
+        [loop] for (int e = 0; e < 8; e++)
         {
             float4 a = YapsJellyLoad(slot, int3(2 * e, side, 0)), b = YapsJellyLoad(slot, int3(2 * e + 1, side, 0));
             if (!(b.w > 0.5)) continue;
@@ -247,7 +248,7 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         float4 mass = YapsJellyLoad(slot, int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
         YapsJellyPushes limbs = (YapsJellyPushes) 0;
-        [unroll] for (uint c = 0; c < 16; c++)
+        [loop] for (uint c = 0; c < 16; c++)
         {
             [branch] if (own & (1u << c))
             {
@@ -278,7 +279,7 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         // wide part's lattice box is centred elsewhere, which left the shaft short of a seat.
         YapsPart part = YapsPartAt(m, YapsSlot(m), YapsUnit(m));
         float give = _YAPS_SquashTune.z * _YAPS_SquashOut[m] * part.unit, front = c.z / max(n.z - 1, 1);
-        [unroll] for (uint i = 0; i < 4; i++)
+        [loop] for (uint i = 0; i < 4; i++)
         {
             int digit = YapsLightDigit(i);
             float len = unity_LightColor[i].a;

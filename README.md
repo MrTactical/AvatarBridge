@@ -2353,6 +2353,10 @@ Bipeds are unaffected by any of it.
   **Cameras** content filter off or **Shader Filtering** on sees of it has not been checked in game.
   It takes four parts on one avatar, a jelly each, and two parts do not press each other: the
   wearer's own arms and legs press every one, but a thigh does not push the belly it meets.
+  The first conversion compiles each squash material's body shader with the tissue in it, about
+  half a minute each on a fast desktop processor, and locked Poiyomi gives every material a shader
+  of its own; converting again reuses them. A material whose shader does not compile with the tissue keeps the squash alone, and
+  the report names it and why.
 - **[Portals](#portals) (YAPS).** An entrance and its exit are worn by the same avatar: a portal
   between two people, or on a prop, is not possible. A conversion never makes one, and one set in
   the YAPS tool on a converted avatar is lost when that avatar is converted again, so set it after
