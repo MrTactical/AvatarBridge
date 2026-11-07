@@ -3331,6 +3331,30 @@ README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
     cost card arguably should count it, since the probes do cost.
 12. **Nested PhysBone chains on MagicaCloth 2** still move both chains, and the report names them.
     `MagicaClothKeepOut` now keeps ignored bones still; it could do the same for the nested chain.
+13. **The live tissue dents a sparse part only broadly.** A deep poke moves the facing skin 2-4 cm on
+    every part, but over the whole area under the hand. Where the mesh has no vertex within a
+    fingertip's reach (measured: none within 3 cm of the poke and 2-12 within 10 cm, against 25-80 on
+    a denser part), there is nothing to draw a finger-sized dent with, so it reads as no dent. Not the
+    preset: the denser part's values pressed only 10-20% further. A finer dent needs either more
+    vertices there or a dent drawn in the fragment stage.
+14. **The live tissue's first conversion is slow on locked Poiyomi, and Poiyomi Pro can time out.**
+    Measured 2026-11-07 (corpus, squash and tissue on): every squash material's body shader is
+    patched for the tissue and checked with `ShaderHasError`, which compiles it, outside the
+    patcher's own timing (its log line reads 11 ms). Per shader, the first time: 58-98 s on
+    Poiyomi and Poiyomi Toon, 134-202 s on Poiyomi Pro, against about 10 s for the squash alone.
+    Locked Poiyomi gives every material its own shader, so six first conversions took 6 min 38 s to
+    79 min start to finish (middle 30 min; the 79 was 30 Poiyomi Pro shaders). Versions of an avatar
+    already converted took 35 s to 3 min, reusing every shader. **On a 14-material Poiyomi Pro
+    avatar one clothing layer's shader timed out** (Base, Add and ShadowCaster vertex programs) **and the guard
+    missed it**: the first part's pass checked it with `ShaderHasError`, put the material on it and
+    reported "14 of 14 squash materials read it"; only the second part's pass saw the error, and its
+    "left as they were" kept the material on the timed-out shader (the output .mat's guid is that
+    shader's). Unity draws a timed-out shader as garbage; whether upload's own compile gets through
+    is untried. Likely why, unproven: the check sees the default variant the import compiled
+    (`YapsShaderPatcher.Broken` says as much), while the material's own keyword variants compile
+    later, on use, and those are the ones that timed out.
+    Options: fewer paths in the tissue's vertex program for the heavy hosts, the check
+    deferred or shared, or the tissue off by default on Poiyomi Pro until it fits.
 
 Withdrawn: the Console's timing lines are the release notes' "a few short lines saying how long each
 step took", not debug left in; the "Jelly probes (debug)" menu entry appears only when the user ticks
