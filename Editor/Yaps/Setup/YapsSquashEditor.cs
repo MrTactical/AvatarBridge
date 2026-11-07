@@ -38,7 +38,7 @@ namespace AvatarBridge
         {
             { "How it gives", "how far it flattens and where the volume goes" },
             { "The pair", "whether the two meet in the middle, on by default" },
-            { "In motion", "stretch and squash as it swings, real to anime" },
+            { "In motion", "stretch and squash as it swings" },
             { "What presses it", "arms, hands, plugs and cloth" },
             { "Live tissue", "a twitch toggle, a grip that slides, and what it tells the animator" },
         };
@@ -173,7 +173,7 @@ namespace AvatarBridge
             {
                 YapsSquashPreview.Test(settings);
                 RebuildLater();
-            }, built ? "Opens the Avatar Tester on this avatar with the squash preview running: Squeeze, Bounce and the test hand press it there." : "Build first");
+            }, built ? (YapsSquashPreview.Jellied(root) ? "Opens the Avatar Tester on this avatar with the squash preview running. The live tissue presses in Play mode only: Squeeze and the test hand press it there." : "Opens the Avatar Tester on this avatar with the squash preview running: Squeeze, Bounce and the test hand press it there.") : "Build first");
             test.SetEnabled(built);
             feel.Body.Add(BridgeElements.ButtonRow(test));
             feel.Body.Add(BridgeElements.Hint(testing
@@ -342,6 +342,9 @@ namespace AvatarBridge
         static readonly Matrix4x4[] Empty = new Matrix4x4[20];
         static readonly Vector4[] NoOne = new Vector4[255];
 
+        internal static bool Jellied(Transform root) =>
+            root != null && root.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Region"));
+
         // The preview's controls, for the Avatar Tester's squash section.
         // Returns the Preview button's row, so a caller can put its own buttons beside it.
         public static VisualElement Controls(VisualElement into, YapsSquashSettings settings, System.Action refresh)
@@ -351,6 +354,8 @@ namespace AvatarBridge
                 ? BridgeElements.Hint("The cloth is real in Play mode: move the avatar (Jump or Shake in the Avatar Tester) and it swings and stretches. Push one in shoves one part of the first pair into the other; Squeeze and the test hand press it as another player's hands would.",
                     "Drag the hand with its handle in the scene view; it moves with the avatar. Pause Play mode to hold the cloth still while it presses. " +
                     "The Move tool cannot push a part in Play mode: the cloth puts its bones back every frame.")
+                : Jellied(YapsSquash.RootOf(settings))
+                ? BridgeElements.Hint("The live tissue presses in Play mode only. Enter Play mode to squeeze, press and slap it here.")
                 : BridgeElements.Hint("Squeezes, bounces and presses it in the scene view.",
                     "Squeeze is another player's two hands pushing each pair together from outside, the test hand one more you drag. " +
                     "Edit mode runs no physics, so Bounce stands in for the swing a jump gives. In game the same knobs answer real hands."));
@@ -365,7 +370,8 @@ namespace AvatarBridge
             into.Add(row);
             if (!on) return row;
             var squeeze = new Slider("Squeeze", 0f, 1f) { value = Squeeze, showInputField = true,
-                tooltip = "Two open hands pushing each pair together from outside, how far in. They press as other players' hands do, so \"Other players' hands\" scales them." };
+                tooltip = Jellied(YapsSquash.RootOf(settings)) ? "Two open hands pushing each pair together from outside, how far in."
+                    : "Two open hands pushing each pair together from outside, how far in. They press as other players' hands do, so \"Other players' hands\" scales them." };
             squeeze.AddToClassList("ab-slider");
             squeeze.RegisterValueChangedCallback(e => Squeeze = e.newValue);
             into.Add(squeeze);

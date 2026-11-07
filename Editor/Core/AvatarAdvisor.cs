@@ -300,7 +300,7 @@ namespace AvatarBridge
                     advice.Add(new Advice
                     {
                         Kind = AdviceKind.Manual,
-                        Setting = "Keep the avatar's own face-tracking rig",
+                        Setting = "Keep the avatar's own rig",
                         Finding = $"The avatar also carries its own face-tracking rig: {rig} parameters, the " +
                                   $"animator layers that drive and smooth those shapes. \"{mode}\" replaces it. " +
                                   "Your call: turn this on to keep the rig, and it converts with the rest of the animator.",

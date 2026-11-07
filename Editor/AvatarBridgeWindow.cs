@@ -634,8 +634,8 @@ namespace AvatarBridge
                     .Nested().Remember("Converter.PhysicsTuning");
                 var t = tuning.Body;
                 t.Add(BridgeElements.Hint(
-                    "Leave these on. Turn one off only when a chain converts wrong; it falls back to " +
-                    "MagicaCloth2's defaults."));
+                    "Most of these ship on; each tooltip says what turning it off does. " +
+                    "Turn one off only when a chain converts wrong."));
                 t.Add(BridgeElements.Bind("Match a preset to each chain",
                     "Starts each chain from the preset that fits it: hair, tail, skirt, cape, accessory, or a spring by stiffness.",
                     settings.useMagicaPresets, v => settings.useMagicaPresets = v));
@@ -652,7 +652,7 @@ namespace AvatarBridge
                     "Measures the limb each collider sits on and tapers the capsule to it. Off keeps the source's sizes.",
                     settings.fitCollidersToMesh, v => settings.fitCollidersToMesh = v));
                 t.Add(BridgeElements.Bind("Bound swing to the source's limit",
-                    "Keeps a loose chain within the PhysBone's angle limit: a distance bound that cannot vibrate, or an angle limit on a soft body.",
+                    "Keeps a loose chain within the PhysBone's angle limit: a distance bound that cannot vibrate, or an angle limit on a breast or belly soft body (thighs and a butt get none).",
                     settings.boundSwingToSourceLimit, v => settings.boundSwingToSourceLimit = v));
                 t.Add(BridgeElements.Bind("Cap particle radius to bone spacing",
                     "Bounds each particle to half the gap between its bones. Try it on a long chain of close bones that misbehaves.",
@@ -890,7 +890,8 @@ namespace AvatarBridge
                 "In the body shader: pressed together they flatten and meet, anyone's hand presses them as soft tissue solved when the squash is built, and a plug in a socket between them parts them. " +
                 "As the physics swing them they stretch and squash too. Found by bone name, or by regions painted with " +
                 "Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. " +
-                "On a humanoid avatar the parts also become live tissue the graphics card steps every frame: any hand dents, grips and slaps them, and the parts' own cloth stops feeling hands, the tissue taking every touch. No sync cost.",
+                "On a humanoid avatar the parts become live tissue instead, which the graphics card steps every frame: any hand dents, grips and slaps them, and the parts' own cloth stops feeling hands, the tissue taking every touch. " +
+                "The solved presses and the stretch then apply only to parts the tissue cannot take. No sync cost.",
                 settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
             optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press."));
             if (settings.squashSoftParts)
@@ -1001,7 +1002,7 @@ namespace AvatarBridge
             body.Add(pick);
 
             var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3);
-            choose.Body.Add(BridgeElements.Hint("Viewpoint, visemes and blink are always detected and wired."));
+            choose.Body.Add(BridgeElements.Hint("Viewpoint and visemes are always detected and wired; blink too unless Auto-wire blink blendshapes is off."));
             // Where the converter puts them: what the report TELLS you, kept
             // apart from what gets built.
             choose.Section("What the report tells you");

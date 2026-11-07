@@ -2021,12 +2021,12 @@ namespace AvatarBridge
             }
             if (pinned > 0)
             {
-                ctx.Report.Converted(Category, $"{pinned} cloth(s) keep their weight at any avatar size",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(pinned, "cloth keeps its", "cloths keep their")} weight at any avatar size",
                     "Each records the size it was converted at, so a size ChilloutVR applies before the cloth starts scales its gravity with it.");
             }
             if (refused.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{refused.Count} cloth(s) could not record their size",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(refused.Count, "cloth", "cloths")} could not record their size",
                     string.Join(", ", refused) + ": these hang heavier on a small avatar and stiffer on a large one.");
             }
         }

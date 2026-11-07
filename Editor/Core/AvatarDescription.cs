@@ -268,7 +268,9 @@ namespace AvatarBridge
             int found = 0;
             foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
             {
-                if (behaviour != null && behaviour.GetType().FullName == typeName)
+                // The live tissue's probe cloth is not a chain; name from YapsJelly.cs.
+                if (behaviour != null && behaviour.GetType().FullName == typeName
+                    && behaviour.gameObject.name != "Jelly Probes")
                 {
                     found++;
                 }

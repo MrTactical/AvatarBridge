@@ -369,7 +369,7 @@ namespace AvatarBridge
         {
             var make = new BridgeElements.Card("Drop a test socket or plug").Step(1, 1);
             make.Body.Add(BridgeElements.Hint(
-                "Drop a test socket in front of the camera and every baked plug in the scene bends toward it. " +
+                "Drop a test socket just past a baked plug's tip, or in front of the camera when there is none, and every baked plug in the scene bends toward it. " +
                 "Nothing here ships."));
             make.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Test hole (previews)", () => YapsPreview.DropTestSocket(YapsSocket.SocketKind.Hole)),

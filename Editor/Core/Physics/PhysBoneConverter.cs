@@ -272,7 +272,7 @@ namespace AvatarBridge
                     $"The avatar already carries {BridgeElements.Count(home.childCount, "converted cloth object", "converted cloth objects")}",
                     $"\"{name}\" was on the avatar before this conversion started, so it arrived with " +
                     "the avatar: a conversion that copies the avatar never writes one onto the source. " +
-                    "The known way in is converting once with \"Make a copy\" off. Anything this run " +
+                    "The known way in is converting once with \"Work on a clone (recommended)\" off. Anything this run " +
                     "converts is ADDED beside them, and both sets simulate the same bones, which fight. " +
                     $"Delete \"{name}\" from the avatar being converted, then convert again.");
             }

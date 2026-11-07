@@ -1032,7 +1032,7 @@ namespace AvatarBridge
             ctx.Report.Converted(Category,
                 $"Removed {BridgeElements.Count(contacts, "haptics contact", "haptics contacts")}: OGB, PCS and Wholesome",
                 "They spend the instance's 512 contact pairs. YAPS keeps its own two per plug. Tick \"Keep the " +
-                "OGB/PCS haptics contacts\" to drive a toy from them.");
+                "OGB / PCS haptics contacts\" to drive a toy from them.");
         }
 
         static void RemoveOrphanedCvrComponents(BridgeContext ctx, Func<string, bool> isStripped)

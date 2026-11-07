@@ -3324,6 +3324,13 @@ README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
     run for days until an include's line numbers moved. Fixed for 5.0.0 (the jelly region compiled once
     for all four slots, 49 s); left: a release step that compiles one body variant of each patched
     host fresh in fxc and fails past a set time.
+11. **Other physics counts may include the live tissue's probe cloth.** The store description now
+    skips the MagicaCloth named "Jelly Probes" (5.0.0); the cost card (`AvatarWeight.cs`), the
+    diagnostics (`BridgeDiagnostics.cs`), the tester's chain list (`CckAnimatorTester.Physics.cs`
+    `Chains`) and `MagicaClothKeepOut` still walk every cloth. Unchecked whether each miscounts: the
+    cost card arguably should count it, since the probes do cost.
+12. **Nested PhysBone chains on MagicaCloth 2** still move both chains, and the report names them.
+    `MagicaClothKeepOut` now keeps ignored bones still; it could do the same for the nested chain.
 
 Withdrawn: the Console's timing lines are the release notes' "a few short lines saying how long each
 step took", not debug left in; the "Jelly probes (debug)" menu entry appears only when the user ticks

@@ -8,9 +8,9 @@ that open around them, and shapes that react as a plug goes in. It reads and is 
 systems already on the platform: Raliv DPS, Thry's TPS and VRCFury's SPS: so it works with the
 content that is already out there, not only with itself.
 
-- *Tools ▸ YAPS ▸ Setup* is where everything happens: it finds what an avatar already has, adds
+- *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* is where everything happens: it finds what an avatar already has, adds
   holes, rings and plugs, and bakes them. Press **Build** after any change.
-- *Tools ▸ YAPS ▸ Create universal socket prefabs* writes drag-and-drop `YAPS Hole` and
+- *Tools ▸ Avatar Bridge ▸ YAPS ▸ Create universal socket prefabs* writes drag-and-drop `YAPS Hole` and
   `YAPS Ring` prefabs, and *Create a plug prop prefab* writes a spawnable plug you can upload as
   a prop on its own.
 - With AvatarBridge installed as well, its *Avatar Tester* gains **Squash** and **Plugs and
@@ -18,10 +18,10 @@ content that is already out there, not only with itself.
   the squash with a test hand, beside the avatar's motion in Play mode.
 - **Squash** (breasts and butt flattening against each other and denting under a hand; on a
   humanoid avatar, as live tissue that anyone's hand dents, grips and slaps) is off
-  until you add it: the **Squash** card in *Tools ▸ YAPS ▸ Setup*, **Set up squash**, or the opt-in
+  until you add it: the **Squash** card in *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup*, **Set up squash**, or the opt-in
   *Soft body shape: squash where parts press together* when converting with AvatarBridge.
-- For a body whose bones do not say which parts squash, paint them: **Paint them** in the
-  squash component's first step, **Which parts squash**, or *Tools ▸ YAPS ▸ Squash regions*.
+- For a body whose bones do not say which parts squash, paint them: **Paint a pair** or **Change these areas** in the
+  squash component's first step, **Which parts squash**, or *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*.
 - **Portals**: set a hole's **Portal exit** to another socket on the same avatar, and a plug that
   goes in comes out there. Build both the plug's and the socket's avatars with 5.0; to an older
   plug, and by marker light, it is an ordinary hole.

@@ -30,7 +30,7 @@ finish by hand.
 > looking. That's why the report exists and why [reporting a bug](#reporting-a-bug) gets a fix.
 
 <p align="center">
-  <img src="docs/images/window-471.png" alt="The AvatarBridge window: a blue-to-orange banner, three tabs, and numbered steps from picking an avatar to converting it" width="480">
+  <img src="docs/images/window-500.png" alt="The AvatarBridge window with no avatar picked: a blue-to-orange banner, three tabs, and numbered steps from picking an avatar to converting it, with the physics, opt-in and menu options in step 2" width="480">
 </p>
 
 <p align="center"><em>The banner runs VRChat's blue into ChilloutVR's orange, and the numbered
@@ -1254,7 +1254,7 @@ the first mesh it finds above the tip light, and on an avatar that is usually th
 plug's **Toy Mod Length** (its inspector, *How sockets find it*, on by default) puts a hidden mesh of
 the measured length at the base for the mod to find instead, so a toy responds to the plug itself,
 within one plug length, and other players' controllers stop buzzing near the rest of the body. A
-plug set up while it was off by default keeps its own setting: tick it and Bake again.
+plug set up before 5.0 gets it at its next bake.
 
 A dark socket still engages: a YAPS plug finds it through the screen atlas. What a dark socket
 loses is old DPS plugs, which carry lights and nothing else, and a YAPS plug in a view too small
@@ -1688,11 +1688,12 @@ testing in the Avatar Tester, one place each. Its knobs write straight to the ma
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
 pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
 the physics' own colliders, off by default). The stretch is real flesh's: a small one, with small swings
-ignored. With the live tissue on, the knobs only the squash's own dent reads (how flat and how wide,
-the spill and the physics' colliders) are hidden, and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
-squash preview running under **Interaction lab ▸ Squash**, starting half squeezed outside Play mode so every knob
-shows as it moves there: **Squeeze** is another player's two open hands pushing each pair together from
-outside, so *Other players' hands* scales it, **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
+ignored. With the live tissue on, the eight knobs only the squash's own dent reads (how flat and how wide,
+the spill, the physics' colliders, lying back, the stretch in motion, your own arms and other players' hands)
+are hidden, and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
+squash preview running under **Interaction lab ▸ Squash**. On parts still on the squash it starts half squeezed
+outside Play mode, so every knob shows as it moves there; the live tissue presses in Play mode only. **Squeeze** is another
+player's two open hands pushing each pair together from outside (on the squash, *Other players' hands* scales it), **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
 front of it, dragged with the handle in the Scene view; it presses the part nearest it, so it
 reaches a second pair too. **Player height** sizes it, since a hand is sized to its player: lower it
 for a smaller hand pressing a smaller spot. **Settings** there goes back to the component, and the
@@ -2134,7 +2135,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on every layer over the skin, at no sync cost; on a humanoid avatar the parts also become live tissue the graphics card steps every frame, which any hand dents, grips and slaps, the parts' own cloth no longer feeling hands; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on each layer that lies over a soft part, at no sync cost; on a humanoid avatar the parts become live tissue instead, which the graphics card steps every frame and any hand dents, grips and slaps, the parts' own cloth no longer feeling hands, and the solved presses and stretch apply only to parts the tissue cannot take; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -3227,7 +3228,7 @@ Player ▸ Scripting Define Symbols*.
 Work down the list; the first that fits is usually it.
 
 - **Does it work with some people and not others? Compare versions first.** The screen atlas only
-  works between two avatars built by the same version; anything else falls back to the marker
+  works between two avatars on the same atlas protocol (neighbouring versions usually share it; see the protocol paragraph); anything else falls back to the marker
   lights, which cannot carry tags, one-way rings or a wearer's own sockets. Nothing reports this,
   because from the inside it looks exactly like a socket that decided not to answer. See
   [how a plug finds a socket](#what-a-conversion-does).

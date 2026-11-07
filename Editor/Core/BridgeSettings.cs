@@ -114,7 +114,8 @@ namespace AvatarBridge
         // bound from rest, allowing for the limit at every joint. A
         // distance bound removes motion rather than adding a restoring
         // force, so it cannot start vibration. A soft body has no distance
-        // bounds in MagicaCloth2, so it gets the limit as an angle limit.
+        // bounds in MagicaCloth2, so a breast or belly gets the limit as an
+        // angle limit; thighs and a butt get none.
         public bool boundSwingToSourceLimit = true;
         // Bound the particle to half the bone gap. Off since the
         // radius became a measurement; on a soft body this throws most
@@ -174,9 +175,10 @@ namespace AvatarBridge
         public bool syncSocketDepthForOthers = false;
         // Breasts and butt squash against each other and against hands, in the body shader.
         // Needs the YAPS add-on, not converted penetration. Off: the parts swing as before. Tuned
-        // afterwards on the avatar's YAPS Squash component. A humanoid's pairs also go on the jelly,
-        // live tissue stepped on the GPU every frame, and their cloth and Dynamic Bones then collide
-        // at a millimetre: the tissue takes every touch.
+        // afterwards on the avatar's YAPS Squash component. A humanoid's pairs go on the jelly
+        // instead, live tissue stepped on the GPU every frame, and their cloth and Dynamic Bones then
+        // collide at a millimetre: the tissue takes every touch. The solved presses and the stretch
+        // apply only to parts the tissue cannot take.
         public bool squashSoftParts = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
