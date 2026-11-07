@@ -118,7 +118,7 @@ namespace AvatarBridge
             _root.Add(BridgeElements.Banner("Squash",
                 !built ? "not built yet: work down the steps, then Build at the bottom"
                 : needed ? "needs a rebuild: the last step says why" : "up to date",
-                built ? "built" : "not built", BridgeTheme.Span.Cvr));
+                built ? "built" : "not built"));
             var body = new VisualElement();
             body.AddToClassList("ab-scroll");
             _root.Add(body);
@@ -126,7 +126,7 @@ namespace AvatarBridge
 
             // Top to bottom in the order of the work, building last as in the other windows:
             // what squashes, how it feels, then build.
-            var parts = new BridgeElements.Card("Which parts squash").Step(1, 3, BridgeTheme.Span.Cvr);
+            var parts = new BridgeElements.Card("Which parts squash").Step(1, 3);
             body.Add(parts);
             // One step whatever the parts come from, said first. As two steps, the first said the
             // paint wins and the second "only if the bones miss", side by side.
@@ -165,7 +165,7 @@ namespace AvatarBridge
 
             // The knobs here, the testing in the Avatar Tester: a knob shows nothing until something
             // presses, so the way there comes first in the card.
-            var feel = new BridgeElements.Card("Tune how it feels").Step(2, 3, BridgeTheme.Span.Cvr);
+            var feel = new BridgeElements.Card("Tune how it feels").Step(2, 3);
             body.Add(feel);
             bool testing = YapsSquashPreview.On == settings;
             if (Application.isPlaying) feel.Body.Add(BridgeElements.Notice(Tone.Info, "Knobs moved in Play mode go back when it ends, as every component's do."));
@@ -215,7 +215,7 @@ namespace AvatarBridge
                 "Key these under each renderer the squash reaches ▸ Material, on all of them alike: a layer left squashing over skin that is not comes apart from it."));
             animate.Body.Add(BridgeElements.Code(jellied ? AnimatableJelly : Animatable));
 
-            var build = new BridgeElements.Card(built ? "Rebuild" : "Build").Step(3, 3, BridgeTheme.Span.Cvr);
+            var build = new BridgeElements.Card(built ? "Rebuild" : "Build").Step(3, 3);
             body.Add(build);
             if (built) build.Body.Add(BridgeElements.Notice(statusTone, status));
             build.Body.Add(BridgeElements.Hint(!built
@@ -234,7 +234,7 @@ namespace AvatarBridge
                 RebuildLater();
             }
             // Standing out only when it is needed: always primary, it read as a step left undone.
-            if (needed) build.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild the squash" : "Build the squash", Run, BridgeTheme.BridgeTo));
+            if (needed) build.Body.Add(new BridgeElements.PrimaryButton(built ? "Rebuild the squash" : "Build the squash", Run));
             else build.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Rebuild the squash", Run, "Up to date, so nothing changes unless something above did.")));
             if (_said != null) build.Body.Add(BridgeElements.Notice(_saidTone, _said));
             // Also a build whose objects were deleted by hand, its copies still worn.

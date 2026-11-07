@@ -426,33 +426,13 @@ namespace AvatarBridge
         {
             var root = rootVisualElement;
             root.Add(BridgeElements.Banner("Avatar Tester",
-                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version,
-                BridgeTheme.Span.Cvr));
+                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version));
 
             var avatar = ResolveAvatar();
             bool live = Application.isPlaying && avatar != null;
             // Read for each control's starting value, so a rebuild in Play mode shows what the
             // animator holds instead of snapping every control back to zero.
             var quiet = live ? avatar.GetComponentInChildren<Animator>(true) : null;
-
-            // Outside the scroll, so the reason the window is idle is always on screen.
-            BridgeElements.NoticeBox state = null;
-            if (avatar == null)
-            {
-                state = BridgeElements.Notice(Tone.Info,
-                    "No ChilloutVR avatar found. Select one in the scene, or drop it in the Avatar card.");
-            }
-            else if (!Application.isPlaying)
-            {
-                state = BridgeElements.Notice(Tone.Info, $"Found \"{avatar.name}\". Enter Play mode to drive it.",
-                    action: BridgeElements.Btn("Enter Play mode", EditorApplication.EnterPlaymode,
-                        "Animators only evaluate in Play mode.", ButtonKind.Strong));
-            }
-            if (state != null)
-            {
-                state.AddToClassList("ab-pinned");
-                root.Add(state);
-            }
 
             var scroll = BridgeElements.Scroll();
             root.Add(scroll);
@@ -471,12 +451,7 @@ namespace AvatarBridge
 
             scroll.Add(BuildRemoteCard(live));
 
-            scroll.Add(BridgeElements.Footer(
-                BridgeElements.ExternalLink("Guide", BridgeLinks.Repo + "#highlights",
-                    "What the tester does, in the README"),
-                // A link that builds its url from this install, so it cannot be a plain ExternalLink.
-                BridgeElements.TextLink("Report an issue ↗", () => BridgeLinks.OpenBugReport(),
-                    "Opens a GitHub issue with your Unity and package versions filled in")));
+            scroll.Add(BridgeElements.Footer(BridgeLinks.Repo + "#highlights"));
 
             // Pinned below the scroll view, not inside it. The point is watching layers react
             // while a control is driven, so the readout must stay on screen. Its own rows scroll
@@ -486,8 +461,8 @@ namespace AvatarBridge
 
         VisualElement BuildAvatarCard(CVRAvatar avatar, bool live)
         {
-            var card = new BridgeElements.Card("Avatar", expanded: true).Remember("Tester.Avatar");
-            card.Body.Add(BridgeElements.ObjectPicker<CVRAvatar>("CVR avatar", _override, picked =>
+            var card = new BridgeElements.Card("Pick your avatar").Step(1, 1);
+            card.Body.Add(BridgeElements.ObjectPicker<CVRAvatar>("Avatar", _override, picked =>
             {
                 _override = picked;
                 Rebuild();
@@ -508,6 +483,18 @@ namespace AvatarBridge
             else if (avatar != null)
             {
                 card.Body.Add(BridgeElements.Hint($"Using \"{avatar.name}\" from the scene. Drop one here to pin it."));
+            }
+            // Why the window is idle, in the card that picks what it drives.
+            if (avatar == null)
+            {
+                card.Body.Add(BridgeElements.Notice(Tone.Info,
+                    "No ChilloutVR avatar found. Select one in the scene, or drop it above."));
+            }
+            else if (!Application.isPlaying)
+            {
+                card.Body.Add(BridgeElements.Notice(Tone.Info, $"Found \"{avatar.name}\". Enter Play mode to drive it.",
+                    action: BridgeElements.Btn("Enter Play mode", EditorApplication.EnterPlaymode,
+                        "Animators only evaluate in Play mode.", ButtonKind.Strong)));
             }
             var resting = BridgeElements.Btn("Resting defaults", RestingDefaults,
                 "Back to what the game reports standing still");

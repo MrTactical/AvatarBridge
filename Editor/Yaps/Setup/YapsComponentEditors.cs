@@ -823,7 +823,7 @@ namespace AvatarBridge
 
             _root.Add(BridgeElements.Banner((portal ? "Portal entrance" : hole ? "Hole" : socket.oneWay ? "One-way ring" : "Ring") + " · " + YapsToggles.LabelFor(socket),
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built: no plug can find it yet",
-                built ? "built" : "not built", BridgeTheme.Span.Cvr));
+                built ? "built" : "not built"));
 
             // The inset the bleeding root gave up, back under the banner. A plain container, not
             // Scroll(): a scroller inside the Inspector's own would trap the wheel.
@@ -1545,7 +1545,7 @@ namespace AvatarBridge
             _root.Add(BridgeElements.Banner("Plug · " + YapsToggles.LabelFor(plug),
                 renderer == null ? "no renderer: pick the mesh that bends"
                 : isBaked ? $"baked · {len:0.###} m · {baked[0].name}" : "not baked yet: set it up, then Bake",
-                isBaked ? "baked" : "not baked", BridgeTheme.Span.Cvr));
+                isBaked ? "baked" : "not baked"));
 
             // The inset the bleeding root gave up, back under the banner. A plain container, not
             // Scroll(): a scroller inside the Inspector's own would trap the wheel.
@@ -1675,7 +1675,7 @@ namespace AvatarBridge
                 _saidMore = o.Notes.Count > 0 ? string.Join("\n", o.Notes) : null;
                 _saidTone = o.Ok ? Tone.Good : Tone.Bad;
                 RebuildLater();
-            }, BridgeTheme.BridgeTo));
+            }));
             if (_said != null) bake.Body.Add(BridgeElements.Notice(_saidTone, _said, _saidMore));
             bake.Section("Remove");
             bake.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove this plug", () =>

@@ -32,15 +32,6 @@ namespace AvatarBridge
         const string SetupSubtitle = "set up any avatar for ChilloutVR";
         const string ToolsSubtitle = "utilities for any ChilloutVR avatar or prop";
 
-        // An external link whose address is worked out on click, such as an issue pre-filled
-        // with diagnostics. Built from ExternalLink so the arrow stays the kit's.
-        static Button ExternalAction(string text, Action open, string tooltip)
-        {
-            var link = BridgeElements.ExternalLink(text, BridgeLinks.Repo, tooltip);
-            link.clickable = new Clickable(open);
-            return link;
-        }
-
 #if CVR_CCK_EXISTS
         // Shared with the Toolkit, which reads the Output folder from it.
         const string PrefsKey = CvrSetup.SettingsPrefsKey;
@@ -165,8 +156,7 @@ namespace AvatarBridge
             }
             body.Clear();
             header.Clear();
-            header.Add(BridgeElements.Banner(BannerTitle, Subtitle(), "v" + BridgeDefines.Version,
-                BridgeTheme.Span.Bridge));
+            header.Add(BridgeElements.Banner(BannerTitle, Subtitle(), "v" + BridgeDefines.Version));
 
             // The kit runs onSelect a frame after the click, so rebuilding there is safe.
 #if VRC_SDK_VRCSDK3
@@ -175,8 +165,7 @@ namespace AvatarBridge
                 // Single-colour glyphs only: the active tab's white tint cannot recolour a colour icon.
                 new[] { "GameObject Icon", "Settings", "CustomTool" },
                 (int)mode,
-                index => { mode = (Mode)index; _savingFor = null; Rebuild(); },
-                BridgeTheme.Span.Bridge));
+                index => { mode = (Mode)index; _savingFor = null; Rebuild(); }));
 
             if (mode == Mode.Convert)
             {
@@ -195,8 +184,7 @@ namespace AvatarBridge
                 new[] { "Set up any avatar", "Tools" },
                 new[] { "Settings", "CustomTool" },
                 (int)mode,
-                index => { mode = (Mode)index; _savingFor = null; Rebuild(); },
-                BridgeTheme.Span.Bridge));
+                index => { mode = (Mode)index; _savingFor = null; Rebuild(); }));
             if (mode == Mode.Tools)
             {
                 BuildToolsFlow();
@@ -240,7 +228,7 @@ namespace AvatarBridge
         void BuildConvertFlow()
         {
             // Step 1 sits at the VRChat end of the bridge, step 3 at the ChilloutVR end.
-            var pick = new BridgeElements.Card("Pick your VRChat avatar").Step(1, 3, BridgeTheme.Span.Bridge);
+            var pick = new BridgeElements.Card("Pick your VRChat avatar").Step(1, 3);
             BuildAvatarPicker(pick.Body);
             body.Add(pick);
 
@@ -248,7 +236,7 @@ namespace AvatarBridge
             // for itself is folded away under "Automated"; what is left in the open is the
             // short list nothing in the file can settle. Before this, forty-odd toggles sat at
             // one level with no way to tell which of them anyone was expected to think about.
-            var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3, BridgeTheme.Span.Bridge);
+            var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3);
             BuildAnalyseSection(choose.Body);
 
             // The two settings that change nothing, only what you are told. Under the results,
@@ -285,7 +273,7 @@ namespace AvatarBridge
                 settingSearch.value = settingFilter;
             }
 
-            var run = new BridgeElements.Card("Convert").Step(3, 3, BridgeTheme.Span.Bridge);
+            var run = new BridgeElements.Card("Convert").Step(3, 3);
             BuildConvertButton(run.Body);
             // Whenever the report's own button does not show: a second run finds the
             // textures already shrunk, reclaims nothing, and the record is still there.
@@ -983,7 +971,7 @@ namespace AvatarBridge
 
         void BuildSetupFlow()
         {
-            var pick = new BridgeElements.Card("Pick any avatar").Step(1, 3, BridgeTheme.Span.Bridge);
+            var pick = new BridgeElements.Card("Pick your avatar").Step(1, 3);
             pick.Body.Add(BridgeElements.ObjectPicker<GameObject>("Avatar", setupAvatar, picked =>
             {
                 setupAvatar = picked;
@@ -1012,7 +1000,7 @@ namespace AvatarBridge
             }
             body.Add(pick);
 
-            var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3, BridgeTheme.Span.Bridge);
+            var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3);
             choose.Body.Add(BridgeElements.Hint("Viewpoint, visemes and blink are always detected and wired."));
             // Where the converter puts them: what the report TELLS you, kept
             // apart from what gets built.
@@ -1036,7 +1024,7 @@ namespace AvatarBridge
             choose.Body.Add(advanced);
             body.Add(choose);
 
-            var run = new BridgeElements.Card("Set up").Step(3, 3, BridgeTheme.Span.Bridge);
+            var run = new BridgeElements.Card("Set up").Step(3, 3);
             bool ftPackageMissing = FaceTrackingAssetsMissing;
             var button = new BridgeElements.PrimaryButton(
                 setupAvatar == null ? "Set up avatar" : $"Set up \"{setupAvatar.name}\"",
@@ -1368,19 +1356,6 @@ namespace AvatarBridge
                         Debug.Log("[AvatarBridge] " + CckDescriptionFiller.Explain(result));
                     }, "Types it into the CCK's Description box, if empty. Open the Builder tab with this avatar first.")));
             }
-
-            // Always offered once a report exists, rather than only when something went wrong:
-            // "it converted clean but the avatar is wrong in game" is a report worth having, and
-            // it's the case where the button used to be missing. Report an issue and
-            // Troubleshooting stay in the footer just below, so the footer reads the same in
-            // every state.
-            b.Add(BridgeElements.ButtonRow(
-                BridgeElements.Caption("Help"),
-                BridgeElements.Btn("Copy diagnostics", () =>
-                {
-                    BridgeLinks.CopyDiagnostics(lastReport);
-                    ShowNotification(new GUIContent("Diagnostics copied"));
-                }, "Copies versions and detected packages to the clipboard.")));
         }
 
         UnityEngine.Object ResolveSubject(string subject, ref Dictionary<string, Transform> byName)
@@ -1422,45 +1397,28 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- footer ---
 
-        Button DiscordLink()
-        {
-            if (string.IsNullOrEmpty(BridgeLinks.DiscordUser))
-            {
-                return null;
-            }
-            const string why = "Best for quick questions; please use GitHub issues for bugs so they don't get lost.";
-            if (BridgeLinks.HasDiscordLink)
-            {
-                return ExternalAction($"Discord: {BridgeLinks.DiscordUser}", BridgeLinks.OpenDiscord,
-                    "Opens Discord. " + why);
-            }
-            // Nowhere to open, so this one copies and carries no arrow.
-            return BridgeElements.TextLink($"Copy Discord: {BridgeLinks.DiscordUser}", () =>
-            {
-                BridgeLinks.CopyDiscord();
-                ShowNotification(new GUIContent("Copied: " + BridgeLinks.DiscordUser));
-            }, "Copies the handle to your clipboard. " + why);
-        }
-
+        // Copy diagnostics is always offered, not only once something went wrong: "it converted
+        // clean but the avatar is wrong in game" is a report worth having too.
         VisualElement BuildFooter()
         {
             // With a report on screen the issue is about it, so the tooltip asks for it.
             bool reportShown = lastReport != null && mode != Mode.Tools;
-            return BridgeElements.Footer(
-                BridgeElements.ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting,
-                    "Setup and install help."),
-                ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(lastReport),
-                    reportShown
-                        ? "Opens a pre-filled GitHub issue. Please attach the report: most bugs are diagnosed straight from it."
-                        : "Opens a pre-filled GitHub issue with your versions and detected packages."),
-                DiscordLink());
+            string guide = mode == Mode.Tools ? "#chilloutvr-toolkit" : mode == Mode.Setup ? "#setup-mode" : "#usage";
+            return BridgeElements.Footer(BridgeLinks.Repo + guide, () => BridgeLinks.OpenBugReport(lastReport),
+                reportShown
+                    ? "Opens a pre-filled GitHub issue. Please attach the report: most bugs are diagnosed straight from it."
+                    : null,
+                BridgeElements.TextLink("Copy diagnostics", () =>
+                {
+                    BridgeLinks.CopyDiagnostics(lastReport);
+                    ShowNotification(new GUIContent("Diagnostics copied"));
+                }, "Copies versions and detected packages to the clipboard."));
         }
 #else
         void CreateGUI()
         {
             var root = BridgeElements.Root(rootVisualElement);
-            root.Add(BridgeElements.Banner(BannerTitle, ConvertSubtitle, "v" + BridgeDefines.Version,
-                BridgeTheme.Span.Bridge));
+            root.Add(BridgeElements.Banner(BannerTitle, ConvertSubtitle, "v" + BridgeDefines.Version));
 
             var body = BridgeElements.Scroll();
             root.Add(body);
@@ -1476,10 +1434,7 @@ namespace AvatarBridge
             body.Add(BridgeElements.Notice(Tone.Info,
                 "Import what's missing and reopen this window. With the CCK alone, Setup mode still works."));
 
-            body.Add(BridgeElements.Footer(
-                BridgeElements.ExternalLink("Setup guide", BridgeLinks.Troubleshooting, "Setup and install help."),
-                ExternalAction("Report an issue", () => BridgeLinks.OpenBugReport(),
-                    "Opens a pre-filled GitHub issue with your versions and detected packages.")));
+            body.Add(BridgeElements.Footer(BridgeLinks.Repo + "#installation"));
         }
 #endif
     }

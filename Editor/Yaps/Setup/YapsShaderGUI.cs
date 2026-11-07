@@ -191,9 +191,9 @@ namespace AvatarBridge
                 if (section.Title == "Socket" && !hasSocket) continue;
                 if (section.Title != "Socket" && section.Title != "Debug" && !hasPlug && hasSocket) continue;
 
-                // Along the span, Debug last and grey.
+                // Along the ramp, Debug last and grey.
                 var tint = section.Title == "Debug" ? BridgeTheme.Fill(Tone.Muted)
-                    : BridgeTheme.Span.Cvr.At(i / (float) (Sections.Length - 2));
+                    : BridgeTheme.At(i / (float) (Sections.Length - 2));
                 string key = material.shader.name + "/" + section.Title;
                 if (!Open.TryGetValue(key, out bool open)) open = section.StartOpen;
                 open = SectionHeader(section.Title, tint, open);
@@ -284,7 +284,7 @@ namespace AvatarBridge
             var laid = GUILayoutUtility.GetRect(0, 52, GUILayout.ExpandWidth(true));
             var rect = new Rect(0, laid.y, EditorGUIUtility.currentViewWidth, laid.height);
             string subText = length > 0 ? $"{role} · {LengthText(length, material)} · {material.shader.name.Replace("Hidden/YAPS/", "patched ")}" : role;
-            BridgeTheme.DrawBanner(rect, "YAPS", subText, "v" + BridgeDefines.Version, BridgeTheme.Span.Cvr);
+            BridgeTheme.DrawBanner(rect, "YAPS", subText, "v" + BridgeDefines.Version);
             GUILayout.Space(6);
 
             // A material can be running a shader older than the toolkit, and

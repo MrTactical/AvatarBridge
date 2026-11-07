@@ -261,7 +261,7 @@ namespace AvatarBridge
             if (avatar == null)
             {
                 card.SetSummary("no avatar");
-                card.Body.Add(BridgeElements.Empty("No avatar", "Pick a ChilloutVR avatar in the Avatar card."));
+                card.Body.Add(BridgeElements.Empty("No avatar", "Pick a ChilloutVR avatar in step 1."));
                 return card;
             }
             var chains = Chains(avatar);

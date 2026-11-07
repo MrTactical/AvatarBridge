@@ -314,13 +314,6 @@
     background-color: var(--ab-card-head-hover);
 }
 
-/* Opt-in, for a fixed card stacked among folding ones: 12 plus the arrow's 28px slot (see
- * below), so the titles share one column. Not automatic, since a window of fixed cards
- * would gain an empty gutter. */
-.ab-card-static > .ab-card-header {
-    padding-left: 40px;
-}
-
 /* A text glyph, not Unity's IN_foldout textures: those are faint by design (1.55:1 on the light
  * header, 2.3:1 on dark) and a tint can only darken them. Muted text is 4.6:1 or better on both. */
 .ab-card-header > .ab-card-arrow {
@@ -343,17 +336,6 @@
 .ab-card.ab-fold > .ab-card-header > .ab-card-arrow {
     width: 13px;
     margin-right: 4px;
-}
-
-/* A container whose cards have no badges (the Toolkit): the badge slot would be dead space
- * between each arrow and its title. A static card's title keeps the column: 12 + 13 + 6. */
-.ab-cards-plain .ab-card-collapsible > .ab-card-header > .ab-card-arrow {
-    width: 13px;
-    margin-right: 6px;
-}
-
-.ab-cards-plain .ab-card-static > .ab-card-header {
-    padding-left: 31px;
 }
 
 .ab-step-badge {
@@ -468,12 +450,6 @@
 .ab-card.ab-pinned {
     flex-shrink: 0;
     margin: 0 8px 6px 8px;
-}
-
-/* A notice kept above it: the cards' gutter, a gap under the banner, never squashed. */
-.ab-notice.ab-pinned {
-    flex-shrink: 0;
-    margin: 6px 8px 0 8px;
 }
 
 /* ------------------------------------------------------------ headings ---- */

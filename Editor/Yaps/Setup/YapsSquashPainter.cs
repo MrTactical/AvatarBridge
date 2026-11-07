@@ -196,8 +196,8 @@ namespace AvatarBridge
             into.Add(BridgeElements.ButtonRow(paint));
             into.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Add a pair", () => AddPair(false), "Two sides that press against each other: cheeks, thighs."),
-                BridgeElements.Btn("Add a part alone", () => AddPair(true), "One side only, with no partner: a belly, a tail, the back."),
-                BridgeElements.Btn("Remove this part", RemovePair)));
+                BridgeElements.Btn("Add a part alone", () => AddPair(true), "One side only, with no partner: a belly, a tail, the back.")));
+            into.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove this part", RemovePair, null, ButtonKind.Danger)));
             // Said where it is painted: past them, what is painted stays as it is.
             if (pairs > YapsSquash.JellySlots)
                 into.Add(BridgeElements.Hint($"The live tissue takes the first {YapsSquash.JellySlots} parts, the squash the first two pairs: {string.Join(", ", regions.pairs.Skip(YapsSquash.JellySlots).Select(p => p.name))} stay as they are."));

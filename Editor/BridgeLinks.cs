@@ -38,9 +38,6 @@ namespace AvatarBridge
 
         public const string DiscordUserId = "846491891805847572";
 
-        public static bool HasDiscordLink =>
-            !string.IsNullOrEmpty(DiscordInvite) || !string.IsNullOrEmpty(DiscordUserId);
-
         public static void OpenDiscord()
         {
             if (!string.IsNullOrEmpty(DiscordInvite))

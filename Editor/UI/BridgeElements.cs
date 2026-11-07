@@ -7,7 +7,9 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    // Highest first below the primary: a card's own action, an in-place action, a destructive one.
+    // The roles below a view's one PrimaryButton, the same in every window: Strong is a card's own
+    // action, Danger anything that removes, deletes or undoes what was built, Secondary the rest.
+    // Labels are sentence case. A chip is a status or a filter, never a button.
     internal enum ButtonKind { Secondary, Strong, Danger }
 
     // The window's building blocks.
@@ -57,7 +59,25 @@ namespace AvatarBridge
             return scroll;
         }
 
-        public static VisualElement Footer(params Button[] links) => Container("ab-footer", links);
+        // Every window's foot: the same four links in the same order, then the window's extras.
+        // guide is the window's place in the README; report opens the issue, pre-filled with
+        // whatever the window knows.
+        public static VisualElement Footer(string guide, Action report = null, string reportTip = null,
+            params Button[] extras)
+        {
+            if (report == null) report = () => BridgeLinks.OpenBugReport();
+            var links = new List<VisualElement>
+            {
+                ExternalLink("Guide", guide, "What this window does, in the README."),
+                ExternalLink("Troubleshooting", BridgeLinks.Troubleshooting, "Setup and install help."),
+                ExternalLink("Report an issue", report,
+                    reportTip ?? "Opens a pre-filled GitHub issue with your versions and detected packages."),
+                ExternalLink("Discord", BridgeLinks.OpenDiscord, BridgeLinks.DiscordUser + " on Discord. Best for " +
+                    "quick questions; please use GitHub issues for bugs so they don't get lost."),
+            };
+            links.AddRange(extras);
+            return Container("ab-footer", links.ToArray());
+        }
 
         // Rebuilding from inside a control's own callback destroys it mid-dispatch. One frame later
         // the event has finished with it.
@@ -68,11 +88,11 @@ namespace AvatarBridge
 
         // -------------------------------------------------------------- banner ----
 
-        public static VisualElement Banner(string title, string subtitle, string pill, BridgeTheme.Span span)
+        public static VisualElement Banner(string title, string subtitle, string pill)
         {
             var bar = new VisualElement();
             bar.AddToClassList("ab-banner");
-            bar.style.backgroundImage = new StyleBackground(BridgeTheme.Gradient(span));
+            bar.style.backgroundImage = new StyleBackground(BridgeTheme.Gradient());
 
             var text = new VisualElement();
             text.AddToClassList("ab-banner-text");
@@ -97,8 +117,7 @@ namespace AvatarBridge
         // ---------------------------------------------------------------- tabs ----
 
         // onSelect runs a frame after the click, since every caller rebuilds the strip it sits in.
-        public static VisualElement Tabs(string[] labels, string[] icons, int current,
-            Action<int> onSelect, BridgeTheme.Span span)
+        public static VisualElement Tabs(string[] labels, string[] icons, int current, Action<int> onSelect)
         {
             var strip = new VisualElement();
             strip.AddToClassList("ab-tabs");
@@ -111,9 +130,9 @@ namespace AvatarBridge
                 if (i == current)
                 {
                     tab.AddToClassList("ab-tab-on");
-                    // The active tab is tinted to its own place on the window's span, so switching
-                    // modes moves you along it rather than just highlighting a button.
-                    tab.style.backgroundColor = span.At(labels.Length == 1 ? 0f : i / (float)(labels.Length - 1));
+                    // The active tab is tinted to its own place on the ramp, so switching modes
+                    // moves you along it rather than just highlighting a button.
+                    tab.style.backgroundColor = BridgeTheme.Step(i + 1, labels.Length);
                 }
 
                 var icon = BridgeTheme.GetIcon(icons != null && index < icons.Length ? icons[index] : null, tinted: true) as Texture2D;
@@ -209,8 +228,10 @@ namespace AvatarBridge
                 }
             }
 
-            // Badge coloured from its place along the window's span.
-            public Card Step(int step, int of, BridgeTheme.Span span)
+            // Badge coloured from its place along the ramp. Every window's first card is step 1,
+            // picking what it works on. A window of independent tools numbers only that: the
+            // tools after it fold, and the arrow takes the badge's slot so the titles line up.
+            public Card Step(int step, int of)
             {
                 if (_badge == null)
                 {
@@ -220,7 +241,7 @@ namespace AvatarBridge
                     // Arrow, badge, title, summary.
                     _header.Insert(_arrow != null ? 1 : 0, _badge);
                 }
-                _badge.style.backgroundColor = span.Step(step, of);
+                _badge.style.backgroundColor = BridgeTheme.Step(step, of);
                 _badge.Q<Label>().text = step.ToString();
                 return this;
             }
@@ -515,7 +536,7 @@ namespace AvatarBridge
             return button;
         }
 
-        // A text-only action in place: More, clear, Show all.
+        // A text-only action in place: More, Clear, Show all.
         public static Button TextLink(string text, Action onClick, string tooltip = null)
         {
             var button = new Button(onClick) { text = text, tooltip = tooltip };
@@ -531,21 +552,15 @@ namespace AvatarBridge
         public static Button ExternalLink(string text, string url, string tooltip = null) =>
             ExternalLink(text, () => Application.OpenURL(url), tooltip ?? url);
 
-        // The one button a view exists for. The gradient means "this is the crossing" and belongs
-        // to the converter alone; solid is every other window's main action.
+        // The one button a view exists for, full width on the brand ramp in every window. A card's
+        // own action is Btn Strong, so a view never shows two of these.
         public class PrimaryButton : Button
         {
             readonly Label _label;
-            readonly Color? _solid;
 
-            public PrimaryButton(string text, Action onClick, Color? solid = null) : base(onClick)
+            public PrimaryButton(string text, Action onClick) : base(onClick)
             {
                 AddToClassList("ab-primary");
-                _solid = solid;
-                if (solid.HasValue)
-                {
-                    AddToClassList("ab-primary-solid");
-                }
                 Fill(true);
 
                 // Hover and press darken through this overlay in USS, under the label, so the
@@ -570,16 +585,9 @@ namespace AvatarBridge
             // read as a danger tint; :disabled in USS paints a neutral slab instead.
             void Fill(bool on)
             {
-                if (_solid.HasValue)
-                {
-                    style.backgroundColor = on ? new StyleColor(_solid.Value) : new StyleColor(StyleKeyword.Null);
-                }
-                else
-                {
-                    style.backgroundImage = on
-                        ? new StyleBackground(BridgeTheme.Gradient(BridgeTheme.Span.Bridge))
-                        : new StyleBackground(StyleKeyword.Null);
-                }
+                style.backgroundImage = on
+                    ? new StyleBackground(BridgeTheme.Gradient())
+                    : new StyleBackground(StyleKeyword.Null);
             }
         }
 

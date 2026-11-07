@@ -1092,8 +1092,8 @@ unlock/edit/re-lock.
    up instead of hiding under the object you happened to pick.
 2. **What it has, and what to add.** One row per plug or socket the scan found, which systems can
    read it, whether it has an axis, what it lacks, and a warning when two sockets sit on the same
-   spot. **customise** takes you to its inspector, where its preview is; **remove** takes it out entire; a DPS, TPS or SPS row offers **upgrade to YAPS**, and a YAPS row
-   with no component yet offers **make editable**. A mesh another plug carries gets a quiet
+   spot. **Customise** takes you to its inspector, where its preview is; **Remove** takes it out entire; a DPS, TPS or SPS row offers **Upgrade to YAPS**, and a YAPS row
+   with no component yet offers **Make editable**. A mesh another plug carries gets a quiet
    *Part of* row instead: it bends with that plug, on its settings.
    Beneath: **Add a hole**, **Add a ring** (under the bone you have selected in the
    Hierarchy, or in a `YAPS/` folder on the avatar) and **Make selected mesh a plug**, or, with a
@@ -1439,7 +1439,7 @@ aiming at it or a parent, an entry's own clips, or any clip in any of the avatar
 that hides the object or its renderer. If an earlier build added a toggle that turns out to be
 unnecessary, the next one removes it.
 
-**Taking things out again.** Every plug and socket can be taken out: **remove** on its row in the
+**Taking things out again.** Every plug and socket can be taken out: **Remove** on its row in the
 window, or **Remove this plug** / **Remove this socket** in its own inspector. It takes the thing
 out entire: the objects the tool made, its animator layer and parameter, its menu entries
 (a plug's deform toggle, its own-sockets toggle and its tag chooser), the size wiring in
@@ -2044,7 +2044,7 @@ and blink detection, face tracking, and the height scaler. Useful for a Booth mo
 avatar. Without the VRChat SDK there's no VRChat data to read: a VRChat avatar's components won't
 even deserialize, so conversion isn't possible and only this tab and **Tools** are offered.
 
-Three steps, like the converter's: **Pick any avatar**, **Choose what gets set up**, then
+Three steps, like the converter's: **Pick your avatar**, **Choose what gets set up**, then
 **Set up**. Step 2 holds the two *What the report tells you* ticks, **Face tracking**,
 **Add height scaler  ("Height" slider)**, and under *Advanced options*
 **Work on a clone (recommended)**, **Output folder** and **Auto-wire blink blendshapes**, with the
@@ -3372,7 +3372,7 @@ A shader that patches but takes no normal or no tangent from the mesh is the oth
 plug finds which way it points from those, so on that shader it stays straight, while a plug that is
 its own mesh object still bends. The outcome says so; YAPS Simple Lit carries both.
 A plug still carrying VRChat's SPS is not refused: it keeps its shader with SPS switched off, the
-same upgrade in place as the YAPS tool's **upgrade to YAPS**.
+same upgrade in place as the YAPS tool's **Upgrade to YAPS**.
 
 ### YAPS: a plug bends twice or stretches
 
@@ -3388,7 +3388,7 @@ components on it, rather than a built copy, and check the plug in game.
 
 Built means a plug can find it, a marker light or a root pointer beneath the object, and baked
 means the material carries `_YAPS_Bake`. On an avatar converted before 4.0 the components were not
-left behind; the window offers **make editable** on each row (or **Bake every plug and verify**,
+left behind; the window offers **Make editable** on each row (or **Bake every plug and verify**,
 which does them all), and the socket or plug then reads as it should. Reconverting on the current
 release does the same.
 
@@ -3519,7 +3519,7 @@ every entry at the cost of regenerating the controller.
 Hit **Report an issue** at the foot of the AvatarBridge window (the ChilloutVR Toolkit, the Avatar
 Tester and *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* carry it too): it opens a pre-filled GitHub issue with
 your versions and detected packages already in it. After a conversion the window's link adds the
-run's counts, and **Copy diagnostics** under the report puts the same text on your clipboard.
+run's counts, and **Copy diagnostics** beside it puts the same text on your clipboard.
 *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* writes no report file, so its link adds the last Build's counts instead, and
 **Copy diagnostics** in its footer copies those along with what Build and the squash said, line by
 line. The link leaves the lines out because they name parts of your avatar, so you choose where to
