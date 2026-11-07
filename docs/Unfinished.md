@@ -3329,7 +3329,8 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
      stops in one frame, 8 m/s at 90 frames a second is 73 g, and 30 g would have taken every
      landing's ring and jiggle. 8 m/s is the landing's own line between a fall and a teleport.
      Kar s5f: breasts, seat, thighs and the thighs seated PASS; the probe prop's drop still rings
-     12.5 mm on each jelly.
+     12.5 mm on each jelly. Seed 8 after the jump as the push starts (2043 on): 68 to 87 mm off
+     its rest, against 508 to 510 before; over the arm tests 2 frames past 200 mm, against 27.
    **Step 6, the cost pass.** Kar with four painted parts (breasts, seat, belly, thighs), at rest:
    RTX 4080 0.030 ms one part, 0.042 two, 0.066 three, 0.090 four; the processor's own Radeon
    0.104, 0.148, 0.251, 0.358. Eight hands in reach cost nothing measurable on either. Two parts by
