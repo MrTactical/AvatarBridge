@@ -3323,9 +3323,13 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
      1874, 2009, 2043, 2343) the mass is thrown up to 0.31 m off its rest (13 frames over 0.1 m in
      all; the first part's never past 6 mm) and the particles 0.49 to 0.65 m, for 6 to 8 frames,
      then settle. In game a pose that snaps does the same: an emote, sitting, an arm's tracking
-     coming back. Proposed, for Joe: a frame whose anchor accelerates past about 30 g (no limb
-     does) carries the tissue and its mass with the anchor, as `_MassCarried` carries the mass
-     under cloth. Flying fast is steady, so it stays as it is.
+     coming back. **Done** (Joe: "sure"): a frame whose anchor's speed changes by more than 8 m/s
+     snaps, and the tissue, its mass and the swung homes ride the jump; its squash keeps last
+     frame's and no landing rings, that frame or the next. Not the 30 g first proposed: a fall
+     stops in one frame, 8 m/s at 90 frames a second is 73 g, and 30 g would have taken every
+     landing's ring and jiggle. 8 m/s is the landing's own line between a fall and a teleport.
+     Kar s5f: breasts, seat, thighs and the thighs seated PASS; the probe prop's drop still rings
+     12.5 mm on each jelly.
    **Step 6, the cost pass.** Kar with four painted parts (breasts, seat, belly, thighs), at rest:
    RTX 4080 0.030 ms one part, 0.042 two, 0.066 three, 0.090 four; the processor's own Radeon
    0.104, 0.148, 0.251, 0.358. Eight hands in reach cost nothing measurable on either. Two parts by
@@ -3345,7 +3349,14 @@ layers get a copy at all), `_YAPS_DentOwn` RGBA, the draw's two states and one f
    Films sent to Joe (f29d): the seat with the camera from above (the tail covers the middle of
    the seat from there; the hands show at the sides) and the thighs seated, knees together, apart,
    crossed right over left, a press from above, a slap, standing and hopping.
-   Still open: Joe on the films, presets tuned on his verdict, and Joe in game.
+   **The probe prop fails, alike before the snap guard and with it** (s5g and s5f): the ball dragged
+   7 cm each way, rebuilt from the probes, sits 4.4 cm too deep at worst (3 allowed), 119 of 698
+   frames over 1.5 cm (105), its depth jumping 4.4 cm in a frame (1.5); a hand pushed on through
+   leaves 24 particles over 10 cm (none asked). Last passed 2026-10-30, a shorter check. Not
+   bisected yet. Its runs rewrote 12 generated files in the prop's folder, which no chain kept:
+   put back byte-exact, and `chain-step5p.sh` keeps them from now on.
+   Joe on the films, 2026-11-07: "they look good". The presets stay as they are. Still open: Joe
+   in game.
 
 ### 26. A fist closed with the grip read 0 in GestureLeftWeight. A user's report, 2026-10-26, fixed on dev, Joe to check in game
 

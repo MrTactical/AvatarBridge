@@ -2067,6 +2067,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _Landing;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
+            // The anchor snapped to a new pose this frame: the tissue rides the jump.
+            static bool Snapped = false;
             float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
@@ -3058,6 +3060,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
                 if (distant) return none;
+                // Snapped, the particles still lie where the jump left them: last frame's squash kept.
+                if (Snapped) return _MainTex.Load(int3(32 + k, side, 0));
                 int3 n = Count();
                 // Each particle against its home with no squash: fitted to the rest alone, the mass's
                 // swing and stretch, which turn the front more than the back, read as a shear.
@@ -3107,9 +3111,20 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return float4(transpose(shape)[k], volume);
             }
 
+            // A point as last frame's anchor held it, put where this frame's holds it.
+            float3 Carried(float3 x, float4x4 m, uint side)
+            {
+                float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
+                if (!(o0.w > 0.5)) return x;
+                float4x4 last = float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1);
+                return mul(m, float4(Into(last, x), 1)).xyz;
+            }
+
             float3 Home(int3 l, float4x4 m, uint side, out float4 swing)
             {
                 float4 tip = _MainTex.Load(int3(30, side, 0));
+                // Snapped, the first pass still has last frame's mass: on the jump with the anchor.
+                [branch] if (Snapped && _Pass < 0.5) tip.xyz = Carried(tip.xyz, m, side);
                 // Stamped and recent: a cleared texel reads as stepped at time 0, and at a scene's first
                 // frame that passed, swinging every home toward the world's origin.
                 return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Base / (side - Base + 1)), swing);
@@ -3137,7 +3152,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // damped by _Damp alone, the lattice rang at 3 Hz after every press, a jelly.
             float3 Ahead(float4 s, float4 was, int3 l, uint side, float3 home, float h)
             {
-                float3 vh = HomeSpeed(l, side, home), v = (s.xyz - was.xyz) / max(was.w, 1e-4);
+                float3 v = (s.xyz - was.xyz) / max(was.w, 1e-4);
+                // Snapped, the jump is no speed of the home's: the particle was carried over it.
+                float3 vh = Snapped ? v : HomeSpeed(l, side, home);
                 return s.xyz + (vh * exp(-_Damp * was.w) + (v - vh) * exp(-_Viscous * was.w)) * h;
             }
 
@@ -3153,7 +3170,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 tip = _MainTex.Load(int3(30, side, 0)), was = _MainTex.Load(int3(31, side, 0));
                 // Carried, both are moved on with the anchor since last frame, so only the hands move
                 // the mass on it: lagging a bone its cloth swings, it swung the whole a second time.
-                [branch] if (_MassCarried > 0)
+                [branch] if (_MassCarried > 0 || Snapped)
                 {
                     float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
                     if (o0.w > 0.5)
@@ -3318,6 +3335,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 else
                 {
                     float4 was = _MainTex.Load(Texel(p, 1));
+                    // Carried over a snap once, by the first pass; the second steps on from there.
+                    [branch] if (Snapped && _Pass < 0.5) { s.xyz = Carried(s.xyz, m, side); was.xyz = Carried(was.xyz, m, side); }
                     if (Fresh(s, was, home)) return home;
                     // Every right-half w is the h of the same pass, so this holds for the neighbours too.
                     kh = exp(-_Damp * was.w) / max(was.w, 1e-4) * h;
@@ -3659,7 +3678,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float4 was = _MainTex.Load(int3(85, side, 0));
                     float3 v = AnchorVelocity(m, dt, side);
                     float lost = length(was.xyz - v);
-                    [branch] if (was.w > 0 && _Time.y - was.w < 0.1 && length(was.xyz) < 8 && lost > _Landing)
+                    [branch] if (!Snapped && was.w > 0 && _Time.y - was.w < 0.1 && length(was.xyz) < 8 && lost > _Landing)
                     {
                         float3 q = Into(m, m._m03_m13_m23 + was.xyz - v) / half;
                         at = mul(m, float4(mid + q / max(length(q), 1e-6) * half, 1)).xyz;
@@ -3807,6 +3826,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 frames = max(frames, 1);
                 float dt = min((_FixedDt > 0 ? _FixedDt : held) * frames, 1.0 / 30);
                 FrameDt = dt;
+                // An anchor whose speed changes by more than 8 m/s in a frame has snapped to a new pose:
+                // an emote, sitting, a limb's tracking coming back. No limb moves so and a fall stops
+                // slower, as the landing's own 8 m/s says. Left behind by the jump, a part on an arm
+                // sat 0.5 m off its rest for a tenth of a second; now it and its mass ride it. The first
+                // pass decides and signs 85 with it; the second reads its answer.
+                float4 sped = _MainTex.Load(int3(85, side, 0));
+                Snapped = _Pass < 0.5 ? anchored && sped.w != 0 && _Time.y - abs(sped.w) < 0.1 && length(AnchorVelocity(m, dt, side) - sped.xyz) > 8 : sped.w < 0;
                 int passes = dt > 1.0 / 72 ? 2 : 1;
                 float h = dt / passes;
                 // The meter's load always takes a whole step, the cost it is there to show.
@@ -3935,7 +3961,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, presses);
-                        if (px.x == 85) return float4(AnchorVelocity(m, dt, side), _Time.y);
+                        if (px.x == 85) return float4(AnchorVelocity(m, dt, side), Snapped ? -_Time.y : _Time.y);
                         // Each hand slot's grip (112 to 119), as Pulled reads it: a fist closed on the
                         // skin grips it where it closed, or where Slid takes it, until it opens or has
                         // pulled twice as far as the skin follows; a fist closed off the skin, or that
@@ -4039,6 +4065,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         // Where each particle is headed, for the second pass to fit, w 0 for one put back
                         // at rest; the right half already takes where it was.
                         float4 s = _MainTex.Load(Texel(p, 0)), was = _MainTex.Load(Texel(p, 1));
+                        [branch] if (Snapped) { s.xyz = Carried(s.xyz, m, side); was.xyz = Carried(was.xyz, m, side); }
                         bool rest = Fresh(s, was, home);
                         if (half_ == 1) return float4(rest ? home : s.xyz, h);
                         if (rest) return float4(home, 0);
@@ -4049,6 +4076,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (!predicted && half_ == 1)
                     {
                         float4 s = _MainTex.Load(Texel(p, 0));
+                        [branch] if (Snapped && _Pass < 0.5) s.xyz = Carried(s.xyz, m, side);
                         return float4(Fresh(s, here, home) ? home : s.xyz, h);
                     }
                 }
