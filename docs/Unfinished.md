@@ -3344,12 +3344,12 @@ README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
     Poiyomi and Poiyomi Toon, 134-202 s on Poiyomi Pro, against about 10 s for the squash alone.
     Locked Poiyomi gives every material its own shader, so six first conversions took 6 min 38 s to
     79 min start to finish (middle 30 min; the 79 was 30 Poiyomi Pro shaders). Versions of an avatar
-    already converted took 35 s to 3 min, reusing every shader. **On a 14-material Poiyomi Pro
-    avatar one clothing layer's shader timed out** (Base, Add and ShadowCaster vertex programs) **and the guard
-    missed it**: the first part's pass checked it with `ShaderHasError`, put the material on it and
-    reported "14 of 14 squash materials read it"; only the second part's pass saw the error, and its
-    "left as they were" kept the material on the timed-out shader (the output .mat's guid is that
-    shader's). Unity draws a timed-out shader as garbage; whether upload's own compile gets through
+    already converted took 35 s to 3 min, reusing every shader. **On both Poiyomi Pro avatars the
+    run reached, one clothing layer's shader timed out** (Base, Add and ShadowCaster vertex programs)
+    **and the guard missed it**: the first part's pass checked it with `ShaderHasError`, put the
+    material on it and reported every squash material reading it ("14 of 14", "35 of 35"); only the
+    second part's pass saw the error, and its "left as they were" kept the material on the timed-out
+    shader (each output .mat's guid is its timed-out shader's). Unity draws a timed-out shader as garbage; whether upload's own compile gets through
     is untried. Likely why, unproven: the check sees the default variant the import compiled
     (`YapsShaderPatcher.Broken` says as much), while the material's own keyword variants compile
     later, on use, and those are the ones that timed out.
