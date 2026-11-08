@@ -472,6 +472,9 @@ what this avatar does** on, the report names:
   Usually a toggle that does nothing on screen.
 - **an animator state that can never play**: nothing leads to it, and it is the only place anything
   animates what it animates.
+- **an animator state that puts the body in the bicycle pose**: it has no motion and Write Defaults
+  off, and while it plays Unity drops the whole body into the bicycle pose. Usually a toggle whose
+  clip went missing. A state with no motion and Write Defaults on is listed too, as a lesser hole.
 - **things more than one layer animates**, with each layer's strength and states, and whether the
   top one always wins or it depends on the states they are in. Informational: many avatars share
   bindings on purpose.
@@ -2020,7 +2023,7 @@ without it a PhysBone is a missing script with nothing to read.
 | card | does |
 |---|---|
 | **Check before upload** | Reads only. Runs the CCK's own upload rules first, so it names what its Upload button will refuse and anything the upload would drop (see [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something)). Then names the components ChilloutVR deletes on load and, with the add-on, materials that lost their YAPS shader; tallies the 3200-bit sync budget, lists parameters used but never declared and declared but never read, menu entries whose type disagrees with the animator's, shaders that draw into one eye, bone cloth with no root bones |
-| **What this avatar does** | Reads only. Reads the animator, the menu and the components into one model and names what the avatar can and cannot do: features its author built and never wired to anything, toggles a layer above always overrides (so switching them changes nothing), animator states nothing can ever reach, menu controls nothing reads, parameters that lost their driver in the conversion, and objects that could come off as ChilloutVR props. It answers by reading rather than by flipping switches, so a toggle a preset overrides is never mistaken for a dead one |
+| **What this avatar does** | Reads only. Reads the animator, the menu and the components into one model and names what the avatar can and cannot do: features its author built and never wired to anything, toggles a layer above always overrides (so switching them changes nothing), animator states nothing can ever reach, animator states with no motion (with Write Defaults off, one of those puts the body in the bicycle pose), menu controls nothing reads, parameters that lost their driver in the conversion, and objects that could come off as ChilloutVR props. It answers by reading rather than by flipping switches, so a toggle a preset overrides is never mistaken for a dead one |
 | **What this avatar costs** | **Weigh it** reads only: texture memory against the surface each map actually covers, so a 2K texture on a fingernail is named as one and told what size it should be. Also contacts against the 512 overlapping pairs ChilloutVR gives the whole instance, triangles, cloth simulating N transforms (a mesh cloth counted apart, as the most vertices it can simulate before its reduction merges near ones), blendshapes nothing animates, materials each carrying their own locked shader copy, pointers by family, and sets of materials that could share one texture. **Fix it** then acts. Every map whose detail cannot reach the eye drops a size, and a PNG or JPG of the Default texture type changes format where its pixels allow: uncompressed gets compressed, and a linear mask holding one channel three times, or an alpha channel that is white everywhere, drops to a format half the size (other file types and crunched textures keep their format): import settings only, so no texture file is edited, and **Put the textures back** restores every original, a conversion's own resize included, even after Unity restarts. The card keeps its record in the same per-avatar output folder as the converter, a custom **Output folder** included. A texture a shader reads back exactly, point filtered with no mips, is left alone: those pixels are numbers rather than colour and compressing one rewrites them. Fix it also strips renderers switched off with nothing able to switch them on (no clip, no menu toggle, no Animator on a child object), unless you untick the card's **Also remove meshes nothing can show**. The component goes and the object stays, so anything parented to it keeps working, and Ctrl+Z puts it back |
 | **Free wins** | Removes only what is provably inert: layers with no states (a synced layer, which has none of its own, is kept), and parameters no clip writes, no transition reads, and no driver, menu control or contact names. Decided by reading the controller, never by flipping something and watching: an individual toggle that a preset overrides looks dead and is not. Parameters the game itself writes are kept and listed. Written to a copy of the controller; your original is not edited. The copy replaces the original everywhere the avatar wires it: the uploaded overrides, the Base Controller and the Animator. An override controller around it is copied too, so other avatars that share it keep the original. An avatar still running the CCK's own controller is left alone until it has its own |
 | **Stereo shaders** | Patches shaders without single-pass instanced support into copies that have it, and points the object's materials at them; see [Shaders that only draw into one eye](#shaders-that-only-draw-into-one-eye). Materials an animation swaps in are not followed here, because that would mean editing your clips; the converter does follow them, on its own copies |
@@ -2103,7 +2106,7 @@ Below the results, **What the report tells you** holds two ticks that only ever 
 | setting | default | what it does |
 |---|---|---|
 | **Say what this avatar costs (recommended)** | on | Adds texture memory, contacts, triangles and cloth to the report: the same measurement as the Toolkit's **What this avatar costs** card |
-| **Say what this avatar does (recommended)** | on | Adds unwired features, toggles a layer above always overrides, states that can never play and possible props to the report |
+| **Say what this avatar does (recommended)** | on | Adds unwired features, toggles a layer above always overrides, states that can never play or that put the body in the bicycle pose, and possible props to the report |
 
 ### Physics: which solver, and how the chains feel
 
@@ -2488,6 +2491,12 @@ fights locomotion for the body. Layers that animate the body on purpose are left
 those merged from VRChat's Base playable layer: above ChilloutVR's locomotion they could only
 replace it, never add to it, so they are masked too and the report names them. FX layers are
 masked whatever their animations hold, as [the next section](#the-avatar-holds-one-pose-all-the-time-or-lies-in-the-floor) explains.
+
+An animator state with no motion and Write Defaults off does it too, whoever made the controller:
+while it plays, the whole body drops into the bicycle pose. The report and the Toolkit's **What this
+avatar does** name each one as an *animator state that puts the body in the bicycle pose*. Give it
+the clip it should play; it is usually a toggle whose clip went missing. YAPS menu toggles written
+into an avatar with a separate base controller could come out like this, which is fixed.
 
 ### The avatar holds one pose all the time, or lies in the floor
 

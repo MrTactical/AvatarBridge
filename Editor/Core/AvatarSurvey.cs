@@ -711,6 +711,25 @@ namespace AvatarBridge
                 Add(model, "empty layer", l.Name, "no states, so it can never do anything");
             }
 
+            // A state with no motion and Write Defaults off drops the whole body
+            // into the bicycle pose, every muscle at zero, while it plays. Seen on
+            // a toggle whose clips went missing; the same avatar stood fine on
+            // empty states with Write Defaults on.
+            foreach (var l in model.Layers.Where(l => l.Weight > 0f))
+            {
+                foreach (var st in l.Reached.Where(s => s.State.motion == null))
+                {
+                    if (st.State.writeDefaultValues)
+                        Add(model, "state with no motion", $"{l.Name}: {st.State.name}",
+                            "it plays nothing. Write Defaults is on, which left the body alone where this was " +
+                            "seen, but a motion that never arrived usually means a missing clip or a skipped build step");
+                    else
+                        Add(model, "state that bicycles the body", $"{l.Name}: {st.State.name}",
+                            "it has no motion and Write Defaults off, so while it plays Unity drops the whole body " +
+                            "into the bicycle pose. Give it the clip it should play, usually a toggle's clip that went missing");
+                }
+            }
+
             JudgeLayers(model);
         }
 
@@ -916,6 +935,7 @@ namespace AvatarBridge
             "unreachable feature", "control that does nothing", "control with no parameter",
             "stopped working when converted", "unused parameter", "empty layer",
             "hidden by a layer above", "state that can never play",
+            "state that bicycles the body", "state with no motion",
         };
 
         static bool WorthTelling(Finding f) => Actionable.Contains(f.Kind) && !Internal(f.Subject);
@@ -950,6 +970,10 @@ namespace AvatarBridge
                     return $"{BridgeElements.Count(count, "parameter", "parameters")} written and never read";
                 case "empty layer":
                     return $"{BridgeElements.Count(count, "layer", "layers")} with no states";
+                case "state that bicycles the body":
+                    return $"{BridgeElements.Count(count, "animator state", "animator states")} that put the body in the bicycle pose";
+                case "state with no motion":
+                    return $"{BridgeElements.Count(count, "animator state", "animator states")} with no motion";
                 default:
                     return $"{count} × {kind}";
             }
@@ -959,9 +983,10 @@ namespace AvatarBridge
         // in: something nobody can reach beats something merely untidy.
         static readonly string[] Order =
         {
+            "state that bicycles the body",
             "unreachable feature", "stopped working when converted", "control that does nothing",
             "control with no parameter", "hidden by a layer above", "state that can never play",
-            "contested binding", "neutralised by a setting",
+            "state with no motion", "contested binding", "neutralised by a setting",
             "unused parameter", "frozen parameter", "write-only parameter", "empty layer",
         };
 
@@ -1027,7 +1052,8 @@ namespace AvatarBridge
 
             foreach (var group in worth.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
             {
-                bool loud = group.Key == "unreachable feature"
+                bool loud = group.Key == "state that bicycles the body"
+                            || group.Key == "unreachable feature"
                             || group.Key == "hidden by a layer above"
                             || group.Key == "stopped working when converted"
                             || group.Key == "control that does nothing"

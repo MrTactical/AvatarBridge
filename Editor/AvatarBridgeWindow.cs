@@ -1076,7 +1076,7 @@ namespace AvatarBridge
                 "Adds texture memory, contacts, triangles and cloth to the report. Reads only.",
                 settings.weighAvatar, v => settings.weighAvatar = v));
             parent.Add(BridgeElements.Bind("Say what this avatar does (recommended)",
-                "Adds unwired features, toggles a layer above always overrides, states that can never play and possible props to the report. Reads only.",
+                "Adds unwired features, toggles a layer above always overrides, states that can never play or that put the body in the bicycle pose, and possible props to the report. Reads only.",
                 settings.surveyAvatar, v => settings.surveyAvatar = v));
         }
 

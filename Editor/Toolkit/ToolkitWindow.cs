@@ -355,7 +355,7 @@ namespace AvatarBridge
 
         BridgeElements.Card Survey() => Tool("What this avatar does", ReadsOnly,
             BridgeElements.Hint("Names features never wired up and toggles a layer above always overrides.",
-                "Also states that can never play, menu controls nothing reads, and objects that could be props."),
+                "Also states that can never play or that put the body in the bicycle pose, menu controls nothing reads, and objects that could be props."),
             "Survey it", () =>
             {
                 var report = new BridgeReport();
