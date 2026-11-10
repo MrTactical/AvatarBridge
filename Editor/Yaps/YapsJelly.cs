@@ -146,6 +146,8 @@ namespace AvatarBridge
             // Solid: the homes take 0.7 of the whole's own squash at constant volume, so a squeeze
             // bulges it the other ways and it comes back when let go.
             mat.SetFloat("_Solid", 0.7f * (s != null ? s.volumeKept : 1f));
+            // Squeeze: other players' palms flatten the whole at constant volume (Squeezed in the step).
+            mat.SetFloat("_Squeeze", 0.6f);
             // A part alone has no partner to meet.
             mat.SetFloat("_Pair", (s == null || s.meet) && mat.GetFloat("_Regions") > 1.5f ? 1f : 0f);
             // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.
@@ -2036,6 +2038,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _JellyArrays (""A component a region: 0 leaves the player arrays' hands out, its probes alone"", Vector) = (1, 1, 1, 1)
         _Floor (""A board under the tissue on its anchor: x 1 for one, y its height there in metres"", Vector) = (0, 0, 0, 0)
         _Solid (""Share of the whole's own squash its homes take at constant volume, so squeezed it bulges where nothing holds it; 0 none"", Range(0, 0.95)) = 0
+        _Squeeze (""Share of other players' palms' reach into the whole it flattens along their line at constant volume; 0 none"", Range(0, 1)) = 0
     }
     SubShader
     {
@@ -2062,7 +2065,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""JellyCommon.cginc""
 
             float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
-            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Taut, _JellyTwitch;
+            float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Squeeze, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
             float _Landing;
             // The frame's time, for how fast the homes move.
@@ -3056,10 +3059,49 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // kept sinking while held. Weighted _Solid / (1 + _Solid), the homes end near _Solid of what
             // the hands do: about 0.9 of it at 0.7, as the homes' squash ramps in with depth and the fit
             // sees part of it.
-            float4 Bulk(int k, float4x4 m, bool distant, uint side)
+            // Other players' palms squeezing the whole flatten it along their line at constant volume,
+            // so it grows up and forward. Fitted from the particles alone, a hard squeeze read as a
+            // hand-shaped hole that averaged to almost no squash, and the skin closed round the
+            // hands. Worked out fresh from where the hands are each frame, so nothing builds up;
+            // half at most. The finger is left out, so a poke still dents rather than flattens.
+            float3x3 Squeezed(float4x4 m, float scale, uint side)
+            {
+                float3x3 id = float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+                if (!(_Squeeze > 0) || !(_MainTex.Load(int3(1, side, 0)).w > 0.5)) return id;
+                float radius = _MassRadius * scale;
+                float3 rest = mul(m, float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1)).xyz, at = Into(m, rest);
+                float3x3 s = 0;
+                [loop] for (int e = 0; e < 8; e++)
+                {
+                    float4 a = _MainTex.Load(int3(2 * e, side, 0)), b = _MainTex.Load(int3(2 * e + 1, side, 0));
+                    if (!(b.w > 0.5)) continue;
+                    if (_MainTex.Load(int3(112 + e, side, 0)).w > 0) continue;
+                    float3 ua = a.xyz, ub = b.xyz;
+                    Unheld(ua, ub, a.w, true, floor((b.w - 10) / 10) / 1000, m, scale);
+                    a.xyz = ua;
+                    b.xyz = ub;
+                    float3 pb, fa, fb;
+                    float rf;
+                    Hand(a, b, pb, fa, fb, rf);
+                    float3 leaned = Lean(rest, a.xyz, pb, a.w, radius, 1);
+                    float l = length(leaned);
+                    if (!(l > 1e-6)) continue;
+                    float3 n = normalize(Into(m, rest + leaned) - at);
+                    s += l / (2 * radius) * float3x3(n.x * n, n.y * n, n.z * n);
+                }
+                float t = _Squeeze * (s[0][0] + s[1][1] + s[2][2]);
+                if (!(t > 1e-6)) return id;
+                float3x3 h = id - s * (_Squeeze * min(1, 0.5 / t));
+                float v = determinant(h);
+                return v > 0.1 ? h * pow(v, -1.0 / 3.0) : id;
+            }
+
+            float4 Bulk(int k, float4x4 m, float scale, bool distant, uint side)
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
                 if (distant) return none;
+                float3x3 hands = Squeezed(m, scale, side);
+                float4 squeezed = float4(transpose(hands)[k], 1);
                 // Snapped, the particles still lie where the jump left them: last frame's squash kept.
                 if (Snapped) return _MainTex.Load(int3(32 + k, side, 0));
                 int3 n = Count();
@@ -3076,7 +3118,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
                     float3 q = Rest(l), p = Into(m, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
-                        + q - Into(m, HomeOn(l, m, tip, swings, float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1), hung, unused));
+                        + q - Into(m, HomeOn(l, m, tip, swings, hands, hung, unused));
                     pc += p;
                     qc += q;
                     qq += q * q;
@@ -3089,7 +3131,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 qc /= max(taken, 1);
                 // Over a box of rest places the rest's own spread is diagonal, an axis a column.
                 float3 spread = qq - taken * qc * qc;
-                if (!all(spread > 1e-12)) return none;
+                if (!all(spread > 1e-12)) return squeezed;
                 c0 = (c0 - taken * pc * qc.x) / spread.x;
                 c1 = (c1 - taken * pc * qc.y) / spread.y;
                 c2 = (c2 - taken * pc * qc.z) / spread.z;
@@ -3105,9 +3147,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3x3 a = mul(transpose(Turn(q)), transpose(float3x3(c0, c1, c2)));
                 a = 0.5 * (a + transpose(a));
                 float volume = determinant(a);
-                if (!(volume > 0.3 && volume < 3)) return none;
+                if (!(volume > 0.3 && volume < 3)) return squeezed;
                 float share = _Solid / (1 + _Solid);
-                float3x3 shape = (1 - share) * float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1) + share * a * pow(volume, -1.0 / 3.0);
+                float3x3 shape = mul(hands, (1 - share) * float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1) + share * a * pow(volume, -1.0 / 3.0));
                 return float4(transpose(shape)[k], volume);
             }
 
@@ -3906,7 +3948,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Scan(px.x, m, scale, side, felt, presses);
                         }
 #endif
-                        [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, distant, side);
+                        [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, scale, distant, side);
                         // How far the wearer's capsules in reach moved against the anchor since last frame,
                         // for the rest's count.
                         [branch] if (px.x == 37) return float4(Shifted(m, scale, side, false), 0, 0, 1);

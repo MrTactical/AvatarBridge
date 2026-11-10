@@ -85,6 +85,30 @@ float3 YapsJellyPress(float3 at, float3 a, float3 b, float r, float3 centre, flo
     return way * f;
 }
 
+// A palm in deep sinks the skin as a dish that widens the deeper it goes and the harder the skin
+// holds it back, and the dish's volume rises round it along the skin's normal. Following the
+// palm's outline drew a hand-shaped pocket, the skin closed round its sides under a hard squeeze.
+#define YAPS_JELLY_SPREAD 1.5   // dish half-width gained per metre of press
+#define YAPS_JELLY_WIDEST 4     // in hand radii
+#define YAPS_JELLY_BULGE 0.2    // ring height per metre of press
+float YapsJellyDish(float3 at, float3 a, float3 b, float r, float3 way, float hold, out float3 grad, out float rise, out float3 riseGrad)
+{
+    float3 seg = b - a;
+    float3 off = at - (a + seg * saturate(dot(at - a, seg) / max(dot(seg, seg), 1e-9)));
+    // How far the hand reaches past this skin's own level along the press: 0 where it has not
+    // reached, so nothing dents from a distance.
+    float along = dot(off, way), pen = max(r - along, 0);
+    float3 lat = off - way * along;
+    float l = length(lat), press = pen + hold;
+    float w = min(r + YAPS_JELLY_SPREAD * press, YAPS_JELLY_WIDEST * r), x = l / w, q = saturate(1 - x * x);
+    float3 dir = l > 1e-6 ? lat / l : 0;
+    grad = -4 * pen * x * q / w * dir;
+    float y = saturate(x - 1), h = min(YAPS_JELLY_BULGE * press, 0.3 * r), sy = sin(3.14159265 * y);
+    rise = h * sy * sy;
+    riseGrad = (y > 0 && y < 1 ? h * 3.14159265 * sin(6.2831853 * y) / w : 0) * dir;
+    return pen * q * q;
+}
+
 // Pushes that cover the same skin, joined: each one's size to the fourth summed, so where one acts
 // it stands, and where several overlap the deepest leads and the rest add a little. Summed outright,
 // the palm and finger at the knuckle, or a forearm and hand at the wrist, pushed skin past both.
@@ -218,6 +242,8 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         float4 mass = YapsJellyLoad(slot, int3(30, side, 0));
         float3 centre = mass.w > 0 ? mass.xyz : place.xyz + az * (0.5 * (n.z - 1) * spacing);
         YapsJellyPushes hands = (YapsJellyPushes) 0;
+        float lift = 0;
+        float3 liftGrad = 0;
         // Rolled, as the limbs' and the plug's lights' below: unrolled, the three cost a third of
         // the vertex program's compile. Cut short by Shader Filtering, the first hands still push.
         [loop] for (int e = 0; e < 8; e++)
@@ -229,8 +255,15 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
             float3 pb, fa, fb, way, grad;
             float rf;
             YapsJellyHand(a, b, pb, fa, fb, rf);
-            float f = YapsJellyPush(at, a.xyz, pb, a.w, centre, 1, way, grad);
+            // The palm as a dish (YapsJellyDish), the crater kept only where it reaches further in.
+            float f = YapsJellyPush(at, a.xyz, pb, a.w, centre, 0, way, grad);
+            float rise;
+            float3 dg, rg;
+            float dish = YapsJellyDish(at, a.xyz, pb, a.w, way, floor((b.w - 10) / 10) / 1000, dg, rise, rg);
+            if (dish > f) { f = dish; grad = dg; }
             YapsJellyAdd(hands, f, way, grad);
+            lift += rise;
+            liftGrad += rg;
             if (rf > 0)
             {
                 f = YapsJellyPush(at, fa, fb, rf, centre, 1, way, grad);
@@ -238,6 +271,8 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
             }
         }
         move += YapsJellyJoined(hands, nw, bend);
+        move += nw * lift;
+        bend += liftGrad - nw * dot(liftGrad, nw);
     }
     // The wearer's own arms, hands and thighs, with no rim: an arm resting at the side would dent
     // it from a hand's width off.

@@ -4087,6 +4087,31 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
   two sliders. The window tooltip and the settings comment say the same.
 - Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
 
+### 34. A hard squeeze flattens the whole instead of the skin closing round the hands. Joe, 2026-11-10. DONE on dev, Joe to judge in game
+
+Joe: "squeeze the tits deeper without the skin going around the hands ... it can even go forward
+and push forward as well". Two hands squeezing from the outsides made a hand-shaped pocket.
+
+- **The cause, read and filmed.** The skin pushed each vertex by the full chord out of the palm's
+  capsule (`YapsJellyPush`), so the dent was the hand's exact outline with steep walls, and the
+  whole's own squash (`Bulk`) was fitted from particles already pocketed, so a deep squeeze
+  averaged to almost no flatten.
+- **Withdrawn: the pair keep binds.** A review said `_PairKeep` 0.85 stopped the whole about 30 mm
+  in. Filmed with it at 0.7, the swing limit at 0.4 and `_Solid` 0.95: squeeze frames near
+  identical to the baseline. Not built.
+- **The palm dents as a dish** (`YapsJellyDish`, yaps_jelly.cginc): half-width r + 1.5 x press, at
+  most 4 r, its volume raised as a ring along the skin's normal (0.2 x press, at most 0.3 r), up on
+  top and forward at the front. The finger, the wearer's own limbs and the plug keep the crater.
+- **The whole flattens along the palms' line** (`Squeezed`, `_Squeeze` 0.6, the step's first
+  pass): each other player's palm's overlap with the mass at its unheld depth, flattened at
+  constant volume, half at most, worked out fresh each frame, composed under the fitted squash and
+  taken by the homes, so the front and top grow and the chest wall stays. Joe on the three-row film
+  (now, dish, dish + flatten): "that looks right. Keep it like that for now".
+- Seat and thighs filmed on the new code, no shader errors; compile-check and check-defines pass.
+- **Open:** Joe in game, two players squeezing; the slaps, poke, one hand pushing and grabs changed
+  too (same palm path), judged only on film; the step's fresh fxc compile time not measured; the
+  jelly prop's check limits may be keyed to the old dent.
+
 ## Major Ideas
 
 The work Joe means to take on after 5.0.0.
