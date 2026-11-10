@@ -169,7 +169,28 @@ namespace AvatarBridge.Regression
             // upload made another prop on the account.
             if (string.IsNullOrEmpty(id)) id = PropId(old);
             if (old != null) Undo.DestroyObjectImmediate(old);
-            var prop = new GameObject("Jelly Prop");
+            var prop = Shell("Jelly Prop", id);
+            var made = (GameObject) PrefabUtility.InstantiatePrefab(prefab, prop.transform);
+            // At chest height above the floor it is placed on.
+            made.transform.localPosition = new Vector3(0f, 1.2f, 0f);
+            // Round the jelly and the cube.
+            var box = prop.GetComponent<BoxCollider>();
+            var span = (Vector3) (Lattice - Vector3Int.one) * SpacingOf(Lattice);
+            box.center = new Vector3(0f, 1.2f, 0.5f * span.z + 0.025f);
+            box.size = span + new Vector3(0.06f + 0.3f * (regions - 1), 0.06f, 0.11f);
+            Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
+            Selection.activeGameObject = prop;
+            Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable" + (string.IsNullOrEmpty(id) ? "" : $", keeping its content id {id}") + "; upload it from the CCK Control Panel");
+            return prop;
+        }
+
+        // A spawnable to grab, its content id kept when given. The pickup goes on the spawnable
+        // itself, which the client syncs as the prop's own place, and its collider on the same
+        // object, for the caller to size. With no rigidbody the client adds a kinematic one, so a
+        // jelly let go hangs where it was left.
+        internal static GameObject Shell(string name, string id)
+        {
+            var prop = new GameObject(name);
             prop.AddComponent<CVRSpawnable>();
             if (!string.IsNullOrEmpty(id))
             {
@@ -181,27 +202,13 @@ namespace AvatarBridge.Regression
                 }
                 info.objectId = id;
             }
-            var made = (GameObject) PrefabUtility.InstantiatePrefab(prefab, prop.transform);
-            // At chest height above the floor it is placed on.
-            made.transform.localPosition = new Vector3(0f, 1.2f, 0f);
-            // Grabbable. The pickup goes on the spawnable itself, which the client syncs as the
-            // prop's own place, and its collider on the same object, round the jelly and the cube.
-            // With no rigidbody the client adds a kinematic one, so a jelly let go hangs where it
-            // was left.
             prop.AddComponent<CVRPickupObject>();
-            var box = prop.AddComponent<BoxCollider>();
-            var span = (Vector3) (Lattice - Vector3Int.one) * SpacingOf(Lattice);
-            box.center = new Vector3(0f, 1.2f, 0.5f * span.z + 0.025f);
-            box.size = span + new Vector3(0.06f + 0.3f * (regions - 1), 0.06f, 0.11f);
             // A trigger, so it still takes the grab but never pushes a player away.
-            box.isTrigger = true;
-            Undo.RegisterCreatedObjectUndo(prop, "Make the jelly prop");
-            Selection.activeGameObject = prop;
-            Debug.Log("[Jelly] made Jelly Prop in the open scene, grabbable" + (string.IsNullOrEmpty(id) ? "" : $", keeping its content id {id}") + "; upload it from the CCK Control Panel");
+            prop.AddComponent<BoxCollider>().isTrigger = true;
             return prop;
         }
 
-        static string PropId(GameObject prop)
+        internal static string PropId(GameObject prop)
         {
             var info = prop != null ? prop.GetComponent<CVRAssetInfo>() : null;
             return info != null ? info.objectId : null;
@@ -238,20 +245,68 @@ namespace AvatarBridge.Regression
             SessionState.SetBool(K + "prop", true);
             try
             {
-                // The last build's content id, from its own scene: a new scene has no old prop to keep it from.
-                string path = Folder + "/Jelly_Prop.unity", id = null;
-                if (File.Exists(path))
-                {
-                    EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
-                    id = PropId(GameObject.Find("Jelly Prop"));
-                }
-                var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
-                bool made = MakeProbeProp(world: true, id: id) != null;
-                EditorSceneManager.SaveScene(scene, path);
+                bool made = InScene(Folder + "/Jelly_Prop.unity", "Jelly Prop", id => MakeProbeProp(world: true, id: id));
                 Debug.Log(made ? $"[Jelly] made the world prop in {Folder}/Jelly_Prop.unity" : "[Jelly] FAIL the world prop did not build");
             }
             finally { SessionState.SetBool(K + "prop", false); }
             EditorApplication.Exit(0);
+        }
+
+        // A prop built into a fresh scene saved at path, whatever it built.
+        internal static bool InScene(string path, string name, Func<string, GameObject> build)
+        {
+            // The last build's content id, from its own scene: a new scene has no old prop to keep it from.
+            string id = null;
+            if (File.Exists(path))
+            {
+                EditorSceneManager.OpenScene(path, OpenSceneMode.Single);
+                id = PropId(GameObject.Find(name));
+            }
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
+            bool made = build(id) != null;
+            EditorSceneManager.SaveScene(scene, path);
+            return made;
+        }
+
+        // The holder's trigger, the prop's own synced value, moves twitch through the prop's animator,
+        // its clips and controller in folder. The animator, for the caller to give more parameters.
+        internal static Animator Twitched(GameObject prop, Transform twitch, string folder)
+        {
+            string path = AnimationUtility.CalculateTransformPath(twitch, prop.transform);
+            AnimationClip Kick(string file, float y)
+            {
+                var clip = YapsJelly.Save(new AnimationClip(), folder + file);
+                clip.ClearCurves();
+                clip.SetCurve(path, typeof(Transform), "m_LocalPosition.y", AnimationCurve.Constant(0f, 0f, y));
+                EditorUtility.SetDirty(clip);
+                return clip;
+            }
+            var still = Kick("/Jelly_Twitch_Rest.anim", 0f);
+            var kicked = Kick("/Jelly_Twitch_Up.anim", PropTwitch);
+            // Kept once made, so a prop already in a scene keeps pointing at it.
+            var controller = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(folder + "/Jelly_Prop.controller");
+            if (controller == null)
+            {
+                controller = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(folder + "/Jelly_Prop.controller");
+                controller.AddParameter("Twitch", AnimatorControllerParameterType.Float);
+                controller.CreateBlendTreeInController("Twitch", out var tree);
+                tree.blendParameter = "Twitch";
+                tree.AddChild(still, 0f);
+                tree.AddChild(kicked, 1f);
+            }
+            var animator = prop.AddComponent<Animator>();
+            animator.runtimeAnimatorController = controller;
+            var spawnable = prop.GetComponent<CVRSpawnable>();
+            spawnable.useAdditionalValues = true;
+            spawnable.syncValues.Add(new CVRSpawnableValue
+            {
+                name = "Twitch",
+                updatedBy = CVRSpawnableValue.UpdatedBy.OwnerCurrentTrigger,
+                updateMethod = CVRSpawnableValue.UpdateMethod.Override,
+                animator = animator,
+                animatorParameterName = "Twitch",
+            });
+            return animator;
         }
 
         static GameObject MakeProbeProp(bool world = false, string id = null)
@@ -351,40 +406,8 @@ namespace AvatarBridge.Regression
                 mat.SetFloat("_GripSlip", 0.02f);
                 EditorUtility.SetDirty(mat);
             }
-            string path = AnimationUtility.CalculateTransformPath(twitch, prop.transform);
-            AnimationClip Kick(string file, float y)
-            {
-                var clip = Save(new AnimationClip(), file);
-                clip.ClearCurves();
-                clip.SetCurve(path, typeof(Transform), "m_LocalPosition.y", AnimationCurve.Constant(0f, 0f, y));
-                EditorUtility.SetDirty(clip);
-                return clip;
-            }
-            var still = Kick("/Jelly_Twitch_Rest.anim", 0f);
-            var kicked = Kick("/Jelly_Twitch_Up.anim", PropTwitch);
-            // Kept once made, so a prop already in a scene keeps pointing at it.
-            var controller = AssetDatabase.LoadAssetAtPath<UnityEditor.Animations.AnimatorController>(Folder + "/Jelly_Prop.controller");
-            if (controller == null)
-            {
-                controller = UnityEditor.Animations.AnimatorController.CreateAnimatorControllerAtPath(Folder + "/Jelly_Prop.controller");
-                controller.AddParameter("Twitch", AnimatorControllerParameterType.Float);
-                controller.CreateBlendTreeInController("Twitch", out var tree);
-                tree.blendParameter = "Twitch";
-                tree.AddChild(still, 0f);
-                tree.AddChild(kicked, 1f);
-            }
-            var animator = prop.AddComponent<Animator>();
-            animator.runtimeAnimatorController = controller;
+            Twitched(prop, twitch, Folder);
             var spawnable = prop.GetComponent<CVRSpawnable>();
-            spawnable.useAdditionalValues = true;
-            spawnable.syncValues.Add(new CVRSpawnableValue
-            {
-                name = "Twitch",
-                updatedBy = CVRSpawnableValue.UpdatedBy.OwnerCurrentTrigger,
-                updateMethod = CVRSpawnableValue.UpdateMethod.Override,
-                animator = animator,
-                animatorParameterName = "Twitch",
-            });
             // On the world one, a pane of glass to grab and press into it, a pickup of its own synced
             // to everyone: a world solid, as a wall or a table is. 4 cm thick and 6 cm past the face
             // all round, as the check's wall: thinner, a quick push slipped past the probes' balls.
