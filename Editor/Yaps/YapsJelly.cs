@@ -33,7 +33,7 @@ namespace AvatarBridge
         // A build's choices, defaults as a user's build makes it.
         internal sealed class Options
         {
-            // Cells a part's lattice is cut into.
+            // The fewest cells a part's lattice is cut into; a big part takes more, to MostCells.
             public float cells = BreastCells;
             // The jelly's own mass swings each part and the pair's cloth goes off; else the cloth carries it.
             public bool mass;
@@ -223,6 +223,12 @@ namespace AvatarBridge
         // A pair's bones, cloth and colliders by the name the squash gives it.
         internal static Regex PartOf(string name) => new Regex(Regex.Escape(name), RegexOptions.IgnoreCase);
         internal const float BreastCells = 600f;
+        // A part's cells by its box's volume at about CellAim apart, so a big part keeps fine cells:
+        // at a fixed count a 41 cm box came out 4.6 cm a cell. Any box under about 4.8 litres stays at
+        // BreastCells, as before. Capped, since every particle is a texel stepped each frame.
+        internal const float CellAim = 0.02f, MostCells = 2400f;
+        // For measuring: either used in place of its constant when above 0.
+        internal static float CellAimOverride, MostCellsOverride;
         // A slap's ring as the draw spreads it: how much of the step's depth, speed (m/s),
         // wavelength (m), fade (s).
         internal static readonly Vector4 Slapped = new Vector4(1f, 1f, 0.1f, 0.4f);
@@ -239,7 +245,7 @@ namespace AvatarBridge
         // A lattice a breast, packed into one texture and one pair of passes: each swings on its root
         // as one piece and keeps off the other, two bodies. Each fitted to the skin the squash gives
         // that breast at least half of, a centimetre of room round it, its back face half a
-        // centimetre into the chest wall; both the larger's size, about BreastCells cells each, as
+        // centimetre into the chest wall; both the larger's size, cut by its volume (BreastCells to MostCells cells each), as
         // near cubes as the box allows. The body's squash materials gain the Jelly role, which moves
         // each vertex by the squash's own share of each breast, and the squash leaves the pair to it.
         // The cloth or dynamic bones swinging the pair are switched off, or they and the lattice
@@ -429,7 +435,9 @@ namespace AvatarBridge
             }
             var size = his[0] - los[0];
             for (int side = 1; side < sides; side++) size = Vector3.Max(size, his[side] - los[side]);
-            float cells = o.cells;
+            float aim = CellAimOverride > 0f ? CellAimOverride : CellAim;
+            float cap = Mathf.Max(MostCellsOverride > 0f ? MostCellsOverride : MostCells, o.cells);
+            float cells = Mathf.Clamp(size.x * size.y * size.z / (aim * aim * aim), o.cells, cap);
             float cell = Mathf.Pow(size.x * size.y * size.z / cells, 1f / 3f);
             // Each breast's volume, blend shapes as set: from the plane of its base ring, where its own
             // skin ends on the body, out to its frontmost skin, over a grid of a hundredth of the box.

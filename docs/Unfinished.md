@@ -4112,6 +4112,25 @@ and push forward as well". Two hands squeezing from the outsides made a hand-sha
   too (same palm path), judged only on film; the step's fresh fxc compile time not measured; the
   jelly prop's check limits may be keyed to the old dent.
 
+### 35. A big part's lattice was coarse. Joe, 2026-11-10: "dynamically ... based on the volume". DONE on dev
+
+Every part took 600 cells whatever its size, so a 10 litre breast got 4.6 cm cells and blocky
+dents. The lattice now aims at 2 cm cells (`CellAim`), from 600 (every part that got 600 still
+gets the same lattice) up to `MostCells` 2400. Priced with `JellyCostProbe -costCells` on Kar's
+breasts and seat together, ms a frame:
+
+| Cap | RTX 4080 | Ryzen iGPU |
+|---|---|---|
+| 600 (before) | 0.044 | 0.21 |
+| 2400 | 0.046 | 0.41 |
+| 8600 (full 2 cm) | 0.052 | 0.99 |
+
+2400 picked: free on the 4080, double on the iGPU; the full 2 cm costs about a millisecond an
+avatar there. Kar's breasts went 10x10x10 at 4.6 cm to 15x14x15 at 3.0 cm, seat 11x10x9 to
+16x15x13. Kar filmed on every breasts shot, no instability; Joe to judge in game.
+- **Open:** the step's fixed iterations spread a press fewer metres a frame on a finer lattice,
+  so a big part may feel softer or settle slower than tuned. Watch for it in game.
+
 ## Major Ideas
 
 The work Joe means to take on after 5.0.0.
