@@ -4067,6 +4067,26 @@ this names the avatars.
   Measuring it takes the stereo copies and `Library/AvatarBridge` cleared, then one run, which needs
   Joe's order.
 
+### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable
+
+ChilloutVR's Game Server 2 nightly (2026.3.0-nightly, build 26554805) adds universal avatar scaling,
+20 cm to 5 m, for every avatar. Decompiled the same day (`PlayerSetup.ApplyAvatarScale`): the client
+watches the avatar root's localScale each frame, and a change it did not make itself, outside the
+first second after a load, switches it to legacy mode and universal scaling steps aside until the
+user touches its slider again. Bone scale never trips it.
+
+What that means for the bundled scaler (`addAvatarScaler`, on by default, `BridgeSettings.cs`):
+- It defaults to exactly 1x, so wearing a converted avatar leaves universal scaling on.
+- Moving its Height slider hands control to it; touching the universal slider hands it back. The
+  two never break each other, but a converted avatar has two height controls that silently take
+  turns, and ours covers less (0.25x to 4x).
+
+To do when GS2 reaches stable, not before (stable has no universal scaling yet):
+- Default `addAvatarScaler` to false; keep it as an option for avatars that want an avatar-side slider.
+- README: the options table default, the scaler's section, and a line on the hand-over between the
+  two sliders. The window tooltip and the settings comment say the same.
+- Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
+
 ## Major Ideas
 
 The work Joe means to take on after 5.0.0.
