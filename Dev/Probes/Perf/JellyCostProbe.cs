@@ -53,6 +53,9 @@ namespace AvatarBridge.Regression
         {
             try
             {
+                // -costCells <n>: the most cells a part's lattice may take, to price finer lattices.
+                if (float.TryParse(Arg("-costCells"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var most))
+                    YapsJelly.MostCellsOverride = most;
                 var scene = EditorSceneManager.OpenScene(Arg("-costScene"), OpenSceneMode.Single);
                 // Other avatars and props wearing the tissue share its step materials in the editor.
                 foreach (var other in Object.FindObjectsOfType<Animator>()) other.gameObject.SetActive(false);

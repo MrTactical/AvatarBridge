@@ -78,6 +78,10 @@
 // -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
 // each cloth's colliders; -spNoColliders <prefixes> takes colliders so named out of them first.
 // -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
+// -spProp with -spVideo films a prop wearing the squash and the live tissue on its pair, the
+// scene's CVRSpawnable in place of an avatar: the prop shaken and hopped, slaps, a deep poke,
+// squeezes slow and fast, a grab, both lifted and dropped, a hand between them. Front, three
+// quarter and side, three point lit on grey; every aim, depth and frame measured on the pair's own skin.
 // -spEach adds a front shot per renderer, each drawn alone, at every shot.
 // -spRaw switches the squash off on copies of its materials, for skinning alone.
 // -spGrabTimes N pushes N times a frame with -spGrab, as mouse drag events can come.
@@ -162,8 +166,9 @@ namespace AvatarBridge.Regression
             SessionState.SetInt(K + "dragPair", Arg("-spDragPair") == "1" ? 2 : 0);
             if (Environment.GetCommandLineArgs().Contains("-spJump")) WriteJumpShaders();
             var scene = EditorSceneManager.OpenScene(Arg("-spScene"), OpenSceneMode.Single);
+            // A prop carries an Animator of its own and no CVRAvatar: it is what is filmed.
             foreach (var r in scene.GetRootGameObjects())
-                if (r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
+                if (!Prop && r.GetComponentInChildren<CVRAvatar>(true) == null && r.GetComponentInChildren<Animator>(true) != null) r.SetActive(false);
             // -spPrefab: the avatar as last converted, in place of the scene's copy, which keeps
             // whatever conversion was in the scene when it was saved. Never saved.
             if (Arg("-spPrefab") is string prefabPath && !prefabPath.StartsWith("-"))
@@ -335,7 +340,9 @@ namespace AvatarBridge.Regression
             outDir = SessionState.GetString(K + "out", "");
             Directory.CreateDirectory(outDir);
             var providers = UnityEngine.Object.FindObjectsOfType<CVRMaterialDataProvider>();
-            provider = providers.First(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld);
+            // The squash's own: the live tissue's anchors are written the same way.
+            provider = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld)
+                .OrderBy(p => p.shaderPropertyName == "_YAPS_SquashFollow" ? 0 : 1).First();
             // -spRaw: the squash off, to tell what skinning alone does from what the squash adds. On
             // copies: switched off on the assets, the batch editor saved them on exit and the squash
             // stayed off in the project.
@@ -355,7 +362,7 @@ namespace AvatarBridge.Regression
                     }).ToArray();
             }
             skin = providers.Where(p => p.dataMode == CVRMaterialDataProvider.DataMode.SkinnedMeshRendererPreviousVertexBuffer).Select(p => p.smr).FirstOrDefault();
-            animator = provider.GetComponentInParent<CVRAvatar>().GetComponent<Animator>();
+            animator = Prop ? provider.GetComponentInParent<CVRSpawnable>().GetComponent<Animator>() : provider.GetComponentInParent<CVRAvatar>().GetComponent<Animator>();
             rows = new List<string> { "frame\tpart\toff_rest_cm\tpush_cm\tprovider_writes\tend_of_frame_off_rest_cm\tskin_off_rest_cm\tskin_vs_last_end_cm\tskin_worst_slot_vs_last_end_cm" };
             Time.captureFramerate = Fps;
             frame = 0;
@@ -385,7 +392,15 @@ namespace AvatarBridge.Regression
             var mats = provider.materials;
             Log(slots, mats[0]);
 
-            if (frame == Off)
+            if (frame == Off && Prop)
+            {
+                // No arm to bend: the first part's front, the prop's own forward out of its board.
+                animator.enabled = false;
+                facing = animator.transform.forward;
+                float reach = mats[0].GetVector("_YAPS_SquashReach")[0] * Unit(slots[0]);
+                target = slots[0].position + facing * reach * 0.6f + Vector3.ProjectOnPlane(slots[0].position - slots[1].position, Vector3.up).normalized * reach * 0.2f;
+            }
+            else if (frame == Off)
             {
                 animator.enabled = false;
                 // The arm on the side of the part nearest the left hand.
@@ -639,7 +654,7 @@ namespace AvatarBridge.Regression
         const float Tall = 1.7f;
         // The glass pane shot's world solid, made the first frame it is posed.
         static GameObject pane;
-        struct Shot { public string name; public int frames; public Action<float, float> pose; public Vector3 at; public float width; public bool profile; }
+        struct Shot { public string name; public int frames; public Action<float, float> pose; public Vector3 at; public float width; public bool profile; public Vector3[] travel; }
         static List<Shot> film;
         static List<string> segments;
         static Camera[] views;
@@ -675,6 +690,13 @@ namespace AvatarBridge.Regression
                 foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", pulseWas);
                 if (knobs != null) { knobs.stretchInMotion = stretchWas; YapsSquash.Apply(animator.transform); }
                 animator.transform.position = standing;
+                if (Prop)
+                {
+                    QualitySettings.pixelLightCount = qualityWas.lights;
+                    QualitySettings.shadows = qualityWas.shadows;
+                    QualitySettings.shadowResolution = qualityWas.resolution;
+                    QualitySettings.shadowDistance = qualityWas.distance;
+                }
                 File.WriteAllLines(Path.Combine(outDir, "push.tsv"), rows);
                 AssetDatabase.SaveAssets();
                 SessionState.SetInt(K + "on", 0);
@@ -688,13 +710,19 @@ namespace AvatarBridge.Regression
                 // The views named after it: a seat is never filmed straight behind or from above,
                 // where a tail or the back hides it.
                 bool back = Vector3.Dot(facing, animator.transform.forward) < 0f;
-                segments.Add($"{filmed}\t{shot.name}\t{(shot.profile ? "side on" : back ? "behind, right" : "front")}\t{(back ? "behind, left" : "three quarter")}\t{(back ? "low, right" : "from above")}");
+                segments.Add(Prop ? $"{filmed}\t{shot.name}\tfront\tthree quarter\tside"
+                    : $"{filmed}\t{shot.name}\t{(shot.profile ? "side on" : back ? "behind, right" : "front")}\t{(back ? "behind, left" : "three quarter")}\t{(back ? "low, right" : "from above")}");
                 float away = shot.width / 2f / Mathf.Tan(15f * Mathf.Deg2Rad);
                 var root = animator.transform;
-                var from = back
+                // A little above each, the three quarter and side from the first part's outer side.
+                var from = Prop
+                    ? new[] { (facing + 0.15f * root.up).normalized, (facing + outside + 0.25f * root.up).normalized, (outside + 0.3f * facing + 0.2f * root.up).normalized }
+                    : back
                     ? new[] { shot.profile ? outside : (facing + 0.7f * root.right).normalized, (facing - root.right).normalized, (facing + root.right - 0.5f * root.up).normalized }
                     : new[] { shot.profile ? outside : facing, (facing - root.right).normalized, (facing * 0.75f + root.up * 0.66f).normalized };
-                for (int v = 0; v < 3; v++) { views[v].transform.position = shot.at + from[v] * away; views[v].transform.LookAt(shot.at); }
+                for (int v = 0; v < 3; v++)
+                    if (Prop) Frame(views[v], from[v], root.up, shot.travel);
+                    else { views[v].transform.position = shot.at + from[v] * away; views[v].transform.LookAt(shot.at); }
             }
             float u = (frame - shotStart) / (float)shot.frames;
             float s = u < 0.35f ? Mathf.SmoothStep(0f, 1f, u / 0.35f) : u < 0.65f ? 1f : Mathf.SmoothStep(1f, 0f, (u - 0.65f) / 0.35f);
@@ -722,6 +750,23 @@ namespace AvatarBridge.Regression
             File.WriteAllBytes(Path.Combine(outDir, "frames", $"f_{filmed++:00000}.jpg"), sheet.EncodeToJPG(92));
         }
 
+        static Vector3[] pairSkin;
+        static (int lights, ShadowQuality shadows, ShadowResolution resolution, float distance) qualityWas;
+
+        // A view along `dir` holding the pair at about 70% of the frame's height, each vertex at its own
+        // distance so the near tips are not cut off; `moved` adds the pair again where a shot carries it.
+        static void Frame(Camera cam, Vector3 dir, Vector3 up, Vector3[] moved)
+        {
+            var pts = pairSkin.Concat((moved ?? new Vector3[0]).SelectMany(m => pairSkin.Select(q => q + m))).ToArray();
+            var rot = Quaternion.LookRotation(-dir, up);
+            Vector3 x = rot * Vector3.right, y = rot * Vector3.up;
+            Vector3 Mid(Vector3 a) => a * (0.5f * (pts.Min(p => Vector3.Dot(p, a)) + pts.Max(p => Vector3.Dot(p, a))));
+            var c = Mid(x) + Mid(y) + Mid(dir);
+            float tan = Mathf.Tan(0.5f * cam.fieldOfView * Mathf.Deg2Rad);
+            float d = pts.Max(p => Vector3.Dot(p - c, dir) + Mathf.Max(Mathf.Abs(Vector3.Dot(p - c, y)) / (0.7f * tan), Mathf.Abs(Vector3.Dot(p - c, x)) / (0.9f * tan)));
+            cam.transform.SetPositionAndRotation(c + dir * d, rot);
+        }
+
         static void StartFilm(Transform[] slots, Material[] mats)
         {
             Directory.CreateDirectory(Path.Combine(outDir, "frames"));
@@ -745,19 +790,40 @@ namespace AvatarBridge.Regression
                 cam.nearClipPlane = 0.01f;
                 cam.fieldOfView = 30f;
                 cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = new Color(0.2f, 0.2f, 0.25f);
-                cam.targetTexture = new RenderTexture(640, 640, 24);
+                cam.backgroundColor = Prop ? new Color(0.36f, 0.37f, 0.39f) : new Color(0.2f, 0.2f, 0.25f);
+                cam.targetTexture = new RenderTexture(640, 640, 24) { antiAliasing = Prop ? 4 : 1 };
                 return cam;
             }).ToArray();
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            // The latex reads black under one light: a key from either front side as well.
-            RenderSettings.ambientLight = new Color(1f, 1f, 1f);
-            foreach (var (from, power) in new[] { (f - root.right, 1f), (f + root.right, 0.7f) })
+            // The latex reads black under one light: a key from either front side as well. Bare skin
+            // washes out under that, so a prop gets a soft key, a faint fill and a rim from behind.
+            // A low ambient for the prop, so the key's shading carries the curves.
+            RenderSettings.ambientLight = Prop ? new Color(0.16f, 0.16f, 0.18f) : new Color(1f, 1f, 1f);
+            // The new scene's default sun would light over them.
+            if (Prop) foreach (var sceneLight in UnityEngine.Object.FindObjectsOfType<Light>()) sceneLight.enabled = false;
+            if (Prop)
+            {
+                // A batch editor's quality level can fold every light but the brightest into the
+                // ambient and switch shadows off. Batch saves QualitySettings on exit, so the film
+                // puts them back when it ends.
+                qualityWas = (QualitySettings.pixelLightCount, QualitySettings.shadows, QualitySettings.shadowResolution, QualitySettings.shadowDistance);
+                QualitySettings.pixelLightCount = 4;
+                QualitySettings.shadows = ShadowQuality.All;
+                QualitySettings.shadowResolution = ShadowResolution.VeryHigh;
+                QualitySettings.shadowDistance = 6f;
+            }
+            // Three point for the prop: a key high on one front side with soft shadows, a faint low fill
+            // from the other, a rim grazing the tops from behind and above.
+            var lights = Prop ? new[] { (f - 0.8f * root.right + up, 1f), (f + root.right + 0.1f * up, 0.3f), (-0.3f * f + 1.2f * up + 0.8f * root.right, 0.75f) }
+                : new[] { (f - root.right, 1f), (f + root.right, 0.7f) };
+            foreach (var (from, power) in lights)
             {
                 var fill = new GameObject("SquashPlay fill").AddComponent<Light>();
                 fill.type = LightType.Directional;
                 fill.intensity = power;
-                fill.transform.rotation = Quaternion.LookRotation(-from + Vector3.down * 0.4f);
+                if (Prop) fill.renderMode = LightRenderMode.ForcePixel;
+                if (Prop && power > 0.8f) { fill.shadows = LightShadows.Soft; fill.shadowStrength = 0.85f; }
+                fill.transform.rotation = Quaternion.LookRotation(Prop ? -from : -from + Vector3.down * 0.4f);
             }
             // The camera renders HDR under four lights, so the faint one is dimmed as well.
             glass = new[] { new Color(0.15f, 0.27f, 0.35f, 0.12f), new Color(0.45f, 0.8f, 1f, 0.3f) }
@@ -1023,6 +1089,95 @@ namespace AvatarBridge.Regression
                     new Shot { name = "A leg lifted back", frames = 300, at = mid + f * 0.05f - up * 0.1f, width = 1.2f, profile = true, pose = (s, u) => Raise(35f * s, 0f, false) },
                     new Shot { name = "A leg lifted forward", frames = 300, at = mid + f * 0.05f - up * 0.1f, width = 1.2f, profile = true, pose = (s, u) => Raise(-70f * s, 0f, true) },
                     new Shot { name = "Both legs up, as squatting", frames = 300, at = mid + f * 0.05f - up * 0.1f, width = 1.2f, profile = true, pose = (s, u) => Raise(-100f * s, -100f * s, true) },
+                };
+            }
+            else if (Prop)
+            {
+                // Each breast's own skin off the rest bake, the vertices the squash gives it at least half
+                // of: every aim and the framing are measured on it, so any size of pair is filmed alike.
+                var shares = YapsSquash.NamedShares(root, smr, out _, out _);
+                var skinAt = body.sharedMesh.vertices.Select(v => body.transform.TransformPoint(v)).ToArray();
+                var own = Enumerable.Range(0, 2).Select(c => Enumerable.Range(0, skinAt.Length)
+                    .Where(v => shares != null && v < shares.Length ? shares[v][c] >= 0.5f : Vector3.Dot(skinAt[v] - mid, outP) > 0f == (c == 0))
+                    .Select(v => skinAt[v]).ToList()).ToArray();
+                Vector3 Average(List<Vector3> pts) => pts.Aggregate(Vector3.zero, (sum, x) => sum + x) / Mathf.Max(pts.Count, 1);
+                if ((Average(own[0]) - P).sqrMagnitude > (Average(own[1]) - P).sqrMagnitude) own = new[] { own[1], own[0] };
+                pairSkin = own[0].Concat(own[1]).ToArray();
+                // Measured across, up and out of the board: the first part's way out is +side.
+                var side = Vector3.Dot(root.right, outP) < 0f ? -root.right : root.right;
+                Vector3 At(float x, float y, float z) => side * x + up * y + f * z;
+                float Lo(int c, Vector3 a) => own[c].Min(x => Vector3.Dot(x, a));
+                float Hi(int c, Vector3 a) => own[c].Max(x => Vector3.Dot(x, a));
+                var hw = new float[2]; var hh = new float[2]; var proj = new float[2]; var across = new float[2]; var high = new float[2];
+                var baseZ = new float[2]; var tipZ = new float[2];
+                Vector3[] frontS = new Vector3[2], outerS = new Vector3[2], topS = new Vector3[2], underS = new Vector3[2];
+                for (int c = 0; c < 2; c++)
+                {
+                    float sign = c == 0 ? 1f : -1f, x0 = Lo(c, side), x1 = Hi(c, side), y0 = Lo(c, up), y1 = Hi(c, up);
+                    (baseZ[c], tipZ[c]) = (Lo(c, f), Hi(c, f));
+                    hw[c] = 0.5f * (x1 - x0); hh[c] = 0.5f * (y1 - y0); proj[c] = tipZ[c] - baseZ[c];
+                    across[c] = 0.5f * (x0 + x1); high[c] = 0.5f * (y0 + y1);
+                    float outerX = c == 0 ? x1 : x0, zc = 0.5f * (baseZ[c] + tipZ[c]), pad = proj[c];
+                    // Cast from outside its bounds at its centre height, so each lands on its own skin.
+                    frontS[c] = Surface(At(across[c], high[c], tipZ[c] + pad), -f, At(across[c], high[c], tipZ[c]));
+                    outerS[c] = Surface(At(outerX + sign * pad, high[c], zc), -sign * side, At(outerX, high[c], zc));
+                    topS[c] = Surface(At(across[c], y1 + pad, zc), -up, At(across[c], y1, zc));
+                    underS[c] = Surface(At(across[c], y0 - pad, zc), up, At(across[c], y0, zc));
+                }
+                Debug.Log($"[SquashPlay] prop pair: {own[0].Count} and {own[1].Count} vertices, half widths {hw[0]:F3} {hw[1]:F3}, half heights {hh[0]:F3} {hh[1]:F3}, projecting {proj[0]:F3} {proj[1]:F3}");
+                float Hit(float u, int n)
+                {
+                    float t = Mathf.Repeat(u * n, 1f);
+                    return t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
+                }
+                // An open hand as Press draws it, lying flat along the depth with its palm's middle on
+                // `on`, pushed `d` past the skin along `inward`; short of it when negative.
+                float palm = hand - r;
+                (Vector3, Vector3, float) Flat(Vector3 on, Vector3 inward, float d) => (on + f * (0.5f * palm) - inward * (r - d), -f, -1f);
+                // Palms on each outer side at its centre height, facing the cleavage, `k` of its half width in.
+                Action<float, float> Squeeze(int beats, float k) => (s, u) =>
+                {
+                    float b = Beats(u, beats);
+                    Press(Flat(outerS[0], -side, Mathf.Lerp(-0.15f * hw[0], k * hw[0], b)), Flat(outerS[1], side, Mathf.Lerp(-0.15f * hw[1], k * hw[1], b)));
+                };
+                float swing = 0.3f * (hw[0] + hw[1]), hop = 0.45f * (hh[0] + hh[1]);
+                film = new List<Shot>
+                {
+                    // Four hard swings, then stopped dead mid swing, so the pair swings on alone.
+                    new Shot { name = "Shaken side to side", frames = 240, travel = new[] { side * swing, -side * swing }, pose = (s, u) =>
+                        root.position = standing + side * (u < 0.6f ? swing * Mathf.SmoothStep(0f, 1f, u / 0.1f) * Mathf.Sin(8f * Mathf.PI * u / 0.6f) : 0f) },
+                    new Shot { name = "Hopped", frames = 240, travel = new[] { up * hop }, pose = (s, u) =>
+                        root.position = standing + up * (u < 0.7f ? hop * Mathf.Abs(Mathf.Sin(5f * Mathf.PI * u / 0.7f)) : 0f) },
+                    new Shot { name = "Slaps, one side then the other", frames = 360, pose = (s, u) =>
+                    {
+                        int c = Mathf.Repeat(u * 2f, 1f) < 0.5f ? 0 : 1;
+                        Press((frontS[c] - up * (0.5f * palm) + f * (r + Mathf.Lerp(0.25f * proj[c], -0.3f * proj[c], Hit(u, 4))), up, -1f));
+                    } },
+                    new Shot { name = "A deep poke", frames = 240, pose = (s, u) =>
+                    {
+                        var (wrist, dir, shape) = Tip(frontS[0], -f, 4f, Mathf.Lerp(-0.1f * proj[0], 0.35f * proj[0], s));
+                        Press((wrist + side * (0.3f * hw[0] * s * Mathf.Sin(4f * Mathf.PI * u)), dir, shape));
+                    } },
+                    new Shot { name = "Two hands squeezing them together, slowly", frames = 360, pose = Squeeze(2, 0.8f) },
+                    new Shot { name = "Two hands squeezing them together, fast", frames = 300, pose = Squeeze(6, 0.6f) },
+                    new Shot { name = "Grabbed and squeezed, top and bottom", frames = 300, pose = (s, u) =>
+                    {
+                        float d = Mathf.Lerp(-0.15f * hh[0], 0.6f * hh[0], Beats(u, 2));
+                        Press(Flat(topS[0], -up, d), Flat(underS[0], up, d));
+                    } },
+                    // Lifted over half a beat, then the hands snatched away in a few frames, so both drop.
+                    new Shot { name = "Both lifted from below and dropped", frames = 300, pose = (s, u) =>
+                    {
+                        float t = Mathf.Repeat(u * 2f, 1f);
+                        float by = t < 0.5f ? Mathf.SmoothStep(-0.15f, 0.6f, t / 0.5f) : Mathf.Lerp(0.6f, -1f, Mathf.Clamp01((t - 0.5f) / 0.04f));
+                        Press(Flat(underS[0], up, by * hh[0]), Flat(underS[1], up, by * hh[1]));
+                    } },
+                    // Fingertips from in front of the pair to the chest wall between them.
+                    new Shot { name = "A hand pushed in between them", frames = 240, pose = (s, u) =>
+                    {
+                        float wall = Mathf.Min(baseZ[0], baseZ[1]), depth = Mathf.Max(tipZ[0], tipZ[1]) - wall;
+                        Press(Tip(At(0.5f * (across[0] + across[1]), 0.5f * (high[0] + high[1]), wall), -f, -1f, Mathf.Lerp(-1.1f * depth, 0f, s)));
+                    } },
                 };
             }
         }
@@ -1611,6 +1766,7 @@ namespace AvatarBridge.Regression
         static readonly (string name, float pulse, float phase)[] LookShots =
             { ("rest", 0f, 0f), ("squeeze_soft", 0.3f, 0.985f), ("squeeze_hard", 0.6f, 0.985f), ("squeeze_hard_half", 0.6f, 0.5f) };
         static readonly bool LookPreview = Environment.GetCommandLineArgs().Contains("-spPreview");
+        static readonly bool Prop = Environment.GetCommandLineArgs().Contains("-spProp");
         // -spSwing: the parts' own bones turned toward each other instead, as a spin swings them,
         // across any gap and on into an overlap of so many reaches: by the first alone into a still
         // partner, then by both, half each.
