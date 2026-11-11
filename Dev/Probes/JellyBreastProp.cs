@@ -31,12 +31,12 @@ namespace AvatarBridge.Regression
         // Each breast's patch of the grid: its centre off the middle and its reach across, up and
         // down. The patch is cast onto the globe, so it only has to reach past where the skin
         // rejoins the chest; across it stops at the middle, where the other's starts.
-        const float BreastY = 1.13f, Apart = 0.3017f, Upper = 0.43f, Lower = 0.40f;
+        const float BreastY = 1.13f, Apart = 0.25f, Upper = 0.43f, Lower = 0.40f;
         // Each breast a hyper pair's globe, perky and round, about 60 x 60 x 56 cm: an ellipsoid centred Out from the
         // chest and Sag below its patch, radius Across wide, Top above and Bottom below (the lower
         // pole the fuller), Front to the tip and Rear back into the chest, which widens the base.
-        // 30 cm across on 30.17 apart leaves the inner skins under 3 mm apart, so a squeeze
-        // presses one into the other with no overlap for the pair's plane to start from.
+        // 30 cm across on 25 apart: the globes overlap and each patch stops at the middle, so the
+        // pair rest pressed flat against each other down the cleavage, as a squeezed pair does.
         const float Out = 0.25f, Sag = 0.0f, Across = 0.30f, Top = 0.29f, Bottom = 0.31f, Front = 0.31f, Rear = 0.32f;
         // The top half leans back by Slope, so the upper pole runs down to the tip as a slope rather
         // than a shelf, and the tip turns Turn degrees out. The globe joins the chest through a fillet
@@ -199,6 +199,15 @@ namespace AvatarBridge.Regression
             feel.preset = YapsSquashSettings.Preset.Custom;
             EditorUtility.SetDirty(settings);
             YapsJelly.Retune(jelly, settings);
+            // Squeezed from the outsides, each flattens about its own middle, which pulls its inner
+            // side off the cleavage; let the wholes close in further than a worn pair's 0.85 so the
+            // pair press into each other instead of parting.
+            foreach (var step in jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(p => p.materials ?? new Material[0])
+                         .Where(m => m != null && m.HasProperty("_MassHz")).Distinct())
+            {
+                step.SetFloat("_PairKeep", 0.55f);
+                EditorUtility.SetDirty(step);
+            }
 
             var twitch = prop.GetComponentsInChildren<Transform>(true).First(t => t.name == "Jelly Twitch");
             var animator = JellySpikeBuilder.Twitched(prop, twitch, Folder);
