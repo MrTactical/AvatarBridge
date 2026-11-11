@@ -2010,7 +2010,7 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
 // place, w 1), for a body's own shader to find the lattice by (yaps_jelly.cginc), and the region's
 // mass, as one piece (30, its centre, w the _Time.y it stepped; 31, where it was, w that step), and
 // whether any probe reads pushed (87), and the anchor the first pass stepped on, for the second's
-// particles (88 to 90, its rows).
+// particles (88 to 90, its rows; 91, its turn), and whether any slot might grip (92).
 // Below 72 fps each pass takes a step. Above it the first only works out where each particle is
 // headed and the second fits, so each neighbour is read once. The first pass also looks for the
 // hands, so the second pushes against where they are this frame; below 72 fps the first pass's own
@@ -2388,6 +2388,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // Its own region's probes' frame, as Probing gives it: once a pixel too.
             static float4x4 Back;
             static bool Probed;
+            // The second pass's particles, which read the anchor's turn off the side row.
+            static bool Turned = false;
 
             // A world point in an anchor's rest frame, metres from it along its axes.
             float3 Into(float4x4 a, float3 x)
@@ -3206,6 +3208,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return mul(m, float4(Into(last, x), 1)).xyz;
             }
 
+            // A predicted step's right half as the first pass handed it on, was, made where the particle
+            // was: home for one the left half, s, marks put back at rest, and carried over a snap.
+            float4 Handed(float4 s, float4 was, float4x4 m, uint side)
+            {
+                if (!(s.w > 0.5)) return float4(s.xyz, was.w);
+                [branch] if (_MainTex.Load(int3(85, side, 0)).w < 0) was.xyz = Carried(was.xyz, m, side);
+                return was;
+            }
+
             float3 Home(int3 l, float4x4 m, uint side, out float4 swing)
             {
                 float4 tip = _MainTex.Load(int3(30, side, 0));
@@ -3406,7 +3417,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // worked out here from both halves.
             float3 Moved(uint p, int3 l, float4x4 m, float scale, float h, float3 home, bool predicted, bool distant, uint side, float4 swing, out float4 q)
             {
-                q = Mul(swing, Quat((float3x3) m / scale));
+                float4 turn;
+#ifdef JELLY_LATER
+                // A second pass's particle takes the anchor's turn the first pass's side row worked out (91).
+                [branch] if (Turned) turn = _MainTex.Load(int3(91, side, 0)); else
+#endif
+                turn = Quat((float3x3) m / scale);
+                q = Mul(swing, turn);
                 // The back face rides the anchor, or on a limb the core round its bone.
                 if (Pinned(l) || distant) return home;
                 float4 s = _MainTex.Load(Texel(p, 0));
@@ -3519,7 +3536,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
                     // Each grip takes the skin it closed on along with the hand: all of it at the
                     // grip, none a hand's breadth off, the neighbourhoods' fit bending what lies
-                    // between. Let go, the tissue's own spring brings it back.
+                    // between. Let go, the tissue's own spring brings it back. None can grip, one read (92).
+                    [branch] if (_MainTex.Load(int3(92, side, 0)).x > 0.5)
                     [loop] for (uint gi = 0; gi < 8; gi++)
                     {
                         float3 gat;
@@ -3641,7 +3659,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // afresh after any gap, as when the parser switched the steps off, so a wake needs _Rest
             // of quiet before it rests again. Predicted, the first pass's places carry a step of
             // gravity the fit takes back, 1.2 mm a frame at 90: taken off here.
-            float4 Settling(float4 here, float4x4 m, float scale, float dt, bool distant, uint side, float3 fall)
+            float4 Settling(float4 here, float4x4 m, float scale, float dt, bool distant, uint side, bool predicted, float3 fall)
             {
                 float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
                 float4x4 last = float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1);
@@ -3650,7 +3668,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [unroll] for (int k = 0; k < 9; k++)
                 {
                     uint p = (uint) Index(int3((k % 3) * (n.x - 1) / 2, (k / 3) * (n.y - 1) / 2, n.z - 1));
-                    float3 now = _MainTex.Load(Texel(p, 0)).xyz - fall, was = _MainTex.Load(Texel(p, 1)).xyz;
+                    float4 at = _MainTex.Load(Texel(p, 0)), was = _MainTex.Load(Texel(p, 1));
+                    [branch] if (predicted) was = Handed(at, was, m, side);
+                    float3 now = at.xyz - fall;
                     quiet = quiet && length(Into(m, now) - Into(last, was)) * scale < 0.01 * scale * dt;
                 }
                 bool counting = here.y > 0 && _Time.y - here.y < 0.1;
@@ -3836,6 +3856,27 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return (x & 1) == 0 ? float4(at, _Time.y) : float4(0, 0, 0, depth);
             }
 
+            // The step's time from the clock (texel 25): held is the step held, smooth the frame time
+            // smoothed, frames how many it takes.
+            float StepDt(float4 clock, out float held, out float smooth, out float frames)
+            {
+                float real = clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30);
+                smooth = clock.y > 0 ? lerp(clock.y, real, 0.05) : real;
+                held = _Pass > 0.5 ? max(clock.x, 1.0 / 240) : clock.x > 0 && abs(smooth - clock.x) < 0.15 * clock.x ? clock.x : smooth;
+                // Skipped by the rate, the step takes the frames it missed, counted against this
+                // frame's own time so a slow frame is not taken twice. A gap past a tenth of a second
+                // is a wake and steps one frame, as before. The first pass counts; the second reads its count.
+                // Not asked whether it is halved: && runs both sides, and that alone cost every step 10%.
+                frames = clock.w;
+                [branch] if (_Pass < 0.5)
+                {
+                    float f = clock.z > 0 ? round((_Time.y - clock.z) / real) : 1;
+                    frames = f >= 2 && f * real < 0.1 ? f : 1;
+                }
+                frames = max(frames, 1);
+                return min((_FixedDt > 0 ? _FixedDt : held) * frames, 1.0 / 30);
+            }
+
             float4 frag(v2f_img i) : SV_Target
             {
                 int2 px = int2(i.pos.xy);
@@ -3857,6 +3898,22 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 Region = region;
                 MineOf = region;
                 Cored = (region == 0 ? _JellyCoreA0.w : _JellyCoreA1.w) > 0;
+#ifdef JELLY_SCAN
+                // At 72 fps and up the first pass's right half only hands on where each particle was:
+                // the second puts back at rest the ones the left half marked, and carries the rest
+                // over a snap, so no anchor or home is worked out here. Near last frame only, as the
+                // far test is the particles' then.
+                [branch] if ((uint) px.y != side && (uint) px.x >= Row)
+                {
+                    float4 sw = _MainTex.Load(int3(18, side, 0));
+                    float held, smooth, frames, dt = StepDt(_MainTex.Load(int3(25, side, 0)), held, smooth, frames);
+                    bool lean = !(dt > 1.0 / 72) && !(_Stress > 0) && !(sw.x > 0.5);
+#ifdef JELLY_SLEEP
+                    lean = lean && !(sw.y > 0.5);
+#endif
+                    if (lean) return float4(_MainTex.Load(int3(px.x - Row, px.y, 0)).xyz, dt);
+                }
+#endif
 #ifdef JELLY_LATER
                 // The second pass's particles take the anchor the first pass's side row worked out this
                 // frame (88 to 90, its rows), and leave before anything else where they only copy:
@@ -3873,9 +3930,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     }
 #endif
                     float dt1 = min((_FixedDt > 0 ? _FixedDt : max(ck.x, 1.0 / 240)) * max(ck.w, 1), 1.0 / 30);
-                    if ((uint) px.x >= Row && !(dt1 > 1.0 / 72) && !(_Stress > 0))
-                        return sw.w > 0.5 ? _MainTex.Load(int3(px, 0)) : 0;
                     Mine = float4x4(_MainTex.Load(int3(88, side, 0)), _MainTex.Load(int3(89, side, 0)), _MainTex.Load(int3(90, side, 0)), float4(0, 0, 0, 1));
+                    Turned = true;
+                    [branch] if ((uint) px.x >= Row && !(dt1 > 1.0 / 72) && !(_Stress > 0))
+                    {
+                        if (!(sw.w > 0.5)) return 0;
+                        return Handed(_MainTex.Load(int3(px.x - Row, px.y, 0)), _MainTex.Load(int3(px, 0)), Mine, side);
+                    }
                 }
                 else Mine = AnchorOf(region);
 #else
@@ -3883,8 +3944,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #endif
                 // The other region's only where it is read: the far switch measures from the first's,
                 // and the side row's pair plane. Built for every pixel, far-off steps cost half again.
+                // A first pass's particle tests far only when it was far last frame, below.
                 Theirs = Mine;
-                [branch] if (_Regions > 1.5 && (region == 1 && _Pass < 0.5 || (uint) px.y == side)) Theirs = AnchorOf(region ^ 1);
+                [branch] if (_Regions > 1.5 && (region == 1 && _Pass < 0.5 && _MainTex.Load(int3(18, side, 0)).x > 0.5 || (uint) px.y == side)) Theirs = AnchorOf(region ^ 1);
                 // A third pass, where there is a rider, copies its two texels into a texture of their
                 // own: the texture parser reads back a whole texture, and the whole state costs it
                 // ten times two texels. Its third texel says whether the steps should run at all: the
@@ -3923,21 +3985,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // tissue rests moves with the step, so stepping each uneven frame by its own time
                 // kept a settled prop trembling, never asleep. The first pass decides; the second
                 // reads its answer.
-                float4 clock = _MainTex.Load(int3(25, side, 0));
-                float real = clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30), smooth = clock.y > 0 ? lerp(clock.y, real, 0.05) : real;
-                float held = _Pass > 0.5 ? max(clock.x, 1.0 / 240) : clock.x > 0 && abs(smooth - clock.x) < 0.15 * clock.x ? clock.x : smooth;
-                // Skipped by the rate, the step takes the frames it missed, counted against this
-                // frame's own time so a slow frame is not taken twice. A gap past a tenth of a second
-                // is a wake and steps one frame, as before. The first pass counts; the second reads its count.
-                // Not asked whether it is halved: && runs both sides, and that alone cost every step 10%.
-                float frames = clock.w;
-                [branch] if (_Pass < 0.5)
-                {
-                    float f = clock.z > 0 ? round((_Time.y - clock.z) / real) : 1;
-                    frames = f >= 2 && f * real < 0.1 ? f : 1;
-                }
-                frames = max(frames, 1);
-                float dt = min((_FixedDt > 0 ? _FixedDt : held) * frames, 1.0 / 30);
+                float held, smooth, frames;
+                float dt = StepDt(_MainTex.Load(int3(25, side, 0)), held, smooth, frames);
                 FrameDt = dt;
                 // An anchor whose speed changes by more than 8 m/s in a frame has snapped to a new pose:
                 // an emote, sitting, a limb's tracking coming back. No limb moves so and a fall stops
@@ -3955,7 +4004,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // as near.
                 float4 switches = _MainTex.Load(int3(18, side, 0));
                 bool wasDistant = switches.x > 0.5, distant = wasDistant;
-                if (_Pass < 0.5) distant = !(_Stress > 0) && Away(wasDistant);
+                // A particle near last frame takes that: going far, the second pass discards this one's
+                // step, so the twin's particles it wrote are never read; coming back is tested here.
+                [branch] if (_Pass < 0.5 && ((uint) px.y == side || wasDistant)) distant = !(_Stress > 0) && Away(wasDistant);
                 // Asleep: settled, untouched, on an anchor that has not moved. The second pass decided
                 // it last frame, so both passes take the same way; a moved anchor or a hand wakes it
                 // the frame after.
@@ -4075,8 +4126,17 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, presses);
                         if (px.x == 85) return float4(AnchorVelocity(m, dt, side), Snapped ? -_Time.y : _Time.y);
-                        // The anchor's rows, for the second pass's particles.
-                        if (px.x >= 88 && px.x <= 90) return px.x == 88 ? m[0] : px.x == 89 ? m[1] : m[2];
+                        // The anchor's rows and its turn, for the second pass's particles.
+                        if (px.x >= 88 && px.x <= 91) return px.x == 88 ? m[0] : px.x == 89 ? m[1] : px.x == 90 ? m[2] : Quat((float3x3) m / scale);
+                        // Whether any slot might grip this pass, for Moved: 112 to 119 below grip only a
+                        // fist near that was not let go, so none such, none grips. The texture's own
+                        // 92 always answers for its own 112 to 119, as the second pass copies both.
+                        [branch] if (px.x == 92)
+                        {
+                            bool any = false;
+                            [loop] for (uint e = 0; e < 8 && !any; e++) any = !distant && Fist(_MainTex.Load(int3(2 * e + 1, side, 0))) && _MainTex.Load(int3(112 + e, side, 0)).w >= 0;
+                            return float4(any, 0, 0, 1);
+                        }
                         // Each hand slot's grip (112 to 119), as Pulled reads it: a fist closed on the
                         // skin grips it where it closed, or where Slid takes it, until it opens or has
                         // pulled twice as far as the skin follows; a fist closed off the skin, or that
@@ -4143,7 +4203,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float4 rest = _MainTex.Load(int3(35, side, 0));
                         return float4(distant, _Rest > 0 && !distant && rest.y > 0 && _Time.y - rest.y < 0.1 && rest.x >= _Rest, 0, 1);
                     }
-                    if (px.x == 35) return Settling(here, m, scale, dt, distant, side, predicted ? Gravity * h * h : 0);
+                    if (px.x == 35) return Settling(here, m, scale, dt, distant, side, predicted, predicted ? Gravity * h * h : 0);
 #endif
                     // The rider takes the particles' own path below, so the step is written out once.
                     rider = (px.x == 16 || px.x == 17) && _Rider > 0;

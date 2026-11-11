@@ -4175,6 +4175,18 @@ films match the earlier ones frame for frame.
   home goes through the squash map, which nothing bounds, so no skip can be proved exact, and VR at
   90 never takes that path. The probe's "near at rest" line runs on the editor's own frame time and
   is no regression.
+  Then, from an ideas pass (Joe: "as low as possible"): the first pass's particles take last frame's
+  far switch while it read near, and its predicted right half writes where each particle was with no
+  anchor or home, the second pass rebuilding home and the snap carry; the second pass reads the
+  anchor's turn (91) and whether any slot might grip (92) from the first. Parity bit-exact but 82 /
+  188 values within 1.5e-6 (the turn texel). Old and new timed in turns in one run (`-costParity` now
+  does): iGPU 0.862 to 0.806 ms at 90 fps, 1.273 to 1.235 at 60; the 4080 within noise, re-time it on
+  a quiet machine (ChilloutVR was open). Tried and dropped: 3x4 anchor products (moved the iGPU's
+  rounding, saved nothing); the bulk's squash loop, priced with `-costSolid0`: no change on the 4080,
+  so not the critical path the ideas pass guessed. Rejected outright, kept here so they are not
+  proposed again: Unity ParticleSystem, MagicaCloth2, animator blend shapes, the material data
+  provider, a modal or Kelvinlet body, a coarse lattice read through a B-spline. Each either cannot
+  reach the draw without a script or loses contact, grip and world faces.
 
 ## Major Ideas
 

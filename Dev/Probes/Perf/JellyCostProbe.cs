@@ -214,6 +214,8 @@ namespace AvatarBridge.Regression
                 {
                     var list = some.ToList();
                     foreach (var c in list) foreach (var b in c.passes) b.blitMaterial.SetFloat("_FixedDt", dt);
+                    // -costSolid0: the bulk's squash map off, to price it.
+                    if (Flag("-costSolid0")) foreach (var c in list) foreach (var b in c.passes) b.blitMaterial.SetFloat("_Solid", 0f);
                     var times = new List<double>();
                     for (int round = 0; round < 5; round++)
                     {
@@ -231,6 +233,27 @@ namespace AvatarBridge.Regression
                 for (int k = 1; k <= chains.Count; k++)
                     Log($"the first {k} together: far {Time(chains.Take(k), null)} ms a frame; near, eight hands, 90 fps "
                         + $"{Time(chains.Take(k), chains[0].at.position, true, 1f / 90)}; 60 fps {Time(chains.Take(k), chains[0].at.position, true, 1f / 60)}");
+                // With -costParity, the old step and the new timed in turns in this one run, so a busy
+                // machine weighs on both alike.
+                if (olds.Count > 0)
+                {
+                    var all = chains.ToList();
+                    foreach (var dt in new[] { 1f / 90, 1f / 60 })
+                    {
+                        var a = new List<double>();
+                        var b = new List<double>();
+                        foreach (var c in all) foreach (var x in c.passes) { x.blitMaterial.SetFloat("_FixedDt", dt); olds[x.blitMaterial].CopyPropertiesFromMaterial(x.blitMaterial); }
+                        for (int round = 0; round < 7; round++)
+                        {
+                            Players(all[0].at.position, true);
+                            a.Add(Timed(() => { foreach (var c in all) foreach (var x in c.passes) Graphics.Blit(x.originTexture, x.destinationTexture, olds[x.blitMaterial]); }, all[0].passes[0].destinationTexture, 600));
+                            b.Add(Timed(() => Run(all), all[0].passes[0].destinationTexture, 600));
+                        }
+                        a.Sort();
+                        b.Sort();
+                        Log($"A/B all parts, near, eight hands, {Mathf.RoundToInt(1 / dt)} fps: old {a[3]:0.000} ({a[0]:0.000} to {a[6]:0.000}) ms, new {b[3]:0.000} ({b[0]:0.000} to {b[6]:0.000})");
+                    }
+                }
                 Log("PASS");
                 EditorApplication.Exit(0);
             }
@@ -322,13 +345,22 @@ namespace AvatarBridge.Regression
                 {
                     float[] Read(RenderTexture r) { var q = AsyncGPUReadback.Request(r); q.WaitForCompletion(); return q.GetData<float>().ToArray(); }
                     float[] x = Read(was[t]), y = Read(now[t]);
-                    // A side row's 87 to 90 are new: whether a probe is pushed and the anchor handed to the second pass, copies before.
+                    // A side row's 87 to 92 are new: whether a probe is pushed, the anchor and its turn handed to the second pass, and whether a slot might grip; copies before.
                     int block = t.height / Mathf.Max(1, Mathf.RoundToInt(c.passes[0].blitMaterial.GetFloat("_Regions")));
                     for (int i = 0; i < x.Length; i++)
                         if (BitConverter.SingleToInt32Bits(x[i]) != BitConverter.SingleToInt32Bits(y[i]))
                         {
                             int texel = i / 4;
-                            if (t.width > 128 && texel % t.width >= 87 && texel % t.width <= 90 && (texel / t.width + 1) % block == 0) continue;
+                            if (t.width > 128 && texel % t.width >= 87 && texel % t.width <= 92 && (texel / t.width + 1) % block == 0) continue;
+                            // Going far, the second pass discards the first's particles: what the first wrote
+                            // there is never read, a copy before and a step since.
+                            int sideRow = texel / t.width / block * block + block - 1;
+                            if (t == c.passes[0].destinationTexture && c.passes.Count > 1 && texel / t.width != sideRow && y[4 * (sideRow * t.width + 18)] > 0.5f) continue;
+                            // A predicted right half the first pass hands on raw where the left marks it put
+                            // back at rest, or over a snap: the second makes it, and is checked in its own.
+                            int col = texel % t.width;
+                            if (t == c.passes[0].destinationTexture && c.passes.Count > 1 && col >= 64 && col < 128 && texel / t.width != sideRow
+                                && (y[4 * (texel - 64) + 3] < 0.5f || y[4 * (sideRow * t.width + 85) + 3] < 0f)) continue;
                             // A driver may order the same sums otherwise in an edited variant: a few bits
                             // are counted, not failed. Past 1e-5 of the value it is a different answer.
                             double off = Math.Abs((double) x[i] - y[i]), of = Math.Max(Math.Abs((double) x[i]), 1e-3);
