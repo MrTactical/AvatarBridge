@@ -24,20 +24,20 @@ namespace AvatarBridge.Regression
         const string Name = "Jelly Breast Prop";
 
         // The torso front, metres in the stand's frame: x across, y up, z out of the chest.
-        // Grid lines 3.7 mm apart over the breasts, widening to 12 mm over 4 cm past them, so the
+        // Grid lines 4.8 mm apart over the breasts, widening to 12 mm over 4 cm past them, so the
         // larger pair stays under the 16 bit index limit.
-        const float Wide = 0.63f, Above = 0.34f, Below = 0.42f, PlateY = 1.17f, Back = 0.05f, Plate = 0.06f;
-        const float Fine = 0.0037f, Coarse = 0.012f, Ramp = 0.04f;
+        const float Wide = 0.80f, Above = 0.45f, Below = 0.52f, PlateY = 1.17f, Back = 0.05f, Plate = 0.06f;
+        const float Fine = 0.0048f, Coarse = 0.012f, Ramp = 0.04f;
         // Each breast's patch of the grid: its centre off the middle and its reach across, up and
         // down. The patch is cast onto the globe, so it only has to reach past where the skin
         // rejoins the chest; across it stops at the middle, where the other's starts.
-        const float BreastY = 1.13f, Apart = 0.2317f, Upper = 0.33f, Lower = 0.31f;
-        // Each breast a hyper pair's globe, perky and round, about 46 x 46 x 42 cm: an ellipsoid centred Out from the
+        const float BreastY = 1.13f, Apart = 0.3017f, Upper = 0.43f, Lower = 0.40f;
+        // Each breast a hyper pair's globe, perky and round, about 60 x 60 x 56 cm: an ellipsoid centred Out from the
         // chest and Sag below its patch, radius Across wide, Top above and Bottom below (the lower
         // pole the fuller), Front to the tip and Rear back into the chest, which widens the base.
-        // 23 cm across on 23.17 apart leaves the inner skins under 3 mm apart, so a squeeze
+        // 30 cm across on 30.17 apart leaves the inner skins under 3 mm apart, so a squeeze
         // presses one into the other with no overlap for the pair's plane to start from.
-        const float Out = 0.19f, Sag = 0.0f, Across = 0.23f, Top = 0.22f, Bottom = 0.235f, Front = 0.235f, Rear = 0.25f;
+        const float Out = 0.25f, Sag = 0.0f, Across = 0.30f, Top = 0.29f, Bottom = 0.31f, Front = 0.31f, Rear = 0.32f;
         // The top half leans back by Slope, so the upper pole runs down to the tip as a slope rather
         // than a shelf, and the tip turns Turn degrees out. The globe joins the chest through a fillet
         // Fillet wide on top, no crease there, narrowing to Fold below, the under-fold.

@@ -1118,9 +1118,15 @@ namespace AvatarBridge.Regression
                     hw[c] = 0.5f * (x1 - x0); hh[c] = 0.5f * (y1 - y0); proj[c] = tipZ[c] - baseZ[c];
                     across[c] = 0.5f * (x0 + x1); high[c] = 0.5f * (y0 + y1);
                     float outerX = c == 0 ? x1 : x0, zc = 0.5f * (baseZ[c] + tipZ[c]), pad = proj[c];
-                    // Cast from outside its bounds at its centre height, so each lands on its own skin.
+                    // The outer side is aimed at where the part is widest, not at the middle of its depth:
+                    // on a round part the middle sat behind the bulge and the palms met air.
+                    // Clear of the chest: its skin's share runs out over the fillet, wider than the globe.
+                    var widest = own[c].Where(x => Vector3.Dot(x, f) > baseZ[c] + 0.3f * proj[c]).DefaultIfEmpty(own[c][0])
+                        .OrderByDescending(x => sign * Vector3.Dot(x, side)).First();
+                    float zw = Vector3.Dot(widest, f), yw = Vector3.Dot(widest, up);
+                    // Cast from outside its bounds, so each lands on its own skin.
                     frontS[c] = Surface(At(across[c], high[c], tipZ[c] + pad), -f, At(across[c], high[c], tipZ[c]));
-                    outerS[c] = Surface(At(outerX + sign * pad, high[c], zc), -sign * side, At(outerX, high[c], zc));
+                    outerS[c] = Surface(At(outerX + sign * pad, yw, zw), -sign * side, At(outerX, yw, zw));
                     topS[c] = Surface(At(across[c], y1 + pad, zc), -up, At(across[c], y1, zc));
                     underS[c] = Surface(At(across[c], y0 - pad, zc), up, At(across[c], y0, zc));
                 }
@@ -1134,11 +1140,14 @@ namespace AvatarBridge.Regression
                 // `on`, pushed `d` past the skin along `inward`; short of it when negative.
                 float palm = hand - r;
                 (Vector3, Vector3, float) Flat(Vector3 on, Vector3 inward, float d) => (on + f * (0.5f * palm) - inward * (r - d), -f, -1f);
-                // Palms on each outer side at its centre height, facing the cleavage, `k` of its half width in.
+                // Palms flat on each outer side at its widest, fingers down and the arm coming from above, as
+                // hands squeeze a pair; laid along the depth, the arms stuck out the front past the tips.
+                (Vector3, Vector3, float) Upright(Vector3 on, Vector3 inward, float d) => (on + up * (0.5f * palm) - inward * (r - d), -up, -1f);
+                // `k` of its half width in.
                 Action<float, float> Squeeze(int beats, float k) => (s, u) =>
                 {
                     float b = Beats(u, beats);
-                    Press(Flat(outerS[0], -side, Mathf.Lerp(-0.15f * hw[0], k * hw[0], b)), Flat(outerS[1], side, Mathf.Lerp(-0.15f * hw[1], k * hw[1], b)));
+                    Press(Upright(outerS[0], -side, Mathf.Lerp(-0.15f * hw[0], k * hw[0], b)), Upright(outerS[1], side, Mathf.Lerp(-0.15f * hw[1], k * hw[1], b)));
                 };
                 float swing = 0.3f * (hw[0] + hw[1]), hop = 0.45f * (hh[0] + hh[1]);
                 film = new List<Shot>
