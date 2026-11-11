@@ -1832,6 +1832,9 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
                 // A 144 Hz screen steps every other frame: the draw carries the jiggle on between, and
                 // up to 90 Hz every frame still steps.
                 mat.SetFloat("_Cap", Cap);
+                // Past _Half every other frame steps at 90 Hz: the step after a skip takes the gap as
+                // one predicted pass, so the skip saves a third, not the 6% two passes left.
+                mat.SetFloat("_Mid", Mid);
                 mat.SetFloat("_Lift", lift);
                 mat.SetFloat("_Regions", regions);
                 EditorUtility.SetDirty(mat);
@@ -2002,6 +2005,7 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
         }
 
         internal const float Cap = 72;
+        internal const float Mid = 45;
 
         internal const string StepShader = @"// The jelly's step. Written by YAPS; edits here are overwritten.
 //
@@ -2016,7 +2020,7 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
 // mass, as one piece (30, its centre, w the _Time.y it stepped; 31, where it was, w that step), and
 // whether any probe reads pushed (87), and the anchor the first pass stepped on, for the second's
 // particles (88 to 90, its rows; 91, its turn), and whether any slot might grip (92), and the
-// whether the gate at the top of frag takes _Mid, past _Half, while _Mid is on (93).
+// whether the gate at the top of frag takes _Mid, past _Half, while _Mid is on (93, y the flag before).
 // Below 72 fps each pass takes a step. Above it the first only works out where each particle is
 // headed and the second fits, so each neighbour is read once. The first pass also looks for the
 // hands, so the second pushes against where they are this frame; below 72 fps the first pass's own
@@ -3867,7 +3871,18 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // Where a step splits in two. Capped, two frames at 144 a second land a hair either side
             // of 1/72, and the second pass a step over them took would spend the cap's saving.
-            float Split() { return _Cap > 0 || _Mid > 0 ? 1.0 / 69 : 1.0 / 72; }
+            // A step after a _Mid skip stays one predicted pass up to 1/44: two passes over it cost
+            // what the skip saved. Keyed to the flag the gate took (93: x last frame's, y the one the
+            // first pass read), so both passes split alike; a _Cap catch-up near is left as it was.
+            float Split(float frames, uint side)
+            {
+                [branch] if (_Mid > 0 && frames > 1.5)
+                {
+                    float4 halved = _MainTex.Load(int3(93, side, 0));
+                    if ((_Pass < 0.5 ? halved.x : halved.y) > 0.5) return 1.0 / 44;
+                }
+                return _Cap > 0 || _Mid > 0 ? 1.0 / 69 : 1.0 / 72;
+            }
 
             // The step's time from the clock (texel 25): held is the step held, smooth the frame time
             // smoothed, frames how many it takes.
@@ -3936,7 +3951,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     float4 sw = _MainTex.Load(int3(18, side, 0));
                     float held, smooth, frames, dt = StepDt(_MainTex.Load(int3(25, side, 0)), held, smooth, frames);
-                    bool lean = !(dt > Split()) && !(_Stress > 0) && !(sw.x > 0.5);
+                    bool lean = !(dt > Split(frames, side)) && !(_Stress > 0) && !(sw.x > 0.5);
 #ifdef JELLY_SLEEP
                     lean = lean && !(sw.y > 0.5);
 #endif
@@ -3961,7 +3976,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float dt1 = min((_FixedDt > 0 ? _FixedDt : max(ck.x, 1.0 / 240)) * max(ck.w, 1), 1.0 / 30);
                     Mine = float4x4(_MainTex.Load(int3(88, side, 0)), _MainTex.Load(int3(89, side, 0)), _MainTex.Load(int3(90, side, 0)), float4(0, 0, 0, 1));
                     Turned = true;
-                    [branch] if ((uint) px.x >= Row && !(dt1 > Split()) && !(_Stress > 0))
+                    [branch] if ((uint) px.x >= Row && !(dt1 > Split(ck.w, side)) && !(_Stress > 0))
                     {
                         if (!(sw.w > 0.5)) return 0;
                         return Handed(_MainTex.Load(int3(px.x - Row, px.y, 0)), _MainTex.Load(int3(px, 0)), Mine, side);
@@ -4024,7 +4039,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // pass decides and signs 85 with it; the second reads its answer.
                 float4 sped = _MainTex.Load(int3(85, side, 0));
                 Snapped = _Pass < 0.5 ? anchored && sped.w != 0 && _Time.y - abs(sped.w) < 0.1 && length(AnchorVelocity(m, dt, side) - sped.xyz) > 8 : sped.w < 0;
-                int passes = dt > Split() ? 2 : 1;
+                int passes = dt > Split(frames, side) ? 2 : 1;
                 float h = dt / passes;
                 // The meter's load always takes a whole step, the cost it is there to show.
                 bool predicted = passes == 1 && !(_Stress > 0);
@@ -4061,7 +4076,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         if (px.x == 25) return float4(held, smooth, _Time.y, frames);
                         // Whether the gate above takes _Mid next frame: halved once here, not per particle. A
                         // flag, not the rate, so a changed material takes at once.
-                        [branch] if (px.x == 93 && _Mid > 0) return float4(Halved(), 0, 0, 1);
+                        [branch] if (px.x == 93 && _Mid > 0) return float4(Halved(), here.x, 0, 1);
                         // The probes as Felt has them, for the scan's texels and the slaps': one copy of
                         // it between them, as a copy each took the compiler past its time limit. The
                         // scan's only once a cloth probe was pushed last frame, as the readout

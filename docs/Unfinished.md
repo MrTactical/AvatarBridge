@@ -4203,6 +4203,14 @@ films match the earlier ones frame for frame.
   ringing shows it (uneven 1.03 to 1.21). Open: Joe to judge the film; whether one pass is stable over
   1/45 (would make `_Mid` pay). Joe, after the film: the cap on. Built tissue takes `_Cap` 72
   (`YapsJelly.Cap`): every frame steps up to 90 Hz, every other one at 120 and 144.
+  `_Mid` now pays: a step after a `_Mid` skip stays one predicted pass up to 1/44 (`Split`, keyed to
+  the halved flag the gate took, texel 93 .x, and .y for the second pass). One predicted step of
+  1/44 every frame matched two passes on the prop's checks at 44 fps, and the film at 90 fps
+  (`_Cap 45` with the catch-up forced predicted) held: no growth, no fly-off, PSNR to every-frame
+  46.6/43.2/41.8 dB against 46.9/44.8/41.7 for two passes, the squeeze a little more uneven (1.14
+  against 1.03). `_Mid 45` at 90 fps, off to on: 4080 0.128 to 0.111, iGPU 0.790 to 0.505 (36%).
+  Off parity bit-exact on both. Built tissue takes `_Mid` 45 (`YapsJelly.Mid`). Open: Joe in game
+  at mid distance.
 
 ## Major Ideas
 
