@@ -4154,7 +4154,11 @@ films match the earlier ones frame for frame.
   clip z in every mode: one vertex program per pass instead of four. Passes that read fog any
   other way (Standard, custom fog code, no UnityCG) are left alone. Simple Lit also skips the
   lightmap variants. FogCutProbe: 144 shader families drawn old vs new, fog off and all three
-  modes, identical to the pixel with fog visible. **Open, needs Joe:** a look in a foggy world.
+  modes, identical to the pixel with fog visible. Conversion time is unchanged: three Poiyomi
+  Pro tissue materials cold, TissueCompileProbe on 8 cores, two runs each order swapped: before
+  160 / 214 s, after 208 / 150 s (whichever ran second was slower), warm 5.5-7 s both. The
+  conversion compiles only the fog-off variant, so the saving lands in the upload build's fog
+  variants, not here. **Open, needs Joe:** a look in a foggy world.
 
 ## Major Ideas
 
