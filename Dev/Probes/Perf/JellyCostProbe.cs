@@ -197,6 +197,7 @@ namespace AvatarBridge.Regression
         {
             if (!Application.isPlaying) return;
             if (++frame < Settle) return;
+            if (Arg("-costParity") is string oldStep && !Parity(oldStep)) return;
             EditorApplication.update -= Tick;
             SessionState.SetBool(On, false);
             try
@@ -266,6 +267,92 @@ namespace AvatarBridge.Regression
             if (near) heads[0] = Vector4.zero;
             Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", heads);
             Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 64, 0f, 0f));
+        }
+
+        // -costParity <file>: the step shader as it was (its source, unescaped) against the one built
+        // now, each frame for ParityFrames: both chains run on copies of the live state with the same
+        // globals, hands moving in reach, at 90 and 60 fps and far, and every texel of every texture
+        // they write must match to the bit. True once done; it exits on a mismatch.
+        const int ParityFrames = 400;
+        static readonly Dictionary<Material, Material> olds = new Dictionary<Material, Material>();
+        static int matched, texels, rounded;
+        static double worst;
+
+        static bool Parity(string oldStep)
+        {
+            var root = GameObject.Find(Name).GetComponentInChildren<CVRAvatar>(true).transform;
+            var chains = Chains(root);
+            if (olds.Count == 0)
+            {
+                var any = chains[0].passes[0].blitMaterial;
+                string at = System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(any.shader)).Replace('\\', '/') + "/JellyStepOld.shader";
+                System.IO.File.WriteAllText(at, System.IO.File.ReadAllText(oldStep).Replace("Shader \"Hidden/AvatarBridge/JellyStep\"", "Shader \"Hidden/AvatarBridge/JellyStepOld\""));
+                AssetDatabase.ImportAsset(at, ImportAssetOptions.ForceSynchronousImport);
+                var shader = AssetDatabase.LoadAssetAtPath<Shader>(at);
+                if (shader == null || ShaderUtil.ShaderHasError(shader)) throw new Exception("the old step shader did not compile");
+                foreach (var c in chains)
+                    foreach (var b in c.passes)
+                        if (!olds.ContainsKey(b.blitMaterial))
+                        {
+                            var m = new Material(shader);
+                            m.CopyPropertiesFromMaterial(b.blitMaterial);
+                            foreach (string k in b.blitMaterial.shaderKeywords) m.EnableKeyword(k);
+                            olds[b.blitMaterial] = m;
+                        }
+                Log($"parity: {olds.Count} step materials against {shader.name}; " + string.Join("; ", chains.Select(c => c.part + ": " + string.Join(", ", c.passes.Select(b => $"{b.originTexture.name} -> {b.destinationTexture.name}")))));
+            }
+            int f = frame - Settle, mode = f % 4;
+            float dt = mode == 1 ? 1f / 60 : 1f / 90;
+            foreach (var c in chains)
+            {
+                Players(mode == 2 ? (Vector3?) null : c.at.position + new Vector3(0.04f * Mathf.Sin(f * 0.21f), 0.03f * Mathf.Cos(f * 0.13f), 0.05f * Mathf.Sin(f * 0.17f)), mode != 3);
+                var textures = c.passes.SelectMany(b => new[] { b.originTexture, b.destinationTexture }).OfType<RenderTexture>().Distinct().ToList();
+                RenderTexture Clone(RenderTexture t) { var x = new RenderTexture(t.descriptor); x.Create(); Graphics.CopyTexture(t, x); return x; }
+                var was = textures.ToDictionary(t => t, Clone);
+                var now = textures.ToDictionary(t => t, Clone);
+                foreach (var b in c.passes)
+                {
+                    // The anchors are the materials' own, set each frame, so copied each frame.
+                    b.blitMaterial.SetFloat("_FixedDt", dt);
+                    olds[b.blitMaterial].CopyPropertiesFromMaterial(b.blitMaterial);
+                    Graphics.Blit(was[(RenderTexture) b.originTexture], was[(RenderTexture) b.destinationTexture], olds[b.blitMaterial]);
+                    Graphics.Blit(now[(RenderTexture) b.originTexture], now[(RenderTexture) b.destinationTexture], b.blitMaterial);
+                }
+                foreach (var t in textures)
+                {
+                    float[] Read(RenderTexture r) { var q = AsyncGPUReadback.Request(r); q.WaitForCompletion(); return q.GetData<float>().ToArray(); }
+                    float[] x = Read(was[t]), y = Read(now[t]);
+                    // A side row's 87 to 90 are new: whether a probe is pushed and the anchor handed to the second pass, copies before.
+                    int block = t.height / Mathf.Max(1, Mathf.RoundToInt(c.passes[0].blitMaterial.GetFloat("_Regions")));
+                    for (int i = 0; i < x.Length; i++)
+                        if (BitConverter.SingleToInt32Bits(x[i]) != BitConverter.SingleToInt32Bits(y[i]))
+                        {
+                            int texel = i / 4;
+                            if (t.width > 128 && texel % t.width >= 87 && texel % t.width <= 90 && (texel / t.width + 1) % block == 0) continue;
+                            // A driver may order the same sums otherwise in an edited variant: a few bits
+                            // are counted, not failed. Past 1e-5 of the value it is a different answer.
+                            double off = Math.Abs((double) x[i] - y[i]), of = Math.Max(Math.Abs((double) x[i]), 1e-3);
+                            if (off <= 1e-5 * of) { rounded++; worst = Math.Max(worst, off / of); continue; }
+                            Log($"parity FAIL {c.part} frame {f} mode {mode} {t.name} texel ({texel % t.width}, {texel / t.width}).{"xyzw"[i % 4]}: was {x[i]:R} now {y[i]:R}");
+                            foreach (var u in textures)
+                            {
+                                float[] ux = Read(was[u]), uy = Read(now[u]);
+                                string T(float[] a, int tx, int ty) { int k = 4 * (ty * u.width + tx); return $"({a[k]:F4} {a[k + 1]:F4} {a[k + 2]:F4} {a[k + 3]:F4})"; }
+                                for (int y0 = block - 1; y0 < u.height && u.width > 128; y0 += block)
+                                    Log($"  {u.name} side row {y0}: was 18 {T(ux, 18, y0)} 25 {T(ux, 25, y0)} 26..29 {T(ux, 26, y0)} {T(ux, 27, y0)} {T(ux, 28, y0)} {T(ux, 29, y0)}; "
+                                        + $"now 18 {T(uy, 18, y0)} 25 {T(uy, 25, y0)} 26..29 {T(uy, 26, y0)} {T(uy, 27, y0)} {T(uy, 28, y0)} {T(uy, 29, y0)} 88..90 {T(uy, 88, y0)} {T(uy, 89, y0)} {T(uy, 90, y0)}");
+                            }
+                            EditorApplication.Exit(1);
+                            return false;
+                        }
+                    texels += x.Length / 4;
+                }
+                foreach (var t in was.Values.Concat(now.Values)) { t.Release(); Object.DestroyImmediate(t); }
+                foreach (var b in c.passes) b.blitMaterial.SetFloat("_FixedDt", 0f);
+            }
+            if (++matched < ParityFrames) return false;
+            Log($"parity PASS: {matched} frames, {texels} texels, all to the bit but {rounded} values off by at most {worst:E1} of themselves");
+            return true;
         }
 
         static double Timed(Action run, RenderTexture rt, int runs)

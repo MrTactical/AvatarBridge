@@ -2008,7 +2008,9 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
 // stepped (20 to 22), the rider a frame before (23, 24), the step held with the smoothed frame
 // time (25), the anchor the second pass stepped on (26 to 29: its axes with its scale, then its
 // place, w 1), for a body's own shader to find the lattice by (yaps_jelly.cginc), and the region's
-// mass, as one piece (30, its centre, w the _Time.y it stepped; 31, where it was, w that step).
+// mass, as one piece (30, its centre, w the _Time.y it stepped; 31, where it was, w that step), and
+// whether any probe reads pushed (87), and the anchor the first pass stepped on, for the second's
+// particles (88 to 90, its rows).
 // Below 72 fps each pass takes a step. Above it the first only works out where each particle is
 // headed and the second fits, so each neighbour is read once. The first pass also looks for the
 // hands, so the second pushes against where they are this frame; below 72 fps the first pass's own
@@ -2200,13 +2202,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             bool SolidRegion(uint r) { return (((uint) round(_JellySolid) >> r) & 1) != 0; }
             uint WorldFrom(uint r) { return SolidRegion(r) ? (uint) _JellySolidFrom : PROBES; }
 
-            // Whether any of a side's probes read pushed last frame.
-            bool Pushed(uint side)
-            {
-                bool any = false;
-                [loop] for (uint k = 0; k < (uint) _JellyProbes && k < PROBES && !any; k++) any = _MainTex.Load(int3(READOUT + k, side, 0)).w > 0.002;
-                return any;
-            }
+            // Whether any of a side's probes read pushed last frame: the side row's 87, which the
+            // first pass works out beside the readout, so a particle reads one texel, not every probe.
+            bool Pushed(uint side) { return _MainTex.Load(int3(87, side, 0)).x > 0.5; }
 
             // MagicaCloth's probes on region r's hang, as the build put them: back takes the skinned
             // helper's space to the world through the hang as last skinned, put on the hang as it
@@ -3858,7 +3856,30 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 Region = region;
                 MineOf = region;
                 Cored = (region == 0 ? _JellyCoreA0.w : _JellyCoreA1.w) > 0;
+#ifdef JELLY_LATER
+                // The second pass's particles take the anchor the first pass's side row worked out this
+                // frame (88 to 90, its rows), and leave before anything else where they only copy:
+                // far, asleep, or a predicted step's right half. The clock is the side row's own test.
+                [branch] if ((uint) px.y != side)
+                {
+                    float4 sw = _MainTex.Load(int3(18, side, 0)), ck = _MainTex.Load(int3(25, side, 0));
+                    if (sw.x > 0.5) discard;
+#ifdef JELLY_SLEEP
+                    [branch] if (sw.y > 0.5)
+                    {
+                        float4 still = _MainTex.Load(int3(px, 0));
+                        return (uint) px.x < Row ? float4(still.xyz, _Time.y) : still;
+                    }
+#endif
+                    float dt1 = min((_FixedDt > 0 ? _FixedDt : max(ck.x, 1.0 / 240)) * max(ck.w, 1), 1.0 / 30);
+                    if ((uint) px.x >= Row && !(dt1 > 1.0 / 72) && !(_Stress > 0))
+                        return sw.w > 0.5 ? _MainTex.Load(int3(px, 0)) : 0;
+                    Mine = float4x4(_MainTex.Load(int3(88, side, 0)), _MainTex.Load(int3(89, side, 0)), _MainTex.Load(int3(90, side, 0)), float4(0, 0, 0, 1));
+                }
+                else Mine = AnchorOf(region);
+#else
                 Mine = AnchorOf(region);
+#endif
                 // The other region's only where it is read: the far switch measures from the first's,
                 // and the side row's pair plane. Built for every pixel, far-off steps cost half again.
                 Theirs = Mine;
@@ -3945,7 +3966,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // The probes' frame only where it is read: the side row, and an awake step of a region
                 // the world pushes.
                 Probed = false;
-                [branch] if ((uint) px.y == side || SolidRegion(region) && !distant && !asleep) Probed = Probing(region, Back);
+                [branch] if ((uint) px.y == side || SolidRegion(region) && !distant && !asleep && Pushed(side)) Probed = Probing(region, Back);
 
                 bool rider = false;
                 if ((uint) px.y == side)
@@ -4053,6 +4074,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, presses);
                         if (px.x == 85) return float4(AnchorVelocity(m, dt, side), Snapped ? -_Time.y : _Time.y);
+                        // The anchor's rows, for the second pass's particles.
+                        if (px.x >= 88 && px.x <= 90) return px.x == 88 ? m[0] : px.x == 89 ? m[1] : m[2];
                         // Each hand slot's grip (112 to 119), as Pulled reads it: a fist closed on the
                         // skin grips it where it closed, or where Slid takes it, until it opens or has
                         // pulled twice as far as the skin follows; a fist closed off the skin, or that
@@ -4072,6 +4095,17 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float rf;
                             Hand(a, b, pb, fa, fb, rf);
                             return was.w == 0 && Gap(a.xyz, pb, a.w, m, scale, side) <= 0.01 * scale ? float4(Into(m, Knuckles(a, b)), _Time.y) : float4(0, 0, 0, -1);
+                        }
+                        // Whether any probe below reads pushed, for Pushed.
+                        [branch] if (px.x == 87)
+                        {
+                            bool any = false;
+                            [loop] for (uint k = 0; k < (uint) _JellyProbes && k < PROBES && !any; k++)
+                            {
+                                float3 at, way;
+                                any = (Probed ? Probe(Region, k, Back, at, way) : -1) > 0.002;
+                            }
+                            return float4(any, 0, 0, 1);
                         }
                         // Each probe as the scan reads it, where it is and how far pushed: the slaps' last
                         // frame, and a readout for the verify.

@@ -4159,6 +4159,19 @@ films match the earlier ones frame for frame.
   160 / 214 s, after 208 / 150 s (whichever ran second was slower), warm 5.5-7 s both. The
   conversion compiles only the fog-off variant, so the saving lands in the upload build's fog
   variants, not here. **Open, needs Joe:** a look in a foggy world.
+- **The awake step, 2026-11-11 (Joe: "fix the in-game cost, somehow. While keeping all features").**
+  Every cost figure before this was the far path: the probe put the viewer's head 50 m off. Kar's
+  breast pair near with eight hands in reach was 0.154 / 0.160 ms (4080, 90 / 60 fps) and 0.992 /
+  1.605 (Radeon iGPU). Three cuts, each leaving the state as it was: the first pass's side row hands
+  the second pass the anchor (88 to 90) instead of every particle skinning it again; the second
+  pass's particles leave before any work where they only copy (far, asleep, a predicted step's
+  right half); one texel (87) says whether any probe is pushed, and a particle works out the
+  probes' frame only then, where it read every probe. `JellyCostProbe -costParity` ran the old and
+  new step on copies of the live state for 400 frames (hands moving, 90 and 60 fps, far): the 4080
+  matched every texel to the bit; the iGPU too but for 945 values within 4.3e-6 of themselves, the
+  driver ordering the edited variant's sums otherwise. Now 0.137 / 0.141 ms and 0.875 / 1.328 ms,
+  11 to 17% off. Left: the emulated integer divides and a guarded home skip below 72 fps (a few %
+  each); the probe's "near at rest" line uses the editor's own frame time and is no regression.
 
 ## Major Ideas
 
