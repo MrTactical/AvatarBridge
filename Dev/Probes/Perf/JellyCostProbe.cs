@@ -209,22 +209,27 @@ namespace AvatarBridge.Regression
                     foreach (var c in some)
                         foreach (var b in c.passes) Graphics.Blit(b.originTexture, b.destinationTexture, b.blitMaterial);
                 }
-                string Time(IEnumerable<(string part, Transform at, List<CVRBlitter> passes)> some, Vector3? hands)
+                string Time(IEnumerable<(string part, Transform at, List<CVRBlitter> passes)> some, Vector3? hands, bool near = false, float dt = 0f)
                 {
                     var list = some.ToList();
+                    foreach (var c in list) foreach (var b in c.passes) b.blitMaterial.SetFloat("_FixedDt", dt);
                     var times = new List<double>();
                     for (int round = 0; round < 5; round++)
                     {
-                        Players(hands);
+                        Players(hands, near);
                         times.Add(Timed(() => Run(list), list[0].passes[0].destinationTexture, 600));
                     }
                     times.Sort();
                     return $"{times[2]:0.000} ({times[0]:0.000} to {times[4]:0.000})";
                 }
+                // Far: the viewer 50 m off, the path a step takes only in the parser's few frames of lag.
+                // Near: the viewer's head at the origin, the steps run; eight hands keep a worn part awake.
                 foreach (var c in chains)
-                    Log($"{c.part}: {c.passes.Count} passes; at rest {Time(new[] { c }, null)} ms a frame; eight hands in reach {Time(new[] { c }, c.at.position)} ms");
+                    Log($"{c.part}: {c.passes.Count} passes; far {Time(new[] { c }, null)} ms a frame; near at rest {Time(new[] { c }, null, true)}; "
+                        + $"near, eight hands, 90 fps {Time(new[] { c }, c.at.position, true, 1f / 90)}; 60 fps {Time(new[] { c }, c.at.position, true, 1f / 60)}");
                 for (int k = 1; k <= chains.Count; k++)
-                    Log($"the first {k} together: at rest {Time(chains.Take(k), null)} ms a frame");
+                    Log($"the first {k} together: far {Time(chains.Take(k), null)} ms a frame; near, eight hands, 90 fps "
+                        + $"{Time(chains.Take(k), chains[0].at.position, true, 1f / 90)}; 60 fps {Time(chains.Take(k), chains[0].at.position, true, 1f / 60)}");
                 Log("PASS");
                 EditorApplication.Exit(0);
             }
@@ -237,7 +242,7 @@ namespace AvatarBridge.Regression
 
         // The client's player globals: 64 players far off, and with hands given, eight of them
         // within 3 cm of that point, as the bench sets them.
-        static void Players(Vector3? hands)
+        static void Players(Vector3? hands, bool near = false)
         {
             var far = new Vector4(50f, 50f, 50f, 0f);
             var left = Enumerable.Repeat(far, 255).ToArray();
@@ -258,6 +263,7 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", right);
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chest);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
+            if (near) heads[0] = Vector4.zero;
             Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", heads);
             Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 64, 0f, 0f));
         }
