@@ -24,24 +24,24 @@ namespace AvatarBridge.Regression
         const string Name = "Jelly Breast Prop";
 
         // The torso front, metres in the stand's frame: x across, y up, z out of the chest.
-        // Grid lines 3 mm apart over the breasts, widening to 12 mm over 4 cm past them: 299 x 198,
-        // 59k vertices, under the 16 bit index limit. A uniform grid that fine was 130k.
-        const float Wide = 0.55f, Above = 0.25f, Below = 0.40f, PlateY = 1.17f, Back = 0.05f, Plate = 0.06f;
-        const float Fine = 0.003f, Coarse = 0.012f, Ramp = 0.04f;
+        // Grid lines 3.7 mm apart over the breasts, widening to 12 mm over 4 cm past them, so the
+        // larger pair stays under the 16 bit index limit.
+        const float Wide = 0.63f, Above = 0.34f, Below = 0.42f, PlateY = 1.17f, Back = 0.05f, Plate = 0.06f;
+        const float Fine = 0.0037f, Coarse = 0.012f, Ramp = 0.04f;
         // Each breast's patch of the grid: its centre off the middle and its reach across, up and
         // down. The patch is cast onto the globe, so it only has to reach past where the skin
         // rejoins the chest; across it stops at the middle, where the other's starts.
-        const float BreastY = 1.13f, Apart = 0.1952f, Upper = 0.27f, Lower = 0.26f;
-        // Each breast a hyper pair's globe, about 39 x 41 x 38 cm: an ellipsoid centred Out from the
+        const float BreastY = 1.13f, Apart = 0.2317f, Upper = 0.33f, Lower = 0.31f;
+        // Each breast a hyper pair's globe, perky and round, about 46 x 46 x 42 cm: an ellipsoid centred Out from the
         // chest and Sag below its patch, radius Across wide, Top above and Bottom below (the lower
         // pole the fuller), Front to the tip and Rear back into the chest, which widens the base.
-        // 19.35 cm across on 19.52 apart leaves the inner skins under 3 mm apart, so a squeeze
+        // 23 cm across on 23.17 apart leaves the inner skins under 3 mm apart, so a squeeze
         // presses one into the other with no overlap for the pair's plane to start from.
-        const float Out = 0.165f, Sag = 0.04f, Across = 0.1935f, Top = 0.165f, Bottom = 0.205f, Front = 0.215f, Rear = 0.23f;
+        const float Out = 0.19f, Sag = 0.0f, Across = 0.23f, Top = 0.22f, Bottom = 0.235f, Front = 0.235f, Rear = 0.25f;
         // The top half leans back by Slope, so the upper pole runs down to the tip as a slope rather
         // than a shelf, and the tip turns Turn degrees out. The globe joins the chest through a fillet
         // Fillet wide on top, no crease there, narrowing to Fold below, the under-fold.
-        const float Slope = 0.25f, Turn = 6f, Fillet = 0.08f, Fold = 0.03f;
+        const float Slope = 0.08f, Turn = 7f, Fillet = 0.08f, Fold = 0.03f;
 
         [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Make a breast pair prop")]
         static void MakeMenu()
