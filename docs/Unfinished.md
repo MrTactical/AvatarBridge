@@ -4192,6 +4192,16 @@ films match the earlier ones frame for frame.
   the fit's one-cell neighbourhood 79% are in use (the butt 37% and 69%). A remap table costs about
   a fifth back, so it saves next to nothing on a breast and perhaps a tenth on a butt, for a draw
   change every jellied body recompiles: not built.
+  **Fewer steps, built OFF, needs Joe's verdict.** `_Cap` (steps a second near) and `_Mid` (the same
+  past `_Half`) gate the step inside the shader on its own clock (texel 25, the side row's 93 says
+  whether it is past `_Half`), never through the parser; the step after a skip takes the gap, and the
+  predicted limit moves to 1/69 while either is on so two frames at 144 stay one pass. Off: parity
+  bit-exact on both GPUs. Per frame, all parts, eight hands, off to on: `_Cap 72` at 144 fps 4080
+  0.278 to 0.242, iGPU 0.775 to 0.496 (36% off); `_Mid 45` at 90 fps only 6%: its catch-up step covers
+  1/45, past the limit, so it takes two passes. A skipped frame still costs the 4080 0.207 ms (the
+  blits' fixed price). Film at 60 fps stepping every other frame (the same pattern): only the slaps'
+  ringing shows it (uneven 1.03 to 1.21). Open: Joe to judge the film; whether one pass is stable over
+  1/45 (would make `_Mid` pay); neither is wired to a setting yet.
 
 ## Major Ideas
 

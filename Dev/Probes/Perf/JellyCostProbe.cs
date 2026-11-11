@@ -368,6 +368,61 @@ namespace AvatarBridge.Regression
                         Log($"A/B all parts, near, eight hands, {Mathf.RoundToInt(1 / dt)} fps: old {a[3]:0.000} ({a[0]:0.000} to {a[6]:0.000}) ms, new {b[3]:0.000} ({b[0]:0.000} to {b[6]:0.000})");
                     }
                 }
+                // The step-rate switches, off and on in turns: frames in a row on the step's own clock,
+                // _Time and unity_DeltaTime moved on a frame's time per frame, so a gated frame costs
+                // what it does in game. Steps counts the frames whose clock (texel 25) moved. A cap of 1 prices
+                // a frame the gate skips; of 1000, the gate on that never skips.
+                if (chains[0].passes[0].blitMaterial.HasProperty("_Cap"))
+                {
+                    var all = chains.ToList();
+                    var mat0 = all[0].passes[0].blitMaterial;
+                    float clock = UnityEngine.Time.timeSinceLevelLoad + 10f;
+                    Vector3 mid = all[0].at.position + Vector3.forward * 0.5f * (mat0.GetFloat("_Half") + mat0.GetFloat("_Far"));
+                    void Frame(float dt)
+                    {
+                        clock += dt;
+                        Shader.SetGlobalVector("_Time", new Vector4(clock / 20, clock, 2 * clock, 3 * clock));
+                        Shader.SetGlobalVector("unity_DeltaTime", new Vector4(dt, 1 / dt, dt, 1 / dt));
+                        Run(all);
+                    }
+                    int Steps(float dt)
+                    {
+                        var rt = (RenderTexture) all[0].passes[0].originTexture;
+                        int block = rt.height / Mathf.Max(1, Mathf.RoundToInt(mat0.GetFloat("_Regions"))), k = 4 * ((block - 1) * rt.width + 25) + 2, steps = 0;
+                        float last = float.NaN;
+                        for (int i = 0; i < 60; i++)
+                        {
+                            Frame(dt);
+                            var q = AsyncGPUReadback.Request(rt);
+                            q.WaitForCompletion();
+                            float z = q.GetData<float>()[k];
+                            if (z != last) steps++;
+                            last = z;
+                        }
+                        return steps;
+                    }
+                    foreach (var (knob, on, fps, head) in new[] { ("_Cap", 72f, 144f, (Vector3?) null), ("_Mid", 45f, 90f, (Vector3?) mid), ("_Cap", 1f, 144f, (Vector3?) null), ("_Cap", 1000f, 144f, (Vector3?) null) })
+                    {
+                        float dt = 1 / fps;
+                        var a = new List<double>();
+                        var b = new List<double>();
+                        int stepsOff = 0, stepsOn = 0;
+                        foreach (var c in all) foreach (var x in c.passes) x.blitMaterial.SetFloat("_FixedDt", dt);
+                        for (int round = 0; round < 7; round++)
+                            foreach (float v in new[] { 0f, on })
+                            {
+                                foreach (var c in all) foreach (var x in c.passes) x.blitMaterial.SetFloat(knob, v);
+                                Players(all[0].at.position, head == null, head);
+                                if (round == 0) { if (v > 0) stepsOn = Steps(dt); else stepsOff = Steps(dt); }
+                                (v > 0 ? b : a).Add(Timed(() => Frame(dt), all[0].passes[0].destinationTexture, 600));
+                            }
+                        foreach (var c in all) foreach (var x in c.passes) x.blitMaterial.SetFloat(knob, 0f);
+                        a.Sort();
+                        b.Sort();
+                        Log($"{knob} {on} at {fps} fps, all parts, {(head == null ? "near" : "mid")}, eight hands: off {a[3]:0.000} ({a[0]:0.000} to {a[6]:0.000}) ms a frame, "
+                            + $"stepped {stepsOff} of 60; on {b[3]:0.000} ({b[0]:0.000} to {b[6]:0.000}), stepped {stepsOn} of 60");
+                    }
+                }
                 Log("PASS");
                 EditorApplication.Exit(0);
             }
@@ -380,7 +435,7 @@ namespace AvatarBridge.Regression
 
         // The client's player globals: 64 players far off, and with hands given, eight of them
         // within 3 cm of that point, as the bench sets them.
-        static void Players(Vector3? hands, bool near = false)
+        static void Players(Vector3? hands, bool near = false, Vector3? head = null)
         {
             var far = new Vector4(50f, 50f, 50f, 0f);
             var left = Enumerable.Repeat(far, 255).ToArray();
@@ -402,6 +457,7 @@ namespace AvatarBridge.Regression
             Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chest);
             Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
             if (near) heads[0] = Vector4.zero;
+            if (head is Vector3 hd) heads[0] = hd;
             Shader.SetGlobalVectorArray("_CVR_PlayerHeadPositions", heads);
             Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 64, 0f, 0f));
         }
