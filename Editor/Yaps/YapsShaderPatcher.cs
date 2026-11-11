@@ -59,7 +59,59 @@ namespace AvatarBridge
         // property was added to the block below and every already-patched
         // shader went on without it, silently, because the name it hashes to
         // had not moved.
-        static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock);
+        static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock + FogPerPixel);
+
+        // Fog's vertex half on PC is the same in every mode, the clip depth. Passed always and
+        // turned into fog per pixel always, every fog mode shares one vertex program and a no-fog
+        // pixel program still lines up with it. Without this, a vertex program compiled once
+        // would write no depth and the fog variants would read none.
+        const string FogPerPixel = @"
+#undef UNITY_FOG_COORDS
+#define UNITY_FOG_COORDS(idx) UNITY_FOG_COORDS_PACKED(idx, float1)
+#undef UNITY_TRANSFER_FOG
+#define UNITY_TRANSFER_FOG(o,outpos) o.fogCoord.x = (outpos).z
+#if defined(FOG_LINEAR) || defined(FOG_EXP) || defined(FOG_EXP2)
+#undef UNITY_APPLY_FOG_COLOR
+#define UNITY_APPLY_FOG_COLOR(coord,col,fogCol) UNITY_CALC_FOG_FACTOR((coord).x); UNITY_FOG_LERP_COLOR(col,fogCol,unityFogFactor)
+#endif
+";
+
+        // Anything that works fog out by itself, so the three macros above are not the whole of
+        // it: Unity's own Standard, particle and terrain code packs fog into other members.
+        static readonly Regex OwnFog = new Regex(
+            @"\bFOG_(LINEAR|EXP2?)\b|UNITY_TRANSFER_FOG_COMBINED|UNITY_EXTRACT_FOG|UNITY_CALC_FOG_FACTOR|unityFogFactor|unity_FogParams" +
+            @"|#include\s+""(UnityStandardCore|UnityStandardParticles|TerrainSplatmapCommon|UnityBuiltin2xTreeLibrary)");
+
+        static readonly Regex FogPragma = new Regex(@"#pragma\s+multi_compile_fog\b[^\n]*");
+        static readonly Regex UnityCgInclude = new Regex(@"#include\s+""UnityCG\.cginc""[^\n]*\n");
+
+        // Fog keywords out of every vertex program that only reaches fog through Unity's three
+        // macros: a body pass compiled four times over, once per fog mode, for identical code.
+        // A pass that does anything else with fog, or reaches UnityCG some other way, is left.
+        static void FogInPixelOnly(List<ShaderSpiPatcher.SourceFile> unit)
+        {
+            var file = unit[0];
+            string code = ShaderSpiPatcher.Uncommented(file.Text);
+            var shared = Regex.Matches(code, @"(?:CG|HLSL)INCLUDE([\s\S]*?)END(?:CG|HLSL)").Cast<Match>().ToList();
+            var edits = new SortedDictionary<int, (int cut, string put)>();
+            foreach (Match block in Regex.Matches(code, @"(?:CG|HLSL)PROGRAM([\s\S]*?)END(?:CG|HLSL)"))
+            {
+                var body = block.Groups[1];
+                var pragma = FogPragma.Match(code, body.Index, body.Length);
+                if (!pragma.Success) continue;
+                var include = UnityCgInclude.Match(code, body.Index, body.Length);
+                if (!include.Success)
+                    include = shared.Where(s => s.Index < block.Index).Select(s => UnityCgInclude.Match(code, s.Groups[1].Index, s.Groups[1].Length))
+                        .LastOrDefault(m => m.Success) ?? include;
+                if (!include.Success) continue;
+                var reached = Reached(unit, code, body.Index, body.Index + body.Length).Skip(1).Select(f => ShaderSpiPatcher.Uncommented(f.Text));
+                if (OwnFog.IsMatch(body.Value) || shared.Any(s => OwnFog.IsMatch(s.Groups[1].Value)) || reached.Any(OwnFog.IsMatch)) continue;
+                edits[pragma.Index] = (pragma.Length, "#pragma multi_compile_fragment _ FOG_LINEAR FOG_EXP FOG_EXP2");
+                edits[include.Index + include.Length] = (0, FogPerPixel);
+            }
+            foreach (var edit in edits.Reverse())
+                file.Text = file.Text.Remove(edit.Key, edit.Value.cut).Insert(edit.Key, edit.Value.put);
+        }
 
         // What Properties{} needs. Distinct from the HLSL declarations in
         // yaps_props.cginc: Unity needs its own syntax here, and only
@@ -751,6 +803,7 @@ namespace AvatarBridge
                 bool whole = (patchedPasses > 0 || lent.Count > 0) && blockRefusal == null;
                 if (whole)
                 {
+                    FogInPixelOnly(unit);
                     string newName = PatchedName(shaderFile.Text, hash);
                     shaderFile.Text = MarkLocked(ShaderSpiPatcher.Rename(shaderFile.Text, newName));
                     InstallShaderGui(shaderFile, material.shader.name,

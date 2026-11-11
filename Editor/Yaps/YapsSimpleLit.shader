@@ -123,6 +123,9 @@ Shader "YAPS/Simple Lit"
             CGPROGRAM
             #pragma target 4.0
             #pragma multi_compile_fwdbase
+            // An avatar is never lightmapped. The shadowmask keywords stay: they shadow it in a
+            // baked world.
+            #pragma skip_variants LIGHTMAP_ON DIRLIGHTMAP_COMBINED DYNAMICLIGHTMAP_ON
             #pragma multi_compile_fog
             #pragma multi_compile_instancing
             #pragma vertex vertBase

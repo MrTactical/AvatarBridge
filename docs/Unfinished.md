@@ -4149,8 +4149,12 @@ at once (a 31 GB editor, not responding). Now:
 ForwardAdd vertex 11,221 slots to about 1,400 (2 slots) / 1,243 (1 slot), 1-2 s a variant.
 GPU frame cost unchanged (0.047 / 0.41 ms, 4080 / iGPU, Kar breasts and seat). Prop and Kar
 films match the earlier ones frame for frame.
-- **Open, needs Joe:** fog only in the fragment program would halve the fog variants again,
-  but has to be checked in game in a foggy world first.
+- **Done 2026-11-11:** fog moves to the pixel program. A patched pass's `multi_compile_fog`
+  becomes `multi_compile_fragment`, and the fog macros are redefined so the vertex program writes
+  clip z in every mode: one vertex program per pass instead of four. Passes that read fog any
+  other way (Standard, custom fog code, no UnityCG) are left alone. Simple Lit also skips the
+  lightmap variants. FogCutProbe: 144 shader families drawn old vs new, fog off and all three
+  modes, identical to the pixel with fog visible. **Open, needs Joe:** a look in a foggy world.
 
 ## Major Ideas
 
