@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // first k together, at rest and with eight hands in reach of each part. The bench's way: warmed
     // a third of a second, 600 runs, the GPU waited on, five rounds, the median.
     //   -executeMethod AvatarBridge.Regression.JellyCostProbe.Run -costScene <scene> -costPrefab <prefab>
-    //       [-costPaint] [-costSquashOnly] [-costSave <Assets/x.prefab>] [-costNoPlay]
+    //       [-costPaint] [-costSquashOnly] [-costSave <Assets/x.prefab>] [-costNoPlay] [-costCount]
     // -costPaint: the probe's painted parts (breasts, butt, a belly alone, thighs) instead of the
     // bone names. -costSquashOnly: no tissue. -costSave: the built copy saved as a prefab, for
     // UploadCostProbe. -force-device-index 1 runs it on the CPU's own GPU. Run without -quit; it
@@ -86,6 +86,12 @@ namespace AvatarBridge.Regression
                     YapsShaderPatcher.EndPass("cost probe, the tissue", null);
                     Log($"tissue on {on.Count} in {clock.ElapsedMilliseconds} ms: {string.Join("; ", on)}" + (refused.Count > 0 ? $"; refused {string.Join("; ", refused)}" : ""));
                     Knobs(root);
+                    if (Flag("-costCount"))
+                    {
+                        Cells(root);
+                        EditorApplication.Exit(0);
+                        return;
+                    }
                     // Built again on the same avatar, as a user's rebuild is: its assets rewritten in place.
                     if (Flag("-costTwice"))
                     {
@@ -154,6 +160,114 @@ namespace AvatarBridge.Regression
             if (animator != null) animator.runtimeAnimatorController = Own(animator.runtimeAnimatorController);
             AssetDatabase.SaveAssets();
             Log($"{swaps.Count} controller(s) copied into {Folder}, the source's left alone: {string.Join(", ", swaps.Keys.Select(k => k.name))}");
+        }
+
+        // -costCount: how many of each region's particles matter, for pricing a sparse lattice. A: a
+        // corner of a cell some moved vertex is drawn from, mapped as yaps_jelly.cginc's
+        // YapsJellyRegion does; B: A and its 3x3x3 neighbours, the fit's reach; C: B and all it
+        // encloses, flood filled from the box's faces.
+        static void Cells(Transform root)
+        {
+            var found = YapsSquash.PartsOf(root, out string none);
+            if (found == null)
+            {
+                Log("count: no parts, " + none);
+                return;
+            }
+            var body = found.body;
+            var baked = new Mesh();
+            body.BakeMesh(baked);
+            var world = baked.vertices.Select(v => body.transform.position + body.transform.rotation * v).ToArray();
+            Object.DestroyImmediate(baked);
+            for (int pair = 0; pair < found.parts.Count; pair++)
+            {
+                var (name, sides) = found.parts[pair];
+                var worn = root.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => t.name == YapsJelly.WornName(name));
+                var mat = worn?.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(p => p.materials).FirstOrDefault(m => m != null && m.HasProperty("_Lattice"));
+                if (mat == null)
+                {
+                    Log($"count {name}: no tissue");
+                    continue;
+                }
+                var lat = mat.GetVector("_Lattice");
+                var n = new Vector3Int((int) lat.x, (int) lat.y, (int) lat.z);
+                float spacing = lat.w;
+                int total = n.x * n.y * n.z;
+                int Index(int x, int y, int z) => (z * n.y + y) * n.x + x;
+                for (int side = 0; side < sides; side++)
+                {
+                    var region = worn.Find($"Jelly Region {side}");
+                    var share = found.shares[body][2 * pair + side];
+                    var a = new bool[total];
+                    int moved = 0, outside = 0;
+                    for (int v = 0; v < Mathf.Min(world.Length, share.Length); v++)
+                    {
+                        if (!(share[v] > 0f)) continue;
+                        moved++;
+                        // Region scale cancels as the draw's per does: InverseTransformPoint is rel.ax / |ax|^2.
+                        var l = region.InverseTransformPoint(world[v]) / spacing + new Vector3(0.5f * (n.x - 1), 0.5f * (n.y - 1), 0f);
+                        if (l.x < 0 || l.y < 0 || l.z < 0 || l.x > n.x - 1 || l.y > n.y - 1 || l.z > n.z - 1) outside++;
+                        int cx = Mathf.Min((int) Mathf.Clamp(l.x, 0, n.x - 1), n.x - 2);
+                        int cy = Mathf.Min((int) Mathf.Clamp(l.y, 0, n.y - 1), n.y - 2);
+                        int cz = Mathf.Min((int) Mathf.Clamp(l.z, 0, n.z - 1), n.z - 2);
+                        for (int k = 0; k < 8; k++) a[Index(cx + (k & 1), cy + ((k >> 1) & 1), cz + (k >> 2))] = true;
+                    }
+                    var b = new bool[total];
+                    for (int z = 0; z < n.z; z++)
+                        for (int y = 0; y < n.y; y++)
+                            for (int x = 0; x < n.x; x++)
+                                if (a[Index(x, y, z)])
+                                    for (int dz = -1; dz <= 1; dz++)
+                                        for (int dy = -1; dy <= 1; dy++)
+                                            for (int dx = -1; dx <= 1; dx++)
+                                            {
+                                                int X = x + dx, Y = y + dy, Z = z + dz;
+                                                if (X >= 0 && Y >= 0 && Z >= 0 && X < n.x && Y < n.y && Z < n.z) b[Index(X, Y, Z)] = true;
+                                            }
+                    // Outside: reached from the box's faces through non-B particles, six ways.
+                    var outer = new bool[total];
+                    var queue = new Queue<Vector3Int>();
+                    for (int z = 0; z < n.z; z++)
+                        for (int y = 0; y < n.y; y++)
+                            for (int x = 0; x < n.x; x++)
+                                if ((x == 0 || y == 0 || z == 0 || x == n.x - 1 || y == n.y - 1 || z == n.z - 1) && !b[Index(x, y, z)])
+                                {
+                                    outer[Index(x, y, z)] = true;
+                                    queue.Enqueue(new Vector3Int(x, y, z));
+                                }
+                    var steps = new[] { Vector3Int.right, Vector3Int.left, Vector3Int.up, Vector3Int.down, new Vector3Int(0, 0, 1), new Vector3Int(0, 0, -1) };
+                    while (queue.Count > 0)
+                    {
+                        var p = queue.Dequeue();
+                        foreach (var s in steps)
+                        {
+                            var q = p + s;
+                            if (q.x < 0 || q.y < 0 || q.z < 0 || q.x >= n.x || q.y >= n.y || q.z >= n.z) continue;
+                            int i = Index(q.x, q.y, q.z);
+                            if (outer[i] || b[i]) continue;
+                            outer[i] = true;
+                            queue.Enqueue(q);
+                        }
+                    }
+                    // Pinned as the step's Pinned(l): the back face, or within a core's capsule.
+                    var ca = mat.GetVector(side == 0 ? "_JellyCoreA0" : "_JellyCoreA1");
+                    var cb = mat.GetVector(side == 0 ? "_JellyCoreB0" : "_JellyCoreB1");
+                    int pinned = 0;
+                    for (int z = 0; z < n.z; z++)
+                        for (int y = 0; y < n.y; y++)
+                            for (int x = 0; x < n.x; x++)
+                            {
+                                if (!(ca.w > 0)) { if (z == 0) pinned++; continue; }
+                                var r = new Vector3(x - 0.5f * (n.x - 1), y - 0.5f * (n.y - 1), z) * spacing;
+                                Vector3 pa = ca, seg = (Vector3) cb - pa;
+                                var near = pa + seg * Mathf.Clamp01(Vector3.Dot(r - pa, seg) / Mathf.Max(seg.sqrMagnitude, 1e-12f));
+                                if (Vector3.Distance(r, near) < ca.w) pinned++;
+                            }
+                    int A = a.Count(t => t), B = b.Count(t => t), C = outer.Count(t => !t);
+                    string Pc(int c) => $"{c} ({100f * c / total:0.0}%)";
+                    Log($"count {name} region {side}: lattice {n.x}x{n.y}x{n.z} at {100f * spacing:0.00} cm, total {total}; {moved} moved vertices, {outside} outside the box; A {Pc(A)}, B {Pc(B)}, C {Pc(C)}, pinned {Pc(pinned)}{(ca.w > 0 ? " (cored)" : " (back face)")}");
+                }
+            }
         }
 
         // The stretch in motion and other players' hands, live: both off through the component's

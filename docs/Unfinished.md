@@ -4187,6 +4187,11 @@ films match the earlier ones frame for frame.
   proposed again: Unity ParticleSystem, MagicaCloth2, animator blend shapes, the material data
   provider, a modal or Kelvinlet body, a coarse lattice read through a B-spline. Each either cannot
   reach the draw without a script or loses contact, grip and world faces.
+  The sparse lattice (step only the cells the skin uses) was priced first with `JellyCostProbe
+  -costCount`, no shader change: of Kar's 3150 a breast, the draw reads the corners of 45%, and with
+  the fit's one-cell neighbourhood 79% are in use (the butt 37% and 69%). A remap table costs about
+  a fifth back, so it saves next to nothing on a breast and perhaps a tenth on a butt, for a draw
+  change every jellied body recompiles: not built.
 
 ## Major Ideas
 
