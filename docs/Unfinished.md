@@ -4201,7 +4201,8 @@ films match the earlier ones frame for frame.
   1/45, past the limit, so it takes two passes. A skipped frame still costs the 4080 0.207 ms (the
   blits' fixed price). Film at 60 fps stepping every other frame (the same pattern): only the slaps'
   ringing shows it (uneven 1.03 to 1.21). Open: Joe to judge the film; whether one pass is stable over
-  1/45 (would make `_Mid` pay); neither is wired to a setting yet.
+  1/45 (would make `_Mid` pay). Joe, after the film: the cap on. Built tissue takes `_Cap` 72
+  (`YapsJelly.Cap`): every frame steps up to 90 Hz, every other one at 120 and 144.
 
 ## Major Ideas
 

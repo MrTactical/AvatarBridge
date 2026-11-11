@@ -1829,6 +1829,9 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
                 // The rider's texels are read only by the parser's pass and the sleep: worn without
                 // either, stepping them cost a particle's whole step on two texels a region.
                 mat.SetFloat("_Rider", withRider || sleeps ? 1f : 0f);
+                // A 144 Hz screen steps every other frame: the draw carries the jiggle on between, and
+                // up to 90 Hz every frame still steps.
+                mat.SetFloat("_Cap", Cap);
                 mat.SetFloat("_Lift", lift);
                 mat.SetFloat("_Regions", regions);
                 EditorUtility.SetDirty(mat);
@@ -1997,6 +2000,8 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
             }
             return old;
         }
+
+        internal const float Cap = 72;
 
         internal const string StepShader = @"// The jelly's step. Written by YAPS; edits here are overwritten.
 //
