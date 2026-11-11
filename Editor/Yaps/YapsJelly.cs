@@ -148,6 +148,10 @@ namespace AvatarBridge
             mat.SetFloat("_Solid", 0.7f * (s != null ? s.volumeKept : 1f));
             // Squeeze: other players' palms flatten the whole at constant volume (Squeezed in the step).
             mat.SetFloat("_Squeeze", 0.6f);
+            // Flattened about its own middle, a squeezed part's inner side pulls off the cleavage;
+            // the wholes close in to 0.55 of their distance at rest (was 0.85), so a pair squeezed
+            // from the outsides presses into each other instead of parting top and bottom.
+            mat.SetFloat("_PairKeep", 0.55f);
             // A part alone has no partner to meet.
             mat.SetFloat("_Pair", (s == null || s.meet) && mat.GetFloat("_Regions") > 1.5f ? 1f : 0f);
             // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.

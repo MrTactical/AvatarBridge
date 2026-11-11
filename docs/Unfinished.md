@@ -4108,6 +4108,10 @@ and push forward as well". Two hands squeezing from the outsides made a hand-sha
   taken by the homes, so the front and top grow and the chest wall stays. Joe on the three-row film
   (now, dish, dish + flatten): "that looks right. Keep it like that for now".
 - Seat and thighs filmed on the new code, no shader errors; compile-check and check-defines pass.
+- **The pair closes in under a squeeze** (`_PairKeep` 0.55, was 0.85, set in `Live`): flattened about
+  its own middle, each part's inner side pulled off the cleavage and the pair parted top and
+  bottom. Found on the breast prop, then filmed on Kar old against new: the pair now presses
+  together. Joe on the prop: "that's some good shit".
 - **Open:** Joe in game, two players squeezing; the slaps, poke, one hand pushing and grabs changed
   too (same palm path), judged only on film; the step's fresh fxc compile time not measured; the
   jelly prop's check limits may be keyed to the old dent.
