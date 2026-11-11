@@ -23,12 +23,26 @@
 // at each read: compiled once a slot, its four copies beside the squash took a body's vertex program
 // past Unity's compile time limit (346 s for one variant). All four are read, the other three off
 // the texture, where a Load returns 0: a branch at every read, with the loops below rolled, took a
-// Poiyomi Pro body's vertex program from 20 s to 28 s in fxc.
+// Poiyomi Pro body's vertex program from 20 s to 28 s in fxc. Only the slots a material's parts
+// fill are read (YapsShaderPatcher's YAPS_JELLY_SLOTS): each one more is a load at every read.
+#ifndef YAPS_JELLY_SLOTS
+#define YAPS_JELLY_SLOTS 4
+#endif
 float4 YapsJellyLoad(uint slot, int3 at)
 {
+#if YAPS_JELLY_SLOTS == 1
+    return _YAPS_JellyState.Load(at);
+#else
     int3 none = int3(-1, -1, 0);
     return _YAPS_JellyState.Load(slot == 0 ? at : none) + _YAPS_JellyState2.Load(slot == 1 ? at : none)
-         + _YAPS_JellyState3.Load(slot == 2 ? at : none) + _YAPS_JellyState4.Load(slot == 3 ? at : none);
+#if YAPS_JELLY_SLOTS > 2
+         + _YAPS_JellyState3.Load(slot == 2 ? at : none)
+#endif
+#if YAPS_JELLY_SLOTS > 3
+         + _YAPS_JellyState4.Load(slot == 3 ? at : none)
+#endif
+         ;
+#endif
 }
 
 float4 YapsJellyTexel(uint slot, uint p, uint base) { return YapsJellyLoad(slot, int3(p % 64, p / 64 + base, 0)); }
@@ -151,9 +165,12 @@ float3 YapsJellySlap(uint slot, uint side, float3 world, float3 nw, inout float3
     float speed = _YAPS_JellySlap.y, len = max(_YAPS_JellySlap.z, 1e-3), fade = max(_YAPS_JellySlap.w, 1e-3), k2 = 6.2831853 / len;
     [unroll] for (int k = 0; k < 2; k++)
     {
-        float4 hit = YapsJellyLoad(slot, int3(80 + 2 * k, side, 0)), how = YapsJellyLoad(slot, int3(81 + 2 * k, side, 0));
+        // The depth first: no slap, one texel read and not two.
+        float4 how = YapsJellyLoad(slot, int3(81 + 2 * k, side, 0));
+        [branch] if (!(how.w > 0)) continue;
+        float4 hit = YapsJellyLoad(slot, int3(80 + 2 * k, side, 0));
         float age = _Time.y - hit.w;
-        [branch] if (how.w > 0 && age >= 0 && age < 4 * fade)
+        [branch] if (age >= 0 && age < 4 * fade)
         {
             float3 out_ = world - hit.xyz;
             float d = length(out_), x = d - speed * age;
@@ -210,11 +227,11 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     {
         int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
         int3 l = c0 + d;
-        float3 rest = float3(l.x - 0.5 * (n.x - 1), l.y - 0.5 * (n.y - 1), l.z) * spacing;
-        float3 home = place.xyz + ax * rest.x + ay * rest.y + az * rest.z;
         uint pi = (uint) ((l.z * n.y + l.y) * n.x + l.x);
         float4 pt = YapsJellyTexel(slot, pi, base);
-        float3 off = pt.xyz - home;
+        // Off the anchor here, its rest taken off once below: the rest is linear in the corner,
+        // so its blend is the rest at c and its slopes the axes.
+        float3 off = pt.xyz - place.xyz;
         // The step's right half: where it was before the step, and the step's time.
         [branch] if (between)
         {
@@ -228,6 +245,11 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         gy += way.y * w.x * w.z * off;
         gz += way.z * w.x * w.y * off;
     }
+    float3 rest = float3(c.x - 0.5 * (n.x - 1), c.y - 0.5 * (n.y - 1), c.z) * spacing;
+    move -= ax * rest.x + ay * rest.y + az * rest.z;
+    gx -= ax * spacing;
+    gy -= ay * spacing;
+    gz -= az * spacing;
     bend = per * (ax * dot(gx, nw) + ay * dot(gy, nw) + az * dot(gz, nw));
     [branch] if (_YAPS_JellySlap.x > 0) move += YapsJellySlap(slot, side, world, nw, bend);
     // The hands in reach push the skin itself on too, the palm and any finger out: the particles sit
@@ -303,7 +325,12 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     // the squash's own give, none at the back face and all of it at the front; the skin then still
     // in the shaft is pressed out of it. The press alone moved only skin on the shaft: the squash's
     // parting moved the pair a hundred times as much of the picture.
-    [branch] if (_YAPS_SquashPlug > 0 && m >= 0 && YapsUnit(18 + (m >> 1)) > 0)
+    // The lights first, the same for every vertex of the draw: with no plug lit, the skin state's
+    // twenty buffer reads and the part below are never paid for.
+    uint plugs = 0;
+    [unroll] for (uint q = 0; q < 4; q++)
+        if (YapsLightIsMarker(q) && (YapsLightDigit(q) == 8 || YapsLightDigit(q) == 9) && !(unity_LightColor[q].a <= 1e-4)) plugs |= 1u << q;
+    [branch] if (plugs != 0 && _YAPS_SquashPlug > 0 && m >= 0 && YapsUnit(18 + (m >> 1)) > 0)
     {
         // The squash sets this per vertex, and leaves a vertex the jelly carries before it does.
         yapsSkin = YapsSkinState();
@@ -316,11 +343,10 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         float give = _YAPS_SquashTune.z * _YAPS_SquashOut[m] * part.unit, front = c.z / max(n.z - 1, 1);
         [loop] for (uint i = 0; i < 4; i++)
         {
-            int digit = YapsLightDigit(i);
             float len = unity_LightColor[i].a;
             float3 base = YapsLightPosition(i);
             float d = distance(socket, base);
-            if (!YapsLightIsMarker(i) || digit != 8 && digit != 9 || len <= 1e-4 || d >= len || d <= 1e-4) continue;
+            if (!(plugs & (1u << i)) || d >= len || d <= 1e-4) continue;
             float3 tip = base + (socket - base) / d * len, seg = tip - base;
             float girth = clamp(0.1 * len, 0.012, 0.06), gain = _YAPS_SquashPlug * saturate((len - d) / (0.2 * len));
             float3 out_ = part.centre - (base + seg * saturate(dot(part.centre - base, seg) / dot(seg, seg)));
@@ -385,7 +411,7 @@ void YapsJellyDeform(inout float3 position, inout float3 normal, inout float3 ta
     // Zero stays zero: a host with no normal gets none invented here.
     if (hasNormal)
     {
-        normal = normalize(mul(normalize(nw - bend), (float3x3)unity_ObjectToWorld));
+        normal = normalize(mul(nw - bend, (float3x3)unity_ObjectToWorld));
         if (dot(tangent, tangent) > 0)
             tangent = normalize(tangent - normal * dot(normal, tangent));
     }

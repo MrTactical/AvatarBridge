@@ -28,8 +28,12 @@ namespace AvatarBridge
         // material calls it or not: the plug's took most of a squash copy's wait, 10 s of 12.
         // Jelly, the live tissue, is only ever asked for by name, so All keeps meaning what a patch
         // made before roles compiled.
+        // JellyUnread is how many of the jelly's four state slots go unread, from the last, as a
+        // number in its two bits: each slot read is a load at every read. 0, a patch from before.
         [Flags]
-        public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash, Jelly = 8 }
+        public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash, Jelly = 8, JellyUnread = 48 }
+
+        public static Roles JellyReading(int slots) => (Roles) ((4 - Mathf.Clamp(slots, 1, 4)) << 4);
 
         public const string RolesProperty = "_YAPS_Roles";
 
@@ -286,6 +290,13 @@ namespace AvatarBridge
             refusal = null;
             var have = RolesOf(patched.shader);
             return (have & role) == role && !IsStale(patched) ? patched.shader : Repatch(patched, have | role, report, out refusal);
+        }
+
+        // Exactly these roles, any it has beyond them dropped too.
+        public static Shader WithRoles(Material patched, Roles roles, BridgeReport report, out string refusal)
+        {
+            refusal = null;
+            return RolesOf(patched.shader) == roles && !IsStale(patched) ? patched.shader : Repatch(patched, roles, report, out refusal);
         }
 
         static Shader Repatch(Material patched, Roles roles, BridgeReport report, out string refusal)
@@ -1464,6 +1475,7 @@ namespace AvatarBridge
             if ((roles & Roles.Socket) == 0) yaps = "#define YAPS_NO_SOCKET\n" + yaps;
             if ((roles & Roles.Squash) == 0) yaps = "#define YAPS_NO_SQUASH\n" + yaps;
             if ((roles & Roles.Jelly) == 0) yaps = "#define YAPS_NO_JELLY\n" + yaps;
+            else if ((roles & Roles.JellyUnread) != 0) yaps = $"#define YAPS_JELLY_SLOTS {4 - ((int) (roles & Roles.JellyUnread) >> 4)}\n" + yaps;
             return duplicate ? "#define YAPS_DUPLICATE\n" + yaps : yaps;
         }
 

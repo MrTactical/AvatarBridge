@@ -4135,6 +4135,23 @@ avatar there. Kar's breasts went 10x10x10 at 4.6 cm to 15x14x15 at 3.0 cm, seat 
 - **Open:** the step's fixed iterations spread a press fewer metres a frame on a finer lattice,
   so a big part may feel softer or settle slower than tuned. Watch for it in game.
 
+### 36. A jellied body's shader compiled for minutes and froze a big project. Joe, 2026-11-10: "as optimized as humanly possible". DONE on dev
+
+A body with live tissue still carried the whole squash, which returned early on every jellied
+part but cost the vertex program its code anyway: 11,221 instruction slots in the ForwardAdd
+vertex program, about 20 s a variant in fxc, and a fresh include edit recompiled every variant
+at once (a 31 GB editor, not responding). Now:
+- The squash compiles out (`YAPS_NO_SQUASH`) when the jelly carries every part it dented.
+- The jelly reads only the state slots up to the highest one worn (`YAPS_JELLY_SLOTS`).
+- Instancing is off on jellied materials, so the build strips the instancing copies.
+- In the skin: depth texel first on a slap, plug lights before skin state, rest subtracted once.
+
+ForwardAdd vertex 11,221 slots to about 1,400 (2 slots) / 1,243 (1 slot), 1-2 s a variant.
+GPU frame cost unchanged (0.047 / 0.41 ms, 4080 / iGPU, Kar breasts and seat). Prop and Kar
+films match the earlier ones frame for frame.
+- **Open, needs Joe:** fog only in the fragment program would halve the fog variants again,
+  but has to be checked in game in a foggy world first.
+
 ## Major Ideas
 
 The work Joe means to take on after 5.0.0.

@@ -934,9 +934,18 @@ namespace AvatarBridge
             var state = core.state;
             var left = new List<string>();
             int patched = 0;
+            var jellied = Parts(root, names, dented);
+            var worn = Worns(root);
+            int reading = Enumerable.Range(0, YapsSquash.JellySlots).LastOrDefault(x => x < names.Count && worn.Contains(names[x])) + 1;
             foreach (var m in mats)
             {
-                var shader = YapsShaderPatcher.WithRole(m, YapsShaderPatcher.Roles.Jelly, report, out string why);
+                // The squash compiled in only while it still dents something: on every part it
+                // carries the jelly has taken over, it costs a body's vertex program 85% of its
+                // code to return early.
+                var roles = YapsShaderPatcher.RolesOf(m.shader) & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
+                    | YapsShaderPatcher.JellyReading(reading);
+                if (SquashIdle(m, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
+                var shader = YapsShaderPatcher.WithRoles(m, roles, report, out string why);
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                 {
                     // Unity's message runs on into advice; its first sentence says what happened.
@@ -948,6 +957,9 @@ namespace AvatarBridge
                 }
                 Undo.RecordObject(m, "Put the breasts on the jelly");
                 YapsShaderPatcher.Wear(m, shader);
+                // A skinned mesh is never instanced, so with no material asking, the build strips
+                // the instancing copy of every variant.
+                m.enableInstancing = false;
                 m.SetTexture(StateOf(pair), state);
                 m.SetVector(LatticeOf(pair), new Vector4(n.x, n.y, n.z, spacing));
                 m.SetVector("_YAPS_JellySlap", Slapped);
@@ -979,16 +991,35 @@ namespace AvatarBridge
         // them (2 part + side, plus one).
         static void Carried(Material m, Transform root, List<string> names, List<string> dented)
         {
-            var worn = new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+            var worn = Worns(root);
             for (int s = 0; s < YapsSquash.JellySlots; s++)
                 if (s >= names.Count || !worn.Contains(names[s])) m.SetVector(LatticeOf(s), Vector4.zero);
+            m.SetVector("_YAPS_JellyParts", Parts(root, names, dented));
+        }
+
+        static HashSet<string> Worns(Transform root) =>
+            new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+
+        static Vector4 Parts(Transform root, List<string> names, List<string> dented)
+        {
+            var worn = Worns(root);
             var parts = Vector4.zero;
             for (int c = 0; c < 4 && c / 2 < dented.Count; c++)
             {
                 int i = names.IndexOf(dented[c / 2]);
                 if (i >= 0 && i < YapsSquash.JellySlots && worn.Contains(names[i])) parts[c] = 2 * i + c % 2 + 1;
             }
-            m.SetVector("_YAPS_JellyParts", parts);
+            return parts;
+        }
+
+        // Every part the squash built on m (a reach above 0) carried by the jelly, so its dent,
+        // baked presses included, returns before doing anything (yaps_dent.cginc).
+        static bool SquashIdle(Material m, Vector4 parts)
+        {
+            var reach = m.GetVector("_YAPS_SquashReach");
+            for (int c = 0; c < 4; c++)
+                if (reach[c] > 0f && !(parts[c] > 0f)) return false;
+            return parts != Vector4.zero;
         }
 
         // The folder for an avatar's jelly beside the squash's in folder: the one its last jelly was
@@ -1038,6 +1069,9 @@ namespace AvatarBridge
                 for (int s = 0; s < YapsSquash.JellySlots; s++)
                     if (m.HasProperty(LatticeOf(s))) m.SetVector(LatticeOf(s), Vector4.zero);
                 m.SetVector("_YAPS_JellyParts", Vector4.zero);
+                // A shader that left the squash out to the jelly takes it back.
+                var squash = YapsShaderPatcher.WithRole(m, YapsShaderPatcher.Roles.Squash, null);
+                if (squash != null) YapsShaderPatcher.Wear(m, squash);
                 EditorUtility.SetDirty(m);
                 cleared++;
             }
