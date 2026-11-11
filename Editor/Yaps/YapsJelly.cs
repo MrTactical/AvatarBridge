@@ -3112,10 +3112,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
                 if (distant) return none;
-                float3x3 hands = Squeezed(m, scale, side);
-                float4 squeezed = float4(transpose(hands)[k], 1);
                 // Snapped, the particles still lie where the jump left them: last frame's squash kept.
                 if (Snapped) return _MainTex.Load(int3(32 + k, side, 0));
+                float3x3 hands = Squeezed(m, scale, side);
+                float4 squeezed = float4(transpose(hands)[k], 1);
                 int3 n = Count();
                 // Each particle against its home with no squash: fitted to the rest alone, the mass's
                 // swing and stretch, which turn the front more than the back, read as a shear.
