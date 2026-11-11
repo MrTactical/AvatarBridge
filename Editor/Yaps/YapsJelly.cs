@@ -3153,7 +3153,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // swing and stretch, which turn the front more than the back, read as a shear.
                 float4 tip = _MainTex.Load(int3(30, side, 0)), unused;
                 bool swings = _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1;
-                float3 hung = Hung(Base / (side - Base + 1));
+                float3 hung = Hung(Region);
                 float3 pc = 0, qc = 0, qq = 0, c0 = 0, c1 = 0, c2 = 0;
                 // Summed as each is loaded, not held, so the pass keeps few registers. Rolled, and
                 // divided by as many as it took: Shader Filtering cuts it short, to the back layers.
@@ -3213,7 +3213,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (Snapped && _Pass < 0.5) tip.xyz = Carried(tip.xyz, m, side);
                 // Stamped and recent: a cleared texel reads as stepped at time 0, and at a scene's first
                 // frame that passed, swinging every home toward the world's origin.
-                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Base / (side - Base + 1)), swing);
+                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Region), swing);
             }
 
             // How fast particle l's home moves: from last frame's anchor and mass (texels 26 to 29 and
@@ -3227,9 +3227,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (!(o.w > 0.5) || !(FrameDt > 0)) return 0;
                 float4x4 last = float4x4(x.x, y.x, z.x, o.x, x.y, y.y, z.y, o.y, x.z, y.z, z.z, o.z, 0, 0, 0, 1);
                 // Carried, 31 holds last frame's mass moved on with the anchor: put back on last frame's.
-                if (_MassCarried > 0) was.xyz = mul(last, float4(Into(Anchor(Base / (side - Base + 1)), was.xyz), 1)).xyz;
+                if (_MassCarried > 0) was.xyz = mul(last, float4(Into(Anchor(Region), was.xyz), 1)).xyz;
                 float4 unused;
-                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Base / (side - Base + 1)), unused)) / FrameDt;
+                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Region), unused)) / FrameDt;
             }
 
             // Where a particle is headed from s, where it was was (w that step's time): its home's own
@@ -3468,7 +3468,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 bool plane = false;
                 [branch] if (_Pair > 0 && _PairReach.x > 0)
                 {
-                    uint rows = side - Base, other = (Base / (rows + 1)) ^ 1, ps = other * (rows + 1) + rows;
+                    uint rows = side - Base, other = Region ^ 1, ps = other * (rows + 1) + rows;
                     float zc = 0.5 * (Count().z - 1) * _Lattice.w;
                     float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
                     float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
@@ -3846,7 +3846,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Packed regions share the passes, the scan's player arrays and the draw's texture:
                 // each is a block of rows with its own anchor, and from here on side is its own side
                 // row. The third pass draws one row, so reads the first region's.
-                uint region = (uint) px.y / (side + 1);
+                // In floats: a division by a value known only at run time is emulated in integers.
+                uint region = (uint) floor((px.y + 0.5) / (side + 1));
                 Base = region * (side + 1);
                 side += Base;
                 // The rows padding the region out, before any work.

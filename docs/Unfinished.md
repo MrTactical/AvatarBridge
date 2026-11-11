@@ -4170,8 +4170,11 @@ films match the earlier ones frame for frame.
   new step on copies of the live state for 400 frames (hands moving, 90 and 60 fps, far): the 4080
   matched every texel to the bit; the iGPU too but for 945 values within 4.3e-6 of themselves, the
   driver ordering the edited variant's sums otherwise. Now 0.137 / 0.141 ms and 0.875 / 1.328 ms,
-  11 to 17% off. Left: the emulated integer divides and a guarded home skip below 72 fps (a few %
-  each); the probe's "near at rest" line uses the editor's own frame time and is no regression.
+  11 to 17% off. Then the emulated integer divides (the region found again in five places): 0.135 /
+  0.139 ms and 0.875 / 1.278 ms, bit-exact on the 4080. A home skip below 72 fps was dropped: the
+  home goes through the squash map, which nothing bounds, so no skip can be proved exact, and VR at
+  90 never takes that path. The probe's "near at rest" line runs on the editor's own frame time and
+  is no regression.
 
 ## Major Ideas
 
