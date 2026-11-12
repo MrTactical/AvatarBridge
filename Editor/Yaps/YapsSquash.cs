@@ -386,9 +386,16 @@ namespace AvatarBridge
                 clock.Restart();
             }
             built = false;
-            Strip(root);
+            // Every refusal before the strip, so one leaves the build it found. Pairs is read again
+            // after it: the build's own helpers are skinned to bones of their own.
             var regions = RegionsOf(root, out string refusal);
             if (refusal != null) return refusal;
+            if (regions == null)
+            {
+                Pairs(root, out string early);
+                if (early != null) return early;
+            }
+            Strip(root);
             List<List<Transform>> found = null;
             if (regions == null)
             {

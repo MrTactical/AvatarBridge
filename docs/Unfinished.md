@@ -3435,6 +3435,12 @@ plan's order.
 - **Taking one jelly part off could strip another's collider ends (8).** The ends were matched by a
   piece of the part's name, so "Thighs" also took "Thighs inner", whose jelly stayed with its anchor
   slots Missing. The whole name now. `JellyPartNameTest`.
+- **A refused squash rebuild left the avatar stripped (9).** The build took the old squash off
+  before asking whether it could build at all, so a rig with no pair, or a body changed since its
+  regions were painted, was left with nothing. It refuses first now. Joe asked to drop the squash
+  editor instead; it stays, as it is also the live tissue's inspector. `SquashRefusalKeepsBuildTest`.
+- **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
+  corpus or a probe; reworded (Joe, 2026-11-12).
 
 ## 5.0.1
 
