@@ -3453,6 +3453,11 @@ plan's order.
 - **A mirrored prop's grab box came out ten thousand times too wide (12).** A negative scale fell to
   the floor meant for a zero one. The box divides by the scale's size now, as the capsule beside it
   did. `MirroredGrabBoxTest`.
+- **Play Audio on an object with a slash in its name was dropped (2).** The source was looked up with
+  `Transform.Find`, which reads the slash as a step down. It uses the animation-path lookup now.
+  `PlayAudioSlashPathTest`. Left: `ConstraintConverter` `ObjectExists` and `ConstraintTypeOnPath`
+  look up animation paths the same way, so a constraint curve on a slash-named object would read
+  as pointing at nothing.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 

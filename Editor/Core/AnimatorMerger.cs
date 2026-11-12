@@ -1480,7 +1480,7 @@ namespace AvatarBridge
             }
 
             var host = string.IsNullOrEmpty(playAudio.SourcePath)
-                ? null : ctx.Target.transform.Find(playAudio.SourcePath);
+                ? null : BridgeContext.FindByAnimationPath(ctx.Target.transform, playAudio.SourcePath);
             var source = host != null ? host.GetComponent<AudioSource>() : null;
             if (source == null)
             {
