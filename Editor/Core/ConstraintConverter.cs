@@ -449,7 +449,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            return string.IsNullOrEmpty(path) || ctx.Target.transform.Find(path) != null;
+            return BridgeContext.FindByAnimationPath(ctx.Target.transform, path) != null;
         }
 
         // A per-source property comes back with {0} where the Unity index goes and `source` set to
@@ -526,9 +526,7 @@ namespace AvatarBridge
 
         static Type ConstraintTypeOnPath(BridgeContext ctx, string path, string vrcTypeName)
         {
-            var transform = string.IsNullOrEmpty(path)
-                ? ctx.Target.transform
-                : ctx.Target.transform.Find(path);
+            var transform = BridgeContext.FindByAnimationPath(ctx.Target.transform, path);
             if (transform == null)
             {
                 return null;

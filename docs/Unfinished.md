@@ -3409,7 +3409,7 @@ trigger entries, no driver), green after.
 Open [GAME]: on a grip controller, a half squeeze half-closes a weight-driven fist, and a second
 client sees the same; on Index the trigger still does it. In-game checklist R13.
 
-### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". All fifteen fixed on dev 2026-11-12; two leftovers below
+### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". All fifteen fixed on dev 2026-11-12; one leftover below
 
 Eleven readers went over every shipped file before 5.0.0; the bugs were checked by hand (plan and raw
 findings in `Dev/Release`, local). Each is fixed with a failing test first, one commit each, in the
@@ -3455,9 +3455,9 @@ plan's order.
   did. `MirroredGrabBoxTest`.
 - **Play Audio on an object with a slash in its name was dropped (2).** The source was looked up with
   `Transform.Find`, which reads the slash as a step down. It uses the animation-path lookup now.
-  `PlayAudioSlashPathTest`. Left: `ConstraintConverter` `ObjectExists` and `ConstraintTypeOnPath`
-  look up animation paths the same way, so a constraint curve on a slash-named object would read
-  as pointing at nothing.
+  `PlayAudioSlashPathTest`. `ConstraintConverter` looked up constraint curves' paths the same way,
+  so a constraint curve on a slash-named object read as pointing at nothing; fixed the same day.
+  `ConstraintSlashPathTest`.
 - **Strip could take the visible one of two objects with the same name (5).** The dead renderers were
   kept as paths and looked up again, which finds the first object of that name. The plan keeps the
   renderers themselves now. `StripSameNameTest`.
