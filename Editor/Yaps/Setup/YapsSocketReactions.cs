@@ -62,7 +62,9 @@ namespace AvatarBridge
                                                 out string failure)
         {
             avatar = socket.GetComponentInParent<CVRAvatar>(true);
-            animator = socket.GetComponentInParent<Animator>(true);
+            // The avatar's own Animator, whose controllers the layer goes into: the nearest one
+            // up can be an accessory's, and clips pathed from there bind nothing.
+            animator = avatar != null ? avatar.GetComponent<Animator>() : null;
             failure = null;
             if (avatar == null || animator == null)
             {

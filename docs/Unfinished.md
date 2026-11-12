@@ -3446,6 +3446,10 @@ plan's order.
 - **Removing the dropped preview socket threw an error (14).** Turning its preview off destroys it,
   and the remover went on reading it. It stops there now: that socket was never built into
   anything. `RemovePreviewSocketTest`.
+- **A socket under an accessory with its own Animator built reactions that never opened (13).** The
+  shape clips were pathed from the nearest Animator up, the accessory's, while the layer went into
+  the avatar's controllers, so the curves bound nothing. They are pathed from the avatar's Animator
+  now. `SocketReactionsRootTest`.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
