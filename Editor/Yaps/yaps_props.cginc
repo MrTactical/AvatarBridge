@@ -31,6 +31,11 @@ float _YAPS_PlugLane;
 // The second plug's own copies.
 float _YAPS_BakeScale2;
 float _YAPS_BakeGirth2;
+float _YAPS_Enabled2;
+float _YAPS_SelfAllow2;
+// Each plug's own switches, so the second plug's menu toggle leaves the first alone.
+#define YAPS_ENABLED (_YAPS_PlugLane > 0.5 ? _YAPS_Enabled2 : _YAPS_Enabled)
+#define YAPS_SELF_ALLOW (_YAPS_PlugLane > 0.5 ? _YAPS_SelfAllow2 : _YAPS_SelfAllow)
 // A skinned plug's normal length at bake, the skin's own scale then.
 // 0 is not measured, and the plug keeps its baked size.
 float _YAPS_BakeSkinScale;

@@ -3525,9 +3525,15 @@ plan's order.
   its own plug (also with the other held part-way: the packs must agree), a shape moving both,
   a scale toggle on one, two choosers, shadows at each size, a lone-plug avatar unchanged, Shader
   Filtering clean, an old upload unchanged.
-- **Follow-up: the plug on/off toggle is still per mesh.** `_YAPS_Enabled` and `_YAPS_SelfAllow` are
-  renderer-wide, so plugs on one mesh share one switch (README says so). The same lane plus one
-  twin each would split them.
+- **Two plugs on one mesh shared one deform toggle (follow-up to 26/28).** `_YAPS_Enabled` and
+  `_YAPS_SelfAllow` are renderer-wide, so the second plug read the first's menu toggle as already
+  switching it, got none of its own, and the one row switched both. The second lane reads its own
+  `_YAPS_Enabled2` and `_YAPS_SelfAllow2` (copied from the material's own values at every bake and
+  from the material panel), each plug gets its own deform and own-sockets rows named for it alone,
+  and Remove takes only the removed plug's rows (by its label, or the second lane's names). An old
+  shared row is adopted by the first plug. fxc: 30 s before, 28 s after. `PlugOwnSwitchTest`;
+  `PlugLabelTest` now expects a row per plug. **In game, open:** each plug's toggle switches only
+  its own plug, both ways, and each own-sockets row likewise.
 - **A new menu toggle could take over another toggle's clip (risk 29).** Clip files are named for the
   avatar and the label, so a second avatar of the same name, or a new entry with the label an old
   entry was renamed from, rewrote the first one's clip and its toggle switched the wrong plug. A new

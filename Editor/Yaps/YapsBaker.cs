@@ -694,6 +694,8 @@ namespace AvatarBridge
                 if (at < 0) plugs.Add((bake, new List<Material> { m }));
                 else if (!plugs[at].Slots.Contains(m)) plugs[at].Slots.Add(m);
             }
+            foreach (var p in plugs)
+                foreach (var m in p.Slots) MirrorSwitches(m);
             if (plugs.Count < 2)
             {
                 // Alone again, after its partner went: back to the first plug's place.
@@ -764,6 +766,17 @@ namespace AvatarBridge
             for (int p = 0; p < Packs.Length; p++)
                 m.SetVector(Packs[p], new Vector4(weights[p * 4], weights[p * 4 + 1], weights[p * 4 + 2], weights[p * 4 + 3]));
         }
+
+        // A plug's switches as the second plug reads them, from the values every builder and
+        // the material panel write. Only animation tells the two apart.
+        public static void MirrorSwitches(Material m)
+        {
+            foreach (string name in new[] { "_YAPS_Enabled", "_YAPS_SelfAllow" })
+                if (m != null && m.HasProperty(name) && m.HasProperty(name + "2")) m.SetFloat(name + "2", m.GetFloat(name));
+        }
+
+        // The property a plug's own toggle animates on a mesh: the second plug has its own.
+        public static string SwitchName(string name, int lane) => lane > 0 ? name + "2" : name;
 
         // The lane a plug's material was given; 0 for a lone plug and for any build before lanes.
         public static int LaneOf(Material m) =>

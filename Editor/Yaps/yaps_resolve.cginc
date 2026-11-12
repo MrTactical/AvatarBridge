@@ -265,7 +265,7 @@ bool YapsOwnNumbered(int owner, int index)
 // bit per socket, chosen in the editor. Anything else: the body test.
 bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
 {
-    if (_YAPS_SelfTag < 0 || _YAPS_SelfAllow >= 0.5) return false;
+    if (_YAPS_SelfTag < 0 || YAPS_SELF_ALLOW >= 0.5) return false;
     if (YapsOwnNumbered(owner, index))
         return (((int) round(_YAPS_SelfSockets) >> (index - 1)) & 1) == 0;
     return YapsSameBodyOwned(root, at, owner);

@@ -209,7 +209,11 @@ namespace AvatarBridge
             }
             if (EditorGUI.EndChangeCheck())
             {
-                foreach (var t in editor.targets) YapsNativeBuilder.SyncPlugsFrom(t as Material);
+                foreach (var t in editor.targets)
+                {
+                    YapsBaker.MirrorSwitches(t as Material);
+                    YapsNativeBuilder.SyncPlugsFrom(t as Material);
+                }
             }
 
             // Internals, read only.

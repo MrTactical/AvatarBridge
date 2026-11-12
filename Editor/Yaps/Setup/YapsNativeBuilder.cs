@@ -572,7 +572,7 @@ namespace AvatarBridge
                 // Somebody animating the component's own checkbox meant the
                 // deform, so give them the deform.
                 switched += YapsCurveMirror.MirrorEnabled(clips, plugPath, typeof(YapsPlug),
-                    rendererPath, renderer, "_YAPS_Enabled");
+                    rendererPath, renderer, YapsBaker.SwitchName("_YAPS_Enabled", lane));
                 scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer, result.Rotation, lane,
                     first != null && first.rootBone != plug.rootBone);
             }
@@ -1852,6 +1852,7 @@ namespace AvatarBridge
                 // On, as the primary is. A copy switched off by hand stayed off
                 // and rigid through every rebuild.
                 target.SetFloat("_YAPS_Enabled", 1f);
+                YapsBaker.MirrorSwitches(target);
                 // The author's length override, which reached only the PRIMARY
                 // materials. A carried mesh kept the measured length, so with an
                 // override set the body ran one envelope and the collar another, every

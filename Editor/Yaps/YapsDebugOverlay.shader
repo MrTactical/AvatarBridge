@@ -78,6 +78,8 @@ Shader "YAPS/Debug Overlay"
         [HideInInspector] _YAPS_PlugLane ("YAPS plug lane", Float) = 0
         _YAPS_BakeScale2 ("YAPS bake scale, second plug", Float) = 1
         _YAPS_BakeGirth2 ("YAPS bake girth, second plug", Float) = 1
+        _YAPS_Enabled2 ("YAPS enabled, second plug", Range(0,1)) = 1
+        _YAPS_SelfAllow2 ("YAPS own body allowed, second plug", Range(0,1)) = 0
         _YAPS_BakeSkinScale ("YAPS bake skin scale", Float) = 0
         _YAPS_PortalSpan ("YAPS portal band (-1 too coarse)", Float) = 0
         _YAPS_CopyStart ("YAPS second copy's first vertex", Float) = 0
@@ -412,7 +414,7 @@ Shader "YAPS/Debug Overlay"
                     // socket while its toggle holds it off, which from the
                     // outside looks exactly like nobody resolving it.
                     c = engaged < 0.5 ? YAPS_BAD
-                      : (_YAPS_Enabled < 0.5 ? YAPS_HALF : YAPS_GOOD);
+                      : (YAPS_ENABLED < 0.5 ? YAPS_HALF : YAPS_GOOD);
                 }
                 else if (cell == 2)
                 {
@@ -470,7 +472,7 @@ Shader "YAPS/Debug Overlay"
                     // finds nothing. A plug that refuses its wearer's own
                     // sockets, looking at one, reads exactly like a plug with
                     // no socket in reach. Amber is refusing, green is allowing.
-                    c = _YAPS_SelfAllow > 0.5 ? YAPS_GOOD : YAPS_HALF;
+                    c = YAPS_SELF_ALLOW > 0.5 ? YAPS_GOOD : YAPS_HALF;
                 }
                 else if (cell == 10)
                 {

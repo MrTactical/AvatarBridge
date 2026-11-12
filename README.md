@@ -913,8 +913,9 @@ from, which meets it only at its root bone, is left as it is, and the report nam
 on different shafts that share one material each get a material of their own: one material
 carries one plug's bend, so the second plug's part of the mesh moves to a slot of its own on a
 copy of the mesh, and the report says so. Two plugs on one mesh each keep their own size
-sliders, size toggles and tag chooser, with sixteen shape slots between them; the report says
-when the second plug's shapes do not all fit. A third plug on the mesh shares the second's.
+sliders, size toggles, tag chooser, deform toggle and own-sockets toggle, with sixteen shape slots
+between them; the report says when the second plug's shapes do not all fit. A third plug on the
+mesh shares the second's.
 
 **A converted socket with a mesh of its own opens around a plug**: the entry and up to fifteen
 further depths, staged, several allowed at one depth, driven straight from the shader: the
@@ -1382,8 +1383,9 @@ deform on and off, animate the material property `_YAPS_Enabled` on its renderer
 1 on, anything between fades it, so a slider drives it directly. It stops the bending rather than
 hiding the mesh, toggle the object for that, and because animated material properties live in
 the renderer's property block, the material inspector keeps showing whatever was baked. The
-property reaches every material on the renderer, so plugs sharing one mesh share one switch, and
-their menu toggle is one entry, named for all of them.
+property reaches every material on the renderer, so the second plug on a shared mesh (the one on the later material slot) reads its
+own copy, `_YAPS_Enabled2` (and `_YAPS_SelfAllow2` for its own-sockets switch): animate that one
+to switch the second plug alone. Each plug gets its own menu toggle.
 
 If you animated the component before reading any of that, **Bake fixes it for you**: it finds
 curves on a plug component's `Enabled` field in your own clips and writes the matching
@@ -1423,8 +1425,7 @@ menu of identical "YAPS Ring" entries tells you nothing about which one you are 
 menu entry, its parameter, the reactions layer, the row in the window and the socket's own object
 in the Hierarchy all carry the kind, `Chest ring`, `Head hole`, `cock plug`, and a converted
 socket or plug takes the author's own word for it, VRCFury's numbering stripped: `Blowjob hole`,
-`Handjob Left ring`, `Left Shaft plug`. Plugs that share one mesh share one set of rows, since a
-row switches the whole mesh, and the rows name them all. A socket you have named yourself keeps that name and gains the kind, and
+`Handjob Left ring`, `Left Shaft plug`. Plugs that share one mesh each have their own rows. A socket you have named yourself keeps that name and gains the kind, and
 the bone when the name does not say it; the object is renamed only while nothing animates it by
 path. Moving a socket to another bone renames all of it on the next Build, rather than
 leaving a second copy behind.

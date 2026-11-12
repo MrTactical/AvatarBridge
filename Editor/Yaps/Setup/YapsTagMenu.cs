@@ -139,14 +139,7 @@ namespace AvatarBridge
             return KeyPrefix + (path.GetHashCode() & 0x7FFFFF).ToString("X6");
         }
 
-        // The lane the plug's own material on its mesh was given.
-        static int LaneOf(YapsPlug plug)
-        {
-            var mats = plug.Target.sharedMaterials;
-            for (int i = 0; i < mats.Length; i++)
-                if (mats[i] != null && YapsNativeBuilder.OwnsSlot(plug, plug.Target, i, mats[i])) return YapsBaker.LaneOf(mats[i]);
-            return 0;
-        }
+        static int LaneOf(YapsPlug plug) => YapsToggles.LaneOn(plug, plug.Target);
 
         static void EnsureEntry(CVRAvatar avatar, string parameter, string label, List<string> labels)
         {

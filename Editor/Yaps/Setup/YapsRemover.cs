@@ -21,7 +21,7 @@ namespace AvatarBridge
         {
             // Written beside a curve on the component's own Enabled field,
             // which is inert, so it goes when the rest of YAPS does.
-            "material._YAPS_Enabled",
+            "material._YAPS_Enabled", "material._YAPS_Enabled2",
             "material._YAPS_BakeScale", "material._YAPS_BakeGirth",
             "material._YAPS_BakeScale2", "material._YAPS_BakeGirth2",
             "material._YAPS_ShapeWeights.x", "material._YAPS_ShapeWeights.y", "material._YAPS_ShapeWeights.z", "material._YAPS_ShapeWeights.w",
@@ -78,7 +78,7 @@ namespace AvatarBridge
             // What Remove keeps for the other plugs on the mesh is not listed.
             if (avatar != null && renderer != null && sharing.Count == 0 && WiredClips(avatar, renderer).Any())
                 lines.Add("the size wiring Bake added to your own animations");
-            if (avatar != null && sharing.Count == 0)
+            if (avatar != null)
             {
                 foreach (var e in ToggleEntriesFor(avatar, plug))
                     lines.Add($"the menu toggle \"{e.name}\"");
@@ -398,7 +398,7 @@ namespace AvatarBridge
             if (avatar != null)
             {
                 int before = YapsToggles.Edits;
-                int entries = sharing.Count > 0 ? 0 : RemoveEntries(avatar, ToggleEntriesFor(avatar, plug));
+                int entries = RemoveEntries(avatar, ToggleEntriesFor(avatar, plug));
                 if (entries > 0) done.Add(entries > 1 ? "its menu toggles" : "its menu toggle");
                 string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
                 if (menu != null) done.Add(menu.TrimEnd('.'));
@@ -519,7 +519,7 @@ namespace AvatarBridge
                         // and was swept as gone from every live plug.
                         if (!Generated(t.animationClip)) continue;
                         var paths = AnimationUtility.GetCurveBindings(t.animationClip)
-                            .Where(b => YapsToggles.Writes(b, "_YAPS_Enabled") || YapsToggles.Writes(b, "_YAPS_SelfAllow"))
+                            .Where(b => Switch(b))
                             .Select(b => b.path).ToList();
                         if (paths.Count == 0) continue;
                         bool live = false;
@@ -761,21 +761,32 @@ namespace AvatarBridge
 
         // The toolkit's toggles for a plug: entries with generated clips
         // switching _YAPS_Enabled, or _YAPS_SelfAllow for its own sockets
-        // row, on the plug's renderer.
+        // row, on the plug's renderer. On a mesh shared with another plug,
+        // only this plug's: by its label, or by the second plug's own names.
         static IEnumerable<ABI.CCK.Scripts.CVRAdvancedSettingsEntry> ToggleEntriesFor(CVRAvatar avatar, YapsPlug plug)
         {
             if (avatar == null || avatar.avatarSettings == null || avatar.avatarSettings.settings == null || plug.Target == null) yield break;
             string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
+            bool shared = SharingOf(plug).Count > 0;
+            int lane = YapsToggles.LaneOn(plug, plug.Target);
+            string label = YapsToggles.MenuLabelFor(plug);
             foreach (var e in avatar.avatarSettings.settings)
             {
                 if (e == null || e.type != ABI.CCK.Scripts.CVRAdvancedSettingsEntry.SettingsType.Toggle || e.toggleSettings == null) continue;
                 var t = e.toggleSettings;
                 if (!t.useAnimationClip || !Generated(t.animationClip)) continue;
-                if (AnimationUtility.GetCurveBindings(t.animationClip).Any(b => b.path == path
-                        && (YapsToggles.Writes(b, "_YAPS_Enabled") || YapsToggles.Writes(b, "_YAPS_SelfAllow"))))
+                var at = AnimationUtility.GetCurveBindings(t.animationClip).Where(b => b.path == path && Switch(b)).ToList();
+                if (at.Count == 0) continue;
+                if (!shared || (e.name != null && e.name.StartsWith(label, System.StringComparison.Ordinal))
+                    || (lane > 0 && at.Any(b => b.propertyName.EndsWith("2", System.StringComparison.Ordinal))))
                     yield return e;
             }
         }
+
+        // A plug's own switch, the first plug's or the second's on a shared mesh.
+        static bool Switch(EditorCurveBinding b) =>
+            YapsToggles.Writes(b, "_YAPS_Enabled") || YapsToggles.Writes(b, "_YAPS_SelfAllow")
+            || YapsToggles.Writes(b, "_YAPS_Enabled2") || YapsToggles.Writes(b, "_YAPS_SelfAllow2");
 
         // Other plugs baked on the same mesh. Plan and Remove ask the same
         // question, or the dialog promises what Remove then keeps.

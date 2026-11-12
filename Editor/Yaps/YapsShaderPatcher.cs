@@ -128,6 +128,8 @@ namespace AvatarBridge
         [HideInInspector] _YAPS_PlugLane (""YAPS plug lane"", Float) = 0
         _YAPS_BakeScale2 (""YAPS bake scale, second plug"", Float) = 1
         _YAPS_BakeGirth2 (""YAPS bake girth, second plug"", Float) = 1
+        _YAPS_Enabled2 (""YAPS enabled, second plug"", Range(0,1)) = 1
+        _YAPS_SelfAllow2 (""YAPS own body allowed, second plug"", Range(0,1)) = 0
         _YAPS_BakeSkinScale (""YAPS bake skin scale"", Float) = 0
         _YAPS_PortalSpan (""YAPS portal band (-1 too coarse)"", Float) = 0
         _YAPS_CopyStart (""YAPS second copy's first vertex"", Float) = 0

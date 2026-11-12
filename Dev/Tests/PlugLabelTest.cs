@@ -63,8 +63,7 @@ namespace AvatarBridge.Regression
                 fail += Check($"two plugs of one name read apart (\"{propL}\", \"{propR}\")",
                     propL == "Prop L plug" && propR == "Prop R plug");
 
-                // A menu row writes the whole renderer, so plugs on one mesh share it,
-                // and every build renamed it to whichever plug went last.
+                // Plugs on one mesh each switch their own copy of the property, so each has its own row.
                 var mesh = Path("Variants").gameObject.AddComponent<MeshRenderer>();
                 YapsPlug OnMesh(string path)
                 {
@@ -77,8 +76,8 @@ namespace AvatarBridge.Regression
                 var first = OnMesh("Armature/Hips/Base/First/YAPS Plug");
                 var second = OnMesh("Armature/Hips/Base/Second/YAPS Plug");
                 string row1 = YapsToggles.MenuLabelFor(first), row2 = YapsToggles.MenuLabelFor(second);
-                fail += Check($"plugs on one mesh share one row naming both (\"{row1}\", \"{row2}\")",
-                    row1 == "First and Second plugs" && row2 == row1);
+                fail += Check($"plugs on one mesh each have their own row (\"{row1}\", \"{row2}\")",
+                    row1 == "First plug" && row2 == "Second plug");
                 string own = YapsToggles.LabelFor(first);
                 fail += Check($"each still has its own name in the windows (\"{own}\")", own == "First plug");
                 string alone = YapsToggles.MenuLabelFor(root.transform.Find("Armature/Hips/Shaft").GetComponent<YapsPlug>());

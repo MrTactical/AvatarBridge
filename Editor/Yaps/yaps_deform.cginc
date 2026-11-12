@@ -580,9 +580,9 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 #ifdef YAPS_DUPLICATE
     // Hidden through a fade too, so a toggle on its way out is one plug and
     // the copy reads nothing for it.
-    if (copy2 && _YAPS_Enabled < 1) { YapsCopyHide(position, normal, tangent); return; }
+    if (copy2 && YAPS_ENABLED < 1) { YapsCopyHide(position, normal, tangent); return; }
 #endif
-    if (_YAPS_Enabled <= 0 && _YAPS_Debug < 0.5) return;
+    if (YAPS_ENABLED <= 0 && _YAPS_Debug < 0.5) return;
     if (vertexId >= (uint) max(_YAPS_VertexCount, 0)) return;
 
     YapsVertex baked = YapsReadBaked(vertexId);
@@ -788,7 +788,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     // exactly as drawn, and the bend below fades into this, not the mesh.
     YapsVertex rest = baked;
     YapsRestShape(rest, 1, worldLength);
-    float restWeight = baked.active * saturate(_YAPS_Enabled);
+    float restWeight = baked.active * saturate(YAPS_ENABLED);
 #ifdef YAPS_DUPLICATE
     // The copy rests on its point, so it grows out of the root as it engages
     // rather than standing up beside the first as a second straight shaft.
@@ -809,7 +809,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             restRight * rest.tangent.x + rootUp * rest.tangent.y + rootForward * rest.tangent.z), restWeight);
     }
 
-    float enabled = saturate(_YAPS_Enabled) * socket.engaged;
+    float enabled = saturate(YAPS_ENABLED) * socket.engaged;
     if (enabled <= 0)
     {
         position = restPosition;
@@ -1066,7 +1066,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         // The exit as read where the portal was decided.
         float3 exitAt = portalAt;
         float3 exitFwd = portalFwd;
-        bool open = _YAPS_Enabled >= 1 && socket.engaged * engage >= 0.999 && _YAPS_PortalSpan > 0;
+        bool open = YAPS_ENABLED >= 1 && socket.engaged * engage >= 0.999 && _YAPS_PortalSpan > 0;
         // Engaging or fading: the first copy is the whole plug.
         if (!open)
         {
