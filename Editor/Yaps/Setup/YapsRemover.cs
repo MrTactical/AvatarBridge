@@ -531,8 +531,11 @@ namespace AvatarBridge
                         dead.Add(e);
                         done.Add($"menu toggle \"{e.name}\": its plug is gone");
                     }
-                    else if (t.gameObjectTargets != null && t.gameObjectTargets.Count > 0
-                             && t.gameObjectTargets.All(g => g == null || g.gameObject == null))
+                    // A socket's own toggle: one object, labelled as LabelFor labels a socket. Any
+                    // toggle with its objects gone was taken, the wearer's own included.
+                    else if (t.gameObjectTargets != null && t.gameObjectTargets.Count == 1
+                             && t.gameObjectTargets.All(g => g == null || g.gameObject == null)
+                             && System.Text.RegularExpressions.Regex.IsMatch(e.name ?? "", @"\b(hole|ring)\)?$"))
                     {
                         dead.Add(e);
                         done.Add($"menu toggle \"{e.name}\": every object it switched is gone");

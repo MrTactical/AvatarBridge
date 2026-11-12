@@ -1106,7 +1106,7 @@ unlock/edit/re-lock.
    the Hierarchy has the same two: *YAPS ▸ Add a hole here* and *Add a ring here*.) What a button
    did is said under it. In the collapsed *Tools* card below, under *Tidy*,
    **Clean up leftovers** sweeps an avatar for what a hand-deleted socket or plug left behind: an
-   animator layer with no socket, a depth parameter nothing reads, a menu toggle aiming at nothing,
+   animator layer with no socket, a depth parameter nothing reads, a socket's or plug's menu toggle aiming at nothing (your own toggles stay),
    a tag chooser whose plug is gone.
 3. **Build.** **Bake every plug and verify** bakes every plug: measuring the mesh, patching the
    shader of every material its triangles use, writing the knobs, wiring its size animations,

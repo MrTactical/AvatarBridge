@@ -3483,6 +3483,9 @@ plan's order.
   mesh file and one bake, so dropping either emptied the other's mesh, and ending the preview
   deleted both files. The preview plug is named apart before it bakes now, so its files are its own.
   `PreviewPlugOwnFilesTest`.
+- **Clean up leftovers removed the wearer's own toggles whose objects were gone (risk 32).** It took
+  any one-object toggle with its object deleted, YAPS-made or not. It takes only toggles labelled as
+  a socket's now. `SweepKeepsOwnTogglesTest`.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off
