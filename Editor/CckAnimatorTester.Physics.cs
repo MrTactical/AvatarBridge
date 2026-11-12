@@ -851,7 +851,8 @@ namespace AvatarBridge
                     Drive(LiveAnimator(), "Grounded", airborne ? 0f : 1f);
                 }
             }
-            if (_held != null && _heldBone != null)
+            bool holding = _held != null && _heldBone != null;
+            if (holding)
             {
                 Hold(_heldPoint - _heldBone.position);
             }
@@ -863,7 +864,9 @@ namespace AvatarBridge
             }
 #endif
 #if AVATARBRIDGE_DYNBONE
-            else if (_forced != null)
+            // Its own test, not an else: with both packages the else bound to the fling above and
+            // faded a chain while it was held.
+            if (!holding && _forced != null)
             {
                 Fade();
             }

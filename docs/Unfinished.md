@@ -3428,6 +3428,10 @@ plan's order.
 - **The first socket added to the YAPS folder was named "YAPS Hole 2" (15).** The counter counted
   the new object, already in the folder, so the menu toggle read "YAPS Hole 2 (hole)". It starts
   from 0 now. `FirstSocketNameTest`.
+- **The tester's grab did nothing to a DynamicBone chain with MagicaCloth2 also installed (6).** The
+  fade's `else` sat in the DynamicBone `#if` after the MagicaCloth one, so with both it bound to the
+  fling test and faded the chain while it was held. Now its own test. No automated test: it lives in
+  the tester's Play-mode loop; `check-defines.sh` compiles all eight combinations.
 
 ## 5.0.1
 
