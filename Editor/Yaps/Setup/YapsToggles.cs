@@ -474,8 +474,8 @@ namespace AvatarBridge
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
-            var on = Clip(targets, "_YAPS_Enabled", 1f, dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(targets, "_YAPS_Enabled", 0f, dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(targets, "_YAPS_Enabled", 1f, Free(dir + "/" + Sanitise(label) + " on.anim"));
+            var off = Clip(targets, "_YAPS_Enabled", 0f, Free(dir + "/" + Sanitise(label) + " off.anim"));
 
             if (avatar.avatarSettings == null)
             {
@@ -556,8 +556,8 @@ namespace AvatarBridge
 
             string dir = YapsNativeBuilder.OutputRoot + "/" + Sanitise(avatar.name);
             YapsNativeBuilder.EnsureFolderPublic(dir);
-            var on = Clip(targets, "_YAPS_SelfAllow", 1f, dir + "/" + Sanitise(label) + " on.anim");
-            var off = Clip(targets, "_YAPS_SelfAllow", 0f, dir + "/" + Sanitise(label) + " off.anim");
+            var on = Clip(targets, "_YAPS_SelfAllow", 1f, Free(dir + "/" + Sanitise(label) + " on.anim"));
+            var off = Clip(targets, "_YAPS_SelfAllow", 0f, Free(dir + "/" + Sanitise(label) + " off.anim"));
 
             if (avatar.avatarSettings == null)
             {
@@ -763,6 +763,20 @@ namespace AvatarBridge
             string name = stem;
             for (int n = 2; settings.Any(e => e != null && e != mine && e.machineName == name); n++) name = stem + n;
             return name;
+        }
+
+        // A new entry's clip path, unless a toggle already plays the file there.
+        // The name is the avatar's and the label's, so a second avatar of one
+        // name, or an entry renamed away from its label, would be rewritten.
+        // ponytail: scene avatars only; a prefab off the scene is not asked.
+        static string Free(string path)
+        {
+            var clip = AssetDatabase.LoadAssetAtPath<AnimationClip>(path);
+            if (clip == null) return path;
+            bool played = Object.FindObjectsOfType<CVRAvatar>(true).Any(a => a.avatarSettings?.settings != null
+                && a.avatarSettings.settings.Any(e => e?.toggleSettings != null
+                    && (e.toggleSettings.animationClip == clip || e.toggleSettings.offAnimationClip == clip)));
+            return played ? AssetDatabase.GenerateUniqueAssetPath(path) : path;
         }
 
         static string Sanitise(string s)

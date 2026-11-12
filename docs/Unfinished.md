@@ -3409,7 +3409,7 @@ trigger entries, no driver), green after.
 Open [GAME]: on a grip controller, a half squeeze half-closes a weight-driven fist, and a second
 client sees the same; on Index the trigger still does it. In-game checklist R13.
 
-### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". All fifteen fixed on dev 2026-11-12, and the risks below
+### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". All fifteen and every risk fixed or withdrawn on dev 2026-11-12; in-game checks below
 
 Eleven readers went over every shipped file before 5.0.0; the bugs were checked by hand (plan and raw
 findings in `Dev/Release`, local). Each is fixed with a failing test first, one commit each, in the
@@ -3528,10 +3528,11 @@ plan's order.
 - **Follow-up: the plug on/off toggle is still per mesh.** `_YAPS_Enabled` and `_YAPS_SelfAllow` are
   renderer-wide, so plugs on one mesh share one switch (README says so). The same lane plus one
   twin each would split them.
-- **Left: toggle clips keyed by avatar name and label (risk 29).** Two avatars of one name in a
-  project share their YAPS toggle clips, and a renamed entry leaves its clip at the old label, where
-  a new entry of that label rewrites it. Changing the key moves every existing clip, so it wants a
-  migration; low.
+- **A new menu toggle could take over another toggle's clip (risk 29).** Clip files are named for the
+  avatar and the label, so a second avatar of the same name, or a new entry with the label an old
+  entry was renamed from, rewrote the first one's clip and its toggle switched the wrong plug. A new
+  entry takes a fresh file when a toggle on any avatar in the scene already plays the one at its
+  path. Ceiling: an avatar only in a prefab, off the scene, is not asked. `ToggleClipOwnerTest`.
 - **The weight card hid a saving when two textures shared a file name (risk 20).** A texture left
   alone because a material outside the avatar uses it took every texture of that name with it, so
   the headline and the advice skipped one Fix would shrink. The notes go by asset path now and
