@@ -3461,6 +3461,10 @@ plan's order.
 - **Strip could take the visible one of two objects with the same name (5).** The dead renderers were
   kept as paths and looked up again, which finds the first object of that name. The plan keeps the
   renderers themselves now. `StripSameNameTest`.
+- **Atlas advice counted materials an animation drives (3).** A property curve's object path was
+  compared with material names, which never match, so a material whose colour an animation changes
+  was still offered for an atlas. The curve's renderer is looked up and its materials left out.
+  `AtlasAnimatedPropertyTest`.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 

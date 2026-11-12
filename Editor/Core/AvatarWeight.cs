@@ -714,7 +714,15 @@ namespace AvatarBridge
                     }
                     foreach (var b in AnimationUtility.GetCurveBindings(clip))
                     {
-                        if (b.propertyName.StartsWith("material.", System.StringComparison.Ordinal)) animated.Add(b.path);
+                        // A property curve names its renderer, and reaches every material on it.
+                        if (!b.propertyName.StartsWith("material.", System.StringComparison.Ordinal)) continue;
+                        var at = BridgeContext.FindByAnimationPath(avatar.transform, b.path);
+                        var renderer = at != null ? at.GetComponent(b.type) as Renderer : null;
+                        if (renderer == null) continue;
+                        foreach (var m in renderer.sharedMaterials)
+                        {
+                            if (m != null) animated.Add(m.name);
+                        }
                     }
                 }
             }
