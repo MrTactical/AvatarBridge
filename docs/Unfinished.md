@@ -3495,6 +3495,10 @@ plan's order.
   through a constraint cascade gets a stand-in cloth, and it kept the hair preset's angle limit,
   which every other converted chain has turned off. Only a soft-body stand-in keeps its limit now.
   `StandInAngleLimitTest`. Physics: confirm in game.
+- **Check and Merge animators threw on a controller with two parameters of one name (risk 19).**
+  Both built a dictionary of the parameters and threw on the second, so the tool showed nothing.
+  The first of a name wins now, as the merge's own parameter step does. Unity's Animator window
+  cannot make such a controller; another tool can. `DiagnosticsDuplicateParameterTest`.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off

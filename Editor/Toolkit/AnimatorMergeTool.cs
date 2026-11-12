@@ -33,7 +33,7 @@ namespace AvatarBridge
             }
 
             var names = new HashSet<string>(into.layers.Select(l => l.name));
-            var types = into.parameters.ToDictionary(p => p.name, p => p.type);
+            var types = into.parameters.GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First().type);
             int layersAdded = 0, parametersAdded = 0;
             var clashes = new List<string>();
             var renamed = new List<string>();

@@ -186,7 +186,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var types = master.parameters.ToDictionary(p => p.name, p => p.type);
+            var types = master.parameters.GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First().type);
             var mismatched = new List<string>();
 
             foreach (var entry in settings)
