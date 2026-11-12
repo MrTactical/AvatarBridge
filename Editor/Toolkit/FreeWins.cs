@@ -158,7 +158,12 @@ namespace AvatarBridge
             {
                 var current = into.layers;
                 if (index >= current.Length || current[index].syncedLayerIndex >= 0
-                    || HasStates(current[index].stateMachine)) continue;
+                    || HasStates(current[index].stateMachine)
+                    || current.Any(l => l.syncedLayerIndex == index)) continue;
+                // RemoveLayer leaves synced indices as they were, and a synced layer left naming
+                // itself or past the end was dropped. Moved down with their sources first.
+                foreach (var l in current) if (l.syncedLayerIndex > index) l.syncedLayerIndex--;
+                into.layers = current;
                 into.RemoveLayer(index);
                 layers++;
             }

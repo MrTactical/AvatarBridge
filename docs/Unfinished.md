@@ -3475,6 +3475,10 @@ plan's order.
   The parameter was declared as a Float after the pass that matches conditions to their types, so
   an If or IfNot on it shipped on a Float, which ChilloutVR drops, and the layer stuck. The declared
   names are reconciled now. `DanglingConditionModeTest`. Corpus not run.
+- **Free wins could delete a synced layer (risk 23).** Removing an empty layer below a synced
+  layer's source left the synced layer naming its old index, and Unity dropped it outright. Synced
+  indices move down with their sources now, and an empty layer something is synced to stays.
+  `FreeWinsSyncedLayerTest`.
 - Left, not traced: the reader's second half of 14, that removing any socket also takes the test
   plug and deletes its generated files outside the one undo step.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
