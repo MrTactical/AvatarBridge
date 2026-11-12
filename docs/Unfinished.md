@@ -3409,6 +3409,16 @@ trigger entries, no driver), green after.
 Open [GAME]: on a grip controller, a half squeeze half-closes a weight-driven fist, and a second
 client sees the same; on Index the trigger still does it. In-game checklist R13.
 
+### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". IN PROGRESS on dev
+
+Eleven readers went over every shipped file before 5.0.0; the bugs were checked by hand (plan and raw
+findings in `Dev/Release`, local). Each is fixed with a failing test first, one commit each, in the
+plan's order.
+- **The converter wrote into the window's settings (7).** Without the add-on it set the penetration
+  choice to Remove on the object the window saves to EditorPrefs, which are per user, so every
+  project read Remove after one conversion anywhere. It converts a copy now.
+  `ConverterSettingsCopyTest`.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

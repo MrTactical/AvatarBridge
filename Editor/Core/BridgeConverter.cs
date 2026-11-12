@@ -14,6 +14,9 @@ namespace AvatarBridge
     {
         public static BridgeReport Convert(VRCAvatarDescriptor descriptor, BridgeSettings settings)
         {
+            // A copy for this run: the window passes the object it saves to EditorPrefs, which are per
+            // user, so a choice settled below reached every project.
+            settings = JsonUtility.FromJson<BridgeSettings>(JsonUtility.ToJson(settings));
             // Converting to YAPS implies stripping what it replaces. The
             // window says so; a caller with the pair the other way round
             // (older saved settings, a script) gets the same answer.
