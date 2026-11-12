@@ -3471,6 +3471,10 @@ plan's order.
 - **The socket inspector drew nothing when its chosen mesh renderer had lost its mesh (risk 31).**
   It read the missing mesh's shape count and threw, taking the controls to fix it with it. The row
   reads "no mesh" now. `SocketInspectorNoMeshTest`.
+- **An on/off transition on a parameter the controller never declared could stop working (risk 16).**
+  The parameter was declared as a Float after the pass that matches conditions to their types, so
+  an If or IfNot on it shipped on a Float, which ChilloutVR drops, and the layer stuck. The declared
+  names are reconciled now. `DanglingConditionModeTest`. Corpus not run.
 - Left, not traced: the reader's second half of 14, that removing any socket also takes the test
   plug and deletes its generated files outside the one undo step.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression

@@ -4886,6 +4886,9 @@ namespace AvatarBridge
                 });
             }
             master.parameters = parameters.ToArray();
+            // The reconcile ran before these existed, so an If or IfNot on one still sat on a
+            // Float, which ChilloutVR drops.
+            ReconcileConditionModes(master, ctx);
 
             if (mirrored.Count > 0)
             {
