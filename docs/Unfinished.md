@@ -3458,6 +3458,9 @@ plan's order.
   `PlayAudioSlashPathTest`. Left: `ConstraintConverter` `ObjectExists` and `ConstraintTypeOnPath`
   look up animation paths the same way, so a constraint curve on a slash-named object would read
   as pointing at nothing.
+- **Strip could take the visible one of two objects with the same name (5).** The dead renderers were
+  kept as paths and looked up again, which finds the first object of that name. The plan keeps the
+  renderers themselves now. `StripSameNameTest`.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 

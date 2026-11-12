@@ -106,6 +106,8 @@ namespace AvatarBridge
             public long DeadBytes;
             public long DeadDownloadBytes;
             public readonly List<string> Dead = new List<string>();
+            // The same renderers, as found: a path can name a same-named sibling instead.
+            public readonly List<Renderer> DeadRenderers = new List<Renderer>();
             // Dead, but everything it draws is drawn by something visible
             // too. Stripping frees the mesh and the draw call, no texture.
             public readonly List<string> DeadFreesNothing = new List<string>();
@@ -191,7 +193,7 @@ namespace AvatarBridge
                 // on: it is carried, downloaded and never seen. With no
                 // controller read, nothing proves it is never switched on.
                 bool dead = survey != null && survey.Controller != null && !Live(r, avatar.transform, switched);
-                if (dead) report.Dead.Add(path);
+                if (dead) { report.Dead.Add(path); report.DeadRenderers.Add(r); }
 
                 foreach (var m in r.sharedMaterials)
                 {

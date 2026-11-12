@@ -49,7 +49,7 @@ namespace AvatarBridge
             // Renderers no clip can switch on. The component goes, the
             // object stays: bones, contacts and constraints parented under
             // it are the usual casualty of removing the object itself.
-            public readonly List<string> Strip = new List<string>();
+            public readonly List<Renderer> Strip = new List<Renderer>();
             public long StripBytes;
             public FreeWins.Plan Wins;
             public long Bytes => Textures.Sum(t => t.Bytes);
@@ -179,7 +179,7 @@ namespace AvatarBridge
             // controllers included, before it was ever allowed to act.
             if (stripDead)
             {
-                plan.Strip.AddRange(weight.Dead);
+                plan.Strip.AddRange(weight.DeadRenderers);
                 plan.StripBytes = weight.DeadBytes;
             }
 
@@ -401,12 +401,11 @@ namespace AvatarBridge
             if (plan.Strip.Count == 0) return 0;
 
             var gone = new List<string>();
-            foreach (string path in plan.Strip)
+            foreach (var renderer in plan.Strip)
             {
-                var found = BridgeContext.FindByAnimationPath(avatar.transform, path);
-                if (found == null) continue;
-                var renderer = found.GetComponent<Renderer>();
                 if (renderer == null) continue;
+                var found = renderer.transform;
+                string path = AnimationUtility.CalculateTransformPath(found, avatar.transform);
 
                 // A MeshRenderer draws what the filter beside it holds, and
                 // the filter alone draws nothing once the renderer is gone.
