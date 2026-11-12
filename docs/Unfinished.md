@@ -3418,6 +3418,10 @@ plan's order.
   choice to Remove on the object the window saves to EditorPrefs, which are per user, so every
   project read Remove after one conversion anywhere. It converts a copy now.
   `ConverterSettingsCopyTest`.
+- **Slim down stripped the renderers of an avatar switched off in the scene (4).** A renderer
+  counted as shown only when active in the scene, so with the avatar's root off every untoggled
+  renderer read as dead and Fix destroyed it (Undo brought them back). Shown is now judged up to the
+  avatar's root. `InactiveRootLiveTest`.
 
 ## 5.0.1
 

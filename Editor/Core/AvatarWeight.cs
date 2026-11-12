@@ -592,13 +592,22 @@ namespace AvatarBridge
 
         static bool Live(Renderer r, Transform root, HashSet<string> switched)
         {
-            if (r.gameObject.activeInHierarchy && r.enabled) return true;
+            if (r.enabled && ShownUnder(r.transform, root)) return true;
             for (var t = r.transform; t != null; t = t.parent)
             {
                 if (switched.Contains(AnimationUtility.CalculateTransformPath(t, root))) return true;
                 if (t == root) break;
             }
             return false;
+        }
+
+        // Active up to the avatar, not the scene: an avatar switched off in the scene read every
+        // renderer as hidden, and Slim down stripped them all.
+        static bool ShownUnder(Transform t, Transform root)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (!t.gameObject.activeSelf) return false;
+            return true;
         }
 
         // ---- measurement ----------------------------------------------------
