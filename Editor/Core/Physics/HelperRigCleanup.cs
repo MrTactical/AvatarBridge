@@ -121,7 +121,7 @@ namespace AvatarBridge
 
             // Nothing simulates it, nothing reads from it, and no surviving
             // cloth borrows a collider out of it, so what remains is a bone
-            // update per transform per frame for no motion. On one corpus
+            // update per transform per frame for no motion. On one
             // avatar that was 110 of 468 transforms.
             //
             // Only the tops, computed from what moves no mesh: a rig called

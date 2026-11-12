@@ -2716,8 +2716,8 @@ namespace AvatarBridge
                         }
                         // Settings travel with the curves or the copy changes behaviour: an
                         // 8.3-second looping animation topped by this pass came back loop=False,
-                        // playing once and freezing where the original cycled. Caught by the
-                        // corpus gate before release, on the first avatar checked.
+                        // playing once and freezing where the original cycled. Caught before release,
+                        // on the first avatar checked.
                         AnimationUtility.SetAnimationClipSettings(copy,
                             AnimationUtility.GetAnimationClipSettings(current));
                         copy.frameRate = current.frameRate;
@@ -10031,8 +10031,8 @@ namespace AvatarBridge
             _handLeftMask = _handRightMask = _handsOnlyMask = _musclesOnlyMask = null;
             _noMuscleMask = _noFingersMask = null;
             // Keyed by renderer, and a converted avatar's renderers are new
-            // objects each run: a corpus run would otherwise hold every
-            // renderer of every avatar it has converted.
+            // objects each run: converting many avatars in one session would
+            // otherwise hold every renderer of every one of them.
             WeightedBonesCache.Clear();
         }
 

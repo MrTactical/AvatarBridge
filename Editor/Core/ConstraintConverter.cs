@@ -476,7 +476,7 @@ namespace AvatarBridge
             if (dot > 0 && int.TryParse(vrcProperty.Substring(fieldPrefix.Length, dot - fieldPrefix.Length),
                     out int n))
             {
-                // Parent offsets copy 1:1, same axes and same units (measured, Dev/Probes/ConstraintOffsetProbe).
+                // Parent offsets copy 1:1, same axes and same units (measured).
                 // ConvertParent copies the static values raw too, so an animated one agrees with them.
                 string field = vrcProperty.Substring(dot + 1);
                 const string position = "ParentPositionOffset.", rotation = "ParentRotationOffset.";

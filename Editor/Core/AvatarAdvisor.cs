@@ -123,7 +123,7 @@ namespace AvatarBridge
             if (physBones.Length == 0)
             {
                 // Deliberately NOT recommending "None" on a baker's avatar. The commonest shape
-                // in the corpus is a base body with no PhysBones of its own whose hair and
+                // among baked avatars is a base body with no PhysBones of its own whose hair and
                 // clothing; every chain it has; arrive during the bake.
                 advice.Add(new Advice
                 {
@@ -440,9 +440,8 @@ namespace AvatarBridge
         // layer ticked from the last avatar is unticked when this one has
         // nothing in the slot. Returns the setting names it unticked.
         //
-        // Here rather than in the window so the window and the corpus's
-        // advisor profile share one definition. A copy in the runner would
-        // measure what the runner thinks Apply all does.
+        // Here rather than in the window so every caller shares one
+        // definition of what Apply all does.
         internal static List<string> MatchOptionalLayers(VRCAvatarDescriptor avatar, BridgeSettings settings)
         {
             var unticked = new List<string>();
@@ -462,7 +461,7 @@ namespace AvatarBridge
         }
 
         // Which rows Apply all takes: anything with a fix that is not the
-        // user's own call. Shared with the corpus for the same reason.
+        // user's own call. Shared for the same reason.
         internal static bool IsRecommendation(Advice a) => a.Apply != null && a.Kind != AdviceKind.Manual;
 
         static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings,

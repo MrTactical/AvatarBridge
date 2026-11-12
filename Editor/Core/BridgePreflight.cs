@@ -9,16 +9,16 @@ namespace AvatarBridge
     // Checks the TOOLCHAIN before a conversion starts; is the thing that bakes this avatar
     // actually there and actually compiled.
     //
-    // Written after a day that lost about four full corpus runs to this. A GoGo Loco
+    // Written after a day lost to this. A GoGo Loco
     // ".unitypackage" was imported over the project and overwrote Packages/com.vrcfury.vrcfury
     // with a partial bundled copy: 50 files, no package.json. Unity cannot load a package
     // without one, so VRCFury never compiled, never registered its build hooks, and every avatar
     // converted as though it had no VRCFury components at all. Nothing said a word. The symptom
-    // arrived 45 minutes later as a corpus where every avatar had quietly lost its "VF#_"
+    // arrived much later as conversions where every avatar had quietly lost its "VF#_"
     // parameters and grown an "NDMFAvatarRoot" that should have been consumed by the bake.
     //
-    // WHY THIS SHAPE, and not a list of known packages. The corpus was measured before this was
-    // designed: of 60 conversions, 7 hit a dependency failure, and every one was an avatar ADD-ON
+    // WHY THIS SHAPE, and not a list of known packages. Conversions were measured before this was
+    // designed: of 60, 7 hit a dependency failure, and every one was an avatar ADD-ON
     // . Dismay PCS, a bespoke GoGo build, Wholesome SPS. Not one was the core toolchain. Those
     // add-ons are also exactly where a hardcoded list fails: they are niche, they are sometimes
     // custom builds that exist in one project on earth, and VRCFury ALREADY detects them and

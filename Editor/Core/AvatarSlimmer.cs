@@ -175,7 +175,7 @@ namespace AvatarBridge
             }
 
             // Off in the scene with nothing able to switch it on. Checked
-            // across the corpus against a walk of every clip, override
+            // across many avatars against a walk of every clip, override
             // controllers included, before it was ever allowed to act.
             if (stripDead)
             {

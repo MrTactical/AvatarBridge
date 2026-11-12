@@ -151,7 +151,7 @@ namespace AvatarBridge
             }
 
             // PhysBone reads Endpoint Position in the bone's own scaled units
-            // (measured, Dev/Probes/EndpointScaleProbe), DynamicBone reads
+            // (measured), DynamicBone reads
             // m_EndOffset in metres, so on an armature at scale 100 the tip
             // came out a hundred times short.
             // ponytail: length only; DynamicBone turns the offset by its own

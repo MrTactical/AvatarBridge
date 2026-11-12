@@ -428,7 +428,7 @@ namespace AvatarBridge
 
         // What keeps a shader from drawing in both eyes, for the report: the
         // macros a pass is missing. A surface shader's passes are Unity's own,
-        // generated with every macro (measured, Dev/Probes/SpiFactsProbe), so
+        // generated with every macro (measured), so
         // only its vertex and fragment passes count, and a shader with none
         // of them has nothing to fix. A plain depth read alone is not counted:
         // locked Poiyomi Pro names every macro in every pass and still declares

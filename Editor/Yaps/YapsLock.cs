@@ -116,7 +116,7 @@ namespace AvatarBridge
             return basis ?? m;
         }
 
-        // Corpus 423: Basis was 1188 s of one avatar's 1190 s slot loop. Which half, keying or
+        // Basis was once 1188 s of one avatar's 1190 s slot loop. Which half, keying or
         // loading the stand-in, is what the squash lap reports.
         internal static readonly System.Diagnostics.Stopwatch KeyTime = new System.Diagnostics.Stopwatch();
         internal static readonly System.Diagnostics.Stopwatch LoadTime = new System.Diagnostics.Stopwatch();
