@@ -3506,10 +3506,31 @@ plan's order.
   .asset mesh (from a mesh tool or another package) had that asset's bounds widened, so every other
   prefab using it drew with the wider box. Only the toolkit's own meshes are edited in place now;
   any other is copied. `BoundsSharedMeshTest`.
+- **Rebuilding a duplicated avatar's plug changed the original's toy-mod length (risk 27).** The copy
+  shares the length mesh, and the rebuild rewrote it in place, or deleted it with the tip light
+  off. A mesh another object also draws is left alone now and the copy gets its own.
+  `ToyLengthSharedMeshTest`.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off
   now. `RemoveSocketKeepsPreviewTest`.
+- **Left for Joe: two plugs on one mesh (risks 26, 28).** A shape, scale or tag value animated for a
+  plug is a renderer-wide material curve, so two plugs split onto slots of one renderer read each
+  other's: one plug's size slider grows both, and the tag chooser (keyed on the mesh) is whichever
+  plug came last. A different key alone does not help, the curve is still shared. Needs per-plug
+  lanes in the shader (each plug reading its own offset into the packed weights) and an in-game
+  check. Design call.
+- **Left: toggle clips keyed by avatar name and label (risk 29).** Two avatars of one name in a
+  project share their YAPS toggle clips, and a renamed entry leaves its clip at the old label, where
+  a new entry of that label rewrites it. Changing the key moves every existing clip, so it wants a
+  migration; low.
+- **Left: texture lists keyed by name (risk 20).** In the weight card, two textures of one file name
+  (common across packages) share "left alone" notes, so one's saving is hidden when the other is
+  used outside the avatar. Advice only; key by asset path.
+- **Withdrawn: 17 and 24.** 17 (restore passes read clips before path repair): no pass before the
+  merge renames a source object without recording it, so nothing reaches it. 24 (a folder test
+  without a trailing slash): the controller is self-contained first, so no sibling folder's clip is
+  ever referenced.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 

@@ -767,8 +767,10 @@ namespace AvatarBridge
             float length, float radius, bool tipLight = true, bool pointers = true, string toyLengthDir = null)
         {
             var old = parent.Find(MarkersName);
+            // Reused or deleted only when this plug alone draws it: a duplicated avatar shares it.
             var oldToy = old != null ? old.GetComponentsInChildren<MeshFilter>(true).Select(f => f.sharedMesh)
-                .FirstOrDefault(x => x != null && AssetDatabase.GetAssetPath(x).StartsWith(OutputRoot + "/", System.StringComparison.Ordinal)) : null;
+                .FirstOrDefault(x => x != null && AssetDatabase.GetAssetPath(x).StartsWith(OutputRoot + "/", System.StringComparison.Ordinal)
+                                     && Object.FindObjectsOfType<MeshFilter>(true).Count(f => f.sharedMesh == x) == 1) : null;
             if (old != null) Object.DestroyImmediate(old.gameObject);
             var go = new GameObject(MarkersName);
             go.transform.SetParent(parent, false);
