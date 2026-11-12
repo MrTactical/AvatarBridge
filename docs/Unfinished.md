@@ -3486,6 +3486,11 @@ plan's order.
 - **Clean up leftovers removed the wearer's own toggles whose objects were gone (risk 32).** It took
   any one-object toggle with its object deleted, YAPS-made or not. It takes only toggles labelled as
   a socket's now. `SweepKeepsOwnTogglesTest`.
+- **A chain whose last bone was named like "Tail_End" lost its last segment on MagicaCloth2
+  (risk 22).** Every leaf ending in "_End" was read as a tip an earlier cloth wrote, so it got no
+  Endpoint Position tip. Only the writer's own name, the parent's plus "_End", counts now. Ceiling:
+  an authored bone named exactly that is still skipped. `AuthoredEndTipTest`. Physics: confirm in
+  game.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off

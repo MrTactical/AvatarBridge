@@ -360,8 +360,10 @@ namespace AvatarBridge
                     Walk(child);
                 }
                 // A tip written by an earlier cloth on the same root is a
-                // leaf too; stacked PhysBones must not grow X_End_End.
-                if (leaf && !node.name.EndsWith("_End", StringComparison.Ordinal))
+                // leaf too; stacked PhysBones must not grow X_End_End. Only
+                // this writer's own name: an authored "Tail_End" is a bone.
+                bool ownTip = node.parent != null && node.name == node.parent.name + "_End";
+                if (leaf && !ownTip)
                 {
                     var tip = new GameObject(node.name + "_End");
                     tip.transform.SetParent(node, false);
