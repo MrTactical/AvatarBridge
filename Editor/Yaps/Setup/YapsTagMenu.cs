@@ -131,10 +131,21 @@ namespace AvatarBridge
         // Keyed on the plug's path, not its label: a label follows the bone
         // and can change, and a renamed entry would leave the old one behind
         // driving a layer nothing removed.
-        static string Parameter(CVRAvatar avatar, YapsPlug plug)
+        // The second plug on a shared mesh keys on "#1" too, so each gets its own chooser.
+        internal static string Parameter(CVRAvatar avatar, YapsPlug plug)
         {
             string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
+            if (LaneOf(plug) > 0) path += "#1";
             return KeyPrefix + (path.GetHashCode() & 0x7FFFFF).ToString("X6");
+        }
+
+        // The lane the plug's own material on its mesh was given.
+        static int LaneOf(YapsPlug plug)
+        {
+            var mats = plug.Target.sharedMaterials;
+            for (int i = 0; i < mats.Length; i++)
+                if (mats[i] != null && YapsNativeBuilder.OwnsSlot(plug, plug.Target, i, mats[i])) return YapsBaker.LaneOf(mats[i]);
+            return 0;
         }
 
         static void EnsureEntry(CVRAvatar avatar, string parameter, string label, List<string> labels)
@@ -247,8 +258,10 @@ namespace AvatarBridge
             var targets = YapsToggles.Targets(plug, avatar.transform);
             for (int i = 0; i < values.Count; i++)
             {
-                var clip = YapsToggles.Clip(targets, "_YAPS_TagInclude", values[i],
-                    dir + "/" + Sanitise(YapsToggles.MenuLabelFor(plug)) + " answers " + i + ".anim");
+                // Plugs on one mesh share a menu label, so the second's clips are named apart.
+                bool second = LaneOf(plug) > 0;
+                var clip = YapsToggles.Clip(targets, second ? "_YAPS_TagInclude2" : "_YAPS_TagInclude", values[i],
+                    dir + "/" + Sanitise(YapsToggles.MenuLabelFor(plug)) + (second ? " second" : "") + " answers " + i + ".anim");
                 var state = machine.AddState("Answers " + i);
                 state.writeDefaultValues = false;
                 state.motion = clip;

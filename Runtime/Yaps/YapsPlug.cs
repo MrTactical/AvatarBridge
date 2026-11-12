@@ -196,6 +196,12 @@ namespace AvatarBridge.Yaps
         public System.Collections.Generic.List<BakedSlot> bakedSlots =
             new System.Collections.Generic.List<BakedSlot>();
 
+        // The shapes the last bake kept on its own mesh, in bake order. A second
+        // plug on that mesh reads them to tell its own old curves from this one's.
+        [HideInInspector]
+        public System.Collections.Generic.List<string> bakedShapes =
+            new System.Collections.Generic.List<string>();
+
         // A material an animation swaps into a baked slot, baked as that
         // slot's own. It sits on no renderer until the toggle plays, so the
         // knobs and the own-socket ticks reach it only through this record.

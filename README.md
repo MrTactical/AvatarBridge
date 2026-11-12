@@ -912,7 +912,9 @@ follows the same size animations, even when most of it sits elsewhere. The body 
 from, which meets it only at its root bone, is left as it is, and the report names it. Two plugs
 on different shafts that share one material each get a material of their own: one material
 carries one plug's bend, so the second plug's part of the mesh moves to a slot of its own on a
-copy of the mesh, and the report says so.
+copy of the mesh, and the report says so. Two plugs on one mesh each keep their own size
+sliders, size toggles and tag chooser, with sixteen shape slots between them; the report says
+when the second plug's shapes do not all fit. A third plug on the mesh shares the second's.
 
 **A converted socket with a mesh of its own opens around a plug**: the entry and up to fifteen
 further depths, staged, several allowed at one depth, driven straight from the shader: the
@@ -1277,7 +1279,7 @@ two doors. **Bake** and **Remove this plug** are at the bottom. Its *See it work
 baked plug and bending it in, editor only: a hole closes round the shaft and stops it, a ring lets
 it slide through, and a plug can look right in one and wrong in the other. A plug baked into a
 material slot another plug on a different shaft already bends gets a slot of its own on a copy of
-the mesh, as a converted one does, so both bend. **A plain (unskinned) mesh bends around its
+the mesh, as a converted one does, so both bend, each with its own size and tag chooser. **A plain (unskinned) mesh bends around its
 object's origin along +Z**: pivot at the base, shaft along +Z (in Blender: origin at the base,
 shaft along +Y before export); the bake warns when the mesh disagrees. A skinned mesh is measured
 from its bones and needs neither.

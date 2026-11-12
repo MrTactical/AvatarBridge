@@ -25,6 +25,12 @@ float _YAPS_Overrun;       // may the tip travel past the socket
 // slider reaches the bake. Held at 1, a scaled plug squashes.
 float _YAPS_BakeScale;
 float _YAPS_BakeGirth;
+// Which plug on a shared mesh this material is: 0 alone or first, 1 second. Never animated, so
+// each slot keeps its own, while every animated value reaches every slot.
+float _YAPS_PlugLane;
+// The second plug's own copies.
+float _YAPS_BakeScale2;
+float _YAPS_BakeGirth2;
 // A skinned plug's normal length at bake, the skin's own scale then.
 // 0 is not measured, and the plug keeps its baked size.
 float _YAPS_BakeSkinScale;
@@ -185,6 +191,7 @@ float _YAPS_MinimumSocketDistance;
 // there and not what it is. Both routes answer without knowing, so a plug
 // with a list still resolves through them. A preference, not a lock.
 float4 _YAPS_TagInclude;
+float4 _YAPS_TagInclude2;
 float4 _YAPS_TagExclude;
 
 // --- blendshapes -----------------------------------------------------

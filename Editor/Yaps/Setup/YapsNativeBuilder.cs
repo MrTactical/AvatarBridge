@@ -411,6 +411,15 @@ namespace AvatarBridge
             // rigid for as long as that toggle is on. After the knobs and every
             // slot are written: each variant copies its slot's finished values,
             // or it bends on the shader's defaults.
+            // Two plugs on one mesh each get animated values of their own, before
+            // a variant copies the packs.
+            foreach (var (meshRenderer, _) in meshes)
+            {
+                int dropped = YapsBaker.ShareRenderer(meshRenderer);
+                if (dropped > 0)
+                    o.Notes.Add($"\"{meshRenderer.name}\" carries two plugs, which share {YapsBaker.MaxShapes} shape slots: " +
+                                $"{BridgeElements.Count(dropped, "shape", "shapes")} of the second do not bend it.");
+            }
             YapsSwapFollow.FollowVariants(plug, renderer, slot, result, dir, clips, report,
                 patched, original, source);
 
@@ -502,6 +511,8 @@ namespace AvatarBridge
             // them: a contact cannot see what a socket is tagged, so the
             // channel tier answers without asking.
             m.SetVector("_YAPS_TagInclude", YapsTags.Patterns(plug.answers));
+            // Where the second plug on a shared mesh reads them.
+            m.SetVector("_YAPS_TagInclude2", YapsTags.Patterns(plug.answers));
             m.SetVector("_YAPS_TagExclude", YapsTags.Patterns(plug.refuses));
             // Build adds the socket writers and the avatar's clear and grab, so a
             // toolkit avatar published to the atlas and then read none of it: the
@@ -538,20 +549,36 @@ namespace AvatarBridge
             // where one mesh heard the animation and the other did not.
             var missed = new HashSet<string>();
             int shapes = 0, switched = 0, scaled = 0;
+            YapsCurveMirror.Purged = false;
+            var own = meshes.Where(m => m.renderer == plug.Target).Select(m => m.result).FirstOrDefault();
+            if (own != null) { plug.bakedShapes = new List<string>(own.Shapes); EditorUtility.SetDirty(plug); }
             foreach (var (renderer, result) in meshes)
             {
                 string rendererPath = AnimationUtility.CalculateTransformPath(renderer.transform, animRoot);
-                if (result.Shapes.Count > 0)
+                // This plug's lane on this mesh, from its own bake's material.
+                var mine = renderer.sharedMaterials.FirstOrDefault(m => m != null && m.HasProperty("_YAPS_Bake")
+                                                                        && m.GetTexture("_YAPS_Bake") == result.Bake);
+                int lane = YapsBaker.LaneOf(mine);
+                var baked = lane > 0 ? result.Shapes.Take(Mathf.RoundToInt(mine.GetFloat("_YAPS_ShapeCount"))).ToList() : result.Shapes;
+                // The first plug on this mesh, whose old curves a pre-lane build may have overwritten.
+                var first = lane > 0 && renderer == plug.Target
+                    ? top.GetComponentsInChildren<YapsPlug>(true).FirstOrDefault(p => p != plug && p.Target == renderer && p.bakedShapes.Count > 0)
+                    : null;
+                if (baked.Count > 0)
                 {
-                    shapes += YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer, result.Shapes,
-                        result.MovingShapes, missed);
+                    shapes += YapsCurveMirror.MirrorShapes(clips, rendererPath, renderer, baked,
+                        result.MovingShapes, missed, lane, first?.bakedShapes);
                 }
                 // Somebody animating the component's own checkbox meant the
                 // deform, so give them the deform.
                 switched += YapsCurveMirror.MirrorEnabled(clips, plugPath, typeof(YapsPlug),
                     rendererPath, renderer, "_YAPS_Enabled");
-                scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer, result.Rotation);
+                scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, rendererPath, renderer, result.Rotation, lane,
+                    first != null && first.rootBone != plug.rootBone);
             }
+            if (YapsCurveMirror.Purged)
+                o.Notes.Add("An earlier build had written this plug's size curves under the other plug's name on this mesh; " +
+                            "those are gone. Bake the other plug on this mesh again so its own are written back.");
             if (switched > 0)
             {
                 o.Notes.Add($"{BridgeElements.Count(switched, "clip animates", "clips animate")} this component's own Enabled field, which does " +

@@ -168,12 +168,13 @@ inline bool YapsTagsRefuse(int socketWord)
     // makes a fold testable at all: an OR of patterns keeps each one whole.
     bool wanted = false;
     bool matched = false;
+    bool lane1 = _YAPS_PlugLane > 0.5;
     [loop] for (int i = 0; i < 4; i++)
     {
         int deny = (int) round(_YAPS_TagExclude[i]);
         if (deny != 0 && (socketWord & deny) == deny) return true;
 
-        int want = (int) round(_YAPS_TagInclude[i]);
+        int want = (int) round(lane1 ? _YAPS_TagInclude2[i] : _YAPS_TagInclude[i]);
         if (want == 0) continue;
         wanted = true;
         if ((socketWord & want) == want) matched = true;

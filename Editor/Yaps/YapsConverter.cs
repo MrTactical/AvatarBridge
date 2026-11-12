@@ -111,6 +111,18 @@ namespace AvatarBridge
                     material.SetFloat("_YAPS_UseAtlas", 1f);
                 }
             }
+            // Two plugs on one mesh each get animated values of their own, once
+            // every plug on it is patched and before anything copies its packs.
+            var shared = ctx.YapsPlugs.Select(p => p.Renderer)
+                .Concat(ctx.YapsPlugs.SelectMany(p => p.Extras.Select(e => e.Renderer))).Where(r => r != null).Distinct();
+            foreach (var renderer in shared)
+            {
+                int dropped = YapsBaker.ShareRenderer(renderer);
+                if (dropped > 0)
+                    ctx.Report.Warning(Category, $"\"{renderer.name}\": {BridgeElements.Count(dropped, "shape", "shapes")} of its second plug left out",
+                        $"Two plugs on one mesh share {YapsBaker.MaxShapes} shape slots, and the first took the rest. " +
+                        "The second's later shapes do not bend it.");
+            }
             // The readouts, after every plug is measured and its values are
             // final: a plug measured over another's readout takes it for part
             // of the plug.
@@ -536,6 +548,8 @@ namespace AvatarBridge
             if (plugObject != null && YapsBakePrep.AuthoredAnswers.TryGetValue(plugObject, out var answers))
             {
                 patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(answers));
+                // Where the second plug on a shared mesh reads them.
+                patched.SetVector("_YAPS_TagInclude2", YapsTags.Patterns(answers));
             }
             if (plugObject != null && YapsBakePrep.AuthoredRefuses.TryGetValue(plugObject, out var refuses))
             {
@@ -900,7 +914,8 @@ namespace AvatarBridge
                 }
                 ctx.Report.Converted(Category, $"The plug at {where} got a material slot of its own",
                     $"It shared \"{renderer.name}\" slot {slot} with a plug on another shaft, and one material " +
-                    $"holds one plug's bend. Its triangles moved to slot {added} on a copy of the mesh, so both bend.");
+                    $"holds one plug's bend. Its triangles moved to slot {added} on a copy of the mesh, so both bend, " +
+                    "each with its own size animation and tag chooser.");
                 result.Add(added);
                 split.Add(added);
             }
@@ -1647,22 +1662,28 @@ namespace AvatarBridge
 
                 // Every mesh of the plug, or a resized plug tears where one
                 // mesh's deform took the new size and the other's did not.
-                void Mirror(Renderer renderer, List<string> shapes, List<string> moving)
+                // The lane and shape count this plug's material on that mesh was given.
+                void Mirror(Renderer renderer, Material mine, List<string> shapes, List<string> moving)
                 {
                     string path = ctx.PathInTarget(renderer.transform);
+                    int lane = YapsBaker.LaneOf(mine);
+                    if (lane > 0 && mine != null)
+                        shapes = shapes.Take(Mathf.RoundToInt(mine.GetFloat("_YAPS_ShapeCount"))).ToList();
                     if (shapes.Count > 0)
                     {
-                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer, shapes, moving, missed);
+                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer, shapes, moving, missed, lane);
                     }
                     if (bones.Count > 0)
                     {
-                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer, plug.Rotation);
+                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer, plug.Rotation, lane);
                     }
                 }
-                Mirror(plug.Renderer, plug.Shapes, plug.MovingShapes);
+                Mirror(plug.Renderer, plug.Material, plug.Shapes, plug.MovingShapes);
                 foreach (var mesh in plug.Extras)
                 {
-                    Mirror(mesh.Renderer, mesh.Shapes, mesh.MovingShapes);
+                    var slots = mesh.Renderer != null ? mesh.Renderer.sharedMaterials : new Material[0];
+                    var mine = mesh.Slots.Where(i => i >= 0 && i < slots.Length).Select(i => slots[i]).FirstOrDefault(m => m != null);
+                    Mirror(mesh.Renderer, mine, mesh.Shapes, mesh.MovingShapes);
                 }
             }
 

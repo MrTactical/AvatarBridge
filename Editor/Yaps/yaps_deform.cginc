@@ -150,13 +150,16 @@ YapsVertex YapsReadBaked(uint vertexId)
     int shapeCount = (int) max(_YAPS_ShapeCount, 0);
     uint total = (uint) max(_YAPS_VertexCount, 0);
     uint block = 1 + total * 10;
+    // The second plug fills the packs from the top, so neither plug's slots
+    // move when the other's shape count does.
+    uint flip = _YAPS_PlugLane > 0.5 ? 15u : 0u;
     [loop]
     for (int s = -1; s < shapeCount; s++)
     {
         float weight = 1;
         if (s >= 0)
         {
-            weight = YapsShapeWeight((uint) s);
+            weight = YapsShapeWeight(flip ^ (uint) s);
             if (abs(weight) <= 0.0001) continue;
             at = block + (uint) s * total * 9 + vertexId * 9;
         }
@@ -256,7 +259,9 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
     // The plug scaled by its bones, which the skinned vertex already is
     // and the bake is not. 1 when nothing scales it. Before the recovery,
     // so a scaled vertex still lands on its own root.
-    baked.position *= float3(max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeScale, 0.0001));
+    float bakeScale = _YAPS_PlugLane > 0.5 ? _YAPS_BakeScale2 : _YAPS_BakeScale;
+    float bakeGirth = _YAPS_PlugLane > 0.5 ? _YAPS_BakeGirth2 : _YAPS_BakeGirth;
+    baked.position *= float3(max(bakeGirth, 0.0001), max(bakeGirth, 0.0001), max(bakeScale, 0.0001));
 
     float3 rootLocal = float3(0, 0, 0);
     float3 forwardLocal = float3(0, 0, 1);
@@ -278,7 +283,7 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
             // reach and its root. 0 on a bake older than this: the baked size, as before.
             if (_YAPS_BakeSkinScale > 0)
             {
-                float3 boned = basis.a1 * float3(max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeScale, 0.0001));
+                float3 boned = basis.a1 * float3(max(bakeGirth, 0.0001), max(bakeGirth, 0.0001), max(bakeScale, 0.0001));
                 skinScale = length(normal) / max(_YAPS_BakeSkinScale * length(boned), 1e-6);
                 baked.position *= skinScale;
             }
@@ -314,7 +319,7 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
     // needs the baked numbers exactly as baked.
     float yapsScale = length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
     baked.position *= yapsScale;
-    root.worldLength = _YAPS_Length * _YAPS_BakeScale * skinScale * yapsScale;
+    root.worldLength = _YAPS_Length * bakeScale * skinScale * yapsScale;
     return root;
 }
 

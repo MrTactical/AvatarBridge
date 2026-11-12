@@ -3514,12 +3514,20 @@ plan's order.
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off
   now. `RemoveSocketKeepsPreviewTest`.
-- **Left for Joe: two plugs on one mesh (risks 26, 28).** A shape, scale or tag value animated for a
-  plug is a renderer-wide material curve, so two plugs split onto slots of one renderer read each
-  other's: one plug's size slider grows both, and the tag chooser (keyed on the mesh) is whichever
-  plug came last. A different key alone does not help, the curve is still shared. Needs per-plug
-  lanes in the shader (each plug reading its own offset into the packed weights) and an in-game
-  check. Design call.
+- **Two plugs on one mesh read each other's animated values (risks 26, 28).** A size, scale or tag
+  value is a renderer-wide material curve, so plugs split onto slots of one mesh shared them: one
+  plug's size slider grew both, and the tag chooser (keyed on the mesh) was the last plug's. Each
+  plug's material now carries a lane nothing animates; the second plug reads the shape slots from
+  the top and its own scale, girth and tag properties, and gets its own chooser. A lone plug is
+  unchanged (lane 0, same keys and curves). The toolkit records each plug's baked shapes so a
+  re-bake takes out only its own pre-lane curves. fxc on the full body: 28 s before, 30 s after.
+  `YapsSharedRendererLaneTest`. **In game, open:** two plugs on one mesh, each slider moving only
+  its own plug (also with the other held part-way: the packs must agree), a shape moving both,
+  a scale toggle on one, two choosers, shadows at each size, a lone-plug avatar unchanged, Shader
+  Filtering clean, an old upload unchanged.
+- **Follow-up: the plug on/off toggle is still per mesh.** `_YAPS_Enabled` and `_YAPS_SelfAllow` are
+  renderer-wide, so plugs on one mesh share one switch (README says so). The same lane plus one
+  twin each would split them.
 - **Left: toggle clips keyed by avatar name and label (risk 29).** Two avatars of one name in a
   project share their YAPS toggle clips, and a renamed entry leaves its clip at the old label, where
   a new entry of that label rewrites it. Changing the key moves every existing clip, so it wants a

@@ -125,6 +125,9 @@ namespace AvatarBridge
         _YAPS_Overrun (""YAPS allow overrun"", Range(0,1)) = 1
         _YAPS_BakeScale (""YAPS bake scale"", Float) = 1
         _YAPS_BakeGirth (""YAPS bake girth"", Float) = 1
+        [HideInInspector] _YAPS_PlugLane (""YAPS plug lane"", Float) = 0
+        _YAPS_BakeScale2 (""YAPS bake scale, second plug"", Float) = 1
+        _YAPS_BakeGirth2 (""YAPS bake girth, second plug"", Float) = 1
         _YAPS_BakeSkinScale (""YAPS bake skin scale"", Float) = 0
         _YAPS_PortalSpan (""YAPS portal band (-1 too coarse)"", Float) = 0
         _YAPS_CopyStart (""YAPS second copy's first vertex"", Float) = 0
@@ -172,6 +175,7 @@ namespace AvatarBridge
         _YAPS_MinimumSocketDistance (""YAPS minimum socket distance"", Range(0,1)) = 0
         [Header(YAPS tags)]
         _YAPS_TagInclude (""YAPS only sockets tagged"", Vector) = (0,0,0,0)
+        _YAPS_TagInclude2 (""YAPS only sockets tagged, second plug"", Vector) = (0,0,0,0)
         _YAPS_TagExclude (""YAPS never sockets tagged"", Vector) = (0,0,0,0)
         _YAPS_ShapeCount (""YAPS shape count"", Float) = 0
         _YAPS_ShapeWeights (""YAPS shape weights 0-3"", Vector) = (0,0,0,0)

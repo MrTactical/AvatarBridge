@@ -23,6 +23,7 @@ namespace AvatarBridge
             // which is inert, so it goes when the rest of YAPS does.
             "material._YAPS_Enabled",
             "material._YAPS_BakeScale", "material._YAPS_BakeGirth",
+            "material._YAPS_BakeScale2", "material._YAPS_BakeGirth2",
             "material._YAPS_ShapeWeights.x", "material._YAPS_ShapeWeights.y", "material._YAPS_ShapeWeights.z", "material._YAPS_ShapeWeights.w",
             "material._YAPS_ShapeWeights2.x", "material._YAPS_ShapeWeights2.y", "material._YAPS_ShapeWeights2.z", "material._YAPS_ShapeWeights2.w",
             "material._YAPS_ShapeWeights3.x", "material._YAPS_ShapeWeights3.y", "material._YAPS_ShapeWeights3.z", "material._YAPS_ShapeWeights3.w",
@@ -81,9 +82,10 @@ namespace AvatarBridge
             {
                 foreach (var e in ToggleEntriesFor(avatar, plug))
                     lines.Add($"the menu toggle \"{e.name}\"");
-                var chooser = renderer != null ? ChooserEntry(avatar, ChooserKey(avatar, renderer)) : null;
-                if (chooser != null) lines.Add($"the tag chooser \"{chooser.name}\"");
             }
+            // Each plug has its own chooser, shared mesh or not.
+            var chooser = avatar != null && plug.Target != null ? ChooserEntry(avatar, YapsTagMenu.Parameter(avatar, plug)) : null;
+            if (chooser != null) lines.Add($"the tag chooser \"{chooser.name}\"");
             return lines;
         }
 
@@ -400,11 +402,11 @@ namespace AvatarBridge
                 if (entries > 0) done.Add(entries > 1 ? "its menu toggles" : "its menu toggle");
                 string menu = YapsToggles.RefreshMenuAnimator(avatar, before);
                 if (menu != null) done.Add(menu.TrimEnd('.'));
-                // The tag chooser, before the plug goes: it is keyed on the
-                // mesh path, so it stays while another plug shares the mesh.
-                if (renderer != null && sharing.Count == 0)
+                // The tag chooser, before the plug goes. Its own, also when
+                // another plug shares the mesh: each plug has one.
+                if (plug.Target != null)
                 {
-                    string key = ChooserKey(avatar, renderer);
+                    string key = YapsTagMenu.Parameter(avatar, plug);
                     if (RemoveChoosers(avatar, ControllersOf(top), k => k == key).Count > 0) done.Add("its tag chooser");
                 }
             }
@@ -552,7 +554,7 @@ namespace AvatarBridge
             if (avatar != null)
             {
                 var keys = new HashSet<string>(plugs.Where(p => p != null && p.Target != null)
-                    .Select(p => ChooserKey(avatar, p.Target)));
+                    .Select(p => YapsTagMenu.Parameter(avatar, p)));
                 foreach (string chooser in RemoveChoosers(avatar, ControllersOf(top), k => !keys.Contains(k)))
                     done.Add($"tag chooser \"{chooser}\": its plug is gone");
             }
@@ -790,13 +792,6 @@ namespace AvatarBridge
         // chooser out, and its layer went on writing a restored material.
         const string ChooserPrefix = "YAPS/Tags/";
         const string ChooserLayer = "YAPS tags ";
-
-        // The key YapsTagMenu.Parameter writes; the two must stay the same.
-        static string ChooserKey(CVRAvatar avatar, Renderer target)
-        {
-            string path = AnimationUtility.CalculateTransformPath(target.transform, avatar.transform);
-            return ChooserPrefix + (path.GetHashCode() & 0x7FFFFF).ToString("X6");
-        }
 
         static ABI.CCK.Scripts.CVRAdvancedSettingsEntry ChooserEntry(CVRAvatar avatar, string key)
         {

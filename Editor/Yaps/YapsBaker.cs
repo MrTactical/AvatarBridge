@@ -655,15 +655,119 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_PortalSpan", result.PortalSpan);
             if (result.ShapeWeights != null)
             {
-                string[] packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
-                for (int p = 0; p < packs.Length; p++)
-                {
-                    float W(int k) => p * 4 + k < result.ShapeWeights.Length ? result.ShapeWeights[p * 4 + k] : 0f;
-                    target.SetVector(packs[p], new Vector4(W(0), W(1), W(2), W(3)));
-                }
+                // Where this material's lane reads them; ShareRenderer settles the rest.
+                int lane = LaneOf(target);
+                var weights = new float[MaxShapes];
+                for (int k = 0; k < Mathf.Min(MaxShapes, result.ShapeWeights.Length); k++)
+                    weights[YapsCurveMirror.ShapeSlot(k, lane)] = result.ShapeWeights[k];
+                WritePacks(target, weights);
             }
             EditorUtility.SetDirty(target);
         }
+
+        // Two plugs baked onto one renderer. Animation reaches every slot, so
+        // each plug's animated values need a place of their own: the second
+        // plug (lane 1) reads the shape slots from the top and the "2" scale,
+        // girth and tag properties. The lane is a material value nothing
+        // animates, so each slot keeps its own.
+        //
+        // A plug is its bake texture: every slot of one plug on one mesh holds
+        // the same one. The plug on the lowest slot is lane 0, so the answer
+        // does not depend on which was baked last, and a plug alone is lane 0
+        // with nothing written. Every plug material gets the same packs: a clip
+        // animating one component takes the rest from one material's values.
+        // Returns how many of the second plug's shapes did not fit.
+        // ponytail: two lanes; a third plug shares lane 1, add a lane 2 if that ever matters.
+        public static int ShareRenderer(Renderer renderer)
+        {
+            if (renderer == null) return 0;
+            var mats = renderer.sharedMaterials;
+            var plugs = new List<(Texture Bake, List<Material> Slots)>();
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var m = mats[i];
+                if (m == null || !m.HasProperty("_YAPS_Bake") || !m.HasProperty("_YAPS_PlugLane")) continue;
+                if ((YapsShaderPatcher.RolesOf(m.shader) & YapsShaderPatcher.Roles.Plug) == 0) continue;
+                var bake = m.GetTexture("_YAPS_Bake");
+                if (bake == null) continue;
+                int at = plugs.FindIndex(p => p.Bake == bake);
+                if (at < 0) plugs.Add((bake, new List<Material> { m }));
+                else if (!plugs[at].Slots.Contains(m)) plugs[at].Slots.Add(m);
+            }
+            if (plugs.Count < 2)
+            {
+                // Alone again, after its partner went: back to the first plug's place.
+                foreach (var p in plugs)
+                    foreach (var m in p.Slots)
+                        if (m.GetFloat("_YAPS_PlugLane") > 0.5f) Relane(m, 0);
+                return 0;
+            }
+
+            var weights = new float[MaxShapes];
+            int firstCount = 0, dropped = 0;
+            for (int k = 0; k < plugs.Count; k++)
+            {
+                int lane = k == 0 ? 0 : 1;
+                var first = plugs[k].Slots[0];
+                var held = Held(first);
+                int count = Mathf.RoundToInt(first.GetFloat("_YAPS_ShapeCount"));
+                if (lane == 0) firstCount = count;
+                else if (count > MaxShapes - firstCount)
+                {
+                    dropped += count - (MaxShapes - firstCount);
+                    count = Mathf.Max(0, MaxShapes - firstCount);
+                }
+                for (int s = 0; s < count; s++) weights[YapsCurveMirror.ShapeSlot(s, lane)] = held[s];
+                foreach (var m in plugs[k].Slots)
+                {
+                    m.SetFloat("_YAPS_PlugLane", lane);
+                    m.SetFloat("_YAPS_ShapeCount", count);
+                }
+            }
+            foreach (var p in plugs)
+                foreach (var m in p.Slots)
+                {
+                    WritePacks(m, weights);
+                    EditorUtility.SetDirty(m);
+                }
+            return dropped;
+        }
+
+        // A plug's own held weights in its own order, wherever its lane put them.
+        static float[] Held(Material m)
+        {
+            var packs = Packs.Select(m.GetVector).ToArray();
+            int lane = m.GetFloat("_YAPS_PlugLane") > 0.5f ? 1 : 0;
+            var held = new float[MaxShapes];
+            for (int s = 0; s < MaxShapes; s++)
+            {
+                int slot = YapsCurveMirror.ShapeSlot(s, lane);
+                held[s] = packs[slot >> 2][slot & 3];
+            }
+            return held;
+        }
+
+        static void Relane(Material m, int lane)
+        {
+            var held = Held(m);
+            var weights = new float[MaxShapes];
+            for (int s = 0; s < MaxShapes; s++) weights[YapsCurveMirror.ShapeSlot(s, lane)] = held[s];
+            m.SetFloat("_YAPS_PlugLane", lane);
+            WritePacks(m, weights);
+            EditorUtility.SetDirty(m);
+        }
+
+        static readonly string[] Packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
+
+        static void WritePacks(Material m, float[] weights)
+        {
+            for (int p = 0; p < Packs.Length; p++)
+                m.SetVector(Packs[p], new Vector4(weights[p * 4], weights[p * 4 + 1], weights[p * 4 + 2], weights[p * 4 + 3]));
+        }
+
+        // The lane a plug's material was given; 0 for a lone plug and for any build before lanes.
+        public static int LaneOf(Material m) =>
+            m != null && m.HasProperty("_YAPS_PlugLane") && m.GetFloat("_YAPS_PlugLane") > 0.5f ? 1 : 0;
 
         // The generated material for one source material, at a name that does
         // not move.
