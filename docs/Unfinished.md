@@ -3491,6 +3491,10 @@ plan's order.
   Endpoint Position tip. Only the writer's own name, the parent's plus "_End", counts now. Ceiling:
   an authored bone named exactly that is still skipped. `AuthoredEndTipTest`. Physics: confirm in
   game.
+- **A stand-in cloth that was not a soft body kept the preset's angle limit (risk 21).** Hair moved
+  through a constraint cascade gets a stand-in cloth, and it kept the hair preset's angle limit,
+  which every other converted chain has turned off. Only a soft-body stand-in keeps its limit now.
+  `StandInAngleLimitTest`. Physics: confirm in game.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off

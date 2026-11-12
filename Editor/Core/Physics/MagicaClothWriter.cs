@@ -749,9 +749,10 @@ namespace AvatarBridge
 
             // The source's own angle limit is the leash's job. A preset's MagicaCloth2 angle
             // limit bounds chains whose source had none, and it is the constraint that set
-            // converted chains vibrating before 3.7.0. A stand-in's limit is not the preset's:
-            // ConfigureSoftBody sets it before this runs, to hold the bending to the add-on's.
-            if (sdata.angleLimitConstraint.useAngleLimit && !data.StandIn)
+            // converted chains vibrating before 3.7.0. A soft-body stand-in's limit is not the
+            // preset's: ConfigureSoftBody sets it before this runs, to hold the bending to the
+            // add-on's. Any other stand-in's is.
+            if (sdata.angleLimitConstraint.useAngleLimit && !(data.StandIn && softBody))
             {
                 sdata.angleLimitConstraint.useAngleLimit = false;
                 ctx.Report.Approximated(Category, data.Label,
