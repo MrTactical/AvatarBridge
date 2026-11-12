@@ -135,6 +135,13 @@ namespace AvatarBridge
             Undo.SetCurrentGroupName("Remove YAPS socket " + name);
 
             YapsPreview.Set(socket, false);
+            // The dropped preview socket goes with its preview, and it was never built into
+            // anything, so there is nothing left to take out.
+            if (socket == null)
+            {
+                Undo.CollapseUndoOperations(group);
+                return $"Removed socket \"{name}\". Undo brings it back.";
+            }
             YapsShapeSim.Release(socket);
 
             // The reactions layer and its parameter, in every controller.

@@ -3443,6 +3443,9 @@ plan's order.
   checked for a sibling already wearing the name, not one queued for it, so both became
   "YAPS Socket" and their animations reached whichever Unity found first. The second keeps its name
   now, with the same note. `SiblingRenameTest`.
+- **Removing the dropped preview socket threw an error (14).** Turning its preview off destroys it,
+  and the remover went on reading it. It stops there now: that socket was never built into
+  anything. `RemovePreviewSocketTest`.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
