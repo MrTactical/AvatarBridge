@@ -3479,6 +3479,10 @@ plan's order.
   layer's source left the synced layer naming its old index, and Unity dropped it outright. Synced
   indices move down with their sources now, and an empty layer something is synced to stays.
   `FreeWinsSyncedLayerTest`.
+- **A socket's preview plug and the window's Test plug broke each other (risk 30).** Both wrote one
+  mesh file and one bake, so dropping either emptied the other's mesh, and ending the preview
+  deleted both files. The preview plug is named apart before it bakes now, so its files are its own.
+  `PreviewPlugOwnFilesTest`.
 - Left, not traced: the reader's second half of 14, that removing any socket also takes the test
   plug and deletes its generated files outside the one undo step.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression

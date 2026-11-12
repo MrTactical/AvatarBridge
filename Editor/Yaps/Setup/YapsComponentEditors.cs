@@ -503,7 +503,7 @@ namespace AvatarBridge
                 return;
             }
             // Keep the socket selected; its inspector holds the stop button.
-            if (go == null) go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length);
+            if (go == null) go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length, name: PlugName);
             if (go == null) return;
             go.name = PlugName;
             var t = socket.transform;

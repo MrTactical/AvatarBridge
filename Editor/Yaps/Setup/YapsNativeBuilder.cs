@@ -1925,11 +1925,11 @@ namespace AvatarBridge
         // default is overwritten by every test plug, so a prefab saved around it
         // lost its mesh the next time one spawned.
         public static GameObject BuildTestPlug(Transform parent = null, bool select = true, float length = 0.25f,
-            string meshPath = null)
+            string meshPath = null, string name = "YAPS Test Plug")
         {
             length = Mathf.Clamp(length, 0.08f, 1.5f);
             float radius = Mathf.Clamp(0.028f * length / 0.25f, 0.015f, 0.07f);
-            var root = new GameObject("YAPS Test Plug");
+            var root = new GameObject(name);
             if (parent != null) root.transform.SetParent(parent, false);
             else
             {
@@ -1942,7 +1942,8 @@ namespace AvatarBridge
             // One asset, overwritten. GenerateUniqueAssetPath left a mesh
             // behind for every spawn, and the test plug is spawned to try
             // something and deleted straight after.
-            if (string.IsNullOrEmpty(meshPath)) meshPath = OutputRoot + "/Test Plug/YAPS Test Plug Mesh.asset";
+            // By name: the bake folder follows the name too, so two test plugs named apart share nothing.
+            if (string.IsNullOrEmpty(meshPath)) meshPath = OutputRoot + "/Test Plug/" + name + " Mesh.asset";
             EnsureFolder(Path.GetDirectoryName(meshPath).Replace('\\', '/'));
             AssetDatabase.DeleteAsset(meshPath);
             AssetDatabase.CreateAsset(mesh, meshPath);
