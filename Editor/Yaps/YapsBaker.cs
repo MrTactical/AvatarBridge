@@ -1280,9 +1280,13 @@ namespace AvatarBridge
             // every other user of it, the source avatar included, took the wider box.
             // So that, a built-in or a scene-only mesh is copied for this renderer.
             // A mesh asset of its own keeps the edit: the test plug's is one, and
-            // copying it would orphan the path it was given.
-            if (!(AssetDatabase.IsMainAsset(mesh)
-                  && AssetDatabase.GetAssetPath(mesh).EndsWith(".asset", StringComparison.OrdinalIgnoreCase)))
+            // copying it would orphan the path it was given. Only the toolkit's own:
+            // another tool's .asset mesh is shared like a model's.
+            string meshPath = AssetDatabase.GetAssetPath(mesh);
+            bool ours = meshPath.StartsWith("Assets/YAPS/", StringComparison.Ordinal)
+                        || meshPath.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal);
+            if (!(AssetDatabase.IsMainAsset(mesh) && ours
+                  && meshPath.EndsWith(".asset", StringComparison.OrdinalIgnoreCase)))
             {
                 string path = outputDir + "/YAPS " + Sanitise(renderer.name) + " "
                               + PlaceKey(renderer.transform) + " bounds.asset";

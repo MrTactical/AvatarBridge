@@ -3502,6 +3502,10 @@ plan's order.
 - **Two head chops on bones of one name made two exclusions of one name (risk 18).** A toggle on
   either then reached whichever Unity found first. The second is numbered now.
   `HeadChopUniqueNameTest`.
+- **Baking a plug widened another tool's mesh asset in place (risk 25).** A plug on a standalone
+  .asset mesh (from a mesh tool or another package) had that asset's bounds widened, so every other
+  prefab using it drew with the wider box. Only the toolkit's own meshes are edited in place now;
+  any other is copied. `BoundsSharedMeshTest`.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off
