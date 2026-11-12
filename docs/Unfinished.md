@@ -3465,6 +3465,9 @@ plan's order.
   compared with material names, which never match, so a material whose colour an animation changes
   was still offered for an atlas. The curve's renderer is looked up and its materials left out.
   `AtlasAnimatedPropertyTest`.
+- **The debug readout's "bake read" cell could never show red (10).** It tested a normal the read had
+  already normalised with a fallback. It reads the raw baked normal now. Debug readout only; no
+  automated test, the shader compiles.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 

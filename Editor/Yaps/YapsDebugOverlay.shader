@@ -223,7 +223,9 @@ Shader "YAPS/Debug Overlay"
                 // skinned like the anchor, so they arrive where the anchor
                 // arrives; the bake holds where the anchor was.
                 YapsVertex baked = YapsReadBaked((uint) max(_YAPS_AnchorVertex, 0));
-                float bakeRead = length(baked.normal) > 0.001 ? 1.0 : 0.0;
+                // The raw base normal: YapsReadBaked normalises with a fallback, so its
+                // normal is never zero even when nothing was read.
+                float bakeRead = length(YapsReadFloat3(1 + (uint) max(_YAPS_AnchorVertex, 0) * 10 + 3)) > 0.001 ? 1.0 : 0.0;
                 YapsRoot root = YapsRecoverRoot(baked, v.vertex.xyz, v.normal, v.tangent.xyz);
                 // 0 the object's own axes, 1 the recovery refused, 2 recovered.
                 // A plain-mesh plug is 0 by design and is not a fault; 1 is,
