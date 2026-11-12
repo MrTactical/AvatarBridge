@@ -162,7 +162,7 @@ namespace AvatarBridge
                 Outside.Stop();
                 if (user != null)
                 {
-                    plan.Shared[t.Name] = user;
+                    plan.Shared[AvatarWeight.KeyOf(t.Texture, t.Name)] = user;
                     continue;
                 }
 
@@ -300,7 +300,7 @@ namespace AvatarBridge
 
             foreach (var left in plan.Shared)
             {
-                report.Approximated(Category, $"\"{left.Key}\" left alone",
+                report.Approximated(Category, $"\"{AvatarWeight.Shown(left.Key)}\" left alone",
                     $"{left.Value} uses it too, and the size lives on the texture rather than on the " +
                     "avatar, so shrinking it here would shrink it there.");
             }

@@ -287,7 +287,7 @@ namespace AvatarBridge
                 var t = pair.Key;
                 Add(r, pair.Value, $"\"{t.Name}\" is {t.Width}x{t.Height} across {t.WorldArea:0.###} m2 of surface. " +
                                    $"That is {t.Density:N0} texels per metre where {TargetDensity:N0} is ample. " +
-                                   $"{t.Suggested}x{t.Suggested} is the same picture.", 0, t.Name);
+                                   $"{t.Suggested}x{t.Suggested} is the same picture.", 0, KeyOf(pair.Key.Texture, t.Name));
             }
             if (oversized.Count > Named)
             {
@@ -308,7 +308,7 @@ namespace AvatarBridge
                 long saved = t.Bytes - t.Bytes / perPixel;
                 keeps[t] /= perPixel;
                 Add(r, saved, $"\"{t.Name}\" is {t.Format}, {perPixel} bytes a pixel, uncompressed. " +
-                              "Compressing it costs nothing anybody will see.", 0, t.Name);
+                              "Compressing it costs nothing anybody will see.", 0, KeyOf(t.Texture, t.Name));
             }
 
             var readable = r.Textures.Where(t => t.Readable).ToList();
@@ -431,8 +431,19 @@ namespace AvatarBridge
         static long Reclaimable(Report r)
         {
             bool strip = StripAdvised(r);
-            return r.Textures.Sum(t => (strip && t.Dead) || !r.LeftAlone.ContainsKey(t.Name) ? t.Reclaim : 0);
+            return r.Textures.Sum(t => (strip && t.Dead) || !r.LeftAlone.ContainsKey(KeyOf(t.Texture, t.Name)) ? t.Reclaim : 0);
         }
+
+        // Two textures of one file name are common across packages, so the
+        // left-alone notes go by asset path and only show the name.
+        internal static string KeyOf(Texture texture, string name)
+        {
+            string path = texture != null ? AssetDatabase.GetAssetPath(texture) : null;
+            return string.IsNullOrEmpty(path) ? name : path;
+        }
+
+        internal static string Shown(string key) =>
+            key != null && key.Contains("/") ? System.IO.Path.GetFileNameWithoutExtension(key) : key;
 
         static string LeftAloneNote(string user) =>
             $" Left alone though: {user} uses it too, and the size lives on the texture rather than on the " +
@@ -969,7 +980,7 @@ namespace AvatarBridge
                 // Advice the optimiser has already refused stops being advice.
                 if (c.Subject != null && weight.LeftAlone.TryGetValue(c.Subject, out string user))
                 {
-                    report.Add(ReportStatus.Approximated, "Weight", $"\"{c.Subject}\" left alone",
+                    report.Add(ReportStatus.Approximated, "Weight", $"\"{Shown(c.Subject)}\" left alone",
                         c.Text + LeftAloneNote(user));
                     continue;
                 }

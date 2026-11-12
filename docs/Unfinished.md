@@ -3532,9 +3532,10 @@ plan's order.
   project share their YAPS toggle clips, and a renamed entry leaves its clip at the old label, where
   a new entry of that label rewrites it. Changing the key moves every existing clip, so it wants a
   migration; low.
-- **Left: texture lists keyed by name (risk 20).** In the weight card, two textures of one file name
-  (common across packages) share "left alone" notes, so one's saving is hidden when the other is
-  used outside the avatar. Advice only; key by asset path.
+- **The weight card hid a saving when two textures shared a file name (risk 20).** A texture left
+  alone because a material outside the avatar uses it took every texture of that name with it, so
+  the headline and the advice skipped one Fix would shrink. The notes go by asset path now and
+  show the name. `SameNameTextureTest`.
 - **Withdrawn: 17 and 24.** 17 (restore passes read clips before path repair): no pass before the
   merge renames a source object without recording it, so nothing reaches it. 24 (a folder test
   without a trailing slash): the controller is self-contained first, so no sibling folder's clip is
