@@ -911,8 +911,8 @@ namespace AvatarBridge
             if (parent != null) go.transform.SetParent(parent, false);
             if (!onBone && parent != null)
             {
-                // Unique names in the folder.
-                int n = 1;
+                // Unique names in the folder. The new one is already in it, so it counts itself.
+                int n = 0;
                 foreach (Transform c in parent) if (c.name.StartsWith(name)) n++;
                 if (n > 1) go.name = $"{name} {n}";
             }

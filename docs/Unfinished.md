@@ -3425,6 +3425,9 @@ plan's order.
 - **A dropdown's float thresholds rounded the wrong way when it became an int (1).** Rounded half
   to even, "less than 0.5" became "less than 0", which a dropdown never is, and "greater than 1.5"
   became "greater than 2", dropping 2. Greater now rounds down and Less up. `IntThresholdTest`.
+- **The first socket added to the YAPS folder was named "YAPS Hole 2" (15).** The counter counted
+  the new object, already in the folder, so the menu toggle read "YAPS Hole 2 (hole)". It starts
+  from 0 now. `FirstSocketNameTest`.
 
 ## 5.0.1
 
