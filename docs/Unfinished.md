@@ -3432,6 +3432,9 @@ plan's order.
   fade's `else` sat in the DynamicBone `#if` after the MagicaCloth one, so with both it bound to the
   fling test and faded the chain while it was held. Now its own test. No automated test: it lives in
   the tester's Play-mode loop; `check-defines.sh` compiles all eight combinations.
+- **Taking one jelly part off could strip another's collider ends (8).** The ends were matched by a
+  piece of the part's name, so "Thighs" also took "Thighs inner", whose jelly stayed with its anchor
+  slots Missing. The whole name now. `JellyPartNameTest`.
 
 ## 5.0.1
 

@@ -199,7 +199,8 @@ namespace AvatarBridge
             // The colliders that pressed instead, back in their pair's cloth: their ends mark them and
             // name the pair, the breasts when they name none, as before any other pair.
             var ends = avatar.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith("Jelly collider ") && t.parent != null)
-                .Where(t => only == null || PartOf(only).IsMatch(t.name.Split(new[] { ' ' }, 5).ElementAtOrDefault(4) ?? "breast")).ToList();
+                // The whole name: as a piece of it, "Thighs" took the ends of "Thighs inner" too.
+                .Where(t => only == null || string.Equals(t.name.Split(new[] { ' ' }, 5).ElementAtOrDefault(4) ?? "breast", only, StringComparison.OrdinalIgnoreCase)).ToList();
             var skeleton = Skeleton(avatar.GetComponentInChildren<Animator>());
             foreach (var pair in ends.GroupBy(t => t.name.Split(new[] { ' ' }, 5).ElementAtOrDefault(4)))
             {
