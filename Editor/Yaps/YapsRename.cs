@@ -71,11 +71,13 @@ namespace AvatarBridge
                     }
                     // A sibling already wearing the new name would make two
                     // objects share a path, and a shared path is a curve
-                    // that drives whichever Unity finds first.
+                    // that drives whichever Unity finds first. A sibling
+                    // already queued for the same name counts too.
                     if (transform.parent != null
-                        && Enumerable.Range(0, transform.parent.childCount)
-                            .Select(i => transform.parent.GetChild(i))
-                            .Any(c => c != transform && c.name == to))
+                        && (Enumerable.Range(0, transform.parent.childCount)
+                                .Select(i => transform.parent.GetChild(i))
+                                .Any(c => c != transform && c.name == to)
+                            || doomed.Any(d => d.Target.parent == transform.parent && d.To == to)))
                     {
                         ctx.Report.Warning(Category,
                             $"Left \"{from}\" named as it was",

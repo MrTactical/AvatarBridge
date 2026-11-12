@@ -3439,6 +3439,10 @@ plan's order.
   before asking whether it could build at all, so a rig with no pair, or a body changed since its
   regions were painted, was left with nothing. It refuses first now. Joe asked to drop the squash
   editor instead; it stays, as it is also the live tissue's inspector. `SquashRefusalKeepsBuildTest`.
+- **Two baked SPS sockets side by side were both renamed to one YAPS name (11).** The rename only
+  checked for a sibling already wearing the name, not one queued for it, so both became
+  "YAPS Socket" and their animations reached whichever Unity found first. The second keeps its name
+  now, with the same note. `SiblingRenameTest`.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
