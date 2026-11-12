@@ -3468,6 +3468,9 @@ plan's order.
 - **The debug readout's "bake read" cell could never show red (10).** It tested a normal the read had
   already normalised with a fallback. It reads the raw baked normal now. Debug readout only; no
   automated test, the shader compiles.
+- **The socket inspector drew nothing when its chosen mesh renderer had lost its mesh (risk 31).**
+  It read the missing mesh's shape count and threw, taking the controls to fix it with it. The row
+  reads "no mesh" now. `SocketInspectorNoMeshTest`.
 - Left, not traced: the reader's second half of 14, that removing any socket also takes the test
   plug and deletes its generated files outside the one undo step.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression

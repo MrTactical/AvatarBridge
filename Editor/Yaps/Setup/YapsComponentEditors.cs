@@ -951,7 +951,7 @@ namespace AvatarBridge
             // draw made "None" impossible and dirtied a socket on selection.
             if (current != null && !renderers.Contains(current)) renderers.Insert(0, current);
             var rNames = new List<string> { "None: bend plugs, play no shape" };
-            rNames.AddRange(renderers.Select(r => $"{r.name} · {r.sharedMesh.blendShapeCount} shapes"));
+            rNames.AddRange(renderers.Select(r => r.sharedMesh != null ? $"{r.name} · {r.sharedMesh.blendShapeCount} shapes" : $"{r.name} · no mesh"));
             int rIndex = current != null ? renderers.IndexOf(current) : -1;
             opens.Body.Add(BridgeElements.Popup("Mesh", "The mesh whose shapes open as a plug goes in.",
                 rNames.ToArray(), rIndex + 1, index =>
@@ -974,7 +974,7 @@ namespace AvatarBridge
                     $"DPS plugs have no pointer and do not open it. Full depth is {reach:0.00} m in ({reachFrom})."));
             }
 
-            if (current != null)
+            if (current != null && current.sharedMesh != null)
             {
                 var mesh = current.sharedMesh;
                 var shapeNames = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToList();
