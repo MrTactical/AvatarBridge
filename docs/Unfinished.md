@@ -4209,8 +4209,29 @@ films match the earlier ones frame for frame.
   (`_Cap 45` with the catch-up forced predicted) held: no growth, no fly-off, PSNR to every-frame
   46.6/43.2/41.8 dB against 46.9/44.8/41.7 for two passes, the squeeze a little more uneven (1.14
   against 1.03). `_Mid 45` at 90 fps, off to on: 4080 0.128 to 0.111, iGPU 0.790 to 0.505 (36%).
-  Off parity bit-exact on both. Built tissue takes `_Mid` 45 (`YapsJelly.Mid`). Open: Joe in game
-  at mid distance.
+  Off parity bit-exact on both. Built tissue takes `_Mid` 45 (`YapsJelly.Mid`). Joe on the film:
+  "looks basically the same, nice cost saving". Open: Joe in game at mid distance.
+  **One chain for every part, priced, not built (2026-11-11, paused by Joe).** All parts as row
+  blocks of one state texture, one set of three passes. The price a chain pays before any pixel's
+  work, `JellyCostProbe -costFixed` (each pass into one texel, bare and with its own material), Kar
+  breasts and butt: 4080 0.007 bare / 0.014 own a chain, 0.013 / 0.028 both; iGPU 0.008 / 0.018,
+  0.015 / 0.036. So one chain saves Kar at most 0.014 ms on the 4080 (of 0.125, eight hands near)
+  and 0.018 on the iGPU (of 0.48 at 90 fps), less whatever the merged shader adds: 4 to 11%. The
+  far lines bound it the same way (4080 0.043 both against 0.025 one). Not the 0.04 a part guessed.
+  What it would take, all of it, since parts differ in everything: every per-material value the step
+  reads becomes per part (the feel from `Tune`, `_Lattice` and so `Count()`/`Rows()`, the mass,
+  `_Pair*`, cores, boxes, offsets, carriers, `_JellySolid`/probes, `_Motion`, `_Slap`), packed in
+  float4 lanes or numbered properties, since a saved material keeps no arrays; `_JellyAnchor`'s
+  layout (regions, hangs at 2 + r, own bones, colliders, twitch) past 32 slots; one skinned helper
+  for all parts (frames at 8 r collide with probes from 16 once r passes 1); the depth maps in one
+  atlas; partners by part, not `region ^ 1`; `min(r, 3)` and the two-region loops in Feedback,
+  Resting and the scan; the far switch judged per part in the shader (`Away` on each part's first
+  region, as today on region 0), the parser switching the blitters off only when every part is far,
+  so a near part feels as now and a far one copies; the draw a row base a slot, its slots bound to
+  one texture (every jellied body recompiles); putting one part on or off rebuilding the whole
+  chain. Rough size: most of the 2,300-line step touched, the scan variant already 140 s to compile.
+  Left unbuilt for a gain under 0.02 ms; worth it only if the CPU side (a provider and a parser
+  readback a part in the client, which this probe does not see) proves dear.
 
 ## Major Ideas
 

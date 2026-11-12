@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // first k together, at rest and with eight hands in reach of each part. The bench's way: warmed
     // a third of a second, 600 runs, the GPU waited on, five rounds, the median.
     //   -executeMethod AvatarBridge.Regression.JellyCostProbe.Run -costScene <scene> -costPrefab <prefab>
-    //       [-costPaint] [-costSquashOnly] [-costSave <Assets/x.prefab>] [-costNoPlay] [-costCount]
+    //       [-costPaint] [-costSquashOnly] [-costSave <Assets/x.prefab>] [-costNoPlay] [-costCount] [-costFixed]
     // -costPaint: the probe's painted parts (breasts, butt, a belly alone, thighs) instead of the
     // bone names. -costSquashOnly: no tissue. -costSave: the built copy saved as a prefab, for
     // UploadCostProbe. -force-device-index 1 runs it on the CPU's own GPU. Run without -quit; it
@@ -347,6 +347,28 @@ namespace AvatarBridge.Regression
                 for (int k = 1; k <= chains.Count; k++)
                     Log($"the first {k} together: far {Time(chains.Take(k), null)} ms a frame; near, eight hands, 90 fps "
                         + $"{Time(chains.Take(k), chains[0].at.position, true, 1f / 90)}; 60 fps {Time(chains.Take(k), chains[0].at.position, true, 1f / 60)}");
+                // -costFixed: what a chain costs before any pixel's work, the price one chain of all parts
+                // would save a part. Each pass into a single texel, bare and with its own material.
+                if (Flag("-costFixed"))
+                {
+                    var one = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear);
+                    one.Create();
+                    for (int k = 1; k <= chains.Count; k++)
+                    {
+                        var list = chains.Take(k).ToList();
+                        var bare = new List<double>();
+                        var own = new List<double>();
+                        for (int round = 0; round < 5; round++)
+                        {
+                            bare.Add(Timed(() => { foreach (var c in list) foreach (var b in c.passes) Graphics.Blit(b.originTexture, one); }, one, 600));
+                            own.Add(Timed(() => { foreach (var c in list) foreach (var b in c.passes) Graphics.Blit(b.originTexture, one, b.blitMaterial); }, one, 600));
+                        }
+                        bare.Sort();
+                        own.Sort();
+                        Log($"fixed, the first {k}: bare {bare[2]:0.000} ({bare[0]:0.000} to {bare[4]:0.000}) ms a frame; own materials {own[2]:0.000} ({own[0]:0.000} to {own[4]:0.000})");
+                    }
+                    one.Release();
+                }
                 // With -costParity, the old step and the new timed in turns in this one run, so a busy
                 // machine weighs on both alike.
                 if (olds.Count > 0)
