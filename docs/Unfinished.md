@@ -3422,6 +3422,9 @@ plan's order.
   counted as shown only when active in the scene, so with the avatar's root off every untoggled
   renderer read as dead and Fix destroyed it (Undo brought them back). Shown is now judged up to the
   avatar's root. `InactiveRootLiveTest`.
+- **A dropdown's float thresholds rounded the wrong way when it became an int (1).** Rounded half
+  to even, "less than 0.5" became "less than 0", which a dropdown never is, and "greater than 1.5"
+  became "greater than 2", dropping 2. Greater now rounds down and Less up. `IntThresholdTest`.
 
 ## 5.0.1
 

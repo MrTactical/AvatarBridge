@@ -329,6 +329,14 @@ namespace AvatarBridge
                                     condition.mode = AnimatorConditionMode.Less;
                                     condition.threshold = 1f;
                                     break;
+                                // Each side keeps the whole numbers it held: rounded half to even,
+                                // "less than 0.5" became "less than 0", which no dropdown is.
+                                case AnimatorConditionMode.Greater:
+                                    condition.threshold = Mathf.Floor(condition.threshold);
+                                    break;
+                                case AnimatorConditionMode.Less:
+                                    condition.threshold = Mathf.Ceil(condition.threshold);
+                                    break;
                                 default:
                                     condition.threshold = Mathf.Round(condition.threshold);
                                     break;
