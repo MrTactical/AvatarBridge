@@ -3499,6 +3499,9 @@ plan's order.
   Both built a dictionary of the parameters and threw on the second, so the tool showed nothing.
   The first of a name wins now, as the merge's own parameter step does. Unity's Animator window
   cannot make such a controller; another tool can. `DiagnosticsDuplicateParameterTest`.
+- **Two head chops on bones of one name made two exclusions of one name (risk 18).** A toggle on
+  either then reached whichever Unity found first. The second is numbered now.
+  `HeadChopUniqueNameTest`.
 - **Removing one socket stopped another socket's preview (14, second half).** The remover switched
   the removed socket's preview off whether it was on or not, which takes the scene's one preview
   plug and deletes its files outside the undo step. Only a socket that is previewing is switched off

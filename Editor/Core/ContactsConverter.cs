@@ -1141,7 +1141,7 @@ namespace AvatarBridge
         // Two zones for one parameter on one bone would share an animation path, and every curve
         // reaches only the first. Compared by name, not Transform.Find: a parameter name's '/'
         // reads to Find as a path.
-        static string UniqueChildName(Transform parent, string name)
+        internal static string UniqueChildName(Transform parent, string name)
         {
             var taken = new HashSet<string>(System.StringComparer.Ordinal);
             foreach (Transform child in parent)
