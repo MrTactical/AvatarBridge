@@ -232,9 +232,9 @@ namespace AvatarBridge
             box.isTrigger = true;
             box.center = root.transform.InverseTransformPoint(bounds.center);
             box.size = Vector3.Scale(bounds.size, new Vector3(
-                1f / Mathf.Max(root.transform.lossyScale.x, 1e-4f),
-                1f / Mathf.Max(root.transform.lossyScale.y, 1e-4f),
-                1f / Mathf.Max(root.transform.lossyScale.z, 1e-4f)));
+                1f / Mathf.Max(Mathf.Abs(root.transform.lossyScale.x), 1e-4f),
+                1f / Mathf.Max(Mathf.Abs(root.transform.lossyScale.y), 1e-4f),
+                1f / Mathf.Max(Mathf.Abs(root.transform.lossyScale.z), 1e-4f)));
         }
 
         static void RemoveChannel(GameObject root)

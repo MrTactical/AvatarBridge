@@ -3450,6 +3450,9 @@ plan's order.
   shape clips were pathed from the nearest Animator up, the accessory's, while the layer went into
   the avatar's controllers, so the curves bound nothing. They are pathed from the avatar's Animator
   now. `SocketReactionsRootTest`.
+- **A mirrored prop's grab box came out ten thousand times too wide (12).** A negative scale fell to
+  the floor meant for a zero one. The box divides by the scale's size now, as the capsule beside it
+  did. `MirroredGrabBoxTest`.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
