@@ -4233,6 +4233,13 @@ films match the earlier ones frame for frame.
   Left unbuilt for a gain under 0.02 ms; worth it only if the CPU side (a provider and a parser
   readback a part in the client, which this probe does not see) proves dear.
 
+  **Half-precision state, priced, not built (2026-11-12).** `JellyCostProbe -costHalf` runs the same
+  chains on half-float copies of their textures, in turns with the float ones (the cap and mid rate
+  off: they gate on _Time, which stands still through a timing run, so with them on a run times only
+  skipped frames). All parts near, eight hands: iGPU 0.789 to 0.678 ms at 90 fps (14%), 1.228 to 1.131
+  at 60 (8%); RTX 4080 0.128 to 0.124. That is the ceiling: the real thing keeps the side row in
+  float (a second texture, more blits), and half steps of about 0.5 mm at a breast's size make the
+  Verlet velocity noisy by tens of mm/s at 90 fps. Not worth the rewrite of every state read.
 ## Major Ideas
 
 The work Joe means to take on after 5.0.0.

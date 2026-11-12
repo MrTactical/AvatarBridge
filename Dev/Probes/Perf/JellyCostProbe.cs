@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // first k together, at rest and with eight hands in reach of each part. The bench's way: warmed
     // a third of a second, 600 runs, the GPU waited on, five rounds, the median.
     //   -executeMethod AvatarBridge.Regression.JellyCostProbe.Run -costScene <scene> -costPrefab <prefab>
-    //       [-costPaint] [-costSquashOnly] [-costSave <Assets/x.prefab>] [-costNoPlay] [-costCount] [-costFixed]
+    //       [-costPaint] [-costSquashOnly] [-costSave <Assets/x.prefab>] [-costNoPlay] [-costCount] [-costFixed] [-costHalf]
     // -costPaint: the probe's painted parts (breasts, butt, a belly alone, thighs) instead of the
     // bone names. -costSquashOnly: no tissue. -costSave: the built copy saved as a prefab, for
     // UploadCostProbe. -force-device-index 1 runs it on the CPU's own GPU. Run without -quit; it
@@ -327,7 +327,9 @@ namespace AvatarBridge.Regression
                 string Time(IEnumerable<(string part, Transform at, List<CVRBlitter> passes)> some, Vector3? hands, bool near = false, float dt = 0f)
                 {
                     var list = some.ToList();
-                    foreach (var c in list) foreach (var b in c.passes) b.blitMaterial.SetFloat("_FixedDt", dt);
+                    // The cap and the mid rate gate on _Time, which stands still through a run of 600: off,
+                    // or the run times a skipped frame.
+                    foreach (var c in list) foreach (var b in c.passes) { b.blitMaterial.SetFloat("_FixedDt", dt); b.blitMaterial.SetFloat("_Cap", 0f); b.blitMaterial.SetFloat("_Mid", 0f); }
                     // -costSolid0: the bulk's squash map off, to price it.
                     if (Flag("-costSolid0")) foreach (var c in list) foreach (var b in c.passes) b.blitMaterial.SetFloat("_Solid", 0f);
                     var times = new List<double>();
@@ -368,6 +370,31 @@ namespace AvatarBridge.Regression
                         Log($"fixed, the first {k}: bare {bare[2]:0.000} ({bare[0]:0.000} to {bare[4]:0.000}) ms a frame; own materials {own[2]:0.000} ({own[0]:0.000} to {own[4]:0.000})");
                     }
                     one.Release();
+                }
+                // -costHalf: the same chains on half-float copies of their textures, timed in turns with the
+                // float ones, near and awake. Whether the state's memory traffic is what a GPU waits on:
+                // if halving it moves little, a half-precision state has nothing to win.
+                if (Flag("-costHalf"))
+                {
+                    var all = chains.ToList();
+                    var half = all.SelectMany(c => c.passes).SelectMany(b => new[] { b.originTexture, b.destinationTexture }).OfType<RenderTexture>().Distinct()
+                        .ToDictionary(t => t, t => { var d = t.descriptor; d.colorFormat = RenderTextureFormat.ARGBHalf; var h = new RenderTexture(d); h.Create(); Graphics.Blit(t, h); return h; });
+                    foreach (var dt in new[] { 1f / 90, 1f / 60 })
+                    {
+                        foreach (var c in all) foreach (var x in c.passes) { x.blitMaterial.SetFloat("_FixedDt", dt); x.blitMaterial.SetFloat("_Cap", 0f); x.blitMaterial.SetFloat("_Mid", 0f); }
+                        var f = new List<double>();
+                        var h = new List<double>();
+                        for (int round = 0; round < 7; round++)
+                        {
+                            Players(all[0].at.position, true);
+                            f.Add(Timed(() => Run(all), all[0].passes[0].destinationTexture, 600));
+                            h.Add(Timed(() => { foreach (var c in all) foreach (var x in c.passes) Graphics.Blit(half[(RenderTexture) x.originTexture], half[(RenderTexture) x.destinationTexture], x.blitMaterial); }, half[(RenderTexture) all[0].passes[0].destinationTexture], 600));
+                        }
+                        f.Sort();
+                        h.Sort();
+                        Log($"half: all parts, near, eight hands, {Mathf.RoundToInt(1 / dt)} fps: float {f[3]:0.000} ({f[0]:0.000} to {f[6]:0.000}) ms, half {h[3]:0.000} ({h[0]:0.000} to {h[6]:0.000})");
+                    }
+                    foreach (var t in half.Values) { t.Release(); Object.DestroyImmediate(t); }
                 }
                 // With -costParity, the old step and the new timed in turns in this one run, so a busy
                 // machine weighs on both alike.
