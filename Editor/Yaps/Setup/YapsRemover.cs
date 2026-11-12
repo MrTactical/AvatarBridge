@@ -134,7 +134,9 @@ namespace AvatarBridge
             int group = Undo.GetCurrentGroup();
             Undo.SetCurrentGroupName("Remove YAPS socket " + name);
 
-            YapsPreview.Set(socket, false);
+            // Only its own preview: switching one off takes the scene's one preview plug, which
+            // another socket may be watching.
+            if (socket.preview || socket.gameObject.name == YapsPreview.SocketName) YapsPreview.Set(socket, false);
             // The dropped preview socket goes with its preview, and it was never built into
             // anything, so there is nothing left to take out.
             if (socket == null)
