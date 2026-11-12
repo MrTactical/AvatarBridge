@@ -3409,7 +3409,7 @@ trigger entries, no driver), green after.
 Open [GAME]: on a grip controller, a half squeeze half-closes a weight-driven fist, and a second
 client sees the same; on Index the trigger still does it. In-game checklist R13.
 
-### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". IN PROGRESS on dev
+### 37. The 5.0.0 read-through's bugs. Read 2026-11-09, Joe 2026-11-12: "continue on number 1". All fifteen fixed on dev 2026-11-12; two leftovers below
 
 Eleven readers went over every shipped file before 5.0.0; the bugs were checked by hand (plan and raw
 findings in `Dev/Release`, local). Each is fixed with a failing test first, one commit each, in the
@@ -3468,6 +3468,8 @@ plan's order.
 - **The debug readout's "bake read" cell could never show red (10).** It tested a normal the read had
   already normalised with a fallback. It reads the raw baked normal now. Debug readout only; no
   automated test, the shader compiles.
+- Left, not traced: the reader's second half of 14, that removing any socket also takes the test
+  plug and deletes its generated files outside the one undo step.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
