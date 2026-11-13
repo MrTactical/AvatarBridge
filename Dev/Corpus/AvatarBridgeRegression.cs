@@ -617,6 +617,7 @@ namespace AvatarBridge.Regression
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
+            AppendPlugMaterials(sb, target);
             AppendSweep(sb, target);
             return Stable(sb.ToString());
         }
@@ -1077,6 +1078,32 @@ namespace AvatarBridge.Regression
                 .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {Brief(e.Detail)}")
                 .OrderBy(s => s, StableSampleOrder.Instance);
             foreach (var line in notable) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
+        // What each baked plug material holds once the conversion is done. A reconvert
+        // once dropped every bake value (queue 38) and the digest showed only one missing
+        // menu row: the bake texture, vertex count and length were never written here.
+        static void AppendPlugMaterials(StringBuilder sb, GameObject target)
+        {
+            if (target == null) return;
+            string Num(Material m, string p) => m.HasProperty(p) ? F(m.GetFloat(p)) : "<none>";
+            var lines = new List<string>();
+            foreach (var r in target.GetComponentsInChildren<Renderer>(true))
+            {
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || !m.HasProperty("_YAPS_Bake")) continue;
+                    lines.Add("  " + HierarchyPath(target, r) + " [" + i + "]: bake " + (m.GetTexture("_YAPS_Bake") != null ? "yes" : "NONE")
+                        + ", vertices " + Num(m, "_YAPS_VertexCount") + ", length " + Num(m, "_YAPS_Length")
+                        + ", self " + Num(m, "_YAPS_SelfTag") + ", atlas " + Num(m, "_YAPS_UseAtlas"));
+                }
+            }
+            if (lines.Count == 0) return;
+            sb.Append("[plug materials]\n");
+            foreach (var line in lines.OrderBy(l => l, StringComparer.Ordinal)) sb.Append(line).Append('\n');
             sb.Append('\n');
         }
 
