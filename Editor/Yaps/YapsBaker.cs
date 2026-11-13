@@ -202,7 +202,12 @@ namespace AvatarBridge
             }
             else
             {
-                MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis,
+                // The avatar's up where the mesh is measured: world for a skinned mesh,
+                // the renderer's own space for a plain one.
+                var avatar = renderer.GetComponentInParent<Animator>(true);
+                Vector3 avatarUp = (avatar != null ? avatar.transform : renderer.transform.root).up;
+                if (staticMesh) avatarUp = renderer.transform.InverseTransformDirection(avatarUp);
+                MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis, avatarUp,
                     out origin, out rotation, out axisDrift, out originDrift);
             }
             var toPlug = staticMesh || objectFrame ? Matrix4x4.identity
@@ -931,7 +936,7 @@ namespace AvatarBridge
         // points anywhere. A rod's axis is where its points spread most, the
         // dominant eigenvector of their covariance. The base is the near end.
         static void MeasureFrame(List<Vector3> positions, List<float> active, Vector3 rootPosition, Quaternion rootRotation, bool flip,
-            out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
+            Vector3 avatarUp, out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
         {
             var authored = rootRotation;
             origin = rootPosition;
@@ -1004,10 +1009,19 @@ namespace AvatarBridge
             originDrift = Vector3.Distance(rootPosition, measured);
             origin = measured;
 
-            var up = authored * Vector3.up;
-            if (Mathf.Abs(Vector3.Dot(up, axis)) > 0.99f)
+            // Up is the avatar's, so the bend's down is the avatar's down. The root
+            // bone's up was used, and a Blender bone's y runs along the bone, so every
+            // Blender rig fell back to the bone's x, which its roll decides: a forward
+            // plug with roll 0 drooped sideways. The bone decides only when the shaft
+            // points along the avatar's up, straight up or straight down.
+            var up = avatarUp;
+            if (up.sqrMagnitude < 1e-8f || Mathf.Abs(Vector3.Dot(up.normalized, axis)) > 0.99f)
             {
-                up = authored * Vector3.right;
+                up = authored * Vector3.up;
+                if (Mathf.Abs(Vector3.Dot(up, axis)) > 0.99f)
+                {
+                    up = authored * Vector3.right;
+                }
             }
             rotation = Quaternion.LookRotation(axis, up);
         }

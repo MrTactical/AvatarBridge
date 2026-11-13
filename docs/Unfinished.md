@@ -3593,6 +3593,34 @@ leftover generated assets. Next: convert that avatar alone and after the avatars
 the full run, and diff the two. Two more avatars in the same subset moved 3-5 converted items and
 about 1% of texture weight between the runs, which may be the same thing.
 
+### 39. A plush avatar's plug: two YAPS reports. 2026-11-13, from the plush build session, fixed on dev
+- **"The readout could not carry 7 of the plug's settings" on every jellied plug: a false warning [M].**
+  The seven were `_YAPS_PlugIndex` and the live tissue's `_YAPS_JellyLattice`(2-4), `_YAPS_JellyParts`
+  and `_YAPS_JellySlap`. The readout shader includes only `yaps_deform.cginc`. The plug number is read
+  by the atlas relay alone and the jelly's values by the skin's code, so no readout cell draws any
+  of them. `YapsDebugOverlayBuilder.Copy` now leaves them out of the warning, as it already did the
+  squash block. `ReadoutCarryTest`: WRONG before (all seven named), PASS after.
+- **"Positive bends up" was the wrong way round [R from both sources, M in Unity by the plush
+  session].** YAPS rotates the shaft in the plug frame's y/z plane, and a positive `_YAPS_Curvature`
+  turns toward frame -y; Poiyomi's DPS (`CGI_PoiPenetration.cginc`) offsets its control point by
+  `(0,1,0) * (curvature * -0.2)`, the same way. So the sign carried from DPS is right and only the
+  text was wrong: the inspector knob and the plug component's tooltip now say positive bends down.
+  Frame +y is the plug transform's own up, or its right when that up runs along the shaft (a
+  Blender bone's Y does). The plug's curl was measured on the plush avatar; DPS's is read from its
+  source, not seen in game.
+- **"Down" followed the root bone's roll: FIXED on dev, Joe chose the avatar's up (2026-11-13) [M, A/B by
+  the plush session].** The frame's up was the root bone's up, falling back to its x when that up runs
+  along the shaft (`YapsBaker.MeasureFrame`). A Blender bone's y always runs along the bone, so every
+  Blender-rigged plug took the fallback and its roll decided the bend: roll 0 on a forward bone drooped
+  sideways; rolled so its x was vertical, it drooped down with the sign flipped. Up is now the avatar's
+  (its Animator's transform, else the scene root), square to the shaft; the bone decides only when the
+  shaft runs along the avatar's up. The shader recovers each vertex's frame from its own skinning, so
+  any up is self-consistent; shape deltas and bone-scale mirroring follow the measured rotation.
+  Existing plugs keep the old frame until re-baked or reconverted. Converted DPS/TPS plugs bend in their
+  mesh's own y, which is the avatar's up on a plug pointing forward. `BendFrameUpTest`: WRONG before (the unrolled forward plug bent sideways), PASS after. The help text
+  says positive bends toward the avatar's down.
+- The same session confirmed queue 38's fix on its build: the bake values hold after the dev deploy.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).

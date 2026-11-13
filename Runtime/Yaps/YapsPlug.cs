@@ -45,7 +45,7 @@ namespace AvatarBridge.Yaps
         public float lengthOverride;
 
         [Header("Shape at rest")]
-        [Range(-1.5f, 1.5f), Tooltip("A resting bend along the whole shaft. Positive bends up.")]
+        [Range(-1.5f, 1.5f), Tooltip("A resting bend along the whole shaft. Positive bends down, toward the avatar's down, as DPS does.")]
         [YapsFrom("DPS")]
         public float curvature;
         [Range(-1.5f, 1.5f), Tooltip("A second bend near the tip, opposite in sign, so the shaft can sweep and then hook.")]

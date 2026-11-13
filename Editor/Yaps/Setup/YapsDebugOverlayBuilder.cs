@@ -625,7 +625,11 @@ namespace AvatarBridge
             var missing = new List<string>();
             YapsNativeBuilder.CopyYapsProperties(from, to, missing);
             // The patch gives every shader the squash block, and no cell reads it.
-            missing.RemoveAll(name => YapsSquash.Properties.Contains(name));
+            // Nor the live tissue's values, which are the skin's, or the plug number,
+            // which only the atlas relay reads.
+            missing.RemoveAll(name => YapsSquash.Properties.Contains(name)
+                                      || name.StartsWith("_YAPS_Jelly", System.StringComparison.Ordinal)
+                                      || name == "_YAPS_PlugIndex");
             EditorUtility.SetDirty(to);
             if (missing.Count == 0)
             {

@@ -55,7 +55,7 @@ namespace AvatarBridge
                 Blurb = "How the shaft sits when nothing is bending it.",
                 Knobs = new[]
                 {
-                    new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft: positive bends up"),
+                    new Knob("_YAPS_Curvature", "Curvature", RowKind.Slider, "DPS", "a resting bend along the whole shaft: positive bends down, toward the avatar's down, as DPS does"),
                     new Knob("_YAPS_ReCurvature", "Recurvature", RowKind.Slider, "DPS", "a second bend at the tip, opposite in sign: sweep, then hook"),
                     new Knob("_YAPS_EntranceStiffness", "Entrance stiffness", RowKind.Slider, "DPS", "how much the base resists bending: 0 bends evenly from the root"),
                 }},
