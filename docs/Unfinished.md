@@ -3556,7 +3556,7 @@ plan's order.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
-### 38. A plug's own-sockets row appears in one conversion and not the next. Corpus 2026-11-13, FIXED on dev 2026-11-13
+### 38. A plug's own-sockets row appears in one conversion and not the next. Corpus 2026-11-13, FIXED on dev 2026-11-13, CLOSED
 - **Cause: a reconvert wiped the plug material's bake [M].** Not state from other avatars. On a
   reconvert `YapsBaker.Generated` reuses the material at its fixed path, copies the source's values
   onto it (which gives it the source shader's property layout) and calls `Wear`, which skips a shader
@@ -3571,10 +3571,13 @@ plan's order.
   and lays it out, the same path a fresh material takes. `GeneratedRelayoutTest`: 2 WRONG before, PASS
   after. Kar alone, from the broken output: trace holds every value to the end, the row is back, the
   saved material has its bake texture, length 4.10 and 25216 vertices.
-- **Open:** the corpus digest does not record a plug material's values, which is why a plug losing
-  its whole bake showed only as one missing menu row. Two more avatars in the soft subset moved 3-5
-  converted items and about 1% of texture weight between the runs, possibly the same cause. Not
-  checked yet; the next soft run will say.
+- **The digest now records it:** a `[plug materials]` section lists every plug mesh's slots with
+  the bake texture, vertex count, length, self tag and atlas flag (830c138), narrowed to meshes a plug
+  targets, since a soft body's shader declares the plug properties too.
+- **The other two avatars were the same bug.** Soft subset rerun 2026-11-13 with the fix (8 avatars,
+  2066 s, no errors): outside the new section every digest matches the morning run exactly, the two
+  that had drifted included. The only other lines are the VR stereo fix's, on two avatars. Every plug
+  in the subset has its bake texture, vertex count and length. CLOSED.
 
 Original report:
 The same avatar and scene (unchanged since 11-08) converted twice on 2026-11-13, soft parts on in

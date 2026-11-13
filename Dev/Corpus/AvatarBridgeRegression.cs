@@ -1089,7 +1089,11 @@ namespace AvatarBridge.Regression
             if (target == null) return;
             string Num(Material m, string p) => m.HasProperty(p) ? F(m.GetFloat(p)) : "<none>";
             var lines = new List<string>();
-            foreach (var r in target.GetComponentsInChildren<Renderer>(true))
+            // The plugs' own meshes: a soft body's shader declares the plug's properties
+            // too, and every body slot would read as a plug with no bake.
+            var plugMeshes = target.GetComponentsInChildren<AvatarBridge.Yaps.YapsPlug>(true)
+                .Select(p => p.Target).Where(r => r != null).Distinct();
+            foreach (var r in plugMeshes)
             {
                 var mats = r.sharedMaterials;
                 for (int i = 0; i < mats.Length; i++)
