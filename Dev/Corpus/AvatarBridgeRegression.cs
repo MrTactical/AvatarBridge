@@ -83,6 +83,8 @@ namespace AvatarBridge.Regression
                 {
                     suffix += "/DynamicBone";
                 }
+                // A different profile again, so never compared with the default one.
+                if (SoftMode) suffix += "/Soft";
                 return repo + suffix;
             }
         }
@@ -903,6 +905,10 @@ namespace AvatarBridge.Regression
         static bool AdvisorMode =>
             Environment.GetEnvironmentVariable("AVATARBRIDGE_PROFILE") == "advisor";
 
+        // AVATARBRIDGE_SOFT=1 turns the soft parts on, the one pass too slow for a full run.
+        static bool SoftMode =>
+            Environment.GetEnvironmentVariable("AVATARBRIDGE_SOFT") == "1";
+
         sealed class AdvisorTrace
         {
             public List<string> Unticked = new List<string>();
@@ -1019,8 +1025,10 @@ namespace AvatarBridge.Regression
             createDefaultColliderPointers = true,
             sizeContactZonesForLargest = true,
             patchNonSpiShaders = true,     // BETA: writes patched shader copies
-            // Off for a user. Patches the body shaders too, so it is the slowest pass in a run.
-            squashSoftParts = true,
+            // Off for a user, and off here unless AVATARBRIDGE_SOFT=1. Every body shader copy
+            // carries the jelly and compiles for 20-60 s, so a full run with it on took about
+            // twelve hours. Measured on a subset into its own folder instead.
+            squashSoftParts = SoftMode,
 
             convertConstraints = true,
             convertHeadChop = true,

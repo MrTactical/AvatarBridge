@@ -21,6 +21,8 @@
 #   Dev/Corpus/run-corpus.sh --subset FILE   only the scenes FILE lists, one Assets/ path per line
 #   Dev/Corpus/run-corpus.sh --quick         the [quickset] from Regression/corpus.cfg
 #   Dev/Corpus/run-corpus.sh --dynbone       the DynamicBone fallback solver, into its own folder
+#   Dev/Corpus/run-corpus.sh --soft          soft parts on, into its own folder; pair with --subset,
+#                                            since every body shader compiles the jelly
 #   Dev/Corpus/run-corpus.sh --per-process N at most N conversions per Unity (default 30, 0 = one Unity)
 #
 # AVATARBRIDGE_YAPS=1 is what a user gets and what Regression/Yaps
@@ -56,6 +58,7 @@ yaps=1
 advisor=0
 allow_stale=0
 dynbone=0
+soft=0
 subset=""
 scope=all
 label=""
@@ -65,6 +68,7 @@ while [ $# -gt 0 ]; do
         --advisor) advisor=1 ;;
         --allow-stale) allow_stale=1 ;;
         --dynbone) dynbone=1 ;;
+        --soft) soft=1 ;;
         --quick) scope=quick ;;
         --subset) shift; subset="${1:-}"; scope=subset ;;
         --label) shift; label="${1:-}" ;;
@@ -92,6 +96,7 @@ fi
 suffix=$([ "$yaps" = "1" ] && echo "yaps-on" || echo "yaps-off")
 [ "$advisor" = "1" ] && suffix="$suffix-advisor"
 [ "$dynbone" = "1" ] && suffix="$suffix-dynbone"
+[ "$soft" = "1" ] && suffix="$suffix-soft"
 [ "$scope" != "all" ] && suffix="$suffix-$scope"
 log="$REPO/Regression/corpus-run-$label-$suffix.log"
 
@@ -148,6 +153,7 @@ if [ "$advisor" = "1" ]; then export AVATARBRIDGE_PROFILE=advisor; else unset AV
 # Same trap: a leftover value files the run under DynamicBone/ while the
 # log still says it was the default.
 if [ "$dynbone" = "1" ]; then export AVATARBRIDGE_PHYSICS=DynamicBone; else unset AVATARBRIDGE_PHYSICS; fi
+if [ "$soft" = "1" ]; then export AVATARBRIDGE_SOFT=1; else unset AVATARBRIDGE_SOFT; fi
 case "$scope" in
     subset)
         # Unity resolves the path itself, so hand it an absolute Windows one.
