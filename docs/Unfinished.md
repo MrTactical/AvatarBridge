@@ -110,7 +110,10 @@ the YAPS avatars [M]:
   cutoff drops, while a stocking at 4 keeps its copy. Of those three plugs only one variant's is
   baked; the rest, and a plug-shaped mesh on another avatar at 52, are plain meshes and follow the
   cutoff like any layer. `SquashSlotTest` PASS.
-  Not yet seen in a corpus run, and neither rule in ChilloutVR.
+  ~~Not yet seen in a corpus run, and neither rule in ChilloutVR.~~ The plug half is seen in corpus
+  output (2026-11-13 soft subset): Kar's soft parts made copies for its bra, body, panties, piercings,
+  shirt, shorts and tail and none for its baked plug. The faint-layer half is not checked against
+  share textures yet, and neither rule in ChilloutVR.
 - **Run 424 (dev b9fb21d, before the loop fix) [M]:** 73 of 85 digests moved against baseline 422,
   every class explained: the count line; rest clips for sliders (90b277a); squash reported not
   built where every shader under the part refused (a1b3812: 9 avatars on Unity's Standard or a
