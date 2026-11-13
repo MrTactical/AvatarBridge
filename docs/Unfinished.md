@@ -72,7 +72,11 @@ the YAPS avatars [M]:
   shaders in the probe project, contended by a corpus run. A/B against the unrolled dent in batch
   Play mode, with the arm and 64 players' hands: 0.0005 mm worst over 1800 frames and 4928
   vertices, render cost level. Not exercised: the plug-light loop (no vertex lights in that scene).
-  Still open: a corpus run on the fix to confirm the squash pass time fell, and it needs Joe's word.
+  ~~Still open: a corpus run on the fix to confirm the squash pass time fell, and it needs Joe's word.~~
+  Answered by run 427 below: the squash pass fell from 261 to 14 min. The time came back once the
+  jelly moved into YAPS (000d307): every patched body shader carries it, and the 2026-11-13 full run
+  spent about 5000 s importing those copies, Abbess alone 64 min. Since 1d515e4 the full corpus runs
+  with soft parts off, and `--soft` runs them on a subset into a folder of their own.
 - **Roles and the four-light loops, on dev 2026-10-21 [M]:** each patch now carries only what its
   material does (plug, socket, squash, or a union of them; `_YAPS_Roles` records which, absent means
   all), and the four-light scans loop instead of unrolling. First compile, salted fresh copies in
