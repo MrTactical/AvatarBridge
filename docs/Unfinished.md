@@ -3620,7 +3620,8 @@ about 1% of texture weight between the runs, which may be the same thing.
   shaft runs along the avatar's up. The shader recovers each vertex's frame from its own skinning, so
   any up is self-consistent; shape deltas and bone-scale mirroring follow the measured rotation.
   Existing plugs keep the old frame until re-baked or reconverted. Converted DPS/TPS plugs bend in their
-  mesh's own y, which is the avatar's up on a plug pointing forward. `BendFrameUpTest`: WRONG before (the unrolled forward plug bent sideways), PASS after. The help text
+  mesh's own y, which is the avatar's up on a plug pointing forward. `BendFrameUpTest`: WRONG before (the unrolled forward plug bent sideways), PASS after. Seen in Unity by the plush
+  session on d8b7d1ef, unrolled bone: floppy +1.3 droops down, stuffed -0.1 points forward and a little up. The help text
   says positive bends toward the avatar's down.
 - **Curvature fanned the shaft instead of bending it: FIXED on dev, Joe 2026-11-13 ("fix it with the arc")
   [M].** Joe on the plush shots: "stretched downwards rather than just a natural bend". `YapsRestShape`
