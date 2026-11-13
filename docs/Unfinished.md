@@ -3556,6 +3556,16 @@ plan's order.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
+### 38. A plug's own-sockets row appears in one conversion and not the next. Corpus 2026-11-13, OPEN
+The same avatar and scene (unchanged since 11-08) converted twice on 2026-11-13, soft parts on in
+both. The full run (4f169da) built a "default plug own sockets" toggle. The soft subset that
+afternoon (f76bcb7) built none, and the 10-22 baseline had none either. Neither commit in between
+touches YAPS. `EnsureSelfToggle` decides by the patched material's `_YAPS_SelfTag` and
+`_YAPS_UseAtlas`, so the suspect is state carried in from earlier avatars in the run, or from
+leftover generated assets. Next: convert that avatar alone and after the avatars that preceded it in
+the full run, and diff the two. Two more avatars in the same subset moved 3-5 converted items and
+about 1% of texture weight between the runs, which may be the same thing.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
