@@ -1844,7 +1844,8 @@ force their own mode unconditionally.
 The check reads the shader's *whole* include chain, the way the compiler does, so a shader that
 keeps its stereo handling in include files (lilToon, most modern toon shaders) is recognised as
 already correct instead of flagged, and it judges every pass, not just the first. A surface shader
-is never flagged: Unity generates its passes with stereo built in. The CCK's own upload warning
+is never flagged: Unity generates its passes with stereo built in, and neither is one built on
+Unity's own Standard includes, whose structs already carry it. The CCK's own upload warning
 still judges the one file and may keep naming such shaders; that warning is theirs, and safe to
 ignore for them.
 

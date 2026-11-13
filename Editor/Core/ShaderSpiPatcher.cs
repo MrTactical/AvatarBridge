@@ -42,6 +42,11 @@ namespace AvatarBridge
         static readonly Regex VertexPragma = new Regex(@"#pragma\s+vertex\s+(\w+)");
         static readonly Regex FragmentPragma = new Regex(@"#pragma\s+fragment\s+(\w+)");
         static readonly Regex SurfacePragma = new Regex(@"#pragma\s+surface\b");
+        // Unity's own Standard includes, never in a unit read from the project, name every
+        // stereo macro in the output structs and vertex functions they define. A pass built
+        // on them read as missing both, so YAPS Standard warned it drew one eye.
+        static readonly Regex StandardStereoInclude =
+            new Regex(@"#include\s+""UnityStandard(?:Core|CoreForward|CoreForwardSimple|Shadow)\.cginc""");
         static readonly Regex DepthDeclaration =
             new Regex(@"(?:uniform\s+)?sampler2D(?:_float|_half)?\s+_CameraDepthTexture\s*;");
         static readonly Regex DepthRead = new Regex(@"\btex2D(proj|lod)?\s*\(\s*_CameraDepthTexture\s*,");
@@ -469,8 +474,9 @@ namespace AvatarBridge
             {
                 // A pass it cannot read is judged the old way, by the macros
                 // being named anywhere in the unit.
+                bool standard = unit.Any(f => StandardStereoInclude.IsMatch(f.Text));
                 var missing = StereoMacros.Where(m => made.Adds.Contains(m)
-                    || ((made.Passes == 0 || made.Left.Count > 0) && !unit.Any(f => f.Text.Contains(m)))).ToList();
+                    || ((made.Passes == 0 || made.Left.Count > 0) && !standard && !unit.Any(f => f.Text.Contains(m)))).ToList();
                 if (missing.Count > 0) problems.Add("missing " + string.Join(", ", missing));
             }
             return problems;

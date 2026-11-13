@@ -117,6 +117,12 @@ the YAPS avatars [M]:
 
 ### 7. What the shader sweep left open
 The record is in `archive/Closed-2026-10.md`, "YAPS against every popular shader".
+- **A false "may not render correctly in VR" on YAPS Standard: fixed on dev 2026-11-13.** Its
+  passes return Unity's own Standard output structs, which the stereo check never reads, so every
+  YAPS Standard copy was named as drawing one eye (4 corpus avatars). `Verdict` now counts a unit
+  that includes Unity's Standard core or shadow include as naming the macros, for the passes it
+  could not plan only. `Dev/Tests/StandardStereoTest` 4 WRONG before, PASS after. Ceiling: a pass
+  the planner cannot read, in a shader that also includes those files, is trusted.
 - **The render queue across a shader swap: fixed on dev 2026-10-25, for 5.0.1 [M].** The stereo
   patcher's copies (`ShaderSpiPatcher.Repoint`) and a material rescued with its shader out of
   VRCFury's temp folder (`SceneAssetRehomer.CopyMaterial`) both dropped a material's own queue:
