@@ -3622,6 +3622,16 @@ about 1% of texture weight between the runs, which may be the same thing.
   Existing plugs keep the old frame until re-baked or reconverted. Converted DPS/TPS plugs bend in their
   mesh's own y, which is the avatar's up on a plug pointing forward. `BendFrameUpTest`: WRONG before (the unrolled forward plug bent sideways), PASS after. The help text
   says positive bends toward the avatar's down.
+- **Curvature fanned the shaft instead of bending it: FIXED on dev, Joe 2026-11-13 ("fix it with the arc")
+  [M].** Joe on the plush shots: "stretched downwards rather than just a natural bend". `YapsRestShape`
+  turned each cross-section about the ROOT by the turn at its height, so the centreline became a spiral
+  of radius z: at curvature 1.3 it was 1.235 plug lengths long, the tip stretched 1.64x, and the tip sat
+  at (y -0.964, z 0.267) against a real bend's (-0.563, 0.741). Now each cross-section sits on the bent
+  centreline (8-step midpoint integral, so recurvature works too) and turns with it; past the tip the
+  shaft runs on straight, behind the root nothing moves. A Python mirror of the shader code: length
+  1.001 at C 1.3 (1.0004 with recurvature 0.8), tip (-0.564, 0.742). Fresh compiles, salted so neither
+  was cached, fan then arc: Poiyomi plug 32.0 s and 28.7 s, YAPS Standard 17.3 s and 15.7 s, no errors.
+  Not yet seen on a plug in Unity; the plush session's droop shots are the check.
 - The same session confirmed queue 38's fix on its build: the bake values hold after the dev deploy.
 
 ## 5.0.1

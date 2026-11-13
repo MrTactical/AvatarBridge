@@ -454,23 +454,40 @@ void YapsRestShape(inout YapsVertex v, float idle, float worldLength)
     // and a second of the opposite sign near the tip, so a shaft can sweep
     // up and then hook.
     //
-    // A rotation about the plug's x axis by an angle growing along the
-    // shaft: a bend, not a shear, so the shaft keeps its length and its
-    // normals turn with it. The knob is total turn at the tip, in radians.
-    // Recurvature squares the fraction so it gathers at the tip.
+    // A bend about the centre of curvature, in the y/z plane with x the bend
+    // axis. The knob is total turn at the tip, in radians; recurvature
+    // squares the fraction so it gathers at the tip. Each cross-section
+    // sits on the bent centreline and turns with it, so the shaft keeps its
+    // length. Turning each one about the ROOT instead fanned the shaft out:
+    // at curvature 1.3 it grew 23% longer and the tip swung far too low.
     //
     // BEFORE the walk, so the curve carries a shaft that already has its
     // resting shape. That is why it composes with everything after it.
     if (abs(_YAPS_Curvature) > 1e-4 || abs(_YAPS_ReCurvature) > 1e-4)
     {
-        float t = saturate(v.position.z / max(worldLength, 0.0001));
-        float turn = _YAPS_Curvature * t - _YAPS_ReCurvature * t * t;
+        float shaft = max(worldLength, 0.0001);
+        float along = clamp(v.position.z, 0, shaft);
+        // The centreline, by midpoint steps: closed form only without
+        // recurvature, and eight steps hold the length to well under 1%.
+        float2 centre = 0;
+        float stride = along / 8;
+        [unroll] for (int i = 0; i < 8; i++)
+        {
+            float m = (i + 0.5) * stride / shaft;
+            float sm, cm;
+            sincos(_YAPS_Curvature * m - _YAPS_ReCurvature * m * m, sm, cm);
+            centre += float2(-sm, cm) * stride;
+        }
+        float u = along / shaft;
+        float turn = _YAPS_Curvature * u - _YAPS_ReCurvature * u * u;
         float s, c;
         sincos(turn, s, c);
-        // Rotate in the y/z plane, x is the bend axis. Position and both
-        // directions turn together or the lighting lies about the shape.
-        float2 yz = v.position.yz;
-        v.position.yz = float2(yz.x * c - yz.y * s, yz.x * s + yz.y * c);
+        // Past the tip the shaft runs on straight along the tip's direction;
+        // behind the root it is untouched, since there the turn is zero.
+        centre += float2(-s, c) * (v.position.z - along);
+        // Positive turn sends +z toward -y. Position and both directions turn
+        // together or the lighting lies about the shape.
+        v.position.yz = centre + v.position.y * float2(c, s);
         float2 nyz = v.normal.yz;
         v.normal.yz = float2(nyz.x * c - nyz.y * s, nyz.x * s + nyz.y * c);
         float2 tyz = v.tangent.yz;
