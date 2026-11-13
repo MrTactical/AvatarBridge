@@ -3556,7 +3556,27 @@ plan's order.
 - **Comments named internal tooling.** Fourteen lines in nine shipped files named the regression
   corpus or a probe; reworded (Joe, 2026-11-12).
 
-### 38. A plug's own-sockets row appears in one conversion and not the next. Corpus 2026-11-13, OPEN
+### 38. A plug's own-sockets row appears in one conversion and not the next. Corpus 2026-11-13, FIXED on dev 2026-11-13
+- **Cause: a reconvert wiped the plug material's bake [M].** Not state from other avatars. On a
+  reconvert `YapsBaker.Generated` reuses the material at its fixed path, copies the source's values
+  onto it (which gives it the source shader's property layout) and calls `Wear`, which skips a shader
+  the material already wears. Since 8c5bcf5 (10-24, never released) nothing laid it out again, so
+  every bake value sat outside the layout and the overlay step's asset refresh dropped them all. Kar's
+  saved plug material read no bake texture, `_YAPS_VertexCount` 0, `_YAPS_Length` 1, `_YAPS_SelfTag`
+  -1 and `_YAPS_UseAtlas` 0, so the plug had nothing to bend with. With no atlas flag, `EnsureSelfToggle`
+  built no row. It flip-flopped because it bit only when the previous output already wore the same
+  patched shader: the morning run followed a shader rewrite (06:54), the afternoon one did not.
+  Traced step by step in batch: values held through the knobs, gone after `YapsDebugOverlayBuilder.Apply`.
+- **Fix:** the reused material goes onto the source's shader before the copy, so `Wear` really swaps
+  and lays it out, the same path a fresh material takes. `GeneratedRelayoutTest`: 2 WRONG before, PASS
+  after. Kar alone, from the broken output: trace holds every value to the end, the row is back, the
+  saved material has its bake texture, length 4.10 and 25216 vertices.
+- **Open:** the corpus digest does not record a plug material's values, which is why a plug losing
+  its whole bake showed only as one missing menu row. Two more avatars in the soft subset moved 3-5
+  converted items and about 1% of texture weight between the runs, possibly the same cause. Not
+  checked yet; the next soft run will say.
+
+Original report:
 The same avatar and scene (unchanged since 11-08) converted twice on 2026-11-13, soft parts on in
 both. The full run (4f169da) built a "default plug own sockets" toggle. The soft subset that
 afternoon (f76bcb7) built none, and the 10-22 baseline had none either. Neither commit in between

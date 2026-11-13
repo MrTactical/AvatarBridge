@@ -801,6 +801,11 @@ namespace AvatarBridge
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null && existing != source)
             {
+                // On the source's shader first, so Wear really swaps and lays it out
+                // again. The copy gives it the source's layout, and Wear skips a shader
+                // it already wears: every bake value then sat outside the layout and the
+                // next refresh dropped them, bake texture included, on every reconvert.
+                existing.shader = basis.shader;
                 existing.CopyPropertiesFromMaterial(basis);
                 if (patched != null)
                 {
