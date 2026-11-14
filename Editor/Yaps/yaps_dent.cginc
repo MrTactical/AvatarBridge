@@ -1257,7 +1257,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     // where it is pressed: at v before the stop it goes to KEEP v + (1 - KEEP) v (1 - e^(v / width)),
     // level with the seam at the patch's edge and never folding. What is pushed back swells out
     // round the patch.
-    [unroll]
+    // Rolled: written out four times, its part rebuilds and surface reads made the squash's vertex
+    // program twice the size and an upload's body compile ~10x the jelly's.
+    [loop]
     for (int c = 0; c < 4; c++)
     {
         if (squashContact[c] <= 0) continue;
