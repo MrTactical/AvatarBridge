@@ -3635,8 +3635,14 @@ about 1% of texture weight between the runs, which may be the same thing.
   **Seen in Unity 2026-11-14** by the plush session (C 1.31, idle 0.8 x 0.88, orthographic side shot at
   0.889 mm/px): droops down, the ridge rings evenly spaced along the bend (28.6 to 30.5 mm, where the
   fan would have grown them toward the tip), heading growing linearly at about 100 deg/m against
-  96 expected. Open, low priority: the ring spacing came out 0.875 of the straight shot, not the 0.8
-  idle length; the floppy look also drives an Unstuffed shape, so a shot without it will say whose.
+  96 expected. ~~Open: the ring spacing came out 0.875 of the straight shot, not the 0.8 idle length.~~
+  Closed, as designed: the arc keeps the CENTRELINE's length and, like any bent tube, stretches its
+  outside by (R+r)/R and squeezes its inside by (R-r)/R, R = L/C = 0.476 m. Measured across the same
+  rings: top edge 0.934, the gold ring (25 mm above the middle) 0.874, middle 0.827, bottom 0.727,
+  against 0.90 / 0.80 / 0.70 predicted for r ~ 60 mm; all about 0.03 high, consistent with a curved
+  reference shape and dorsal puffs lifting the silhouette's middle. Bone weights ruled out (rings on
+  Cock at 1.00). A thrown head in one shot was the test's own mismatch (shape weight zeroed in the
+  property block, mesh blendshape left on); with both zeroed the head is clean.
 - The same session confirmed queue 38's fix on its build: the bake values hold after the dev deploy.
 
 ## 5.0.1
