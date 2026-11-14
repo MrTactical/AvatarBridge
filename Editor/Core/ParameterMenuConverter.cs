@@ -346,7 +346,8 @@ namespace AvatarBridge
             }
 
             string display = hasMenu
-                ? FriendlyMenuName(paramUses[0].DisplayName, leafCounts)
+                ? (p.valueType == VRCExpressionParameters.ValueType.Int ? DropdownTitle(paramUses) : null)
+                    ?? FriendlyMenuName(paramUses[0].DisplayName, leafCounts)
                 : FriendlyParamName(p.name);
             display = MakeUnique(display, usedNames);
 
@@ -509,7 +510,8 @@ namespace AvatarBridge
                 }
                 else if (animatorValues.TryGetValue(i, out var stateName))
                 {
-                    label = stateName ?? $"Option {i}";
+                    // A VRChat menu has no button for 0: switching a toggle off returns the int there.
+                    label = stateName ?? (i == 0 && hasMenu ? "None" : $"Option {i}");
                     live++;
                 }
                 else
@@ -751,6 +753,23 @@ namespace AvatarBridge
                 }
             }
             return leaf;
+        }
+
+        // A dropdown is a submenu of toggles each setting one value, so it takes the submenu's name,
+        // not its first option's. Null for a lone toggle, or toggles with no submenu in common.
+        static string DropdownTitle(List<MenuUse> uses)
+        {
+            if (uses.Select(u => u.Value).Distinct().Count() < 2) return null;
+            var common = uses[0].DisplayName.Split(MenuSeparator);
+            int shared = common.Length - 1;
+            foreach (var use in uses.Skip(1))
+            {
+                var parts = use.DisplayName.Split(MenuSeparator);
+                int n = 0;
+                while (n < shared && n < parts.Length - 1 && parts[n] == common[n]) n++;
+                shared = n;
+            }
+            return shared > 0 ? common[shared - 1] : null;
         }
 
         static string FriendlyParamName(string name)

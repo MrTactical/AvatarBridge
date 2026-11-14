@@ -342,7 +342,7 @@ if you want penetration.
 | VRChat | ChilloutVR | Notes |
 |---|---|---|
 | Avatar descriptor | `CVRAvatar` | visemes, blink, eye look (gaze limits measured from the poses); the **viewpoint your author already placed in VRChat**, copied across unchanged, with the CCK's Auto placement (eye-bone midpoint) as the fallback; voice at the jaw bone, else measured. On a [quadruped decoy rig](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) both are re-measured on the bones you can actually see |
-| Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label |
+| Expression parameters + menus | Advanced Avatar Settings | named after the menu control's label; a dropdown after its submenu, its unset value **None** |
 | Menu **Button** controls | ordinary toggles | ⚠️ CVR has no momentary control. A button driving two states that hand over on the same condition would loop while switched on; the way back is set to the opposite condition so it behaves like any other toggle. If a contact drives the same control, the touch holds it on rather than tapping it, since a tap means nothing to the rewired pair |
 | Parameter types | real `bool` / `int` / `float` | see [below](#parameter-types), including why menu-driven parameters always sync |
 | Gestures | float threshold bands, the CCK's own idiom | analog fist blends in by the grip or the trigger, whichever the controller closes a fist with, like VRChat |

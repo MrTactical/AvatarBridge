@@ -3648,13 +3648,16 @@ about 1% of texture weight between the runs, which may be the same thing.
 ### 40. A plush avatar in game: five reports. 2026-11-14, from the plush build session after Joe's in-game test, OPEN
 Read from code by that session, not yet reproduced here. Each needs a failing test (or an in-game check
 where only the game can tell) before a fix.
-- **Dropdown option 0 is named "Option 0" [R].** In a VRChat menu value 0 has no button (a toggle going
+- **Dropdown option 0 is named "Option 0": FIXED on dev 2026-11-14 [M].** In a VRChat menu value 0 has no button (a toggle going
   off returns the int to 0), so `ScanIntUsage` seeds `{0, null}`, `UsefulStateName` drops the off state's
   name ("Off", "Default", "New State") and `BuildIntEntry` falls back to `$"Option {i}"`. Proposed: label 0
-  "None" when the parameter has menu uses. All 15 dropdowns on that avatar.
-- **A dropdown is titled after its first option [R].** `FriendlyMenuName(paramUses[0].DisplayName, ...)`,
+  "None" when the parameter has menu uses. All 15 dropdowns on that avatar. Option 0 with menu uses and
+  no useful state name now reads None.
+- **A dropdown is titled after its first option: FIXED on dev 2026-11-14 [M].** `FriendlyMenuName(paramUses[0].DisplayName, ...)`,
   so a "Tops" submenu became "Hoodie" and "Eye Expressions" became "Left Wink". Proposed: the parent
-  submenu's name (`WalkMenu` already carries `prefix`).
+  submenu's name (`WalkMenu` already carries `prefix`). Done as `DropdownTitle`: an Int whose menu uses set
+  two or more values takes the deepest submenu they share; a lone toggle, or uses with no submenu in
+  common, keep the old name. `DropdownNamingTest`: WRONG before (Hoodie, Left Wink, Option 0), PASS after.
 - **"The height slider is busted" (Joe, in game) [G, cause not proven].** The injected scaler's Size layer
   writes the root's `m_LocalScale`. The session suspects it fights ChilloutVR's own scaling and leaves the
   viewpoint behind; but per the decompiled universal scaling (memory, 2026-11-10) moving the slider is
