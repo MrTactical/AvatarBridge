@@ -1716,7 +1716,10 @@ the skin it grips it and drags it, **Slap**, which slaps the part nearest the ha
 what it tells the animator. The Move tool
 cannot push a part in Play mode: the cloth puts its bones back every frame. Knobs moved in Play mode go back when it ends, as every
 component's do. Each fold under **Tune how it feels** says what it does and how to see it, and its fold
-**Animate it** lists the material properties to key. The last step, **Build**, says whether the
+**Animate it** lists the material properties to key. A name ending in `.x`, `.y` or `.z` is one part of a
+four-part value: keep all four curves the Animation window adds, the other three at the values the
+build set, because a clip keying one part alone sets the other three to 0 (on the live tissue's
+`_YAPS_JellyLattice` values that tears the skin). The last step, **Build**, says whether the
 build is up to date and, if not, why: its parts, the layers left alone or the twitch changed, the painted body
 changed, or it was built by an older YAPS (the squash code is copied into the build, so an update
 reaches it only through a rebuild). **Rebuild the squash** stands out only then, and a preview

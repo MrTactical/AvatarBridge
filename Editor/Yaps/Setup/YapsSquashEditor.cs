@@ -213,7 +213,7 @@ namespace AvatarBridge
             var animate = new BridgeElements.Card("Animate it", "turn it off or change it from a toggle", false).Nested();
             feel.Body.Add(animate);
             animate.Body.Add(BridgeElements.Hint(
-                "Key these under each renderer the squash reaches ▸ Material, on all of them alike: a layer left squashing over skin that is not comes apart from it."));
+                "Key these under each renderer the squash reaches ▸ Material, on all of them alike: a layer left squashing over skin that is not comes apart from it. A .x, .y or .z is one part of a four-part value: keep all four curves the Animation window adds, the others at the values the build set. Keyed alone, Unity sets the other three to 0, and on the live tissue that tears the skin."));
             animate.Body.Add(BridgeElements.Code(jellied ? AnimatableJelly : Animatable));
 
             var build = new BridgeElements.Card(built ? "Rebuild" : "Build").Step(3, 3);
