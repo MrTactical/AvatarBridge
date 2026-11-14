@@ -3681,6 +3681,43 @@ where only the game can tell) before a fix.
   debugging?
 - The session's stopgaps on its own side: option 0 renamed and dropdowns retitled, scaler off,
   `_Damp`/`_Gravity`/`_Lift` zeroed after each build, the overlay slot trimmed.
+- **A renamed parameter starts at 0 whatever its menu says: FIXED on dev 2026-11-14 [M].** `RenamePass`
+  ("Hide Arm Fluff" to `HideArmFluff`) runs before `ApplyParameterDefaults`, which looked defaults up by
+  the VRChat name, so the controller kept 0 and the avatar loaded on the wrong toggles until the game
+  applied the saved menu. Now the CVR menu entries' own defaults fill in by machine name.
+  `RenamedDefaultTest`: 2 WRONG before, PASS after.
+- **Pressing the squash's Build again killed the jelly and made the upload take half an hour: FIXED on
+  dev 2026-11-14 [M].** A rebuild was meant to write over its own copies, found them by the slot's plain
+  name (`<avatar> Body 0.mat`), and after the first build they were numbered ("Body 99"), so it never
+  did: it built new copies and left the old ones stripped, the jelly taken off (lattice and parts zeroed)
+  and the squash compiled back in beside it. The prefab, and the upload, still wore the old ones: the
+  belly never moved, and the body shader with squash and jelly both cost about 25 minutes of compile.
+  Reproduced on a copy of the avatar's project with today's toolkit and the user's older one alike; with
+  the fix each slot's previous copy is written over in place and the avatar stays jelly-only (Roles 24).
+  "Bake every plug and verify" was checked too and touches neither.
+- **What the squash costs an upload [M].** One body material alone in a bundle, empty shader cache:
+  jelly only 31 s, squash only 520 s, squash and jelly 766 s. The squash's contact loop was written out
+  four times; rolled, fxc on one vertex variant goes 14.8 s to 7.1 s (9655 to 5772 instructions). Every
+  other unrolled loop in it was measured and left alone (no gain). A jellied avatar carries none of the
+  squash code at all, which the Build fix above keeps true.
+- **Live tissue's world probes removed (Joe 2026-11-14) [R from the client].** They were physics balls,
+  non-trigger colliders under the hips. ChilloutVR turns those off in the wearer's own copy and back on
+  in everyone else's on the remote player layer, and sets every avatar child's layer at load: they felt
+  nothing for the wearer and shoved other players with an uncapped spring. A trigger cannot be pushed
+  and an avatar cannot read an overlap, so there was no layer or trigger fix. Gone from avatars and props
+  alike, with the step's solid-face code.
+- **Measured and NOT committed: the speed and upside-down patches.** Upside down did not reproduce on a
+  breast pair or a belly (1 mm off rest either way). Damping only the motion apart from the home's
+  halved the breasts' settled trail at 5 m/s (123 to 62 mm) but made the belly's worse (80 to 96 mm), and
+  a constant 95 mm offset after a stop in every run is suspected to be the harness's. Open.
+- **Smaller Arms does nothing in game, though it does in the editor [G, open].** Both deforms add a move
+  to the incoming skinned position, and the arms carry no part, so the shader cannot hide a blendshape.
+  Waiting on: whether Thickness works in game, whether others see it, and a non-YAPS upload.
+- **Ideas from the same round [Minor].** A report line when a toggle's off clip, baked from the scene,
+  equals its on clip (a toggle switched on before converting can never switch off). A way to leave parts
+  out of the squash and jelly regions by blendshape, material or vertex group (the jelly crumpled a cloth
+  tag). The squash's "built by an older YAPS" status naming which version built it and which would
+  rebuild it.
 
 ## 5.0.1
 

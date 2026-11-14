@@ -346,9 +346,7 @@ namespace AvatarBridge.Regression
                     picked.Add(front.OrderByDescending(w => picked.Min(q => (q - w).sqrMagnitude)).First());
                 spots[r] = picked;
             }
-            // The world one's probes half cloth, half balls, as a breast's feeling the world: the
-            // cloth's still answers players' colliders, which it alone feels.
-            AddSkin(made, provider, hangs, spots, 0.5f * span.z, "Make the jelly prop", Folder, ProbeReach, world ? new[] { false, true } : null, world ? ProbesPer / 2 : 0);
+            AddSkin(made, provider, hangs, spots, 0.5f * span.z, "Make the jelly prop", Folder, ProbeReach);
             foreach (var mat in provider.materials)
             {
                 mat.SetVector("_JellyArrays", new Vector4(1f, 0f, 1f, 1f));
@@ -1258,7 +1256,7 @@ namespace AvatarBridge.Regression
         [MenuItem("Tools/Avatar Bridge/Dev/Jelly/Put the selected avatar's breasts on the jelly, feeling the world")]
         static void BreastsWorldOnSelected()
         {
-            string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Breast, world: true);
+            string said = PairOn(Selection.activeGameObject != null ? Selection.activeGameObject.transform : null, Breast);
             Debug.Log("[Jelly] " + said);
             EditorUtility.DisplayDialog("Jelly spike", said, "OK");
         }
@@ -1292,7 +1290,7 @@ namespace AvatarBridge.Regression
                 settings.gripSlides = true;
                 EditorUtility.SetDirty(settings);
             }
-            string said = PairOn(avatar.transform, Breast, world: true);
+            string said = PairOn(avatar.transform, Breast);
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
             AssetDatabase.SaveAssets();
@@ -1548,7 +1546,7 @@ namespace AvatarBridge.Regression
         // controllers alone; a batch build for an upload (-jellyWire) wires them.
         internal static string BreastsOn(Transform picked) => PairOn(picked, Breast);
 
-        internal static string PairOn(Transform picked, Regex want, bool world = false)
+        internal static string PairOn(Transform picked, Regex want)
         {
             var a = Environment.GetCommandLineArgs();
             float Num(string name, float none)
@@ -1564,7 +1562,6 @@ namespace AvatarBridge.Regression
                 give = Num("-jellyGive", float.NaN),
                 zeta = Num("-jellyZeta", float.NaN),
                 plane = !a.Contains("-jellyNoPlane"),
-                world = world || a.Contains("-jellyWorld"),
                 probes = a.Contains("-jellyProbes"),
                 probeReach = ProbeReach,
                 twitch = a.Contains("-jellyTwitch"),
@@ -3199,6 +3196,13 @@ namespace AvatarBridge.Regression
         // How far off the front the probes' ball waits: 7 cm, or past their reach.
         static float probeGap = 0.07f;
         static Quaternion[] sitWas;
+        // -jellyFlip: the avatar upside down, rolled about its forward, until the rest is read at frame
+        // 119, then righted. -jellyGlide: the avatar carried forward at 5 m/s, eased in over 30 frames
+        // so it never snaps, read at 119 still moving, then stopped dead; glideStop is the furthest
+        // any particle is off its rest over the 15 frames after the stop.
+        static bool flipped, gliding;
+        static Transform carried;
+        static float glideStop;
 
         // Seated: each thigh a quarter turn forward at the hip, the shin back down, as on a chair;
         // false puts the four bones back.
@@ -3394,6 +3398,11 @@ namespace AvatarBridge.Regression
             regionsAt = breastRegions.Select(r => swing.InverseTransformPoint(r.position)).ToArray();
             sitting = Environment.GetCommandLineArgs().Contains("-jellySit");
             if (sitting) Sit(animator, true);
+            flipped = Environment.GetCommandLineArgs().Contains("-jellyFlip");
+            gliding = Environment.GetCommandLineArgs().Contains("-jellyGlide");
+            carried = animator.transform;
+            glideStop = 0f;
+            if (flipped) carried.rotation = Quaternion.AngleAxis(180f, carried.forward) * carried.rotation;
             innerOff = innerOn = null;
             foreach (var rt in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
             {
@@ -4000,6 +4009,9 @@ namespace AvatarBridge.Regression
                 breastShots.Add(png);
             }
             if (frame == 120 && sitting) Sit(swing.GetComponentInChildren<Animator>(), false);
+            if (frame == 120 && flipped) carried.rotation = Quaternion.AngleAxis(180f, carried.forward) * carried.rotation;
+            if (gliding && frame < 120) carried.position += carried.forward * (5f * Mathf.Min(frame / 30f, 1f) * Time.deltaTime);
+            if (gliding && frame > 120 && frame <= 135) glideStop = Mathf.Max(glideStop, Furthest(ReadState(), breastRegions));
             if (frame == 119)
             {
                 var s = ReadState();
@@ -4648,9 +4660,10 @@ namespace AvatarBridge.Regression
             File.WriteAllBytes(Path.Combine(dir, "breasts.png"), sheet.EncodeToPNG());
             File.WriteAllLines(Path.Combine(dir, "centres.csv"), new[] { "frame,c0x,c0y,c0z,c1x,c1y,c1z,furthest (mm)" }.Concat(breastTrace));
             Debug.Log($"[Jelly] {(ok ? "PASS" : "FAIL")} breasts after {frame} frames with the CCK's render controller: the step's anchor {(anchorOk ? "is" : "is NOT")} the rig's; " +
-                      $"{(sitting ? "seated, " : "")}settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); {(headPoke ? "a head" : "a finger")} 3 cm into the skin took the skin under it {1000f * pokeDent:0.0} mm in, the whole {1000f * pokeWhole:0.0} mm, " +
+                      $"{(sitting ? "seated, " : "")}{(flipped ? "upside down, " : "")}{(gliding ? "gliding at 5 m/s, " : "")}settled, the furthest particle {1000f * restMost:0.0} mm off its modelled rest (6 at most); {(headPoke ? "a head" : "a finger")} 3 cm into the skin took the skin under it {1000f * pokeDent:0.0} mm in, the whole {1000f * pokeWhole:0.0} mm, " +
                       $"and {100f * poked:0.00}% of the picture's pixels against {100f * noise:0.00}% frame to frame; turning, {1000f * swingMost:0.0} mm, its bulk {swingSquare:0.000} off square at most; " +
                       $"squeezed together, the pair's contact held the side facing the other {1000f * bodies:0.0} mm further off than without");
+            if (gliding) Debug.Log($"[Jelly] stopped dead from 5 m/s, the furthest particle {1000f * glideStop:0.0} mm off its rest over the next 15 frames");
             Debug.Log($"[Jelly] the steps switched by the parser: {(restSaid.Count > 0 ? string.Join(", ", restSaid) : "never")}");
             Debug.Log($"[Jelly] the viewer's camera, 3 m off: {string.Join("; ", viewSaid)}; woken, the furthest particle {1000f * viewBack:0.0} mm off its rest (6 at most); " +
                       $"near, the steps ran {nearOn} of {nearFrames} frames; its head 3 m off, {halfOn} of {halfFrames}, the most a step took {halfMost:0}");

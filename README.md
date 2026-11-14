@@ -1623,8 +1623,8 @@ to a millimetre of collision size, so a hand, the wearer's or another player's, 
 without also shoving the bone, and the avatar's own MagicaCloth and Dynamic Bone colliders that a
 pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed, a net of
 probes spread over the skin also feels other players' MagicaCloth colliders, any shape, each
-pressing at about its own size, a fingertip's to a palm's, and the world's solid surfaces: walls,
-tables, dropped props. Past 4 m from a viewer, or well behind where the viewer looks, it stops
+pressing at about its own size, a fingertip's to a palm's. Walls, tables and dropped props do not
+press it. Past 4 m from a viewer, or well behind where the viewer looks, it stops
 stepping and holds its shape. Nothing
 is synced: each viewer's game steps its own copy. It tells the animator three floats a part, from 0
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
@@ -2357,7 +2357,7 @@ Bipeds are unaffected by any of it.
   the game's defaults take in none, and colliders on fingers only once the placement takes in
   fingers. Players' hands press it either way. A thin collider, a finger's, pressed in between two
   of the probes reads shallower than it went: a probe on the skin slides round its side.
-  Feeling the world's surfaces (a pane of glass, say) is not reliable yet. What a viewer with the
+  What a viewer with the
   **Cameras** content filter off or **Shader Filtering** on sees of it has not been checked in game.
   It takes four parts on one avatar, a jelly each, and two parts do not press each other: the
   wearer's own arms and legs press every one, but a thigh does not push the belly it meets.
