@@ -2401,6 +2401,19 @@ namespace AvatarBridge
                     }
                 }
             }
+            // A menu parameter renamed to be CCK-safe is found by its new name only, so its menu's
+            // default is taken: "Hide Arm Fluff" became HideArmFluff and started at 0, not the 1 its
+            // menu showed, until the game applied the saved menu.
+            foreach (var entry in ctx.CvrAvatar.avatarSettings.settings)
+            {
+                if (string.IsNullOrEmpty(entry.machineName) || defaults.ContainsKey(entry.machineName)) continue;
+                switch (entry.setting)
+                {
+                    case CVRAdvancesAvatarSettingGameObjectToggle toggle: defaults[entry.machineName] = toggle.defaultValue ? 1f : 0f; break;
+                    case CVRAdvancesAvatarSettingGameObjectDropdown dropdown: defaults[entry.machineName] = dropdown.defaultValue; break;
+                    case CVRAdvancesAvatarSettingSlider slider: defaults[entry.machineName] = slider.defaultValue; break;
+                }
+            }
 
             var unsupportedPresent = new List<string>();
             var parameters = master.parameters;
