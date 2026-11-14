@@ -3632,7 +3632,11 @@ about 1% of texture weight between the runs, which may be the same thing.
   shaft runs on straight, behind the root nothing moves. A Python mirror of the shader code: length
   1.001 at C 1.3 (1.0004 with recurvature 0.8), tip (-0.564, 0.742). Fresh compiles, salted so neither
   was cached, fan then arc: Poiyomi plug 32.0 s and 28.7 s, YAPS Standard 17.3 s and 15.7 s, no errors.
-  Not yet seen on a plug in Unity; the plush session's droop shots are the check.
+  **Seen in Unity 2026-11-14** by the plush session (C 1.31, idle 0.8 x 0.88, orthographic side shot at
+  0.889 mm/px): droops down, the ridge rings evenly spaced along the bend (28.6 to 30.5 mm, where the
+  fan would have grown them toward the tip), heading growing linearly at about 100 deg/m against
+  96 expected. Open, low priority: the ring spacing came out 0.875 of the straight shot, not the 0.8
+  idle length; the floppy look also drives an Unstuffed shape, so a shot without it will say whose.
 - The same session confirmed queue 38's fix on its build: the bake values hold after the dev deploy.
 
 ## 5.0.1
