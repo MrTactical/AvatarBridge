@@ -395,6 +395,16 @@ namespace AvatarBridge
                 Pairs(root, out string early);
                 if (early != null) return early;
             }
+            // Each slot's copy from the last build, by its own file: a rebuild writes over that one.
+            // By the slot's plain name it found none once a build had numbered them ("Body 99"), so
+            // it made new copies and left the old ones stripped, which the prefab still wore.
+            var prior = new Dictionary<(SkinnedMeshRenderer, int), string>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var worn = smr.sharedMaterials;
+                for (int slot = 0; slot < worn.Length; slot++)
+                    if (SourceOf(worn[slot]) != null) prior[(smr, slot)] = AssetDatabase.GetAssetPath(worn[slot]);
+            }
             Strip(root);
             List<List<Transform>> found = null;
             if (regions == null)
@@ -677,7 +687,9 @@ namespace AvatarBridge
                     copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
                     if (soft != null) soft.Set(copy, smr);
                     saving.Start();
-                    copy = Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
+                    copy = prior.TryGetValue((smr, slot), out string was) && Reuse != null && Reuse.Contains(was)
+                        ? Save(copy, source, System.IO.Path.GetDirectoryName(was).Replace('\\', '/'), System.IO.Path.GetFileName(was))
+                        : Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
                     saving.Stop();
                     copies.Add(copy);
                     mats[slot] = copy;
