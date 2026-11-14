@@ -3645,6 +3645,40 @@ about 1% of texture weight between the runs, which may be the same thing.
   property block, mesh blendshape left on); with both zeroed the head is clean.
 - The same session confirmed queue 38's fix on its build: the bake values hold after the dev deploy.
 
+### 40. A plush avatar in game: five reports. 2026-11-14, from the plush build session after Joe's in-game test, OPEN
+Read from code by that session, not yet reproduced here. Each needs a failing test (or an in-game check
+where only the game can tell) before a fix.
+- **Dropdown option 0 is named "Option 0" [R].** In a VRChat menu value 0 has no button (a toggle going
+  off returns the int to 0), so `ScanIntUsage` seeds `{0, null}`, `UsefulStateName` drops the off state's
+  name ("Off", "Default", "New State") and `BuildIntEntry` falls back to `$"Option {i}"`. Proposed: label 0
+  "None" when the parameter has menu uses. All 15 dropdowns on that avatar.
+- **A dropdown is titled after its first option [R].** `FriendlyMenuName(paramUses[0].DisplayName, ...)`,
+  so a "Tops" submenu became "Hoodie" and "Eye Expressions" became "Left Wink". Proposed: the parent
+  submenu's name (`WalkMenu` already carries `prefix`).
+- **"The height slider is busted" (Joe, in game) [G, cause not proven].** The injected scaler's Size layer
+  writes the root's `m_LocalScale`. The session suspects it fights ChilloutVR's own scaling and leaves the
+  viewpoint behind; but per the decompiled universal scaling (memory, 2026-11-10) moving the slider is
+  meant to flip the client to legacy animation scaling, where height follows the animated root. Needs
+  what Joe actually saw (camera, colliders, the slider snapping back?) before a fix. Also: CVR sliders
+  have no range, so the menu shows the raw 0..1 as "45". Proposals from the session: opt-in scaler, or
+  scale a child through a ScaleConstraint. Joe's call.
+- **Live tissue trails further the faster the avatar moves [R; G Joe: "if I move very quickly, it
+  stretches super badly"].** `Ahead()` damps `vh`, the home's own velocity, by `exp(-_Damp*dt)`, so
+  `_Damp` acts as world drag on the body's motion, not only on the jiggle: the session estimates the
+  front trails by about `_Damp*V/w^2`, 22 to 33 cm on a belly at 10 to 15 m/s. Bounds today: the 8 m/s
+  snap and an absolute 1 m Fresh reset (not scaled to the avatar). Proposed: damp `v - vh` only; clamp
+  the lead to a scale-relative limit; scale the Fresh distance.
+- **Upside down the tissue sags double [R; G Joe: "when I'm upside down, the jelly behaviour is busted"].**
+  `_Lift` props the shape along the anchor's own up while gravity is world down: upright they cancel,
+  inverted they add (about 11 cm on a belly), lying flat the pull goes diagonal. Proposed: lift along
+  world up, as Cored already does, or fade to it as the anchor turns over. Also asked: expose `_Damp`
+  and a gravity share under Feel, since a rebuild overwrites hand edits.
+- **The debug overlay ships as a material slot [R].** A plug's renderer carries a "YAPS Debug Overlay"
+  slot in the built avatar, and the CCK counts every slot. Question: should it exist only while
+  debugging?
+- The session's stopgaps on its own side: option 0 renamed and dropdowns retitled, scaler off,
+  `_Damp`/`_Gravity`/`_Lift` zeroed after each build, the overlay slot trimmed.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
