@@ -3768,7 +3768,8 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   test over 4,096 curves, worst 1.2e-7); a locked Poiyomi outline at width 0 is left unbent.
 - Step: the first pass's side row (the scan, slaps, mass and the rest) is a blit of its own after
   the particles' first, and both passes' particles share one variant, so the driver builds it once.
-  fxc: 281 + 143 KB to 170 + 145 KB. Stability gate (the VerifyBreasts set and the prop) to rerun.
+  fxc: 281 + 143 KB to 170 + 145 KB. Stability gate: the VerifyBreasts set (seven cases) and the
+  probe prop give every number as before, to the last digit.
 - Probe net: **Other Colliders**, off by default, about 0.1 s of MagicaCloth setup a load saved.
 - Open: the animator's +80 ms on wake (not transforms, not the rig masks); totals re-measured on a
   quiet machine; Joe in game.
