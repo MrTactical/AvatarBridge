@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Profiling;
+using System.Text.RegularExpressions;
 using Debug = UnityEngine.Debug;
 
 namespace AvatarBridge.Regression
@@ -15,6 +16,7 @@ namespace AvatarBridge.Regression
     // sampler is recorded, and the worst frame of each is listed. Shader builds in the driver are not
     // in it (batch Unity draws nothing); ShaderDumpProbe and d3d-load.py measure those.
     // -executeMethod AvatarBridge.Regression.LoadHitchProbe.Run -hitchPrefab <a.prefab>[,<b.prefab>] -hitchOut <dir>
+    // [-hitchStrip <name>]: every object whose name starts so removed before the instance wakes, to weigh it.
     [InitializeOnLoad]
     public static class LoadHitchProbe
     {
@@ -60,6 +62,7 @@ namespace AvatarBridge.Regression
                     if (file.Exists) bundles.Add(prefab + "|" + file.FullName);
                 }
                 SessionState.SetString(K + "bundles", string.Join(";", bundles));
+                SessionState.SetString(K + "strip", Arg("-hitchStrip", ""));
                 SessionState.SetInt(K + "index", 0);
                 SessionState.SetInt(K + "frame", 0);
                 SessionState.SetInt(K + "stage", 0);
@@ -104,8 +107,10 @@ namespace AvatarBridge.Regression
                 {
                     var names = new List<string>();
                     Sampler.GetNames(names);
-                    recorders = names.Distinct().Select(n => (n, Recorder.Get(n))).Where(r => r.Item2 != null && r.Item2.isValid).ToList();
-                    foreach (var r in recorders) r.rec.enabled = true;
+                    // Main thread only, and markers only: the memory counters read as samplers too.
+                    recorders = names.Distinct().Where(n => !Regex.IsMatch(n, "Memory|Bytes|Frame Time|Count$|^Idle$"))
+                        .Select(n => (n, Recorder.Get(n))).Where(r => r.Item2 != null && r.Item2.isValid).ToList();
+                    foreach (var r in recorders) { r.rec.FilterToCurrentThread(); r.rec.enabled = true; }
                     worst = new Dictionary<string, (long, int)>();
                     frames = new List<string>();
                     var sw = Stopwatch.StartNew();
@@ -114,10 +119,23 @@ namespace AvatarBridge.Regression
                     sw.Restart();
                     var prefab = bundle.LoadAllAssets<GameObject>().First();
                     double asset = sw.Elapsed.TotalMilliseconds;
+                    // Instantiated under a switched-off parent, so what -hitchStrip names can go before
+                    // anything wakes; then switched on, which is where Awake and OnEnable run.
+                    var holder = new GameObject("LoadHitch holder");
+                    holder.SetActive(false);
                     sw.Restart();
-                    instance = Object.Instantiate(prefab);
+                    instance = Object.Instantiate(prefab, holder.transform);
                     double inst = sw.Elapsed.TotalMilliseconds;
-                    Log($"=== {parts[0]}: LoadFromFile {load:F0} ms, LoadAsset {asset:F0} ms, Instantiate {inst:F0} ms ({recorders.Count} samplers)");
+                    string strip = SessionState.GetString(K + "strip", "");
+                    int stripped = 0;
+                    if (strip.Length > 0)
+                        foreach (var t in instance.GetComponentsInChildren<Transform>(true).Where(t => t != null && t.name.StartsWith(strip)).ToList())
+                        { if (t == null) continue; Object.DestroyImmediate(t.gameObject); stripped++; }
+                    sw.Restart();
+                    holder.SetActive(true);
+                    double wake = sw.Elapsed.TotalMilliseconds;
+                    instance = holder;
+                    Log($"=== {parts[0]}{(strip.Length > 0 ? $" without {stripped} \"{strip}\"" : "")}: LoadFromFile {load:F0} ms, LoadAsset {asset:F0} ms, Instantiate {inst:F0} ms, switch on {wake:F0} ms, {instance.GetComponentsInChildren<Transform>(true).Length} transforms");
                 }
                 else if (frame > Wait && frame <= Wait + Watch)
                 {

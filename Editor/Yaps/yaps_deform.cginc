@@ -391,6 +391,12 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
     // curve's speed, and one Newton step on the landing, land within 0.03% of
     // the curve on 99 in 100 tries (0.26% at worst, a near cusp); eight chords
     // were off by up to 2.6%.
+    // The step it lands in, kept so the landing is written out once below:
+    // inside the loop every unrolled step carried its own copy, and a viewer's
+    // driver built all eight the first time it drew the plug.
+    bool landed = false;
+    float landT = 0, landSpan = 0;
+    float3 landForward = frame.forward, landUp = frame.up;
     [unroll]
     for (int step = 1; step <= YAPS_WALK_STEPS; step++)
     {
@@ -404,24 +410,34 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
 
         if (wantedLength <= travelled)
         {
-            float landedT = lerp(previousT, t, saturate((wantedLength - previousTravelled) / max(span, 1e-6)));
-            // The speed floored at half the step's mean: near a cusp it falls
-            // toward 0 and one step flew to the end of the curve.
-            float landedSpeed = length(YapsBezierTangent(p0, p1, p2, p3, landedT));
-            float along = previousTravelled + (landedT - previousT) / 6 * (previousSpeed
-                + 4 * length(YapsBezierTangent(p0, p1, p2, p3, (previousT + landedT) * 0.5)) + landedSpeed);
-            landedT = clamp(landedT + (wantedLength - along) / max(landedSpeed, max(0.5 * span / dt, 1e-6)), previousT, t);
-            frame.position = YapsBezier(p0, p1, p2, p3, landedT);
-            frame.forward = YapsSafeNormalize(
-                YapsBezierTangent(p0, p1, p2, p3, landedT), forward);
-            frame.up = YapsPerpendicular(frame.forward, lerp(carriedUp, up, (landedT - previousT) / dt));
-            return frame;
+            landed = true;
+            landT = t;
+            landSpan = span;
+            landForward = forward;
+            landUp = up;
+            break;
         }
 
         previousT = t;
         previousTravelled = travelled;
         previousSpeed = speed;
         carriedUp = up;
+    }
+
+    if (landed)
+    {
+        float landedT = lerp(previousT, landT, saturate((wantedLength - previousTravelled) / max(landSpan, 1e-6)));
+        // The speed floored at half the step's mean: near a cusp it falls
+        // toward 0 and one step flew to the end of the curve.
+        float landedSpeed = length(YapsBezierTangent(p0, p1, p2, p3, landedT));
+        float along = previousTravelled + (landedT - previousT) / 6 * (previousSpeed
+            + 4 * length(YapsBezierTangent(p0, p1, p2, p3, (previousT + landedT) * 0.5)) + landedSpeed);
+        landedT = clamp(landedT + (wantedLength - along) / max(landedSpeed, max(0.5 * landSpan / dt, 1e-6)), previousT, landT);
+        frame.position = YapsBezier(p0, p1, p2, p3, landedT);
+        frame.forward = YapsSafeNormalize(
+            YapsBezierTangent(p0, p1, p2, p3, landedT), landForward);
+        frame.up = YapsPerpendicular(frame.forward, lerp(carriedUp, landUp, (landedT - previousT) / dt));
+        return frame;
     }
 
     // Ran off the end: report the shortfall so the caller can extend

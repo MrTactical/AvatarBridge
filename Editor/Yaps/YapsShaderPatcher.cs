@@ -962,6 +962,12 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                // A locked Poiyomi outline at width 0 clips every pixel it draws. Bent, it only cost
+                // each viewer's driver a full build of the bend the first time the plug drew.
+                if (OutlineAlwaysClipped(code.Substring(start, end.Index), Reached(unit, code, start, start + end.Index)))
+                {
+                    continue;
+                }
 
                 string vertName = vertPragma.Groups[1].Value;
                 if (!PatchOneVertexFunction(Reached(unit, code, start, start + end.Index), yaps, vertName,
@@ -1032,6 +1038,14 @@ namespace AvatarBridge
             Walk(code.Substring(blockStart, blockEnd - blockStart), unit[0].OriginalPath);
             return scope;
         }
+
+        // The lock writes the width in as a literal: clip(mask * (0.0 /*_LineWidth*/) - 0.001).
+        static readonly Regex ZeroWidthOutlineClip = new Regex(
+            @"clip\s*\([^;]*\(\s*0(?:\.0*)?\s*/\*\s*_LineWidth\s*\*/\s*\)\s*-\s*0?\.0*1\s*\)");
+
+        static bool OutlineAlwaysClipped(string block, List<ShaderSpiPatcher.SourceFile> reached)
+            => ZeroWidthOutlineClip.IsMatch(block)
+               || reached.Skip(1).Any(f => ZeroWidthOutlineClip.IsMatch(f.Text));
 
         static bool PatchOneVertexFunction(List<ShaderSpiPatcher.SourceFile> unit, string yaps,
             string vertName, int blockStart, int blockEnd, Dictionary<string, bool> alreadyInjected,
