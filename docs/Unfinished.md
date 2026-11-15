@@ -3758,7 +3758,7 @@ step before the guards (with the speed patch) went NaN, eight checks failed; now
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
-### 42. The first-load freeze. Joe, 2026-11-15: "the freeze freezes everybody". IN PROGRESS on dev
+### 42. The first-load freeze. Joe, 2026-11-15: "the freeze freezes everybody". DONE on dev, Joe to check in game
 A viewer's driver builds each shader at its first draw, on the thread the whole client waits on, so
 everyone in the instance freezes. Measured on Kar with the tissue (scratch `d3d-load.py`, salted
 first-draw timing, quiet machine): ~1.9 s of driver builds (step 0.95, plug 0.57, squash 0.23, rest
@@ -3771,8 +3771,16 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   fxc: 281 + 143 KB to 170 + 145 KB. Stability gate: the VerifyBreasts set (seven cases) and the
   probe prop give every number as before, to the last digit.
 - Probe net: **Other Colliders**, off by default, about 0.1 s of MagicaCloth setup a load saved.
-- Open: the animator's +80 ms on wake (not transforms, not the rig masks); totals re-measured on a
-  quiet machine; Joe in game.
+- Re-measured on Kar reconverted on dev, old dump against new, same salt and load: the plug 843 ms to
+  600, the step 1,037 + 325 ms to 602 (its particles' program reused by the second pass), Kar's whole
+  first view 2.8 to 3.5 s down to 1.6 to 1.7 s. The cloth setup at wake 106 ms to 8 (no probe net).
+- The animator's wake (`Animator.SetupControllerDataSet`, 160 to 300 ms on Kar, noisy run to run) is
+  the materials: plain Standard on every renderer takes it to 3 ms, while plain on any one renderer
+  moves nothing, so it scales with every renderer's shader properties together. Kar pays most of it
+  without the tissue (its locked Poiyomi, ~470 properties a shader); the tissue's share is the ~124
+  YAPS properties on a patched body shader, which must stay declared (undeclared values die on the
+  next import). Left as is.
+- Open: Joe in game, with the GS2 nightly.
 
 ### 32. The 5.0.0 review, what it left for 5.0.1. 2026-11-06, Joe: "do one giant like review of everything we've done in 5.0.0"
 
