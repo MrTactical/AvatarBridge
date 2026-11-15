@@ -15,8 +15,8 @@ namespace AvatarBridge.Regression
     // does, then in Play mode load it, instantiate it and watch the frames after. Every profiler
     // sampler is recorded, and the worst frame of each is listed. Shader builds in the driver are not
     // in it (batch Unity draws nothing); ShaderDumpProbe and d3d-load.py measure those.
-    // -executeMethod AvatarBridge.Regression.LoadHitchProbe.Run -hitchPrefab <a.prefab>[,<b.prefab>] -hitchOut <dir>
-    // [-hitchStrip <name>]: every object whose name starts so removed before the instance wakes, to weigh it.
+    // -executeMethod AvatarBridge.Regression.LoadHitchProbe.Run -hitchPrefab <a.prefab>[::<name>;<name>][,<b.prefab>...] -hitchOut <dir>
+    // After ::, every object whose name starts with one of the names is removed before the instance wakes, to weigh it.
     [InitializeOnLoad]
     public static class LoadHitchProbe
     {
@@ -50,8 +50,10 @@ namespace AvatarBridge.Regression
                 SessionState.SetString(K + "out", outDir);
                 var bundles = new List<string>();
                 int i = 0;
-                foreach (string prefab in Arg("-hitchPrefab", "").Split(','))
+                foreach (string entry in Arg("-hitchPrefab", "").Split(','))
                 {
+                    string prefab = entry.Split(new[] { "::" }, System.StringSplitOptions.None)[0];
+                    string strip = entry.Length > prefab.Length ? entry.Substring(prefab.Length + 2) : "";
                     string name = $"hitch{i++}.bundle";
                     var sw = Stopwatch.StartNew();
                     var manifest = BuildPipeline.BuildAssetBundles(outDir,
@@ -59,10 +61,9 @@ namespace AvatarBridge.Regression
                         BuildAssetBundleOptions.ChunkBasedCompression, BuildTarget.StandaloneWindows64);
                     var file = new FileInfo(Path.Combine(outDir, name));
                     Log($"bundle {prefab}: built in {sw.Elapsed.TotalSeconds:F0} s, {(file.Exists ? file.Length / 1048576.0 : -1):F1} MB, manifest {(manifest ? "ok" : "NULL")}");
-                    if (file.Exists) bundles.Add(prefab + "|" + file.FullName);
+                    if (file.Exists) bundles.Add(prefab + "|" + file.FullName + "|" + strip);
                 }
                 SessionState.SetString(K + "bundles", string.Join(";", bundles));
-                SessionState.SetString(K + "strip", Arg("-hitchStrip", ""));
                 SessionState.SetInt(K + "index", 0);
                 SessionState.SetInt(K + "frame", 0);
                 SessionState.SetInt(K + "stage", 0);
@@ -126,10 +127,11 @@ namespace AvatarBridge.Regression
                     sw.Restart();
                     instance = Object.Instantiate(prefab, holder.transform);
                     double inst = sw.Elapsed.TotalMilliseconds;
-                    string strip = SessionState.GetString(K + "strip", "");
+                    string strip = parts[2];
+                    var prefixes = strip.Split(';').Where(n => n.Length > 0).ToArray();
                     int stripped = 0;
-                    if (strip.Length > 0)
-                        foreach (var t in instance.GetComponentsInChildren<Transform>(true).Where(t => t != null && t.name.StartsWith(strip)).ToList())
+                    if (prefixes.Length > 0)
+                        foreach (var t in instance.GetComponentsInChildren<Transform>(true).Where(t => t != null && prefixes.Any(n => t.name.StartsWith(n))).ToList())
                         { if (t == null) continue; Object.DestroyImmediate(t.gameObject); stripped++; }
                     sw.Restart();
                     holder.SetActive(true);
