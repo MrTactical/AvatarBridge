@@ -44,7 +44,7 @@ namespace AvatarBridge
             // The plane the pair meet at.
             public bool plane = true;
             // MagicaCloth's colliders, other players' among them, felt as presses.
-            public bool probes = true;
+            public bool probes;
             // How far off the skin a collider pushes a probe, the least: spread too thin for it to cover
             // the skin, it grows to the gap.
             public float probeReach = 0.04f;
@@ -184,7 +184,7 @@ namespace AvatarBridge
         // Each pair's jelly named by its pair, so putting one on takes that one off alone.
         internal const string Worn = "Jelly_Spike";
         internal static string WornName(string pair) => $"{Worn} {pair}";
-        internal const int Row = 64, Passes = 2, ProbesPer = 24;
+        internal const int Row = 64, ProbesPer = 24;
         // The most probes a region takes, and where their readout starts on
         // its side row: columns of their own past the particles'.
         internal const int ProbesMax = 64, Readout = 2 * Row;
@@ -1038,7 +1038,7 @@ namespace AvatarBridge
             var found = YapsSquash.PartsOf(root, out _);
             foreach (var (name, _) in found?.parts ?? new List<(string, int)>())
             {
-                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options(), report, found);
+                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options { probes = YapsSquash.SettingsOf(root)?.otherColliders == true }, report, found);
                 Debug.Log("[YAPS] Jelly: " + said);
                 (said.StartsWith("On ") ? on : refused).Add(said);
             }
@@ -1755,9 +1755,10 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
             var twin = Save(State(n, regions), folder + "/Jelly_State_B.renderTexture");
             var stepMat = Save(StepMaterial(step, n, 0, spacing), folder + "/Jelly_Step.mat");
             var stepMat2 = Save(StepMaterial(step, n, 1, spacing), folder + "/Jelly_Step_2.mat");
+            var sideMat = Save(StepMaterial(step, n, 0, spacing, side: true), folder + "/Jelly_Step_Side.mat");
             // Only a prop sleeps: worn, the avatar's own sway keeps it awake, and the test alone costs
             // a slow GPU a few percent. Set on the saved materials, which a rebuild keeps.
-            foreach (var mat in new[] { stepMat, stepMat2 })
+            foreach (var mat in new[] { stepMat, sideMat, stepMat2 })
             {
                 if (sleeps) mat.EnableKeyword("JELLY_SLEEP");
                 else mat.DisableKeyword("JELLY_SLEEP");
@@ -1799,16 +1800,17 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
             // The anchor first, then the passes, in the order the client runs them.
             controller.cvrRenderComponents.Add(provider);
             var steps = new List<CVRBlitter>();
-            var fed = new List<Material> { stepMat, stepMat2 };
-            for (int i = 0; i < Passes; i++)
+            var fed = new List<Material> { stepMat, sideMat, stepMat2 };
+            // Into the twin and back: a texture in and out the same would make the client render into
+            // a temporary and copy it back, every pass. The side row's blit reads the state the first
+            // pass's particles read and writes its row alone over theirs.
+            foreach (var (mat, from, to) in new[] { (stepMat, state, twin), (sideMat, state, twin), (stepMat2, twin, state) })
             {
                 var blitter = tissue.AddComponent<CVRBlitter>();
                 steps.Add(blitter);
-                // Into the twin and back: a texture in and out the same would make the client
-                // render into a temporary and copy it back, every pass.
-                blitter.originTexture = i == 0 ? state : twin;
-                blitter.destinationTexture = i == 0 ? twin : state;
-                blitter.blitMaterial = i == 0 ? stepMat : stepMat2;
+                blitter.originTexture = from;
+                blitter.destinationTexture = to;
+                blitter.blitMaterial = mat;
                 blitter.destinationTextures = new RenderTexture[0];
                 controller.cvrRenderComponents.Add(blitter);
             }
@@ -1886,16 +1888,15 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
             autoGenerateMips = false,
         };
 
-        internal static Material StepMaterial(Shader step, Vector3Int n, int pass, float spacing)
+        // side: the first pass's side row, which looks for hands in reach; the third pass looks for
+        // whatever wakes a rest.
+        internal static Material StepMaterial(Shader step, Vector3Int n, int pass, float spacing, bool side = false)
         {
             var m = new Material(step);
             m.SetVector("_Lattice", new Vector4(n.x, n.y, n.z, spacing));
             m.SetFloat("_Pass", pass);
-            // The first pass looks for the hands in reach, the third for whatever wakes a rest.
-            if (pass == 0) m.EnableKeyword("JELLY_SCAN");
+            if (side) m.EnableKeyword("JELLY_SCAN");
             if (pass == 2) m.EnableKeyword("JELLY_POINTS");
-            // The second pass leaves the first's side row out, which it never runs.
-            if (pass == 1) m.EnableKeyword("JELLY_LATER");
             return m;
         }
 
@@ -2046,14 +2047,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma skip_variants UNITY_SINGLE_PASS_STEREO STEREO_INSTANCING_ON STEREO_MULTIVIEW_ON STEREO_CUBEMAP_RENDER_ON
             // shader_feature: an upload builds only the variants its passes use. multi_compile built
             // all eight, each at the compiler's time limit.
-            // Only the first pass looks for hands, so only it carries every player's positions.
+            // The first pass's side row, a blit of its own: the scan, slaps, mass and the rest, which
+            // only it carries every player's positions for. Both passes' particles share the variant
+            // without it, so a viewer's driver builds that once, not twice.
             #pragma shader_feature_local __ JELLY_SCAN
             // Only a prop sleeps; worn, it is compiled out.
             #pragma shader_feature_local __ JELLY_SLEEP
             // The third pass, which wakes a resting jelly, reads the players' hands too.
             #pragma shader_feature_local __ JELLY_POINTS
-            // The second pass, compiled without the first's side row.
-            #pragma shader_feature_local __ JELLY_LATER
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
@@ -3350,7 +3351,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float3 Moved(uint p, int3 l, float4x4 m, float scale, float h, float3 home, bool predicted, bool distant, uint side, float4 swing, out float4 q)
             {
                 float4 turn;
-#ifdef JELLY_LATER
+#ifndef JELLY_SCAN
                 // A second pass's particle takes the anchor's turn the first pass's side row worked out (91).
                 [branch] if (Turned) turn = _MainTex.Load(int3(91, side, 0)); else
 #endif
@@ -3854,6 +3855,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 uint region = (uint) floor((px.y + 0.5) / (side + 1));
                 Base = region * (side + 1);
                 side += Base;
+#ifdef JELLY_SCAN
+                // The side row's own pass, after the particles' first: it leaves what that wrote.
+                if ((uint) px.y != side) discard;
+#elif !defined(JELLY_POINTS)
+                // The first pass's side row is the next blit's, so here it is no work.
+                if ((uint) px.y == side && _Pass < 0.5) return 0;
+#endif
                 // The rows padding the region out, before any work.
                 if ((uint) px.y != side && (uint) px.x % Row + ((uint) px.y - Base) * Row >= count) return 0;
                 // The probes' readout columns hold nothing on the particles' rows.
@@ -3877,12 +3885,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 Region = region;
                 MineOf = region;
                 Cored = (region == 0 ? _JellyCoreA0.w : _JellyCoreA1.w) > 0;
-#ifdef JELLY_SCAN
+#if !defined(JELLY_SCAN) && !defined(JELLY_POINTS)
                 // At 72 fps and up the first pass's right half only hands on where each particle was:
                 // the second puts back at rest the ones the left half marked, and carries the rest
                 // over a snap, so no anchor or home is worked out here. Near last frame only, as the
                 // far test is the particles' then.
-                [branch] if ((uint) px.y != side && (uint) px.x >= Row)
+                [branch] if (_Pass < 0.5 && (uint) px.y != side && (uint) px.x >= Row)
                 {
                     float4 sw = _MainTex.Load(int3(18, side, 0));
                     float held, smooth, frames, dt = StepDt(_MainTex.Load(int3(25, side, 0)), held, smooth, frames);
@@ -3892,12 +3900,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 #endif
                     if (lean) return float4(_MainTex.Load(int3(px.x - Row, px.y, 0)).xyz, dt);
                 }
-#endif
-#ifdef JELLY_LATER
                 // The second pass's particles take the anchor the first pass's side row worked out this
                 // frame (88 to 90, its rows), and leave before anything else where they only copy:
                 // far, asleep, or a predicted step's right half. The clock is the side row's own test.
-                [branch] if ((uint) px.y != side)
+                [branch] if (_Pass > 0.5 && (uint) px.y != side)
                 {
                     float4 sw = _MainTex.Load(int3(18, side, 0)), ck = _MainTex.Load(int3(25, side, 0));
                     if (sw.x > 0.5) discard;
@@ -4038,9 +4044,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if ((uint) px.y == side)
                 {
                     if (!anchored) return 0;
-                    // The second pass never runs this, so its variant is compiled without it.
-#ifndef JELLY_LATER
-                    if (_Pass < 0.5)
+#ifdef JELLY_SCAN
                     {
                         if (px.x == 18) return float4(distant, asleep, 0, 1);
                         if (px.x == 25) return float4(held, smooth, _Time.y, frames);
@@ -4210,7 +4214,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         }
                         return here;
                     }
-#endif
+#else
                     if (px.x >= 26 && px.x <= 29)
                         return float4(px.x == 26 ? m._m00_m10_m20 : px.x == 27 ? m._m01_m11_m21 : px.x == 28 ? m._m02_m12_m22 : m._m03_m13_m23, 1);
                     // Which of the wearer's own capsules are in reach, a bit each, from the first pass's
@@ -4240,7 +4244,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // The rider takes the particles' own path below, so the step is written out once.
                     rider = (px.x == 16 || px.x == 17) && _Rider > 0;
                     if (!rider) return here;
+#endif
                 }
+#ifdef JELLY_SCAN
+                return here;
+#else
                 int3 l;
                 uint p;
                 float3 home;
@@ -4306,6 +4314,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (Bad(at)) at = Bad(home) ? mul(m, float4(Rest(l), 1)).xyz : home;
                 [branch] if (rider) return Rider(px.x, m, scale, at, q);
                 return float4(at, _Time.y);
+#endif
 #endif
             }
             ENDCG

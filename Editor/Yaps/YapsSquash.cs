@@ -332,6 +332,7 @@ namespace AvatarBridge
                 // Off adds nothing, so a build from before it does not read as stale.
                 if (s.twitch) h = h * 41 + Mathf.RoundToInt(s.twitchSize * 1000f) + 1;
                 if (s.probeMarkers) h = h * 43 + 1;
+                if (s.otherColliders) h = h * 47 + 1;
                 return h;
             }
         }

@@ -1621,9 +1621,11 @@ each other, and the wearer's own arms and legs press it too. The cloth still swi
 the tissue rides it, but the touch is the tissue's alone: each part's cloth and Dynamic Bones drop
 to a millimetre of collision size, so a hand, the wearer's or another player's, dents the skin
 without also shoving the bone, and the avatar's own MagicaCloth and Dynamic Bone colliders that a
-pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed, a net of
-probes spread over the skin also feels other players' MagicaCloth colliders, any shape, each
-pressing at about its own size, a fingertip's to a palm's. Walls, tables and dropped props do not
+pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed and **Other Colliders**
+ticked under **Live tissue**, a net of probes spread over the skin also feels other players'
+MagicaCloth colliders, any shape, each pressing at about its own size, a fingertip's to a palm's.
+It is off by default: the net costs every viewer about 0.1 s more each time the avatar loads, and
+hands press without it. Walls, tables and dropped props do not
 press it. Past 4 m from a viewer, or well behind where the viewer looks, it stops
 stepping and holds its shape. A dropped frame, a snap turn or a teleport carries it along with the
 body instead of flinging or tearing it, at any frame rate; the stop-start way other players' copies
@@ -1634,8 +1636,8 @@ is synced: each viewer's game steps its own copy. It tells the animator three fl
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
 `#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component
 adds a **Jelly twitch** menu toggle that kicks the jiggle, and lets a grip slide along the skin with
-the fist; rebuild after changing the twitch, while the grip's slide is live. **Probe Markers**
-adds a **Jelly probes (debug)** menu toggle for testing other players' MagicaCloth colliders in game:
+the fist; rebuild after changing the twitch or Other Colliders, while the grip's slide is live.
+With Other Colliders on, **Probe Markers** adds a **Jelly probes (debug)** menu toggle for testing other players' MagicaCloth colliders in game:
 a marker on each probe, white at rest and red where the tissue felt a collider push it in. A marker
 that moves but stays white means the tissue never heard of the push; one that never moves means the
 game gave the probes no collider. Rebuild after changing it. Each part on the jelly
@@ -2359,7 +2361,7 @@ Bipeds are unaffected by any of it.
 - **Live tissue (YAPS).** ChilloutVR hands a shader each player's hand position but not which way it
   faces, so a fist is guessed from the wrist and arm: another player's grip in VR can land about
   5 cm off their hand. A head is handed as its bone alone, so it presses as a ball over where the
-  skull sits, whatever its hair or ears. Other players' MagicaCloth colliders press it only for a viewer whose own
+  skull sits, whatever its hair or ears. With **Other Colliders** on, other players' MagicaCloth colliders press it only for a viewer whose own
   Dynamic Bone interaction settings take them in, since each viewer runs the cloth with their own;
   the game's defaults take in none, and colliders on fingers only once the placement takes in
   fingers. Players' hands press it either way. A thin collider, a finger's, pressed in between two

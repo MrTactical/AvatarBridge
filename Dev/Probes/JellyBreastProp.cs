@@ -176,7 +176,7 @@ namespace AvatarBridge.Regression
             try
             {
                 said = YapsSquash.Add(prop.transform, Folder + "/Squash", out bool built);
-                if (built) worn = YapsJelly.PairOn(prop.transform, YapsJelly.Breast, Folder + "/Jelly", Folder + "/Jelly", new YapsJelly.Options { twitch = true, wire = false }, new BridgeReport());
+                if (built) worn = YapsJelly.PairOn(prop.transform, YapsJelly.Breast, Folder + "/Jelly", Folder + "/Jelly", new YapsJelly.Options { twitch = true, wire = false, probes = true }, new BridgeReport());
             }
             finally { YapsShaderPatcher.EndPass(null, null); }
             if (worn == null || !worn.StartsWith("On "))

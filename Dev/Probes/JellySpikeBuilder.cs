@@ -389,7 +389,7 @@ namespace AvatarBridge.Regression
             var twitch = new GameObject("Jelly Twitch").transform;
             twitch.SetParent(hangs[0], false);
             provider.transforms = provider.transforms.Append(twitch).ToArray();
-            foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_2.mat", "/Jelly_Points.mat" })
+            foreach (var step in new[] { "/Jelly_Step.mat", "/Jelly_Step_Side.mat", "/Jelly_Step_2.mat", "/Jelly_Points.mat" })
             {
                 var mat = AssetDatabase.LoadAssetAtPath<Material>(Folder + step);
                 if (mat == null) continue;
@@ -1627,8 +1627,6 @@ namespace AvatarBridge.Regression
                 var load = Save(State(n), "/Jelly_Load.renderTexture");
                 var loadMat = StepMaterial(step, n, 0, spacing);
                 loadMat.SetFloat("_Stress", 1f);
-                // The step alone, without the first pass's look for hands.
-                loadMat.DisableKeyword("JELLY_SCAN");
                 loadMat = Save(loadMat, "/Jelly_Load.mat");
                 provider.materials = provider.materials.Append(loadMat).ToArray();
                 var ticks = Save(new RenderTexture(4, 1, 0, RenderTextureFormat.ARGBFloat, RenderTextureReadWrite.Linear)
@@ -1794,7 +1792,7 @@ namespace AvatarBridge.Regression
                 foreach (var t in new[] { State, Twin, Where }) t.Create();
                 side = Side(n);
                 var step = AssetDatabase.LoadAssetAtPath<Shader>(Folder + "/JellyStep.shader");
-                Mats = new[] { StepMaterial(step, n, 0), StepMaterial(step, n, 1), StepMaterial(step, n, 2) };
+                Mats = new[] { StepMaterial(step, n, 0), StepMaterial(step, n, 1), StepMaterial(step, n, 2), StepMaterial(step, n, 0, side: true) };
                 // As worn, so a row times the work; the sleep's own rows compile it in.
                 Sleep(0f, false);
             }
@@ -1826,6 +1824,7 @@ namespace AvatarBridge.Regression
             public void Passes()
             {
                 Graphics.Blit(State, Twin, Mats[0]);
+                Graphics.Blit(State, Twin, Mats[3]);
                 Graphics.Blit(Twin, State, Mats[1]);
                 if (rider) Third();
             }
@@ -1923,7 +1922,7 @@ namespace AvatarBridge.Regression
 
         static T Save<T>(T asset, string file) where T : Object => YapsJelly.Save(asset, Folder + file);
 
-        static Material StepMaterial(Shader step, Vector3Int n, int pass, float spacing = 0f) => YapsJelly.StepMaterial(step, n, pass, spacing > 0f ? spacing : SpacingOf(n));
+        static Material StepMaterial(Shader step, Vector3Int n, int pass, float spacing = 0f, bool side = false) => YapsJelly.StepMaterial(step, n, pass, spacing > 0f ? spacing : SpacingOf(n), side);
 
         static string Out()
         {

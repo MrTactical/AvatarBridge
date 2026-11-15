@@ -68,7 +68,11 @@ namespace AvatarBridge.Yaps
         [Tooltip("A fist stroking along the skin takes its grip with it, the skin dragging a little behind. " +
                  "Off, a grip stays where the fist closed and lets go when pulled too far.")]
         public bool gripSlides = false;
-        [Tooltip("Adds a Jelly probes (debug) toggle to the menu, for testing other players' MagicaCloth colliders in game: " +
+        [Tooltip("Other players' MagicaCloth colliders press the skin too, felt by a net of probes over it, MagicaCloth installed. " +
+                 "Off by default: the net costs every viewer about 0.1 s more each time the avatar loads, and only viewers whose " +
+                 "Dynamic Bone interaction settings take in other players' colliders feel any. Hands press either way. Rebuild after changing it.")]
+        public bool otherColliders = false;
+        [Tooltip("With Other Colliders on, adds a Jelly probes (debug) toggle to the menu, for testing other players' MagicaCloth colliders in game: " +
                  "a marker on each probe, white at rest, red where the tissue felt a collider push it in. " +
                  "Moved but still white, the tissue never heard of it; never moved, the game gave the probes no collider.")]
         public bool probeMarkers = false;

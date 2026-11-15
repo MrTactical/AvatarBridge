@@ -3758,6 +3758,21 @@ step before the guards (with the speed patch) went NaN, eight checks failed; now
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
+### 42. The first-load freeze. Joe, 2026-11-15: "the freeze freezes everybody". IN PROGRESS on dev
+A viewer's driver builds each shader at its first draw, on the thread the whole client waits on, so
+everyone in the instance freezes. Measured on Kar with the tissue (scratch `d3d-load.py`, salted
+first-draw timing, quiet machine): ~1.9 s of driver builds (step 0.95, plug 0.57, squash 0.23, rest
+0.15) and ~0.3 s on the CPU. The step's bytes are the same on every avatar, so it is paid once per
+viewer per YAPS version; plug and squash shaders are patched per avatar and paid each new avatar.
+- Plug: the bend's walk landed in each of its eight steps, now once (-20% a pass, GPU stream-output
+  test over 4,096 curves, worst 1.2e-7); a locked Poiyomi outline at width 0 is left unbent.
+- Step: the first pass's side row (the scan, slaps, mass and the rest) is a blit of its own after
+  the particles' first, and both passes' particles share one variant, so the driver builds it once.
+  fxc: 281 + 143 KB to 170 + 145 KB. Stability gate (the VerifyBreasts set and the prop) to rerun.
+- Probe net: **Other Colliders**, off by default, about 0.1 s of MagicaCloth setup a load saved.
+- Open: the animator's +80 ms on wake (not transforms, not the rig masks); totals re-measured on a
+  quiet machine; Joe in game.
+
 ### 32. The 5.0.0 review, what it left for 5.0.1. 2026-11-06, Joe: "do one giant like review of everything we've done in 5.0.0"
 
 Seven reviewers over every shipped file of main..dev, each finding checked by a second reader against
