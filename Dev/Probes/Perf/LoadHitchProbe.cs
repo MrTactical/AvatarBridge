@@ -15,8 +15,9 @@ namespace AvatarBridge.Regression
     // does, then in Play mode load it, instantiate it and watch the frames after. Every profiler
     // sampler is recorded, and the worst frame of each is listed. Shader builds in the driver are not
     // in it (batch Unity draws nothing); ShaderDumpProbe and d3d-load.py measure those.
-    // -executeMethod AvatarBridge.Regression.LoadHitchProbe.Run -hitchPrefab <a.prefab>[::<name>;<name>][,<b.prefab>...] -hitchOut <dir>
-    // After ::, every object whose name starts with one of the names is removed before the instance wakes, to weigh it.
+    // -executeMethod AvatarBridge.Regression.LoadHitchProbe.Run -hitchPrefab <a.prefab>[::<name>+<name>][,<b.prefab>...] -hitchOut <dir>
+    // After ::, every object whose name starts with one of the names is removed before the instance wakes, to weigh it;
+    // the name @materials puts plain Standard on every renderer instead, to weigh what its shaders cost the animator.
     [InitializeOnLoad]
     public static class LoadHitchProbe
     {
@@ -128,11 +129,17 @@ namespace AvatarBridge.Regression
                     instance = Object.Instantiate(prefab, holder.transform);
                     double inst = sw.Elapsed.TotalMilliseconds;
                     string strip = parts[2];
-                    var prefixes = strip.Split(';').Where(n => n.Length > 0).ToArray();
+                    var prefixes = strip.Split('+').Where(n => n.Length > 0 && n != "@materials").ToArray();
                     int stripped = 0;
                     if (prefixes.Length > 0)
                         foreach (var t in instance.GetComponentsInChildren<Transform>(true).Where(t => t != null && prefixes.Any(n => t.name.StartsWith(n))).ToList())
                         { if (t == null) continue; Object.DestroyImmediate(t.gameObject); stripped++; }
+                    if (strip.Split('+').Contains("@materials"))
+                    {
+                        var plain = new Material(Shader.Find("Standard"));
+                        foreach (var r in instance.GetComponentsInChildren<Renderer>(true))
+                            r.sharedMaterials = Enumerable.Repeat(plain, r.sharedMaterials.Length).ToArray();
+                    }
                     sw.Restart();
                     holder.SetActive(true);
                     double wake = sw.Elapsed.TotalMilliseconds;
