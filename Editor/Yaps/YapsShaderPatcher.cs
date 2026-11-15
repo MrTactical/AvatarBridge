@@ -964,7 +964,8 @@ namespace AvatarBridge
                 }
                 // A locked Poiyomi outline at width 0 clips every pixel it draws. Bent, it only cost
                 // each viewer's driver a full build of the bend the first time the plug drew.
-                if (OutlineAlwaysClipped(code.Substring(start, end.Index), Reached(unit, code, start, start + end.Index)))
+                // The raw text: the lock leaves the width as a comment, which the blanked copy drops.
+                if (OutlineAlwaysClipped(shaderFile.Text.Substring(start, end.Index), Reached(unit, code, start, start + end.Index)))
                 {
                     continue;
                 }

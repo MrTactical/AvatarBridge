@@ -40,7 +40,7 @@ namespace AvatarBridge.Regression
             {
                 Directory.CreateDirectory(Dir);
                 string path = $"{Dir}/Outlined.shader";
-                File.WriteAllText(path, "Shader \"Test/Outlined\"\n{\n    SubShader\n    {" + Pass("vertMain", null)
+                File.WriteAllText(path, "Shader \"Test/Outlined\"\n{\n    Properties { _OutlineMask (\"Mask\", 2D) = \"white\" {} }\n    SubShader\n    {" + Pass("vertMain", null)
                     + Pass("vertZero", "0.0") + Pass("vertWide", "0.5") + "\n    }\n}\n");
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
                 var material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(path));
