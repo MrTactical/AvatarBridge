@@ -3706,7 +3706,7 @@ where only the game can tell) before a fix.
   nothing for the wearer and shoved other players with an uncapped spring. A trigger cannot be pushed
   and an avatar cannot read an overlap, so there was no layer or trigger fix. Gone from avatars and props
   alike, with the step's solid-face code.
-- **Measured and NOT committed: the speed and upside-down patches.** Upside down did not reproduce on a
+- **The speed patch ships with item 41 (Joe 2026-11-15: "keep it"); the upside-down one stays out.** Upside down did not reproduce on a
   breast pair or a belly (1 mm off rest either way). Damping only the motion apart from the home's
   halved the breasts' settled trail at 5 m/s (123 to 62 mm) but made the belly's worse (80 to 96 mm), and
   a constant 95 mm offset after a stop in every run is suspected to be the harness's. Open.
@@ -3718,6 +3718,36 @@ where only the game can tell) before a fix.
   out of the squash and jelly regions by blendshape, material or vertex group (the jelly crumpled a cloth
   tag). The squash's "built by an older YAPS" status naming which version built it and which would
   rebuild it.
+
+### 41. The live tissue under hitches, snap turns and bad numbers. Joe, 2026-11-14: "make it very stable". DONE on dev, Joe to check in game
+Each failure reproduced on purpose in batch (`VerifyBreasts -jellyStab`, a tsv a frame) on the code before
+and after, 16 cases. Before: a 60 fps snap turn, teleport or hitch tore the tissue over a metre for a
+frame (tear 37 spacings), shipped in every build with the jelly; a 90 ms hitch at 5 m/s flung it 134 mm
+(62 mm is the glide's own trail); one bad particle hid a breast for 200 frames. After: 31 to 117 mm and
+intact, 87 mm, and one frame with nothing visible. What fixed it:
+- A snapped step runs one predicted pass. Two whole passes fit each particle to neighbours the jump left
+  uncarried and pulled it most of the way back (the tear).
+- The pair push skips a snapped step: it read the partner's mass from before the jump and shoved this
+  one 6 cm, the real cause of the hitch fling. The old code hid it by snapping twice by accident.
+- The step takes the time that really passed; a gap past 2.5 held steps (at least 1/30 s) is carried,
+  so under 30 fps is no longer one long hitch.
+- Velocity changes smoothed over 0.06 s on every copy alike (remote copies move in packet steps);
+  landings still measured against the raw speed, or every speed-up rang.
+- NaN guards by exponent bits (fxc folds `!(x < k)`), a watchdog that halves a runaway's own speed and
+  resets it after eight hot steps, own speed capped at 4 m/s at the anchor's scale, a turn past 12 rad/s
+  carried.
+Costs: step variants +8 to 10% instructions, compile time unchanged. Trade-offs: a 6 m/s kick swings
+124 mm instead of 142 (the cap); an 8 degree turn in one frame is carried; uneven frame rates settle
+slower because the old clock ran 1.3x fast there. The speed patch from item 40 ships with it (Joe,
+2026-11-15: "keep it"). Against the last commit at a 5 m/s glide: the breasts trail 123 to 62 mm and
+stop dead 133 to 126 mm; the belly trails 80 to 95 mm and stops dead 54 to 138 mm, OPEN: the belly's
+stop is worse, the patch's cost, not the guards' (the guards alone took it 179 to 138). Upside down the
+step before the guards (with the speed patch) went NaN, eight checks failed; now 0.9 mm off rest. Unchanged within 0.5 mm: still,
+60 fps, seated thighs, the probe prop. Open: Joe in game, the belly's stop, a remote-copy replay harness.
+- **[Minor] A per-slot `_YAPS_JellyOn` scalar.** A toggle that animates the jelly off keys all four
+  components of the lattice vector today (keying one zeroes the rest in the renderer's block and tears
+  the skin). One float to switch it would make that toggle safe; the plush session would move its
+  toggles onto it.
 
 ## 5.0.1
 

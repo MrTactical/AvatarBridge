@@ -1625,7 +1625,11 @@ pair's cloth collides with press the skin instead. Taking a part off the jelly p
 probes spread over the skin also feels other players' MagicaCloth colliders, any shape, each
 pressing at about its own size, a fingertip's to a palm's. Walls, tables and dropped props do not
 press it. Past 4 m from a viewer, or well behind where the viewer looks, it stops
-stepping and holds its shape. Nothing
+stepping and holds its shape. A dropped frame, a snap turn or a teleport carries it along with the
+body instead of flinging or tearing it, at any frame rate; the stop-start way other players' copies
+move is smoothed the same on every copy, the wearer's included, so every viewer sees much the same
+tissue; and a part whose numbers go bad puts itself back at rest in a frame instead of vanishing.
+Not yet confirmed in game. Nothing
 is synced: each viewer's game steps its own copy. It tells the animator three floats a part, from 0
 to 1 and never synced, for blend shapes or sounds to follow: `#Jelly/<part>/Squeeze`,
 `#Jelly/<part>/Grab` and `#Jelly/<part>/Slap`. **Live tissue** on the **YAPS Squash** component

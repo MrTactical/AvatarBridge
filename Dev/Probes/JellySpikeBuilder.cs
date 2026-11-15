@@ -2496,6 +2496,7 @@ namespace AvatarBridge.Regression
             if (SessionState.GetInt(K + "on", 0) == 2)
             {
                 if (testerRun) OnLateTester();
+                else if (stab != null) OnLateStab();
                 else OnLateBreasts();
                 return;
             }
@@ -3204,6 +3205,176 @@ namespace AvatarBridge.Regression
         static Transform carried;
         static float glideStop;
 
+        // -jellyStab: the stability checks alone, each a failure made on purpose, one row a game frame
+        // into stability.tsv, then exit. The frame time is driven by captureDeltaTime and the step
+        // left on its real clock, since a fixed rate hides what a hitch does.
+        //   -jellyStabFrames n          frames run (300)
+        //   -jellyGlideSpeed v          carried forward at v m/s from frame 30, eased over 30, stopped at -jellyGlideEnd (200)
+        //   -jellyHitch f secs [n]      n frames from f take secs each
+        //   -jellyPace ms,ms            frame times alternated from frame 30
+        //   -jellyTurn f deg            turned about the vertical at frame f in one frame
+        //   -jellyPoison kind f         particle | inf | mass | anchor | shape written into the state at frame f
+        //   -jellyKick f mps            the first region's particles given mps forward against their anchor
+        //   -jellyShove f m             the first region's particles moved m forward, at rest
+        class Stab
+        {
+            public int frames = 300, glideEnd = 200, hitchAt = -1, hitchN = 1, turnAt = -1, poisonAt = -1, kickAt = -1, shoveAt = -1, rings, firstBad = -1, badFrames;
+            public float speed, hitchSecs, turnDeg, kickBy, shoveBy, fps, bgBase = -1f, bgMost, furthestMost, tearMost, relMost, after30Most;
+            public float[] pace;
+            public string poison = "", said = "";
+            public float[] ringW;
+            public System.IO.StreamWriter tsv;
+            public Stab()
+            {
+                var a = Environment.GetCommandLineArgs();
+                string Arg(string k, int i = 1) { int at = Array.IndexOf(a, k); return at >= 0 && at + i < a.Length ? a[at + i] : null; }
+                float F(string s) => float.Parse(s, CultureInfo.InvariantCulture);
+                if (Arg("-jellyStabFrames") is string sf) frames = int.Parse(sf);
+                if (Arg("-jellyGlideSpeed") is string gs) speed = F(gs);
+                if (Arg("-jellyGlideEnd") is string ge) glideEnd = int.Parse(ge);
+                if (Arg("-jellyHitch") is string h) { hitchAt = int.Parse(h); hitchSecs = F(Arg("-jellyHitch", 2)); if (Arg("-jellyHitch", 3) is string hn && !hn.StartsWith("-")) hitchN = int.Parse(hn); }
+                if (Arg("-jellyPace") is string p) pace = p.Split(',').Select(v => F(v) / 1000f).ToArray();
+                if (Arg("-jellyTurn") is string t) { turnAt = int.Parse(t); turnDeg = F(Arg("-jellyTurn", 2)); }
+                if (Arg("-jellyPoison") is string k) { poison = k; poisonAt = int.Parse(Arg("-jellyPoison", 2)); }
+                if (Arg("-jellyKick") is string kk) { kickAt = int.Parse(kk); kickBy = F(Arg("-jellyKick", 2)); }
+                if (Arg("-jellyShove") is string sh) { shoveAt = int.Parse(sh); shoveBy = F(Arg("-jellyShove", 2)); }
+                said = string.Join(" ", a.SkipWhile(x => x != "-jellyStab").Skip(1).Where(x => x != "-logFile"));
+            }
+        }
+        static Stab stab;
+
+        // The state as the step left it, region rows as they lie, written back into both textures.
+        static void WriteState(Vector4[] s)
+        {
+            var rt = AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture");
+            var tex = new Texture2D(rt.width, rt.height, TextureFormat.RGBAFloat, false, true);
+            tex.SetPixels(s.Take(rt.width * rt.height).Select(v => new Color(v.x, v.y, v.z, v.w)).ToArray());
+            tex.Apply();
+            foreach (var name in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
+                Graphics.CopyTexture(tex, AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + name));
+            Object.DestroyImmediate(tex);
+        }
+
+        static void OnLateStab()
+        {
+            var st = stab;
+            CarryRegions();
+            var n = breastN;
+            int side = Side(n), count = n.x * n.y * n.z;
+            if (frame == 0)
+            {
+                st.fps = Time.captureFramerate;
+                st.ringW = new float[8];
+                // The camera rides the avatar, so a glide or a turn keeps the part in frame.
+                eye.transform.SetParent(carried, true);
+                st.tsv = new System.IO.StreamWriter(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), "stability.tsv"));
+                st.tsv.WriteLine("frame\tt\tdt\tfurthest_mm\tfurthest_L\tbad\tsnapped\trings\ttear\trel_mps\tbg\tframes25\theld25\tmass_rel\tdog_n\tdog_off\tv85\tomega94");
+            }
+            // The next frame's time.
+            float next = 1f / st.fps;
+            if (st.pace != null && frame >= 30) next = st.pace[frame % st.pace.Length];
+            if (st.hitchAt >= 0 && frame + 1 >= st.hitchAt && frame + 1 < st.hitchAt + st.hitchN) next = st.hitchSecs;
+            Time.captureDeltaTime = next;
+            if (st.speed > 0 && frame >= 30 && frame < st.glideEnd) carried.position += carried.forward * (st.speed * Mathf.Min((frame - 30) / 30f, 1f) * Time.deltaTime);
+            if (frame == st.turnAt) carried.rotation = Quaternion.AngleAxis(st.turnDeg, Vector3.up) * carried.rotation;
+
+            var raw = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
+            bool alone = breastRegions[0] == breastRegions[1];
+            int Ix(int r, int p, int half = 0) => (r * (side + 1) + p / Row) * Wide + p % Row + half * Row;
+            int SideIx(int r, int x) => (r * (side + 1) + side) * Wide + x;
+            if (frame == st.poisonAt || frame == st.kickAt || frame == st.shoveAt)
+            {
+                var fwd = breastRegions[0].forward;
+                int front = ((n.z - 1) * n.y + n.y / 2) * n.x + n.x / 2;
+                if (frame == st.poisonAt)
+                {
+                    var bad = st.poison == "inf" ? float.PositiveInfinity : float.NaN;
+                    if (st.poison == "particle" || st.poison == "inf") raw[Ix(0, front)] = new Vector4(bad, bad, bad, raw[Ix(0, front)].w);
+                    else if (st.poison == "mass") raw[SideIx(0, 30)] = new Vector4(bad, bad, bad, raw[SideIx(0, 30)].w);
+                    else if (st.poison == "anchor") raw[SideIx(0, 29)] = new Vector4(bad, bad, bad, 1f);
+                    else if (st.poison == "shape") for (int c = 32; c <= 34; c++) raw[SideIx(0, c)] = new Vector4(bad, bad, bad, bad);
+                }
+                for (int p = 0; p < count; p++)
+                {
+                    if (frame == st.kickAt) { var was = raw[Ix(0, p, 1)]; raw[Ix(0, p, 1)] = (Vector4) ((Vector3) was - fwd * (st.kickBy * Mathf.Max(was.w, 1e-3f))) + new Vector4(0, 0, 0, was.w); }
+                    if (frame == st.shoveAt) for (int half = 0; half < 2; half++) raw[Ix(0, p, half)] += (Vector4) (fwd * st.shoveBy);
+                }
+                WriteState(raw);
+            }
+            var s = alone ? raw.Concat(raw).ToArray() : raw;
+
+            float furthest = Furthest(s, breastRegions), L = (n.z - 1) * breastSpacing * breastRegions[0].lossyScale.x;
+            int badCount = s.Count(v => float.IsNaN(v.x + v.y + v.z + v.w) || float.IsInfinity(v.x + v.y + v.z + v.w));
+            int rings = 0;
+            bool snapped = false;
+            float tear = 0f, rel = 0f;
+            for (int r = 0; r < 2; r++)
+            {
+                for (int x = 80; x < 84; x++)
+                {
+                    float w = s[SideIx(r, x)].w;
+                    if (w > st.ringW[4 * r + x - 80] + 1e-5f && st.ringW[4 * r + x - 80] >= 0f && frame > 0) rings++;
+                    st.ringW[4 * r + x - 80] = w;
+                }
+                var v85 = s[SideIx(r, 85)];
+                snapped |= v85.w < 0f;
+                for (int p = 0; p < count; p++)
+                {
+                    int i = p % n.x, j = p / n.x % n.y;
+                    var at = (Vector3) Particle(s, r, p);
+                    if (i + 1 < n.x) tear = Mathf.Max(tear, Vector3.Distance(at, Particle(s, r, p + 1)) / (breastSpacing * breastRegions[r].lossyScale.x));
+                    if (j + 1 < n.y) tear = Mathf.Max(tear, Vector3.Distance(at, Particle(s, r, p + n.x)) / (breastSpacing * breastRegions[r].lossyScale.x));
+                    var was = s[Ix(r, p, 1)];
+                    if (was.w > 1e-4f) rel = Mathf.Max(rel, ((at - (Vector3) was) / was.w - (Vector3) v85).magnitude);
+                }
+            }
+            // Background pixels in the camera's picture: skin gone shows as more of them.
+            eye.Render();
+            var prev = RenderTexture.active;
+            RenderTexture.active = eye.targetTexture;
+            var shot = new Texture2D(eye.targetTexture.width, eye.targetTexture.height, TextureFormat.RGB24, false);
+            shot.ReadPixels(new Rect(0, 0, shot.width, shot.height), 0, 0);
+            RenderTexture.active = prev;
+            var bgc = (Color32) eye.backgroundColor;
+            float bg = shot.GetPixels32().Count(c => Mathf.Abs(c.r - bgc.r) + Mathf.Abs(c.g - bgc.g) + Mathf.Abs(c.b - bgc.b) <= 3) / (float) (shot.width * shot.height);
+            if (frame == 25 || frame == st.frames - 1 || st.poisonAt >= 0 && (frame == st.poisonAt + 5 || frame == st.poisonAt + 60))
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"stab-{frame}.png"), shot.EncodeToPNG());
+            Object.DestroyImmediate(shot);
+            if (frame == 25) st.bgBase = bg;
+            var ck = s[SideIx(0, 25)];
+            if (Environment.GetCommandLineArgs().Contains("-jellyTrace") && frame >= 117 && frame <= 126)
+            {
+                int front = ((n.z - 1) * n.y + n.y / 2) * n.x + n.x / 2;
+                Vector4 a0 = s[Ix(0, front)], w0 = s[Ix(0, front, 1)], o29 = s[SideIx(0, 29)];
+                var r0 = breastRegions[0];
+                Debug.Log($"[Trace] {frame} at {(Vector3) a0:F4} w {a0.w:F4} | was {(Vector3) w0:F4} w {w0.w:F4} | anchor {r0.position:F4} | 29 {(Vector3) o29:F4} | rest {r0.TransformPoint(0f, 0f, (n.z - 1) * breastSpacing):F4} | v85 {(Vector3) s[SideIx(0, 85)]:F3} | m30 {(Vector3) s[SideIx(0, 30)]:F4} {s[SideIx(0, 30)].w:F4} m31 {(Vector3) s[SideIx(0, 31)]:F4} {s[SideIx(0, 31)].w:F4}");
+            }
+            // The mass's speed against the anchor's, and the watchdog, region 0.
+            Vector4 m30 = s[SideIx(0, 30)], m31 = s[SideIx(0, 31)], v850 = s[SideIx(0, 85)], dog = s[SideIx(0, 36)];
+            float massRel = m31.w > 1e-4f ? (((Vector3) m30 - (Vector3) m31) / m31.w - (Vector3) v850).magnitude : 0f;
+            st.tsv.WriteLine(string.Join("\t", frame, Time.timeSinceLevelLoad.ToString("0.0000", CultureInfo.InvariantCulture), Time.deltaTime.ToString("0.0000", CultureInfo.InvariantCulture),
+                (1000f * furthest).ToString("0.00", CultureInfo.InvariantCulture), (furthest / L).ToString("0.000", CultureInfo.InvariantCulture), badCount, snapped ? 1 : 0, rings,
+                tear.ToString("0.000", CultureInfo.InvariantCulture), rel.ToString("0.000", CultureInfo.InvariantCulture), bg.ToString("0.0000", CultureInfo.InvariantCulture),
+                ck.w.ToString("0.00", CultureInfo.InvariantCulture), (1000f * ck.x).ToString("0.00", CultureInfo.InvariantCulture),
+                massRel.ToString("0.000", CultureInfo.InvariantCulture), dog.x.ToString("0", CultureInfo.InvariantCulture), dog.y.ToString("0.000", CultureInfo.InvariantCulture),
+                ((Vector3) v850).magnitude.ToString("0.000", CultureInfo.InvariantCulture), ((Vector3) s[SideIx(0, 94)]).magnitude.ToString("0.000", CultureInfo.InvariantCulture)));
+            if (frame >= 30)
+            {
+                st.rings += rings;
+                st.furthestMost = Mathf.Max(st.furthestMost, furthest);
+                st.tearMost = Mathf.Max(st.tearMost, tear);
+                st.relMost = Mathf.Max(st.relMost, rel);
+                if (st.bgBase >= 0f) st.bgMost = Mathf.Max(st.bgMost, bg - st.bgBase);
+            }
+            if (frame >= st.frames - 30) st.after30Most = Mathf.Max(st.after30Most, furthest);
+            if (badCount > 0) { st.badFrames++; if (st.firstBad < 0) st.firstBad = frame; }
+            if (++frame < st.frames) return;
+            st.tsv.Close();
+            Debug.Log($"[Jelly] PASS stab ({st.said}): lattice {n.x}x{n.y}x{n.z}, L {1000f * L:0} mm; furthest {1000f * st.furthestMost:0.0} mm, over the last 30 frames {1000f * st.after30Most:0.0} mm; " +
+                      $"tear {st.tearMost:0.00}; relative speed {st.relMost:0.00} m/s; rings {st.rings}; bad texels on {st.badFrames} frames from {st.firstBad}; background up {100f * st.bgMost:0.00}% of the picture");
+            EditorApplication.Exit(0);
+        }
+
         // Seated: each thigh a quarter turn forward at the hip, the shin back down, as on a chair;
         // false puts the four bones back.
         static void Sit(Animator a, bool down)
@@ -3403,6 +3574,7 @@ namespace AvatarBridge.Regression
             carried = animator.transform;
             glideStop = 0f;
             if (flipped) carried.rotation = Quaternion.AngleAxis(180f, carried.forward) * carried.rotation;
+            stab = Environment.GetCommandLineArgs().Contains("-jellyStab") ? new Stab() : null;
             innerOff = innerOn = null;
             foreach (var rt in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
             {

@@ -1968,8 +1968,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Lattice (""Particles across, up and deep; spacing in metres"", Vector) = (16, 12, 16, 0.0133)
         _Stiff (""Pull toward the neighbourhood's shape over a 180th of a second"", Range(0, 1)) = 0.5
         _Hz (""Wobble a second, toward its rest on the chest"", Float) = 3
-        _Damp (""Damping a second"", Float) = 4
-        _Viscous (""Damping a second of what the tissue does apart from its home's own move: as _Damp a jelly, far more flesh"", Float) = 4
+        _Viscous (""Damping a second of what the tissue does apart from its home's own move, a jelly at 4, flesh far more"", Float) = 4
         _Hand (""Hand radius at a 1.6 m viewpoint"", Float) = 0.05
         _Far (""Hangs rigid past this many metres from the viewer's head"", Float) = 4
         _Behind (""Hangs rigid more than this many degrees off where the viewer's camera looks, 0 never"", Float) = 100
@@ -1984,6 +1983,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Pass (""Which of the frame's passes this is: 2 copies the rider out"", Float) = 0
         _Slap (""Slaps: metres a second to fire, depth per m/s, deepest, life in seconds"", Vector) = (1.2, 0.01, 0.03, 1.5)
         _Landing (""A landing or a yank rings the tissue past this change of its speed in a step, metres a second"", Float) = 1
+        _Smooth (""How long the anchor's changes of speed are spread over, seconds: a remote copy's moves come in steps, a packet each"", Float) = 0.06
         _FixedDt (""Fixed frame time, 0 for the real one"", Float) = 0
         _Stress (""The cost meter's load: steps only in odd phases"", Float) = 0
         _Rider (""Steps the rider's texels, for the parser and the sleep"", Float) = 1
@@ -2060,11 +2060,21 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Squeeze, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
-            float _Landing, _Cap, _Mid;
+            float _Landing, _Cap, _Mid, _Smooth;
             // The frame's time, for how fast the homes move.
             static float FrameDt;
             // The anchor snapped to a new pose this frame: the tissue rides the jump.
             static bool Snapped = false;
+            // The time since the last step, and whether it was more than a step can take.
+            static float Since;
+            static bool Gapped = false;
+            // The part of the anchor's change of speed this step that _Smooth spreads over the next
+            // steps, taken off what the particles feel, and the anchor's smoothed speed (95).
+            static float3 Kick = 0;
+            static float3 Smoothed = 0;
+            // A landing heard this step, rung next step if the new speed held (97 and 98).
+            static float4 Landed = 0, LandedBy = 0;
+            static float Scale = 1;
             float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
@@ -2677,10 +2687,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // Past _Half of the viewer's head the parser runs the steps at _Rate.y, slower still
             // where the jiggle's own rate does not show.
-            bool Halved()
+            // With a quarter metre of give either way of _Half from where it stood last step: a viewer
+            // standing at the edge flipped the rate, and the tissue's feel, back and forth.
+            bool Halved(bool was)
             {
                 float3 head = _CVR_PlayerHeadPositions[0].xyz;
-                return _Half > 0 && dot(head, head) > 1e-6 && distance(head, Anchor(0)._m03_m13_m23) > _Half;
+                return _Half > 0 && dot(head, head) > 1e-6 && distance(head, Anchor(0)._m03_m13_m23) > _Half + (was ? -0.25 : 0.25);
             }
 
 #if defined(JELLY_SCAN) || defined(JELLY_POINTS)
@@ -2954,8 +2966,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             float3x3 Shape(uint side)
             {
                 float4 x = _MainTex.Load(int3(32, side, 0)), y = _MainTex.Load(int3(33, side, 0)), z = _MainTex.Load(int3(34, side, 0));
-                if (!(_Solid > 0) || !(x.w > 0)) return float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
-                return transpose(float3x3(x.xyz, y.xyz, z.xyz));
+                float3x3 shape = transpose(float3x3(x.xyz, y.xyz, z.xyz));
+                // Bad or folded, every home was bad with it, so even a reset landed bad.
+                if (!(_Solid > 0) || !(x.w > 0) || Bad(x) || Bad(y) || Bad(z) || !(determinant(shape) > 0.2)) return float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
+                return shape;
             }
 
             // Particle l's place on the anchor's rest frame with the whole's squash taken: none at the
@@ -3126,7 +3140,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3x3 a = mul(transpose(Turn(q)), transpose(float3x3(c0, c1, c2)));
                 a = 0.5 * (a + transpose(a));
                 float volume = determinant(a);
-                if (!(volume > 0.3 && volume < 3)) return squeezed;
+                // A bad volume passed the range test, which the compiler turns inside out.
+                if (!(volume > 0.3 && volume < 3) || Bad(float4(a[0], volume)) || Bad(a[1]) || Bad(a[2])) return squeezed;
                 float share = _Solid / (1 + _Solid);
                 float3x3 shape = mul(hands, (1 - share) * float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1) + share * a * pow(volume, -1.0 / 3.0));
                 return float4(transpose(shape)[k], volume);
@@ -3157,7 +3172,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (Snapped && _Pass < 0.5) tip.xyz = Carried(tip.xyz, m, side);
                 // Stamped and recent: a cleared texel reads as stepped at time 0, and at a scene's first
                 // frame that passed, swinging every home toward the world's origin.
-                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Region), swing);
+                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), swing);
             }
 
             // How fast particle l's home moves: from last frame's anchor and mass (texels 26 to 29 and
@@ -3173,19 +3188,23 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Carried, 31 holds last frame's mass moved on with the anchor: put back on last frame's.
                 if (_MassCarried > 0) was.xyz = mul(last, float4(Into(Anchor(Region), was.xyz), 1)).xyz;
                 float4 unused;
-                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1, Shape(side), Hung(Region), unused)) / FrameDt;
+                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), unused)) / FrameDt;
             }
 
             // Where a particle is headed from s, where it was was (w that step's time): its home's own
-            // move kept, damped by _Damp; what it does apart from that damped by _Viscous. Flesh is
-            // viscous, so a dent fills back without ringing while the mass's swing carries the whole:
-            // damped by _Damp alone, the lattice rang at 3 Hz after every press, a jelly.
-            float3 Ahead(float4 s, float4 was, int3 l, uint side, float3 home, float h)
+            // move kept whole; what it does apart from that damped by _Viscous. Flesh is viscous, so a
+            // dent fills back without ringing while the mass's swing carries the whole. The home's move
+            // damped too was a drag on the body's own: the tissue trailed 17 cm on a breast at 10 m/s.
+            float3 Ahead(float4 s, float4 was, int3 l, uint side, float3 home, float h, out float3 vh)
             {
                 float3 v = (s.xyz - was.xyz) / max(was.w, 1e-4);
                 // Snapped, the jump is no speed of the home's: the particle was carried over it.
-                float3 vh = Snapped ? v : HomeSpeed(l, side, home);
-                return s.xyz + (vh * exp(-_Damp * was.w) + (v - vh) * exp(-_Viscous * was.w)) * h;
+                vh = Snapped ? v : HomeSpeed(l, side, home);
+                float3 own = (v - vh + Kick) * exp(-_Viscous * was.w) * (Hot >= 2 ? 0.5 : 1);
+                // Its own speed against its home held to 4 m/s at the anchor's scale: a runaway was
+                // only ever caught once a particle was a metre out.
+                own *= min(1, 4 * Scale / max(length(own), 1e-9));
+                return s.xyz + (vh + own) * h;
             }
 
             // The mass's step, once a frame by the whole frame time, in the first pass: texel 30 its
@@ -3213,7 +3232,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 root = m._m03_m13_m23;
                 float zc = 0.5 * (Count().z - 1) * _Lattice.w;
                 float3 rest = mul(m, float4(0, 0, zc, 1)).xyz;
-                bool fresh = distant || !(tip.w > 0 && abs(_Time.y - tip.w) < 0.1) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < 1);
+                bool fresh = distant || Bad(tip) || Bad(was) || Hot >= 8 || !(tip.w > 0 && abs(_Time.y - tip.w) < Stale) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < Reach);
                 if (x == 31) return float4(fresh ? rest : tip.xyz, dt);
                 if (fresh) return x == 86 ? 0 : float4(rest, _Time.y);
                 // Strained, as last frame's 86 has it, flesh goes taut: pulled out by a fist or
@@ -3222,7 +3241,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 strained = _MainTex.Load(int3(86, side, 0));
                 float taut = strained.w > 0 && abs(_Time.y - strained.w) < 0.1 ? _Taut * strained.x : 0;
                 // Carried, the cloth gives the weight its sag, so the mass takes none of its own.
-                float3 next = tip.xyz + (tip.xyz - was.xyz) * (exp(-_MassDamp * (1 + 3 * taut) * dt) * dt / max(was.w, 1e-4)) + (_MassCarried > 0 ? 0 : Gravity * dt * dt);
+                float3 next = tip.xyz + (tip.xyz - was.xyz) * (exp(-_MassDamp * (1 + 3 * taut) * dt) * dt / max(was.w, 1e-4)) + (_MassCarried > 0 ? 0 : Gravity * dt * dt + Kick * dt);
                 float spring = 6.2831853 * _MassHz * dt;
                 // How hard it is loaded: each push and pull on it by its size, so a squeeze from both
                 // sides, which leaves the whole where it was, loads it twice over.
@@ -3310,7 +3329,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float keep = _PairKeep * length(_PairOffset.xyz) * scale;
                     float3 seam = normalize(mul((float3x3) m, _PairOffset.xyz));
                     float s = dot(next - other.xyz, seam), side_ = s < 0 ? -1 : 1;
-                    if (other.w > 0 && abs(_Time.y - other.w) < 0.1 && abs(s) < keep) next += seam * (0.5 * (side_ * keep - s));
+                    // Not over a snap: the partner's mass is still where the jump left it, and the
+                    // push shoved this one 6 cm in a step, the tissue flung after it.
+                    if (!Snapped && other.w > 0 && abs(_Time.y - other.w) < 0.1 && abs(s) < keep) next += seam * (0.5 * (side_ * keep - s));
                 }
                 float len0 = zc * scale;
                 float3 off = next - root;
@@ -3340,6 +3361,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 s = _MainTex.Load(Texel(p, 0));
                 float3 ahead, base;
                 float kh = 0;
+                float3 drift = 0;
                 if (predicted)
                 {
                     // The first pass's mark: 0 for a particle it put back at rest.
@@ -3352,9 +3374,13 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // Carried over a snap once, by the first pass; the second steps on from there.
                     [branch] if (Snapped && _Pass < 0.5) { s.xyz = Carried(s.xyz, m, side); was.xyz = Carried(was.xyz, m, side); }
                     if (Fresh(s, was, home)) return home;
-                    // Every right-half w is the h of the same pass, so this holds for the neighbours too.
-                    kh = exp(-_Damp * was.w) / max(was.w, 1e-4) * h;
-                    base = Ahead(s, was, l, side, home, h);
+                    // Every right-half w is the h of the same pass, so this holds for the neighbours too,
+                    // each headed on by this home's speed, which they share, and its own apart from it.
+                    float keep = exp(-_Viscous * was.w);
+                    float3 vh;
+                    kh = keep / max(was.w, 1e-4) * h;
+                    base = Ahead(s, was, l, side, home, h, vh);
+                    drift = vh * (h * (1 - keep)) + Kick * (h * keep);
                     ahead = base + Gravity * h * h;
                 }
                 float3 c, rc;
@@ -3363,11 +3389,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // rest while the homes moved, each particle was pulled two ways, and the lattice's sides
                 // flickered a frame apart under a held press.
                 float3x3 sw = ShapedAt(l, Shape(side));
-                q = Fit(p, l, ahead, base, kh, m, h, home, q, predicted, sw, c, rc, lin);
+                q = Fit(p, l, ahead, base, kh, drift, m, h, home, q, predicted, sw, c, rc, lin);
                 // Rigid, or keeping _Squish of its neighbourhood's own squash and stretch at constant
                 // volume, so flesh pressed in one way bulges out the others.
                 float3 rigid = mul(Turn(q), mul(sw, Rest(l) - rc) * scale);
-                float3 goal = c + (lin.w > 0 ? lerp(rigid, lin.xyz, _Squish) : rigid);
+                float3 goal = c + lerp(rigid, lin.xyz, _Squish * lin.w);
                 // _Stiff is the pull over a 180th of a second, so the tissue feels the same
                 // whether a frame takes one pass or two.
                 float3 next = lerp(ahead, goal, 1 - pow(1 - _Stiff, h * 180));
@@ -3376,12 +3402,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // across fold under its own weight, 42 cm at the front.
                 float spring = 6.2831853 * _Hz * h;
                 // Upright, gravity hangs the tissue g (1 - spring^2) / w^2 below where this pull holds
-                // it; tissue modelled on a body hangs already, so it is held as far above. Held round
-                // a limb's bone, against the world's up: a seated thigh lifted along its bone sat
-                // 32 mm off its modelled shape, toward the hip and down. Firm flesh on a limb keeps
-                // its shape however the limb lies and still swings with it.
+                // it; tissue modelled on a body hangs already, so it is held as far above, against the
+                // world's up however the anchor lies. Along the anchor's up the two cancelled only
+                // upright: upside down they added, 84 mm on a breast, and a seated thigh lifted along
+                // its bone sat 32 mm off its modelled shape. It keeps its shape and still swings.
                 float3 lift = 0;
-                if (_Lift > 0) lift = _Lift * (Cored ? float3(0, 1, 0) : normalize(m._m01_m11_m21)) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _Hz * _Hz);
+                if (_Lift > 0) lift = _Lift * float3(0, 1, 0) * 9.81 * _Gravity * (1 - spring * spring) / (39.478418 * _Hz * _Hz);
                 // The pair meet at a plane between them, moving and tilting with them, with no friction,
                 // so they slide along it and never stick: they push together.
                 // Each home past it is eased back behind it in order, the face it meets flat, and the
@@ -3662,18 +3688,20 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // face would; so does a yank, the tissue lagging into the face it leaves by. Only the
                 // slaps that hit it rang it, never it hitting anything. Fired by more than
                 // _Landing's change of speed in a frame, at that speed; a frame faster than 8 m/s is a
-                // teleport, not a fall. 85 keeps the anchor's last velocity.
+                // teleport, not a fall. Heard last step (97, 98), rung this one only if the new speed
+                // held, and dated back to then: a remote copy's late packet stops its anchor a step
+                // and catches up, and rang every time.
+                float born = _Time.y;
                 [branch] if (!fired && timed && !distant)
                 {
-                    float4 was = _MainTex.Load(int3(85, side, 0));
-                    float3 v = AnchorVelocity(m, dt, side);
-                    float lost = length(was.xyz - v);
-                    [branch] if (!Snapped && was.w > 0 && _Time.y - was.w < 0.1 && length(was.xyz) < 8 && lost > _Landing)
+                    float4 heard = _MainTex.Load(int3(97, side, 0)), by = _MainTex.Load(int3(98, side, 0));
+                    [branch] if (!Snapped && heard.w > 0 && heard.w < _Time.y && _Time.y - heard.w < 0.1 && length(AnchorVelocity(m, dt, side) - heard.xyz) < 0.3 * by.w)
                     {
-                        float3 q = Into(m, m._m03_m13_m23 + was.xyz - v) / half;
+                        float3 q = Into(m, m._m03_m13_m23 + by.xyz) / half;
                         at = mul(m, float4(mid + q / max(length(q), 1e-6) * half, 1)).xyz;
-                        speed = lost;
+                        speed = by.w;
                         fired = true;
+                        born = heard.w;
                     }
                 }
                 // A slap that drives one of a pair into the other, their skins within a cell, rings
@@ -3737,7 +3765,35 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float left1 = s1.w > 0 ? s1.w * saturate(1 - (_Time.y - r1.w) / _Slap.w) : 0;
                 int slot = into >= 0 ? into : left0 <= left1 ? 0 : 1;
                 if (into < 0 && min(left0, left1) > depth || (x - 80) / 2 != slot) return keep;
-                return (x & 1) == 0 ? float4(at, _Time.y) : float4(0, 0, 0, depth);
+                return (x & 1) == 0 ? float4(at, born) : float4(0, 0, 0, depth);
+            }
+
+            // The watchdog (texel 36): nine of the front's particles measured off their rest on the
+            // anchor, the mass's swing taken, in the lattice's depths. Out past 1.5, or past 0.6
+            // with no hand or probe on it, the region counts as out of control; x the steps running,
+            // y how far, z whether any read bad. Nothing read its own state before: a runaway was
+            // only caught particle by particle, a metre out.
+            float4 Watchdog(float4x4 m, float scale, bool distant, uint side)
+            {
+                if (distant) return 0;
+                int3 n = Count();
+                float zc = 0.5 * (n.z - 1) * _Lattice.w, L = max((n.z - 1) * _Lattice.w * scale, 1e-6);
+                float4 tip = _MainTex.Load(int3(30, side, 0));
+                float3 swing = tip.w > 0 && !Bad(tip) ? tip.xyz - mul(m, float4(0, 0, zc, 1)).xyz : 0;
+                float most = 0;
+                bool bad = Bad(tip) || Bad(_MainTex.Load(int3(31, side, 0)));
+                [unroll] for (int k = 0; k < 9; k++)
+                {
+                    int3 l = int3((k % 3) * (n.x - 1) / 2, (k / 3) * (n.y - 1) / 2, n.z - 1);
+                    float4 s = _MainTex.Load(Texel((uint) Index(l), 0));
+                    bad = bad || Bad(s);
+                    most = max(most, length(s.xyz - mul(m, float4(Rest(l), 1)).xyz - swing));
+                }
+                float off = bad ? 0 : most / L;
+                bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side);
+                bool hot = bad || off > 1.5 || off > 0.6 && !touched;
+                float4 last = _MainTex.Load(int3(36, side, 0));
+                return float4(hot ? (last.w > 0 && _Time.y - last.w < 0.1 ? last.x : 0) + 1 : 0, off, bad, _Time.y);
             }
 
             // Where a step splits in two. Capped, two frames at 144 a second land a hair either side
@@ -3762,18 +3818,26 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float real = clamp(unity_DeltaTime.x, 1.0 / 240, 1.0 / 30);
                 smooth = clock.y > 0 ? lerp(clock.y, real, 0.05) : real;
                 held = _Pass > 0.5 ? max(clock.x, 1.0 / 240) : clock.x > 0 && abs(smooth - clock.x) < 0.15 * clock.x ? clock.x : smooth;
-                // Skipped by the rate, the step takes the frames it missed, counted against this
-                // frame's own time so a slow frame is not taken twice. A gap past a tenth of a second
-                // is a wake and steps one frame, as before. The first pass counts; the second reads its count.
-                // Not asked whether it is halved: && runs both sides, and that alone cost every step 10%.
+                // The step takes the time that really passed, in held steps: counted against this
+                // frame's own time, a dropped frame read as one, and the anchor's move over it as
+                // twice its speed, which kicked the tissue on every hitch. Within 15% of a whole
+                // count it takes the count, so the even frames keep the held step. Past what one
+                // step takes, the tissue is carried over the rest (Gapped). The first pass counts;
+                // the second reads its count. Not asked whether it is halved: && runs both sides,
+                // and that alone cost every step 10%.
                 frames = clock.w;
                 [branch] if (_Pass < 0.5)
                 {
-                    float f = clock.z > 0 ? round((_Time.y - clock.z) / real) : 1;
-                    frames = f >= 2 && f * real < 0.1 ? f : 1;
+                    float steady = _FixedDt > 0 ? _FixedDt : held;
+                    Since = clock.z > 0 && _Time.y > clock.z ? _Time.y - clock.z : steady;
+                    float f = Since / steady, r = max(round(f), 1);
+                    frames = abs(f - r) < 0.15 * r ? r : f;
+                    // Against the steady step, not 1/30: under 30 fps every step read as a gap and the
+                    // tissue was carried rigid. A gap is carried, so it takes one held step.
+                    Gapped = Since > max(1.0 / 30, 2.5 * steady) + 1e-4;
+                    if (Gapped) frames = 1;
                 }
-                frames = max(frames, 1);
-                return min((_FixedDt > 0 ? _FixedDt : held) * frames, 1.0 / 30);
+                return min((_FixedDt > 0 ? _FixedDt : held) * max(frames, 0.25), 1.0 / 30);
             }
 
             float4 frag(v2f_img i) : SV_Target
@@ -3844,7 +3908,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         return (uint) px.x < Row ? float4(still.xyz, _Time.y) : still;
                     }
 #endif
-                    float dt1 = min((_FixedDt > 0 ? _FixedDt : max(ck.x, 1.0 / 240)) * max(ck.w, 1), 1.0 / 30);
+                    float dt1 = min((_FixedDt > 0 ? _FixedDt : max(ck.x, 1.0 / 240)) * max(ck.w, 0.25), 1.0 / 30);
                     Mine = float4x4(_MainTex.Load(int3(88, side, 0)), _MainTex.Load(int3(89, side, 0)), _MainTex.Load(int3(90, side, 0)), float4(0, 0, 0, 1));
                     Turned = true;
                     [branch] if ((uint) px.x >= Row && !(dt1 > Split(ck.w, side)) && !(_Stress > 0))
@@ -3882,7 +3946,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // parser's few frames of lag only shift which. At or under the rate, every frame.
                     [branch] if (!off)
                     {
-                        float rate = Halved() ? _Rate.y : _Rate.x, frame = _MainTex.Load(int3(25, side, 0)).x;
+                        float rate = Halved(_MainTex.Load(int3(93, side, 0)).x > 0.5) ? _Rate.y : _Rate.x, frame = _MainTex.Load(int3(25, side, 0)).x;
                         off = rate > 0 && frame > 0 && frac(_Time.y * rate) >= frame * rate;
                     }
                     return float4(off ? 0 : 1, 0, 0, 1);
@@ -3895,7 +3959,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 here = _MainTex.Load(int3(px, 0));
                 float4x4 m = Mine;
                 float scale = length(m._m00_m10_m20);
-                bool anchored = scale > 1e-6;
+                bool anchored = scale > 1e-6 && !Bad(m[0]) && !Bad(m[1]) && !Bad(m[2]);
+                Scale = scale;
+                Reach = 1.5 * length((float3) (n - 1)) * _Lattice.w * scale;
+                // The watchdog's count, as the side row left it last step (36).
+                float4 dog = _MainTex.Load(int3(36, side, 0));
+                Hot = dog.w > 0 && _Time.y - dog.w < 0.1 ? dog.x : 0;
                 // The step is held while the frame time, smoothed, stays within 15% of it: where the
                 // tissue rests moves with the step, so stepping each uneven frame by its own time
                 // kept a settled prop trembling, never asleep. The first pass decides; the second
@@ -3909,8 +3978,39 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // sat 0.5 m off its rest for a tenth of a second; now it and its mass ride it. The first
                 // pass decides and signs 85 with it; the second reads its answer.
                 float4 sped = _MainTex.Load(int3(85, side, 0));
-                Snapped = _Pass < 0.5 ? anchored && sped.w != 0 && _Time.y - abs(sped.w) < 0.1 && length(AnchorVelocity(m, dt, side) - sped.xyz) > 8 : sped.w < 0;
-                int passes = dt > Split(frames, side) ? 2 : 1;
+                // Over a gap a step cannot take, near last step, the state is carried on with the
+                // anchor up to a second old: past a tenth it started again at rest, a pop on every
+                // hitch and the tissue rigid under 10 fps.
+                Stale = Gapped && !(_MainTex.Load(int3(18, side, 0)).x > 0.5) ? 1 : 0.1;
+                // A gap longer than a step takes is carried the same way: a hitch's frame, stepped
+                // short, read its move as a kick.
+                // So is a turn faster than 12 radians a second, MagicaCloth's own limit: a snap turn,
+                // or a remote copy's turn caught up in a frame, flung the tissue.
+                float3 vNow = AnchorVelocity(m, Gapped ? Since : dt, side);
+                Snapped = sped.w < 0;
+                [branch] if (_Pass < 0.5)
+                {
+                    float3 x0 = _MainTex.Load(int3(26, side, 0)).xyz, z0 = _MainTex.Load(int3(28, side, 0)).xyz;
+                    float turned = min(dot(normalize(m._m00_m10_m20), normalize(x0)), dot(normalize(m._m02_m12_m22), normalize(z0)));
+                    Snapped = anchored && sped.w != 0 && _Time.y - abs(sped.w) < Stale && (Gapped || length(vNow - sped.xyz) > 8 || dot(x0, x0) > 0 && turned < cos(min(12 * dt, 1.5)));
+                    // A remote copy's anchor moves in straight runs from packet to packet, its speed
+                    // changing in steps, and the tissue rang with every one. Its change of speed is
+                    // spread over _Smooth on every copy alike, the wearer's own included, so all
+                    // viewers see the same tissue with nothing synced.
+                    float4 was95 = _MainTex.Load(int3(95, side, 0));
+                    bool smooth = !Snapped && _Smooth > 0 && sped.w > 0 && _Time.y - sped.w < 0.1 && was95.w > 0 && _Time.y - was95.w < 0.1;
+                    Smoothed = smooth ? lerp(vNow, was95.xyz, exp(-dt / _Smooth)) : vNow;
+                    Kick = smooth ? (vNow - sped.xyz) - (Smoothed - was95.xyz) : 0;
+                    // A change of speed past _Landing in the step, kept for the next step: against the
+                    // smoothed speed, a steady speed-up read as one and rang every step.
+                    float3 by = sped.xyz - vNow;
+                    bool heard = !Snapped && sped.w > 0 && _Time.y - sped.w < 0.1 && length(sped.xyz) < 8 && length(by) > _Landing;
+                    Landed = heard ? float4(vNow, _Time.y) : 0;
+                    LandedBy = heard ? float4(by, length(by)) : 0;
+                }
+                // Snapped, one predicted pass: its predictions are carried, where two whole passes fit
+                // each particle to neighbours the jump left behind and pulled it most of the way back.
+                int passes = dt > Split(frames, side) && !Snapped ? 2 : 1;
                 float h = dt / passes;
                 // The meter's load always takes a whole step, the cost it is there to show.
                 bool predicted = passes == 1 && !(_Stress > 0);
@@ -3946,7 +4046,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         if (px.x == 25) return float4(held, smooth, _Time.y, frames);
                         // Whether the gate above takes _Mid next frame: halved once here, not per particle. A
                         // flag, not the rate, so a changed material takes at once.
-                        [branch] if (px.x == 93 && _Mid > 0) return float4(Halved(), here.x, 0, 1);
+                        [branch] if (px.x == 93 && _Mid > 0) return float4(Halved(here.x > 0.5), here.x, 0, 1);
                         // The probes as Felt has them, for the scan's texels and the slaps': one copy of
                         // it between them, as a copy each took the compiler past its time limit. The
                         // scan's only once a cloth probe was pushed last frame, as the readout
@@ -4042,7 +4142,22 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Mass(px.x, m, scale, dt, distant, side, region, (region ^ 1) * (side0 + 1) + side0);
                         }
                         if (px.x >= 80 && px.x <= 84) return Slap(px.x, m, scale, dt, distant, side, felt, presses);
-                        if (px.x == 85) return float4(AnchorVelocity(m, dt, side), Snapped ? -_Time.y : _Time.y);
+                        // Over the time that passed: over the step's, a hitch's move read as a jump next frame.
+                        if (px.x == 85) return float4(vNow, Snapped ? -_Time.y : _Time.y);
+                        if (px.x == 95) return float4(Smoothed, _Time.y);
+                        [branch] if (px.x == 36) return Watchdog(m, scale, distant, side);
+                        // The anchor's turn rate since the last step, for the draw between steps (94):
+                        // carrying each particle on at its own speed carried the turn twice, the skin
+                        // leading every turn on the skipped frames.
+                        [branch] if (px.x == 94)
+                        {
+                            float4 q91 = _MainTex.Load(int3(91, side, 0));
+                            if (Snapped || !(dot(q91, q91) > 0.5)) return float4(0, 0, 0, 1);
+                            float4 dq = Mul(Quat((float3x3) m / scale), float4(-q91.xyz, q91.w));
+                            return float4(2 * dq.xyz * (dq.w < 0 ? -1 : 1) / max(Gapped ? Since : dt, 1e-4), 1);
+                        }
+                        if (px.x == 97) return distant ? 0 : Landed;
+                        if (px.x == 98) return distant ? 0 : LandedBy;
                         // The anchor's rows and its turn, for the second pass's particles.
                         if (px.x >= 88 && px.x <= 91) return px.x == 88 ? m[0] : px.x == 89 ? m[1] : px.x == 90 ? m[2] : Quat((float3x3) m / scale);
                         // Whether any slot might grip this pass, for Moved: 112 to 119 below grip only a
@@ -4173,7 +4288,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         if (half_ == 1) return float4(rest ? home : s.xyz, h);
                         if (rest) return float4(home, 0);
                         if (Pinned(l)) return float4(home, 1);
-                        return float4(Ahead(s, was, l, side, home, h) + Gravity * h * h, 1);
+                        float3 vh, ahead = Ahead(s, was, l, side, home, h, vh) + Gravity * h * h;
+                        return Bad(ahead) ? float4(home, 0) : float4(ahead, 1);
                     }
                     // A whole step's right half only moves along, so half the texture does next to no work.
                     if (!predicted && half_ == 1)
@@ -4186,6 +4302,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // The fit from the first pass's predictions, or a whole step. One call: each call
                 // writes the whole step out again.
                 float3 at = Moved(p, l, m, scale, h, home, predicted, distant, side, swing, q);
+                // Nothing bad is ever written: home, or the rigid rest where even that is bad.
+                [branch] if (Bad(at)) at = Bad(home) ? mul(m, float4(Rest(l), 1)).xyz : home;
                 [branch] if (rider) return Rider(px.x, m, scale, at, q);
                 return float4(at, _Time.y);
 #endif
@@ -4206,7 +4324,6 @@ float4 _Lattice;
 // One anchor a region. Packed, each region is a block of rows of the state, its side row last.
 // After the four, the wearer's own bones (YapsJelly's ownBones).
 float4x4 _JellyAnchor[32];
-float _Damp;
 // The first row of this pixel's region, set once a pixel and added to every lattice texel.
 static uint Base = 0;
 
@@ -4214,7 +4331,8 @@ static const uint Row = 64;
 static const float Window = 0.5;
 // This pixel's region holds a core round its bone instead of its back face.
 static bool Cored = false;
-// The step's share of gravity: 1 hangs like flesh, 0 keeps the modelled shape however the body lies.
+// The step's share of gravity. A worn part's lift cancels its steady sag along the world's up, so there
+// it only swings; on a prop with no lift, 1 hangs like flesh and 0 keeps the modelled shape.
 float _Gravity;
 #define Gravity float3(0, -9.81 * _Gravity, 0)
 // The rigid fit's rotation steps. Each starts from the anchor's turn, which a neighbourhood's own
@@ -4240,10 +4358,23 @@ float3 Rest(int3 l) { int3 n = Count(); return float3(l.x - 0.5 * (n.x - 1), l.y
 
 // A fresh texture, a new copy of the avatar, garbage, a teleport, or a state left still a tenth
 // of a second, far off or switched off: start at rest.
+// NaN and infinity by their bits: the compiler folds every float test for NaN away, so the tests
+// below let one through, it spread over the fit, and its skin dropped out for good.
+bool Bad(float4 v) { return any((asuint(v) & 0x7f800000) == 0x7f800000); }
+bool Bad(float3 v) { return any((asuint(v) & 0x7f800000) == 0x7f800000); }
+
+// How far off its home a particle may be before it starts again at rest: half again the lattice's
+// diagonal at the anchor's scale. A metre, as it was, let a small avatar's tissue fly twenty depths.
+static float Reach = 1;
+// The watchdog's count (texel 36): the steps the region has run out of control. Past 8, at rest.
+static float Hot = 0;
+// How old a state may be and still be stepped on: carried over a hitch, up to a second.
+static float Stale = 0.1;
+
 bool Fresh(float4 s, float4 was, float3 home)
 {
-    return !(was.w > 0 && was.w < 0.1) || !(abs(s.x) + abs(s.y) + abs(s.z) + abs(was.x) + abs(was.y) + abs(was.z) < 1e6)
-        || !(distance(s.xyz, home) < 1) || !(_Time.y - s.w < 0.1);
+    return Bad(s) || Bad(was) || Hot >= 8 || !(was.w > 0 && was.w < 0.1) || !(abs(s.x) + abs(s.y) + abs(s.z) + abs(was.x) + abs(was.y) + abs(was.z) < 1e6)
+        || !(distance(s.xyz, home) < Reach) || !(_Time.y - s.w < Stale);
 }
 
 float4 Mul(float4 a, float4 b) { return float4(a.w * b.xyz + b.w * a.xyz + cross(a.xyz, b.xyz), a.w * b.w - dot(a.xyz, b.xyz)); }
@@ -4281,7 +4412,7 @@ float4 Quat(float3x3 m)
 // each is headed is the first pass's, its texel; otherwise it is worked out here, with gravity,
 // the same for all, left out of both sides of each difference. Behind a particle one in from the
 // back face are the anchor's own places, since the back face rides it.
-float4 Fit(uint p, int3 l, float3 ahead, float3 base, float kh, float4x4 m, float h, float3 home, float4 q, bool predicted, float3x3 sw, out float3 c, out float3 rc, out float4 lin)
+float4 Fit(uint p, int3 l, float3 ahead, float3 base, float kh, float3 drift, float4x4 m, float h, float3 home, float4 q, bool predicted, float3x3 sw, out float3 c, out float3 rc, out float4 lin)
 {
     int3 n = Count();
     bool3 lo = l > 0, hi = l < n - 1;
@@ -4304,9 +4435,10 @@ float4 Fit(uint p, int3 l, float3 ahead, float3 base, float kh, float4x4 m, floa
             // body for both: the step's single Moved call carries predicted as it comes.
             float3 x = _MainTex.Load(Texel(o, 0)).xyz, w = x;
             [branch] if (!predicted) w = _MainTex.Load(Texel(o, 1)).xyz;
-            float3 d = predicted ? x - ahead : x + (x - w) * kh - base;
+            float3 d = predicted ? x - ahead : x + (x - w) * kh + drift - base;
             if (!predicted && dz < 0 && !Cored) d = l.z == 1 ? behind + dx * mx + dy * my - base : d;
-            d = ok ? d : 0;
+            // A neighbour gone bad counts as at rest: read, it made every one round it bad too.
+            d = ok && !Bad(d) ? d : 0;
             sd += d;
             if (dx != 0) ax += dx * d;
             if (dy != 0) ay += dy * d;
@@ -4334,7 +4466,11 @@ float4 Fit(uint p, int3 l, float3 ahead, float3 base, float kh, float4x4 m, floa
         float3 c0 = a0 / spread.x, c1 = a1 / spread.y, c2 = a2 / spread.z;
         float sc = length(m._m00_m10_m20), vol = dot(c0, cross(c1, c2)) / (sc * sc * sc);
         float3 r = Rest(l) - rc;
-        if (vol > 0.05) lin = float4((c0 * r.x + c1 * r.y + c2 * r.z) * pow(vol / determinant(sw), -1.0 / 3.0), 1);
+        // Eased in from a fold, and the volume's make-up held to half again: a nearly folded
+        // neighbourhood was blown up 2.7 times, then dropped to rigid at a hard line, a cliff in
+        // the force a squeeze rode back and forth over.
+        float dsw = determinant(sw);
+        if (vol > 0.05 && dsw > 0.05) lin = float4((c0 * r.x + c1 * r.y + c2 * r.z) * min(pow(vol / dsw, -1.0 / 3.0), 1.5), smoothstep(0.05, 0.3, vol));
     }
     [unroll] for (int it = 0; it < Turns; it++)
     {

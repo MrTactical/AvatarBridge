@@ -192,7 +192,9 @@ float3 YapsJellySlap(uint slot, uint side, float3 world, float3 nw, inout float3
 float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, float3 nw, out float3 bend)
 {
     bend = 0;
-    if (!(lattice.x > 0)) return 0;
+    // A lattice with no size is off: a clip keying .x alone zeroes the rest in the property block,
+    // and read as counts and spacing that tore the skin into a spike.
+    if (!(lattice.x > 1.5 && lattice.y > 1.5 && lattice.z > 1.5 && lattice.w > 0)) return 0;
     int3 n = int3(lattice.xyz);
     // Padded to a whole number of eight with the side row.
     uint rows = ((uint) (n.x * n.y * n.z + 63) / 64 + 8) / 8 * 8 - 1;
@@ -221,8 +223,9 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     // it has been since. Its give, not where it is: carried on whole, the body's own walk pushed the
     // skin ahead of it. Stepped this frame, none; stalled a tenth of a second, none.
     float since = _Time.y - YapsJellyTexel(slot, 0, base).w;
-    float3 carried = YapsJellyLoad(slot, int3(85, side, 0)).xyz;
-    bool between = since > 1e-4 && since < 0.1;
+    float4 carried = YapsJellyLoad(slot, int3(85, side, 0));
+    // Not after a snap: 85 holds the jump's own speed, and the skin was pulled back by it.
+    bool between = since > 1e-4 && since < 0.1 && carried.w > 0;
     [unroll] for (int k = 0; k < 8; k++)
     {
         int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
@@ -236,7 +239,7 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         [branch] if (between)
         {
             float4 was = YapsJellyLoad(slot, int3(pi % 64 + 64, pi / 64 + base, 0));
-            off += ((pt.xyz - was.xyz) / max(was.w, 1e-4) - carried) * since;
+            off += ((pt.xyz - was.xyz) / max(was.w, 1e-4) - carried.xyz) * since;
         }
         float3 w = d ? t : 1 - t;
         float3 way = d ? 1 : -1;
@@ -247,11 +250,16 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     }
     float3 rest = float3(c.x - 0.5 * (n.x - 1), c.y - 0.5 * (n.y - 1), c.z) * spacing;
     move -= ax * rest.x + ay * rest.y + az * rest.z;
+    // Less the anchor's own turn since (94), which the skin already rides.
+    [branch] if (between) move -= cross(YapsJellyLoad(slot, int3(94, side, 0)).xyz, world - place.xyz) * since;
     gx -= ax * spacing;
     gy -= ay * spacing;
     gz -= az * spacing;
     bend = per * (ax * dot(gx, nw) + ay * dot(gy, nw) + az * dot(gz, nw));
-    [branch] if (_YAPS_JellySlap.x > 0) move += YapsJellySlap(slot, side, world, nw, bend);
+    // Never more than twice the tissue's depth: a lattice thrown off is drawn held in, not stretched across the room.
+    float most = 2 * (n.z - 1) * spacing * length(ax);
+    move *= min(1, most / max(length(move), 1e-9));
+    [branch] if (_YAPS_JellySlap.x > 0 && _YAPS_JellySlap.z > 0) move += YapsJellySlap(slot, side, world, nw, bend);
     // The hands in reach push the skin itself on too, the palm and any finger out: the particles sit
     // a few centimetres apart, so a finger between them would sink into the skin. The way the hand
     // presses, toward the region's centre, as the particles go: out of its nearest side, skin went
@@ -405,15 +413,19 @@ void YapsJellyDeform(inout float3 position, inout float3 normal, inout float3 ta
             bend += s * b;
         }
     }
+    // A bad move drew its triangles away: the skin shows at rest instead of a hole.
+    if (any((asuint(float4(move, dot(bend, bend))) & 0x7f800000) == 0x7f800000)) { move = 0; bend = 0; }
     world += move;
 
     position = mul(unity_WorldToObject, float4(world, 1)).xyz;
     // Zero stays zero: a host with no normal gets none invented here.
     if (hasNormal)
     {
-        normal = normalize(mul(nw - bend, (float3x3)unity_ObjectToWorld));
-        if (dot(tangent, tangent) > 0)
-            tangent = normalize(tangent - normal * dot(normal, tangent));
+        float3 bent = nw - bend;
+        normal = normalize(mul(dot(bent, bent) > 1e-12 ? bent : nw, (float3x3)unity_ObjectToWorld));
+        float3 across = tangent - normal * dot(normal, tangent);
+        if (dot(across, across) > 1e-12)
+            tangent = normalize(across);
     }
 }
 
