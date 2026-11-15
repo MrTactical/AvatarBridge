@@ -107,9 +107,9 @@ namespace AvatarBridge.Yaps
         public string builtAnimations;
 
         // Whether a build gives this socket an in-game readout. Drawn in
-        // the inspector's See it work card.
+        // the inspector's See it work card. Off unless asked for, as the plug's.
         [HideInInspector]
-        public bool readout = true;
+        public bool readout;
 
         // Editor state, never saved: while on, every YAPS plug in the scene
         // bends toward this socket. Only one socket previews at a time.

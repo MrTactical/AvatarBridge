@@ -1204,7 +1204,7 @@ namespace AvatarBridge
 
             // Applied at once on a built socket, menu included, like the kind.
             see.Body.Add(BridgeElements.Bind("In-game readout",
-                "Hidden until the avatar's YAPS readout menu toggle shows it. Once nothing on the avatar " +
+                "Off by default. Hidden until the avatar's YAPS readout menu toggle shows it. Once nothing on the avatar " +
                 "carries a readout, the menu toggle and its synced bit go too.",
                 socket.readout, on =>
                 {
@@ -1613,7 +1613,7 @@ namespace AvatarBridge
             // A slot on the mesh and, while anything carries one, a synced bit
             // and a menu row, so it can be left off.
             see.Body.Add(BridgeElements.Bound(serializedObject, nameof(YapsPlug.readout), "In-game readout",
-                "Hidden until the avatar's YAPS readout menu toggle shows it. Untick and re-bake to leave it off. " +
+                "Off by default. Tick and re-bake to debug a plug: hidden until the avatar's YAPS readout menu toggle shows it. " +
                 "Once nothing on the avatar carries a readout, the menu toggle and its synced bit go too."));
 
             // Fields in declaration order; a [Header] opens a section. The

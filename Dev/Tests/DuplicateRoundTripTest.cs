@@ -77,6 +77,8 @@ namespace AvatarBridge.Regression
             plug.renderer = skin;
             plug.rootBone = shaft;
             plug.twoAtOnce = true;
+            // Off by default; this test checks it rides the duplicate.
+            plug.readout = true;
 
             // On.
             var o = YapsNativeBuilder.Bake(plug);

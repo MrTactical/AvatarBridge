@@ -1065,7 +1065,7 @@ a socket keeps as authored, and the plug's auto-distance) local rather than sync
 nothing of the budget, however many an author built, where in VRChat each was a synced parameter.
 The socket toggles and modes next to them stay synced, since those are yours to set. What
 penetration does add is the owner id's 32 bits and, where the avatar has them, the **Marker lights**
-choice, the *YAPS readout* toggle and each plug's tag dropdown; the report's sync budget says where
+choice, the *YAPS readout* toggle (only while a plug or socket has its readout ticked) and each plug's tag dropdown; the report's sync budget says where
 it landed.
 
 ⚠️ **What that costs, and how to buy it back.** ChilloutVR computes a trigger's contact on the
@@ -3277,8 +3277,9 @@ Work down the list; the first that fits is usually it.
   by*. It straightens the plug and puts the answer in its LENGTH: a quarter means nothing found
   the socket, three quarters a marker light did, full the screen atlas did. A quarter with a
   socket right there means no transport reached the plug.
-- **Or read all of it at once: turn on *YAPS readout* in the avatar's menu.** Every plug on the
-  avatar carries one, hidden until that toggle shows it. The view above answers one question at a
+- **Or read all of it at once: turn on *YAPS readout* in the avatar's menu.** Tick *In-game
+  readout* in a plug's or socket's *See it work* card first (off by default, as the CCK counts
+  its material slot) and re-bake; it stays hidden until that toggle shows it. The view above answers one question at a
   time and straightens the plug to answer it, so the bend and the reason for the bend can never be
   seen together. The readout is a small strip of colours the plug draws on itself instead, and it
   leaves the plug bending normally. It is the plug's own answer, not a second reading taken beside
@@ -3300,10 +3301,9 @@ Work down the list; the first that fits is usually it.
   Black or grey is nothing, red is a fault, green is working. **The toggle syncs**, so everyone
   who can see the plug sees the readout while it is on, each drawn from what their own game
   resolves: someone helping you reads your plug as their client sees it. Off, it draws nothing.
-  Every plug and socket has an *In-game readout* tick in its *See it work* card: untick it on a
-  plug and re-bake, or on a socket, where it applies at once, to leave that one without. Once
-  nothing on the avatar carries a readout, the menu toggle and its synced bit go too.
-- **Every socket carries one too, on the same toggle.** A strip of six cells floats just above the
+  A plug's tick takes a re-bake; a socket's applies at once. Once nothing on the avatar carries a
+  readout, the menu toggle and its synced bit go too.
+- **A socket can carry one too, on the same toggle.** A strip of six cells floats just above the
   socket, facing you, and reads the socket from the plug's side: what a plug reaching for it would
   find. Left to right: whether the atlas is on the camera drawing this view (black the view is too
   small, red a different screen, green live); the socket's own entry at each of the atlas's four
@@ -3377,7 +3377,7 @@ instead of coming out of the exit. In order:
    shaders off, and a DPS plug all see an ordinary hole.
 7. **Just joined?** Someone else's copy of the avatar is an ordinary hole until the wearer's owner
    id first syncs.
-8. **Turn on *YAPS readout*.** The top row's last cell is the portal: dark, the plug's path ends in
+8. **Turn on *YAPS readout*** (tick the plug's *In-game readout* and re-bake first). The top row's last cell is the portal: dark, the plug's path ends in
    no hole; amber, the hole has no owner or number yet; grey, no exit is published for that hole;
    green, the exit was found; red, the exit was found and this plug cannot come out of it, which is
    step 1, 2 or 4.

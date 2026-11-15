@@ -3080,7 +3080,12 @@ player's hands pushing it as the squash reads them. A block 20 cm across in fron
          three and tested on two: the fist (between the middle finger's first two joints) 11.0 cm off
          on average as now, 10.2 at a shorter reach, 8.9 from an elbow hung low off a shoulder guessed
          from chest and head; the real forearm's line, which no shader gets, 5.8, the wrist's bend. A
-         fifth better for a head array read and an elbow solve a kept hand: parked for Joe's word.
+         fifth better for a head array read and an elbow solve a kept hand: parked for Joe's word. WITHDRAWN
+         2026-11-15 (Joe: "fix it now"; measured first, bar set at 1 cm better): rebuilt as a batch study, six
+         humanoids, 600 seeded reach-and-grab poses a hand with the wrist's own bend, fitted on four and
+         measured on two held out: today 11.1 cm, the elbow solve 10.9, the best blend of chest, head and
+         down 10.5, and even the hand's true way 6.3. The 8.9 did not reproduce, likely fitted to its own
+         poses. What is missing is the hand's turn, which the client hands no shader. Nothing shipped.
 
 ### 29. The jelly on every part of the skin. Joe, 2026-10-31. PLAN, the order below
 
@@ -3658,7 +3663,7 @@ where only the game can tell) before a fix.
   submenu's name (`WalkMenu` already carries `prefix`). Done as `DropdownTitle`: an Int whose menu uses set
   two or more values takes the deepest submenu they share; a lone toggle, or uses with no submenu in
   common, keep the old name. `DropdownNamingTest`: WRONG before (Hoodie, Left Wink, Option 0), PASS after.
-- **"The height slider is busted" (Joe, in game) [G, cause not proven].** The injected scaler's Size layer
+- **"The height slider is busted": CLOSED 2026-11-15, Joe: "it works", his own mistake.** The injected scaler's Size layer
   writes the root's `m_LocalScale`. The session suspects it fights ChilloutVR's own scaling and leaves the
   viewpoint behind; but per the decompiled universal scaling (memory, 2026-11-10) moving the slider is
   meant to flip the client to legacy animation scaling, where height follows the animated root. Needs
@@ -3676,9 +3681,9 @@ where only the game can tell) before a fix.
   inverted they add (about 11 cm on a belly), lying flat the pull goes diagonal. Proposed: lift along
   world up, as Cored already does, or fade to it as the anchor turns over. Also asked: expose `_Damp`
   and a gravity share under Feel, since a rebuild overwrites hand edits.
-- **The debug overlay ships as a material slot [R].** A plug's renderer carries a "YAPS Debug Overlay"
-  slot in the built avatar, and the CCK counts every slot. Question: should it exist only while
-  debugging?
+- **The debug overlay ships as a material slot: DONE on dev 2026-11-15 (Joe: "turn it off by default,
+  debug only when its needed").** A plug's or socket's *In-game readout* tick is off for new ones; an
+  existing plug keeps its tick until unticked and re-baked.
 - The session's stopgaps on its own side: option 0 renamed and dropdowns retitled, scaler off,
   `_Damp`/`_Gravity`/`_Lift` zeroed after each build, the overlay slot trimmed.
 - **A renamed parameter starts at 0 whatever its menu says: FIXED on dev 2026-11-14 [M].** `RenamePass`
@@ -4639,6 +4644,11 @@ pick any number, all go onto the one stand-in and convert together, so their men
 and Fury features meet once, as they would on a VRChat avatar wearing them all. Clashes between
 them (a parameter or menu path two accessories both use, the 3200-bit budget summed over all of
 them) are reported before anything is written to the target.
+
+A user, 2026-11-15 (relayed by Joe): "make avatar bridge setup outfits without baking". Read as Modular
+Avatar's Setup Outfit: drop the outfit on the avatar, bones matched in one click, the outfit staying its
+own editable object until upload, where the merge happens. The stand-in route below bakes first; this
+asks for the non-destructive half on top, a merge at upload in the CCK's build.
 
 Joe, 2026-10-24: "what if we can also throw them through the convertor? like lets say, a piece of
 clothing that I want to put on an already converted avatar, but attach it myself manually after?

@@ -29,8 +29,8 @@
 // fooled that way. The plug's own material never draws any of them: they
 // sit past _YAPS_VertexCount, in a submesh it does not own.
 //
-// Built on every plug of an avatar, hidden, unless the plug's In-game
-// readout tick is off. One synced menu toggle shows them all, so a helper
+// Built, hidden, on each plug whose In-game readout tick is on; off by
+// default, as the CCK counts the slot on every built avatar. One synced menu toggle shows them all, so a helper
 // sees the plug as the wearer's own client resolves it. A plug on a prop
 // has no menu to show it, and gets none. Plugs sharing a mesh get one
 // submesh each, built together.

@@ -150,9 +150,10 @@ namespace AvatarBridge.Yaps
         public List<string> refuses = new List<string>();
 
         // Whether a bake gives this plug an in-game readout. Drawn in the
-        // inspector's See it work card, not with the knobs.
+        // inspector's See it work card, not with the knobs. Off unless asked
+        // for: the CCK counts its material slot on every built avatar.
         [HideInInspector]
-        public bool readout = true;
+        public bool readout;
 
         // The renderer the readout sits on and the mesh it replaced, so a
         // rebuild or Remove can put it back; and what it is built from, so
