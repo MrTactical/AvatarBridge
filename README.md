@@ -2827,7 +2827,8 @@ A hand that opens or closes while it is inside the tissue now changes shape over
 second. Before, the change came in one frame: a hand deep in the part grew or shrank by about 5 cm
 at once and shoved the part several centimetres, and a gesture flickering between open and fist
 (tracked fingers near a threshold) made it jump on every flicker and grab on every close. A fist
-now grips only once it has stayed closed for about that long.
+now grips only once it has stayed closed for about that long, and a grip letting go deep inside
+pushes the tissue back out of the hand over the same time instead of throwing it out in a frame.
 
 ### Other people see my avatar flickering, cycling colours or thrashing: I don't
 

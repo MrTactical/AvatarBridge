@@ -3656,8 +3656,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float3 pb, fa, fb;
                         float rf;
                         Hand(a, b, pb, fa, fb, rf);
+                        // Let go deep in the tissue, the hand pushes it out over a fifth of a second:
+                        // at once, a fist opening 12 cm in threw the skin it held 36 mm in a frame.
+                        float3 before = next;
                         next = Plow(next, a.xyz, pb, a.w, centre);
                         if (rf > 0) next = Plow(next, fa, fb, rf, centre);
+                        next = lerp(before, next, saturate((_Time.y - _MainTex.Load(int3(120 + e, side, 0)).w) / 0.2));
                     }
                     // Each grip takes the skin it closed on along with the hand: all of it at the
                     // grip, none a hand's breadth off, the neighbourhoods' fit bending what lies
@@ -4372,7 +4376,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float3 at;
                             float raw;
                             float4 d = Pulled(e, m, side, at, raw);
-                            if (px.x >= 120) return float4(d.xyz, d.w > 0 ? _Time.y : 0);
+                            // w the last time it gripped, kept after, for the push's ease back in.
+                            if (px.x >= 120) return float4(d.xyz, d.w > 0 ? _Time.y : _MainTex.Load(int3(px.x, side, 0)).w);
                             if (distant || !Fist(b)) return 0;
                             if (was.w > 0) return raw > (Count().z - 1) * _Lattice.w ? float4(0, 0, 0, -1) : float4(Slid(was.xyz, Into(m, Knuckles(a, b)), Into(m, a.xyz) - Into(m, b.xyz)), was.w);
                             float3 pb, fa, fb;
