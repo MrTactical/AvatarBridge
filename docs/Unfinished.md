@@ -6161,6 +6161,11 @@ times in `Diagnostics.md`. Still open, largest first:
   already shader_feature_local). The A/B was dropped: the speed work leaves the final shaders
   identical, so it cannot change what the upload compiles. Levers left: fewer body copies (each
   role set is its own copy), or a cheaper JellyStep fragment.
+  Optimize Mesh Data ruled out 2026-11-16 (a plush avatar, cold, same machine): on 174 s, off
+  187 s, same 18.8 MiB. With it on, a mesh-data pre-pass compiled 1070 variants in 139 s; with it
+  off the main pass compiled the same variants itself. Off the plush's 173 s of shaders, the plug
+  shader alone is 72 s (1010 s CPU) and each squash copy ~20 s (156 variants each). Levers, in
+  order: the plug shader's variant count, then the number and cost of squash copies. After 5.0.0.
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
 - **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler
