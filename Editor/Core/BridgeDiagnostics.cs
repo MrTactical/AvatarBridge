@@ -518,10 +518,7 @@ namespace AvatarBridge
                 {
                     return c.mode == AnimatorConditionMode.IfNot;
                 }
-                // Swimming and AFK join the core set here: the client writes both, which is the
-                // only property that matters for this check, even though it does not mark them
-                // core (they still cost sync bits, which is why ClientCoreParameters omits them).
-                if (ClientCoreParameters.Contains(bare) || bare == "Swimming" || bare == "AFK")
+                if (ClientCoreParameters.Contains(bare))
                 {
                     return false;   // client-driven and live; unknowable here, so never a loop
                 }
@@ -1072,7 +1069,7 @@ namespace AvatarBridge
             }
         }
 
-        // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
+        // ChilloutVR's own sync budget, from AvatarAnimatorManager.FitsAasBudget (the Game Server 2 client).
         const int AasBitBudget = 3200;
 
         internal static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
@@ -1080,39 +1077,51 @@ namespace AvatarBridge
             "MovementX", "MovementY", "Grounded", "Crouching", "Prone", "Flying", "Sitting",
             "GestureRight", "GestureLeft", "Toggle", "Emote", "CancelEmote", "IsLocal",
             "GestureLeftIdx", "GestureRightIdx", "DistanceTo", "VisemeIdx", "VisemeLoudness",
-            "IsFriend", "VelocityX", "VelocityY", "VelocityZ"
+            "IsFriend", "VelocityX", "VelocityY", "VelocityZ", "Swimming", "AFK"
         };
 
         // Every parameter that spends sync bits, in the order the client spends
         // them, and whether it still fit. The Avatar Tester's remote copy reads
         // the same walk, so the two cannot disagree about what reaches others.
         internal static IEnumerable<(AnimatorControllerParameter param, bool fits)> BudgetOrder(AnimatorController master)
+            => BudgetWalk(master).Select(x => (x.param, x.fits));
+
+        internal static int BudgetBits(AnimatorController master) => BudgetWalk(master).Sum(x => x.bits);
+
+        static IEnumerable<(AnimatorControllerParameter param, bool fits, int bits)> BudgetWalk(AnimatorController master)
         {
-            int used = 0;
+            int used = 0, bools = 0;
             // The client skips clip-driven floats before it spends a bit, so they never use any.
             var curveDriven = CvrParameterNames.CurveDriven(master);
             foreach (var param in master.parameters)
             {
+                // IsAnimatorEnabled is core to the client too; kept out of ClientCoreParameters
+                // because only remote copies are fed it, so the wearer's default still holds.
                 if (param.name.StartsWith("#")
                     || param.type == AnimatorControllerParameterType.Trigger
                     || ClientCoreParameters.Contains(param.name)
+                    || param.name == "IsAnimatorEnabled"
                     || curveDriven.Contains(param.name))
                 {
                     continue;
                 }
-                if (used >= AasBitBudget)
+                bool isBool = param.type == AnimatorControllerParameterType.Bool;
+                // Bools pack eight to a byte: the first of every eight pays for it.
+                int bits = isBool ? (bools % 8 == 0 ? 8 : 0) : 32;
+                // One that does not fit is skipped, and a smaller one after it still can.
+                bool fits = used + bits <= AasBitBudget;
+                if (fits)
                 {
-                    yield return (param, false);
-                    continue;
+                    used += bits;
+                    if (isBool) bools++;
                 }
-                used += param.type == AnimatorControllerParameterType.Bool ? 1 : 32;
-                yield return (param, true);
+                yield return (param, fits, fits ? bits : 0);
             }
         }
 
         static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
         {
-            int used = 0;
+            int used = BudgetBits(master);
             int floats = 0, ints = 0, bools = 0;
             var dropped = new List<string>();
             foreach (var (param, fits) in BudgetOrder(master))
@@ -1124,23 +1133,24 @@ namespace AvatarBridge
                 }
                 switch (param.type)
                 {
-                    case AnimatorControllerParameterType.Float: floats++; used += 32; break;
-                    case AnimatorControllerParameterType.Int: ints++; used += 32; break;
-                    case AnimatorControllerParameterType.Bool: bools++; used += 1; break;
+                    case AnimatorControllerParameterType.Float: floats++; break;
+                    case AnimatorControllerParameterType.Int: ints++; break;
+                    case AnimatorControllerParameterType.Bool: bools++; break;
                 }
             }
             if (dropped.Count > 0)
             {
                 ctx.Report.Error(Category, $"{BridgeElements.Count(dropped.Count, "parameter", "parameters")} past ChilloutVR's sync limit",
                     $"{Join(dropped)}: the avatar needs more than ChilloutVR's {AasBitBudget} sync bits " +
-                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools at 1). These came last, so " +
-                    "they work for the wearer and never reach anyone else, with no warning " +
-                    "in game. Prefix the ones others needn't see with \"#\", or make on/off floats bools (1 bit, not 32).");
+                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools packed eight to a byte). The game " +
+                    "skips each one that no longer fits, so these work for the wearer and never reach anyone else, " +
+                    "with no warning in game. Prefix the ones others needn't see with \"#\", or make on/off floats " +
+                    "bools (eight bools cost a quarter of one float).");
             }
             else if (used > AasBitBudget * 3 / 4)
             {
                 ctx.Report.Warning(Category, $"Sync budget {used}/{AasBitBudget} bits used",
-                    $"{floats} floats and {ints} ints at 32 bits each, {bools} bools at 1. Parameters added " +
+                    $"{floats} floats and {ints} ints at 32 bits each, {bools} bools packed eight to a byte. Parameters added " +
                     "beyond the limit stop replicating silently, so there is not much headroom left.");
             }
         }

@@ -3754,6 +3754,31 @@ step before the guards (with the speed patch) went NaN, eight checks failed; now
   the skin). One float to switch it would make that toggle safe; the plush session would move its
   toggles onto it.
 
+### 43. ChilloutVR's Unity 6 + GS2 nightly (build 26689032, Unity 6000.3.26f1). Joe, 2026-11-16: "RED ALERT". Stable planned 2026-11-23
+Uploads stay on Unity 2022.3 until a Unity 6 CCK ships; the risk is 2022-built avatars in the Unity 6
+client. Decompiled and diffed against the scripting beta (2026-10-29) and GS2 nightly 26554805: nothing
+we ship breaks in the client code. Most changes came with GS2, not Unity 6.
+- **Sync budget: DONE on dev.** The GS2 client packs bools eight to a byte, holds the 3200 cap strictly,
+  skips a parameter that does not fit and keeps going, and makes Swimming, AFK and IsAnimatorEnabled
+  core (free). The report and the Avatar Tester's remote copy walk the same rules (`SyncBudgetTest`).
+  The stable client before GS2 still bills bools a bit each and stops at the first overflow.
+- **Withdrawn: a phantom hand on the jelly from a hidden player.** The new client zeroes a hidden
+  player's bones; the jelly scan, its wake check and the head press already skip a zero position.
+- **Props: notes out of date.** GS2 gives each prop part its own owner: a value write no longer
+  re-sends the prop's position, and Disallow Theft locks only while somebody holds it. The two reasons
+  `YapsPropBuilder` dropped the contact channel and left theft allowed are absent from the new code.
+  Revisit once Joe has tested a prop on the nightly.
+- **IsAnimatorEnabled is written on remote copies now** (false while network LOD hides the avatar), so
+  `CvrParameterNames.NeverFedNames` is only true for the wearer. No visible effect: a hidden copy draws
+  nothing. Left as is.
+- **Joe on the nightly, with a second player also on it:** YAPS and jelly avatars load with no magenta
+  or fallback shaders (the engine side no decompile shows); plug, jelly and squash in a world and a
+  personal mirror in VR (mirrors moved to pre-cull); toggles and sliders change once and keep, late
+  join gets the state (GS2 sends changes only); EyeHeightAsMeters and ScaleFactor at 1x and scaled (the
+  client measures height from the rest pose now); hair swing and a cloth toggled off and on (the
+  client's MagicaCloth2 lacks `disableMode`); a material-swap toggle on a jellied part; Player.log has
+  no `[ClipMaterialCrawler] ... disabled` line; the first-load hitch, re-measured.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
