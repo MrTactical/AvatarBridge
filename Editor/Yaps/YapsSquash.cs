@@ -259,11 +259,14 @@ namespace AvatarBridge
                 {
                     said += " " + FollowSwaps(root, clips, folder, null);
                     jelly = YapsJelly.On(root, jellyAt, null);
+                    BakeIfDented(root);
                 }
             }
             finally
             {
                 Reuse = null;
+                PendingSoft = null;
+                Measured = default;
                 YapsShaderPatcher.EndPass(null, null);
             }
             Debug.Log("[YAPS] Squash: " + said);
@@ -569,6 +572,7 @@ namespace AvatarBridge
             // copied, so the jelly finds a material to draw on. With no pair of its own the squash
             // still builds for parts the jelly alone takes.
             var jelly = PartsOf(root, out _);
+            Measured = (root, jelly);
             var jellyOwn = new Dictionary<SkinnedMeshRenderer, Texture2D>();
             if (jelly != null)
                 foreach (var kv in jelly.shares)
@@ -615,7 +619,25 @@ namespace AvatarBridge
             var shared = Shares(skins, bodySkin, root.name, folder, jellyOwn.ContainsKey);
             var swings = Swings(shared, skins, bodySkin, parts, root.name, folder, log);
             Lap("Shares");
-            var soft = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root, folder, log);
+            // The jelly's On follows every build and re-patches each copy to the roles it reads with
+            // every part on; patched to those here, the squash's own compile is the only one.
+            var final = Patched(jelly, dented, reach);
+            // Only the dent reads the soft body, and with every dented part on the jelly no copy
+            // keeps the dent. A part the jelly then refuses brings it back, so the bake waits for On.
+            var onto = new List<(Material copy, SkinnedMeshRenderer smr)>();
+            bool dents = (final(YapsShaderPatcher.Roles.Squash) & YapsShaderPatcher.Roles.Squash) != 0;
+            var soft = dents ? SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root, folder, log) : null;
+            PendingSoft = dents ? null : (Action) (() =>
+            {
+                var baked = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root, folder, new List<string>());
+                if (baked == null) return;
+                foreach (int m in still) { baked.depth[m] = 0f; baked.depth[m + 1] = 0f; }
+                foreach (var (copy, smr) in onto)
+                {
+                    baked.Set(copy, smr);
+                    EditorUtility.SetDirty(copy);
+                }
+            });
             Lap("Soft body");
             // Layers the wearer left out stay on their own material, still, by their choice. So
             // does a baked plug: it bends on its own and lies on no skin, so it is never what a
@@ -624,7 +646,7 @@ namespace AvatarBridge
             Hold();
             YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
                     .Where((m, slot) => m != null && !leave.Contains(m) && !YapsMarks.IsBakedMaterial(m) && Takes(x.smr, slot, x.shares)))
-                .Where(m => !m.HasProperty("_YAPS_DentOwn")), YapsShaderPatcher.Roles.Squash);
+                .Where(m => !m.HasProperty("_YAPS_DentOwn")), final(YapsShaderPatcher.Roles.Squash));
             Lap("Prewrite");
             // A slot moves for the dent or for the jelly.
             bool Takes(SkinnedMeshRenderer smr, int slot, Vector4[] shares) => Moves(smr.sharedMesh, slot, shares) ||
@@ -647,7 +669,7 @@ namespace AvatarBridge
                     if (!patched.TryGetValue(source, out var shader))
                     {
                         shaderFor.Start();
-                        patched[source] = shader = ShaderFor(source, report, log);
+                        patched[source] = shader = ShaderFor(source, report, log, final);
                         shaderFor.Stop();
                     }
                     if (shader == null)
@@ -694,6 +716,7 @@ namespace AvatarBridge
                         : Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
                     saving.Stop();
                     copies.Add(copy);
+                    onto.Add((copy, smr));
                     mats[slot] = copy;
                 }
                 assign.Start();
@@ -1057,16 +1080,32 @@ namespace AvatarBridge
 
         // A material already carrying YAPS gains the squash on its own shader; anything else is
         // patched with the squash alone.
-        static Shader ShaderFor(Material source, BridgeReport report, List<string> log)
+        // The roles a squash copy ends on once the jelly has put every part on: what YapsJelly.On
+        // asks for, read from the parts and the dented pairs the same way.
+        static Func<YapsShaderPatcher.Roles, YapsShaderPatcher.Roles> Patched(SoftParts jelly, List<int> dented, Vector4 reach)
         {
+            if (jelly == null || jelly.parts.Count == 0) return have => have | YapsShaderPatcher.Roles.Squash;
+            int reading = Mathf.Min(jelly.parts.Count, JellySlots);
+            var jellied = Vector4.zero;
+            for (int c = 0; c < 4 && c / 2 < dented.Count; c++)
+                if (dented[c / 2] >= 0 && dented[c / 2] < reading) jellied[c] = 2 * dented[c / 2] + c % 2 + 1;
+            return have => YapsJelly.RolesFor(have | YapsShaderPatcher.Roles.Squash, reach, reading, jellied);
+        }
+
+        static Shader ShaderFor(Material source, BridgeReport report, List<string> log, Func<YapsShaderPatcher.Roles, YapsShaderPatcher.Roles> final)
+        {
+            var squash = YapsShaderPatcher.Roles.Squash;
             if (source.HasProperty("_YAPS_DentOwn"))
             {
-                var with = YapsShaderPatcher.WithRole(source, YapsShaderPatcher.Roles.Squash, report);
+                // The squash alone if the jelly's copy will not compile: the jelly reports that one.
+                var with = YapsShaderPatcher.WithRoles(source, final(YapsShaderPatcher.RolesOf(source.shader)), report, out _)
+                           ?? YapsShaderPatcher.WithRole(source, squash, report);
                 if (with == null) log?.Add($"left \"{source.name}\" as it was: the shader it was patched from is no longer in the project");
                 return with;
             }
-            var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows,
-                roles: YapsShaderPatcher.Roles.Squash);
+            var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows, roles: final(squash));
+            if (shader == null && final(squash) != squash)
+                shader = YapsShaderPatcher.Patch(source, report, out refusal, out shadows, roles: squash);
             // Standard has no source to patch. YAPS Standard is its source, so the skin moves over
             // unchanged. Simple Lit never stands in on a body: it would repaint the skin.
             if (shader == null && source.shader != null && source.shader.name == "Standard")
@@ -1219,7 +1258,7 @@ namespace AvatarBridge
                         if (leave.Contains(original)) continue;
                         if (!copyOf.TryGetValue((smr, original), out var to))
                         {
-                            var shader = ShaderFor(original, report, null);
+                            var shader = ShaderFor(original, report, null, _ => YapsShaderPatcher.RolesOf(template.shader));
                             if (shader == null) { refused.Add(original.name); continue; }
                             to = new Material(YapsLock.Basis(original)) { name = original.name };
                             YapsShaderPatcher.Wear(to, shader);
@@ -1862,6 +1901,21 @@ namespace AvatarBridge
         // Only these are written over; a same-named avatar's in a shared folder never are.
         static HashSet<string> Reuse;
 
+        // Add's parts for the jelly's On that follows: measured again, they cost seconds and come
+        // out the same, as nothing Add builds is a skin they read.
+        internal static (Transform root, SoftParts parts) Measured;
+
+        // The soft body Add left unbaked because no copy read it: run after the jelly's On if a
+        // copy still keeps the dent.
+        static Action PendingSoft;
+
+        static void BakeIfDented(Transform root)
+        {
+            var bake = PendingSoft;
+            PendingSoft = null;
+            if (bake != null && Materials(root).Any(m => (YapsShaderPatcher.RolesOf(m.shader) & YapsShaderPatcher.Roles.Squash) != 0)) bake();
+        }
+
         // The squash's copies in the slots and in the clips that swap them, their shares and
         // the slot skin.
         static HashSet<string> Owned(Transform root, IList<AnimationClip> clips)
@@ -2218,6 +2272,7 @@ namespace AvatarBridge
                 if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
                 Lap("FollowSwaps");
                 var (on, refused) = YapsJelly.On(root, folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly", ctx.Report);
+                BakeIfDented(root);
                 if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue", string.Join(" ", on));
                 foreach (var why in refused) ctx.Report.Warning(Category, "A part is not on the jelly", why);
                 Lap("Jelly");
@@ -2225,6 +2280,8 @@ namespace AvatarBridge
             finally
             {
                 // A pass that threw still writes what it made, or the scene saves them inline.
+                PendingSoft = null;
+                Measured = default;
                 Flush();
                 Lap("Flush");
                 YapsShaderPatcher.EndPass("squash", ctx.Report);

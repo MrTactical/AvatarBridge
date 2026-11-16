@@ -333,7 +333,13 @@ namespace AvatarBridge
         }
 
         // A swap that keeps the material's own render queue; the converter's copies use the same.
-        public static void Wear(Material m, Shader shader) => ShaderSpiPatcher.Wear(m, shader);
+        // Instancing off: a skinned mesh is never instanced, and with no material asking, the
+        // build strips the instancing copy of every variant, half of what an upload compiles.
+        public static void Wear(Material m, Shader shader)
+        {
+            ShaderSpiPatcher.Wear(m, shader);
+            m.enableInstancing = false;
+        }
 
         // The shader a material already carrying YAPS needs to take on one more role: its own
         // when that is compiled in and current, else its original patched again with both. A
@@ -556,10 +562,16 @@ namespace AvatarBridge
                 AssetDatabase.Refresh();
             }
             var written = Deferred = new List<string>();
+            var asked = new Dictionary<string, Material>();
             Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
             try
             {
-                foreach (var m in list) Patch(m, null, out _, out _, roles: roles);
+                foreach (var m in list)
+                {
+                    int before = written.Count;
+                    Patch(m, null, out _, out _, roles: roles);
+                    foreach (string path in written.Skip(before)) asked[path] = m;
+                }
             }
             finally
             {
@@ -579,8 +591,26 @@ namespace AvatarBridge
                     finally { AssetDatabase.StopAssetEditing(); }
                 }
                 Timing.ImportMs += clock.ElapsedMilliseconds;
+                Precompile(written.Distinct().Where(p => p.EndsWith(".shader")).Select(p => (AssetDatabase.LoadAssetAtPath<Shader>(p), asked.TryGetValue(p, out var m) ? m : null)));
             }
         }
+
+        // Every pass of every new copy handed to the compiler at once, which runs a process per
+        // core: the check after each Patch then waits on work already under way, where alone it
+        // compiled one pass at a time. That check still runs and still refuses a broken copy.
+        static void Precompile(IEnumerable<(Shader shader, Material like)> copies)
+        {
+            foreach (var (shader, like) in copies)
+            {
+                if (shader == null) continue;
+                var stand = new Material(shader) { hideFlags = HideFlags.HideAndDontSave, shaderKeywords = like != null ? like.shaderKeywords : new string[0] };
+                for (int pass = 0; pass < stand.passCount; pass++) ShaderUtil.CompilePass(stand, pass, false);
+                Compiling.Add(stand);
+            }
+        }
+
+        // Kept until the pass ends: a stand destroyed while its passes compile may drop them.
+        static readonly List<Material> Compiling = new List<Material>();
 
         // Set while Prewrite runs: files are written and listed here, never imported one by one.
         static List<string> Deferred;
@@ -637,6 +667,8 @@ namespace AvatarBridge
             TimedFor = report;
             Timing = new Timings();
             Prewritten = null;
+            foreach (var stand in Compiling) UnityEngine.Object.DestroyImmediate(stand);
+            Compiling.Clear();
         }
 
         static bool HasError(Shader shader)

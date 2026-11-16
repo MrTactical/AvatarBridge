@@ -739,23 +739,28 @@ namespace AvatarBridge
             }.Select(b => animator.GetBoneTransform(b)).ToArray();
             var ownRadii = new float[8];
             var weights = body.sharedMesh.boneWeights;
+            // Read once: body.bones copies the whole array on every call, and this ran per vertex.
+            var bones = body.bones;
+            Vector3 bodyAt = body.transform.position;
+            Quaternion bodyTurn = body.transform.rotation;
             for (int c = 0; c < 8; c++)
             {
                 int s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
                 Transform from = ownBones[s0], to = ownBones[s0 + 1];
                 if (from == null || to == null) continue;
+                var owns = bones.Select(b => b != null && b.IsChildOf(from) && !b.IsChildOf(to)).ToArray();
+                Vector3 fp = from.position, seg = to.position - fp;
                 // The skin whose strongest bone hangs from this one and not from the next (twist bones
                 // and, for the hand, its fingers), round the middle of the bone alone: taken to the
                 // ends it took in the shoulder and the hip, an upper arm 98 mm thick, a thigh 184.
                 var near = new List<float>();
                 for (int v = 0; v < Mathf.Min(at.Length, weights.Length); v++)
                 {
-                    var bone = body.bones[weights[v].boneIndex0];
-                    if (bone == null || !bone.IsChildOf(from) || bone.IsChildOf(to)) continue;
-                    var w = body.transform.position + body.transform.rotation * at[v];
-                    var seg = to.position - from.position;
-                    float along = Vector3.Dot(w - from.position, seg) / Mathf.Max(seg.sqrMagnitude, 1e-9f);
-                    if (along > 0.2f && along < 0.8f) near.Add(Vector3.Distance(w, from.position + seg * along));
+                    int b = weights[v].boneIndex0;
+                    if (b >= owns.Length || !owns[b]) continue;
+                    var w = bodyAt + bodyTurn * at[v];
+                    float along = Vector3.Dot(w - fp, seg) / Mathf.Max(seg.sqrMagnitude, 1e-9f);
+                    if (along > 0.2f && along < 0.8f) near.Add(Vector3.Distance(w, fp + seg * along));
                 }
                 // ponytail: a low share, as a capsule is round and a limb is not: the median left one avatar's
                 // hand 56 mm thick and a thigh 236, pushing skin before they reached it. A limb a
@@ -968,9 +973,6 @@ namespace AvatarBridge
                 }
                 Undo.RecordObject(m, "Put the breasts on the jelly");
                 YapsShaderPatcher.Wear(m, shader);
-                // A skinned mesh is never instanced, so with no material asking, the build strips
-                // the instancing copy of every variant.
-                m.enableInstancing = false;
                 m.SetTexture(StateOf(pair), state);
                 m.SetVector(LatticeOf(pair), new Vector4(n.x, n.y, n.z, spacing));
                 m.SetVector("_YAPS_JellySlap", Slapped);
@@ -1032,9 +1034,8 @@ namespace AvatarBridge
 
         // Every part the squash built on m (a reach above 0) carried by the jelly, so its dent,
         // baked presses included, returns before doing anything (yaps_dent.cginc).
-        static bool SquashIdle(Material m, Vector4 parts)
+        static bool SquashIdle(Vector4 reach, Vector4 parts)
         {
-            var reach = m.GetVector("_YAPS_SquashReach");
             for (int c = 0; c < 4; c++)
                 if (reach[c] > 0f && !(parts[c] > 0f)) return false;
             return parts != Vector4.zero;
@@ -1076,7 +1077,7 @@ namespace AvatarBridge
         {
             var on = new List<string>();
             var refused = new List<string>();
-            var found = YapsSquash.PartsOf(root, out _);
+            var found = YapsSquash.Measured.root == root && YapsSquash.Measured.parts != null ? YapsSquash.Measured.parts : YapsSquash.PartsOf(root, out _);
             var names = found?.parts.Select(x => x.name).ToList() ?? new List<string>();
             var dented = YapsSquash.SettingsOf(root)?.dented ?? new List<string>();
             // Each part changes what the materials read, so put on one at a time every material
@@ -1105,11 +1106,16 @@ namespace AvatarBridge
         // What a squash material compiles in with these parts on the jelly. The squash only while it
         // still dents something: on every part the jelly has taken over, it costs a body's vertex
         // program 85% of its code to return early.
-        static YapsShaderPatcher.Roles RolesFor(Material m, int reading, Vector4 jellied)
+        static YapsShaderPatcher.Roles RolesFor(Material m, int reading, Vector4 jellied) =>
+            RolesFor(YapsShaderPatcher.RolesOf(m.shader), m.GetVector("_YAPS_SquashReach"), reading, jellied);
+
+        // From what a copy has and the squash's reach, before the copy exists: the squash patches
+        // straight to these, so its shaders are not compiled twice.
+        internal static YapsShaderPatcher.Roles RolesFor(YapsShaderPatcher.Roles have, Vector4 reach, int reading, Vector4 jellied)
         {
-            var roles = YapsShaderPatcher.RolesOf(m.shader) & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
+            var roles = have & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
                 | YapsShaderPatcher.JellyReading(reading);
-            if (SquashIdle(m, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
+            if (SquashIdle(reach, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
             return roles;
         }
 

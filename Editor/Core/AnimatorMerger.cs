@@ -9403,6 +9403,8 @@ namespace AvatarBridge
             // shared the original.
             var copies = new Dictionary<AnimationClip, AnimationClip>();
             var renamed = new SortedSet<string>(StringComparer.Ordinal);
+            var pending = new List<(AnimationClip copy, string target)>();
+            var stale = new List<string>();
             foreach (var child in layer.stateMachine.states)
             {
                 var state = child.state;
@@ -9420,15 +9422,28 @@ namespace AvatarBridge
                 {
                     copy = UnityEngine.Object.Instantiate(clip);
                     copy.name = clip.name + " Emote";
-                    string target = OutputAssetPaths.Claim(
-                        $"{ctx.OutputDir}/RehomedAssets/{SanitizeFileName(copy.name)}.anim");
-                    EnsureAssetFolder(System.IO.Path.GetDirectoryName(target).Replace('\\', '/'));
-                    AssetDatabase.CreateAsset(copy, target);
+                    pending.Add((copy, OutputAssetPaths.Claim(
+                        $"{ctx.OutputDir}/RehomedAssets/{SanitizeFileName(copy.name)}.anim", stale)));
                     copies[clip] = copy;
                 }
                 state.motion = copy;
                 EditorUtility.SetDirty(state);
                 renamed.Add($"\"{state.name.Substring(5)}\"");
+            }
+            // Written in one batch: a delete and a create each refreshed the database, per emote.
+            if (pending.Count > 0)
+            {
+                EnsureAssetFolder($"{ctx.OutputDir}/RehomedAssets");
+                if (stale.Count > 0) AssetDatabase.DeleteAssets(stale.ToArray(), new List<string>());
+                AssetDatabase.StartAssetEditing();
+                try
+                {
+                    foreach (var (copy, target) in pending) AssetDatabase.CreateAsset(copy, target);
+                }
+                finally
+                {
+                    AssetDatabase.StopAssetEditing();
+                }
             }
             if (renamed.Count == 0)
             {

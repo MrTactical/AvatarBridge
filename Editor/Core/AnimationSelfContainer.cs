@@ -1,6 +1,7 @@
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -140,7 +141,7 @@ namespace AvatarBridge
                     string extension = source is AvatarMask ? ".mask" : ".anim";
                     if (!(AssetDatabase.IsMainAsset(source)
                           && src.EndsWith(extension, StringComparison.OrdinalIgnoreCase)
-                          && AssetDatabase.CopyAsset(src, dst)))
+                          && Copy(src, dst)))
                     {
                         made[i] = Materialize(source, dst);
                         materialized++;
@@ -465,6 +466,26 @@ namespace AvatarBridge
                 return false; // the CCK ships with every project that can upload
             }
             return true;
+        }
+
+        // CopyAsset refreshes the database once a file even inside StartAssetEditing, a fifth of a
+        // second a clip. The bytes and a queued import do the same at once, with no .meta, so the
+        // copy gets a GUID of its own as CopyAsset's does. Packages live outside Assets on disk.
+        static bool Copy(string src, string dst)
+        {
+            if (!src.StartsWith("Assets/")) return AssetDatabase.CopyAsset(src, dst);
+            try
+            {
+                File.Copy(src, dst);
+                // A read-only source would hand the copy that flag, and Unity could not save it.
+                File.SetAttributes(dst, FileAttributes.Normal);
+                AssetDatabase.ImportAsset(dst);
+                return true;
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                return false;
+            }
         }
     }
 }
