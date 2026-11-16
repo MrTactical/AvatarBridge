@@ -387,6 +387,9 @@ namespace AvatarBridge
 
         internal static string PairOn(Transform picked, Regex want, string folder, string shaders, Options o, BridgeReport report, YapsSquash.SoftParts found = null)
         {
+            var laps = new List<string>();
+            var lapClock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step) { laps.Add($"{step} {lapClock.ElapsedMilliseconds}"); lapClock.Restart(); }
             var root = AvatarOf(picked);
             var animator = root != null ? root.GetComponentInChildren<Animator>() : null;
             if (animator == null || !animator.isHuman) return root == null ? "Select a humanoid avatar in the scene first." : $"{root.name} is not humanoid, so the jelly has no trunk to hang from.";
@@ -419,6 +422,7 @@ namespace AvatarBridge
             body.BakeMesh(baked);
             var at = baked.vertices;
             Object.DestroyImmediate(baked);
+            Lap("Measure");
             var pairSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares[0].Length))
                 .Where(v => shares.Any(s => s[v] >= 0.5f))
                 .Select(v => body.transform.position + body.transform.rotation * at[v]).ToArray();
@@ -532,6 +536,7 @@ namespace AvatarBridge
             float spacing = Mathf.Max(size.x / (n.x - 1), size.y / (n.y - 1), size.z / (n.z - 1));
 
             var core = Core(into, shaders, n, spacing, regions: sides, sleeps: false, withRider: false, offFar: true, lift: 1f);
+            Lap("Core");
             if (core == null) return "The jelly did not build; the console says why.";
             float radius = (size.x + size.y + size.z) / 6f - 0.01f;
             // How far each breast's own skin reaches toward the other off its centre: where the two
@@ -556,6 +561,7 @@ namespace AvatarBridge
             // w marks a part a cloth swings, for Live to turn the stretch back on.
             motion.w = clothed ? 1f : 0f;
             var depthMap = DepthMap(sides, shares, at, body, chest, undo, los, his, into);
+            Lap("Depth map");
             // The third pass too, which judges the same reach to wake a rest.
             foreach (var mat in core.provider.materials)
             {
@@ -603,6 +609,7 @@ namespace AvatarBridge
             for (int side = 0; side < sides; side++)
                 made.transform.Find($"Jelly Region {side}").SetPositionAndRotation(chest.position + turn * new Vector3(0.5f * (los[side].x + his[side].x), 0.5f * (los[side].y + his[side].y), los[side].z), turn);
             Undo.RegisterCreatedObjectUndo(made, "Put the breasts on the jelly");
+            Lap("Made");
             // Each region rides the bone that carries most of its breast's skin, which the cloth
             // swings: the anchor handed the bone, the region's place on it in the step's materials.
             // The region stays out of the bone's tree, where the cloth would take it for a bone of
@@ -850,6 +857,7 @@ namespace AvatarBridge
             // down and held, a squeeze shaking it. Shrunk, the tissue takes every touch and the cloth
             // only swings.
             var shrunk = PairShrink(root, part, made.transform);
+            Lap("Collide");
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
             for (int i = 0; i < pressing.Count; i++)
@@ -938,6 +946,7 @@ namespace AvatarBridge
                 });
             }
             string wired = !o.wire ? "the menu and animator left alone" : Wired(root.GetComponent<CVRAvatar>(), tells, squashed != null ? squashed.twitchSize : 0.02f, folder);
+            Lap("Wire");
 
             var state = core.state;
             var left = new List<string>();
@@ -975,10 +984,13 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(m);
                 patched++;
             }
+            Lap("Materials");
             AssetDatabase.SaveAssets();
+            Lap("Save");
             // Off with the mass; with the cloth carrying it, left as it was: switched on here, a
             // physics toggle off by default came on with it.
             var off = cloth ? restored : PairPhysics(root, part, on: false);
+            Lap("Physics"); Debug.Log("[AvatarBridge] Jelly steps (ms): " + string.Join(", ", laps));
             string each = sides == 2 ? " each" : "", litres = string.Join(" and ", volume.Select(x => $"{1000f * x:0.0}")) + " litres";
             return $"On {root.name}: {names[pair]} on {(sides == 2 ? "two lattices" : "a lattice")} of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles{each}, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
