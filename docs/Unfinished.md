@@ -6170,6 +6170,12 @@ times in `Diagnostics.md`. Still open, largest first:
 - **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
   10-15 s on a large VRCFury controller).
 - **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **Two digest moves since the 5.0.0 release run** (full corpus 2026-11-16 on 7a4d2163, 7 of 88
+  changed, the release run 0): six scenes of one avatar list two equal 5.3 MB texture warnings in
+  the other order (`AvatarWeight.cs:217` sorts by bytes alone, so ties follow material order:
+  add `ThenBy` name); one avatar's rehomed clip reads "Blush" where the baseline read "Blush 1",
+  the file still `Blush 1.anim`, so a name is now taken before the import that renames it. Both
+  cosmetic; check whether the speed work moved them before accepting a new baseline.
 - **Upload time, not measured yet** (Joe, 2026-11-16: "add the upload timing to the queue"). The
   CCK's bundle build compiles every patched shader's variants; fewer copies should help, nothing
   measured. A/B with `BundleBuildProbe` on one avatar, cold (salted include so Unity's shader
