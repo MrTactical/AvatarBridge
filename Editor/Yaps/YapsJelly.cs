@@ -982,6 +982,10 @@ namespace AvatarBridge
             }
             Lap("Materials");
             AssetDatabase.SaveAssets();
+            if (Unsaved(made) is string lost)
+                report?.Error(YapsSquash.Category, $"The jelly on {names[pair]} did not save",
+                    $"Read back after saving, {lost}, so it would do nothing in game and can break a clone of the avatar. " +
+                    "Convert again. If it happens again, send Diagnostics.md and the avatar's Jelly folder with the bug report.");
             Lap("Save");
             // Off with the mass; with the cloth carrying it, left as it was: switched on here, a
             // physics toggle off by default came on with it.
@@ -1130,25 +1134,7 @@ namespace AvatarBridge
         {
             int reading = Reading(root, names);
             var jellied = Parts(root, names, dented);
-            // A plug drawing its second copy is left to its own patch: a stand-in made from the
-            // original shader cannot carry the value that asks for the copy.
-            var wanted = YapsSquash.Materials(root).Where(m => YapsShaderPatcher.OriginalShaderOf(m) != null && !YapsShaderPatcher.Duplicate(m))
-                .Select(m => (m, roles: RolesFor(m, reading, jellied)))
-                .Where(x => YapsShaderPatcher.RolesOf(x.m.shader) != x.roles || YapsShaderPatcher.IsStale(x.m)).ToList();
-            foreach (var group in wanted.GroupBy(x => x.roles))
-            {
-                var stands = group.Select(x => new Material(YapsShaderPatcher.OriginalShaderOf(x.m)) { name = x.m.name }).ToList();
-                try { YapsShaderPatcher.Prewrite(stands, group.Key); }
-                finally { foreach (var stand in stands) Object.DestroyImmediate(stand); }
-            }
-            // A copy that would not compile is left as it was; the part's own pass reports it.
-            foreach (var (m, roles) in wanted)
-            {
-                var shader = YapsShaderPatcher.WithRoles(m, roles, report, out _);
-                if (shader == null || ShaderUtil.ShaderHasError(shader)) continue;
-                YapsShaderPatcher.Wear(m, shader);
-                EditorUtility.SetDirty(m);
-            }
+            Rewear(YapsSquash.Materials(root).Select(m => (m, RolesFor(m, reading, jellied))), report, false);
         }
 
         static void Settle(Transform root, List<string> names, List<string> dented, BridgeReport report)
@@ -1156,16 +1142,40 @@ namespace AvatarBridge
             int reading = Reading(root, names);
             var jellied = Parts(root, names, dented);
             bool any = jellied != Vector4.zero;
-            foreach (var m in YapsSquash.Materials(root))
+            // None on at all: the squash alone, as before the jelly was tried.
+            Rewear(YapsSquash.Materials(root).Where(m => m.HasProperty("_YAPS_JellyParts")).Select(m => (m, any ? RolesFor(m, reading, jellied)
+                : YapsShaderPatcher.RolesOf(m.shader) & ~(YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.JellyUnread) | YapsShaderPatcher.Roles.Squash)),
+                report, true);
+            // Every one, rewritten or not: the planned parts were carried as worn.
+            foreach (var m in YapsSquash.Materials(root).Where(m => m.HasProperty("_YAPS_JellyParts")))
             {
-                if (!m.HasProperty("_YAPS_JellyParts")) continue;
-                // None on at all: the squash alone, as before the jelly was tried.
-                var roles = any ? RolesFor(m, reading, jellied)
-                    : YapsShaderPatcher.RolesOf(m.shader) & ~(YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.JellyUnread) | YapsShaderPatcher.Roles.Squash;
+                Carried(m, root, names, dented);
+                EditorUtility.SetDirty(m);
+            }
+        }
+
+        // Each material onto the copy with these roles, the copies written and imported in one batch:
+        // one at a time, each import ran every package's import hooks, about fifty seconds a copy
+        // in a large project. A copy that would not compile is left as it was; the part's own pass
+        // reports it. A plug drawing its second copy is never batched: a stand-in made from the
+        // original shader cannot carry the value that asks for the copy. Before the parts are worn
+        // it is left to its own patch; when they settle it is patched on its own.
+        static void Rewear(IEnumerable<(Material m, YapsShaderPatcher.Roles roles)> asked, BridgeReport report, bool settling)
+        {
+            bool Batched((Material m, YapsShaderPatcher.Roles) x) => YapsShaderPatcher.OriginalShaderOf(x.m) != null && !YapsShaderPatcher.Duplicate(x.m);
+            var wanted = asked.Where(x => (settling || Batched(x))
+                    && (YapsShaderPatcher.RolesOf(x.m.shader) != x.roles || YapsShaderPatcher.IsStale(x.m))).ToList();
+            foreach (var group in wanted.Where(Batched).GroupBy(x => x.roles))
+            {
+                var stands = group.Select(x => new Material(YapsShaderPatcher.OriginalShaderOf(x.m)) { name = x.m.name }).ToList();
+                try { YapsShaderPatcher.Prewrite(stands, group.Key); }
+                finally { foreach (var stand in stands) Object.DestroyImmediate(stand); }
+            }
+            foreach (var (m, roles) in wanted)
+            {
                 var shader = YapsShaderPatcher.WithRoles(m, roles, report, out _);
                 if (shader == null || ShaderUtil.ShaderHasError(shader)) continue;
                 YapsShaderPatcher.Wear(m, shader);
-                if (m.HasProperty("_YAPS_JellyParts")) Carried(m, root, names, dented);
                 EditorUtility.SetDirty(m);
             }
         }
@@ -1721,20 +1731,14 @@ namespace AvatarBridge
                         points.Add(skin.transform.InverseTransformPoint(probes[side][k].position));
                         skinWeights.Add(new BoneWeight { boneIndex0 = b, weight0 = 1f });
                     }
-            // Kept in place when it exists: remade at the same path, scene copies read it Missing.
-            var skinMesh = AssetDatabase.LoadAssetAtPath<Mesh>(folder + "/Jelly_Skin.asset");
-            if (skinMesh == null)
+            var skinMesh = FilledMesh(folder + "/Jelly_Skin.asset", mesh =>
             {
-                skinMesh = new Mesh();
-                AssetDatabase.CreateAsset(skinMesh, folder + "/Jelly_Skin.asset");
-            }
-            skinMesh.Clear();
-            skinMesh.name = "Jelly skin";
-            skinMesh.vertices = points.ToArray();
-            skinMesh.boneWeights = skinWeights.ToArray();
-            skinMesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();
-            skinMesh.triangles = Enumerable.Range(0, 3 * points.Count).Select(i => i / 3).ToArray();
-            EditorUtility.SetDirty(skinMesh);
+                mesh.name = "Jelly skin";
+                mesh.vertices = points.ToArray();
+                mesh.boneWeights = skinWeights.ToArray();
+                mesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();
+                mesh.triangles = Enumerable.Range(0, 3 * points.Count).Select(i => i / 3).ToArray();
+            });
             skin.sharedMesh = skinMesh;
             skin.bones = skinBones.ToArray();
             skin.sharedMaterial = Save(new Material(Shader.Find("Standard")), folder + "/Jelly_Skin.mat");
@@ -1747,6 +1751,7 @@ namespace AvatarBridge
                 mat.SetFloat("_JellyProbes", probed);
                 mat.SetFloat("_JellyProbeReach", reach);
                 EditorUtility.SetDirty(mat);
+                AssetDatabase.SaveAssetIfDirty(mat);
             }
             // The client disposes the skinned buffer it fetched right after binding it, so the
             // squash read zeros; the previous-buffer mode binds a copy the provider owns.
@@ -1799,22 +1804,16 @@ namespace AvatarBridge
                     weights.Add(new BoneWeight { boneIndex0 = i, weight0 = 1f });
                 }
             }
-            // Kept in place when it exists: remade at the same path, scene copies read it Missing.
-            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(folder + "/Jelly_Probe_Markers.asset");
-            if (mesh == null)
+            var mesh = FilledMesh(folder + "/Jelly_Probe_Markers.asset", m =>
             {
-                mesh = new Mesh();
-                AssetDatabase.CreateAsset(mesh, folder + "/Jelly_Probe_Markers.asset");
-            }
-            mesh.Clear();
-            mesh.name = "Jelly probe markers";
-            mesh.vertices = points.ToArray();
-            mesh.SetUVs(1, at);
-            mesh.boneWeights = weights.ToArray();
-            mesh.bindposes = tips.Select(x => x.t.worldToLocalMatrix * markers.transform.localToWorldMatrix).ToArray();
-            mesh.triangles = triangles.ToArray();
-            mesh.RecalculateBounds();
-            EditorUtility.SetDirty(mesh);
+                m.name = "Jelly probe markers";
+                m.vertices = points.ToArray();
+                m.SetUVs(1, at);
+                m.boneWeights = weights.ToArray();
+                m.bindposes = tips.Select(x => x.t.worldToLocalMatrix * markers.transform.localToWorldMatrix).ToArray();
+                m.triangles = triangles.ToArray();
+                m.RecalculateBounds();
+            });
             markers.sharedMesh = mesh;
             markers.bones = tips.Select(x => x.t).ToArray();
             var mat = Save(new Material(shader), folder + "/Jelly_Probe_Markers.mat");
@@ -2040,6 +2039,46 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
             if (side) m.EnableKeyword("JELLY_SCAN");
             if (pass == 2) m.EnableKeyword("JELLY_POINTS");
             return m;
+        }
+
+        // What of a jelly's own files came back empty or at its defaults, read from memory and from
+        // disk, or null. One tester's build kept the skin mesh empty and the step materials at their
+        // defaults, and nothing said so until the avatar broke in game.
+        internal static string Unsaved(GameObject made)
+        {
+            var mesh = made.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => r.name.StartsWith("Jelly skin"))?.sharedMesh;
+            if (mesh != null && (mesh.vertexCount == 0 || OnDisk(mesh, @"^\s*m_VertexCount: 0\s*$")))
+                return $"its skin mesh is empty ({AssetDatabase.GetAssetPath(mesh)})";
+            foreach (var m in made.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(q => q.materials ?? new Material[0]).Distinct())
+                if (m != null && mesh != null && m.HasProperty("_JellySkinStride")
+                    && (m.GetFloat("_JellySkinStride") == 0f || OnDisk(m, @"^\s*- _JellySkinStride: 0\s*$")))
+                    return $"{m.name} is back at its defaults ({AssetDatabase.GetAssetPath(m)})";
+            return null;
+        }
+
+        // Only text assets can be read back; a binary project is checked in memory alone.
+        static bool OnDisk(Object asset, string pattern)
+        {
+            string path = AssetDatabase.GetAssetPath(asset);
+            return EditorSettings.serializationMode == SerializationMode.ForceText && File.Exists(path)
+                   && Regex.IsMatch(File.ReadAllText(path), pattern, RegexOptions.Multiline);
+        }
+
+        // Kept in place when it exists (remade at the same path, scene copies read it Missing), and
+        // on disk filled before this returns. Created first and filled after, a build that stopped
+        // or went unsaved in between shipped the mesh empty, and the client's clone of the avatar
+        // (Mini Me) failed on it.
+        internal static Mesh FilledMesh(string path, System.Action<Mesh> fill)
+        {
+            var mesh = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            bool made = mesh == null;
+            if (made) mesh = new Mesh();
+            mesh.Clear();
+            fill(mesh);
+            if (made) AssetDatabase.CreateAsset(mesh, path);
+            else EditorUtility.SetDirty(mesh);
+            AssetDatabase.SaveAssetIfDirty(mesh);
+            return mesh;
         }
 
         // Kept where it already exists, its values brought up to date in place: an asset deleted and

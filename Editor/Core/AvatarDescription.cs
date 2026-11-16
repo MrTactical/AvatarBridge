@@ -35,7 +35,7 @@ namespace AvatarBridge
             {
                 text = Build(ctx);
                 string relative = ctx.OutputDir.TrimEnd('/') + "/" + FileName;
-                File.WriteAllText(Path.GetFullPath(relative), text);
+                File.WriteAllText(Path.GetFullPath(relative), text, DiagnosticsWriter.Marked);
                 UnityEditor.AssetDatabase.ImportAsset(relative);
                 ctx.Report.Converted(Category, ctx.Target.name,
                     $"Wrote a store description to {FileName}. \"Copy description\" in the AvatarBridge " +

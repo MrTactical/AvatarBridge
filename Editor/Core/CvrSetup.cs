@@ -100,7 +100,7 @@ namespace AvatarBridge
             {
                 string path = ctx.OutputDir + "/" + reportName;
                 File.WriteAllText(Path.GetFullPath(Path.Combine(Application.dataPath, "..", path)),
-                    ctx.Report.ToMarkdown(avatarName));
+                    ctx.Report.ToMarkdown(avatarName), DiagnosticsWriter.Marked);
                 AssetDatabase.ImportAsset(path);
                 ctx.Report.SavedReportPath = path;
             }

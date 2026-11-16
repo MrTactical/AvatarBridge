@@ -937,13 +937,18 @@ namespace AvatarBridge
                 .SelectMany(c => c.animationClips).FirstOrDefault(c => c != null && c.name == "go_stand");
             string home = stand != null ? System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(stand)).Replace('\\', '/') : null;
             var found = new List<(AnimationClip, string)>();
+            // One project-wide search for every name, made only if home lacks one: a search each
+            // cost about a second in a large project.
+            ILookup<string, string> elsewhere = null;
             foreach (var (name, label) in GogoLibrary)
             {
                 var clip = home != null ? AssetDatabase.LoadAssetAtPath<AnimationClip>($"{home}/{name}.anim") : null;
                 if (clip == null)
                 {
-                    clip = AssetDatabase.FindAssets(name + " t:AnimationClip").Select(AssetDatabase.GUIDToAssetPath)
-                        .Where(p => System.IO.Path.GetFileNameWithoutExtension(p) == name).OrderBy(p => p, StringComparer.Ordinal)
+                    if (elsewhere == null)
+                        elsewhere = AssetDatabase.FindAssets("go_ t:AnimationClip").Select(AssetDatabase.GUIDToAssetPath)
+                            .ToLookup(p => System.IO.Path.GetFileNameWithoutExtension(p));
+                    clip = elsewhere[name].OrderBy(p => p, StringComparer.Ordinal)
                         .Select(AssetDatabase.LoadAssetAtPath<AnimationClip>).FirstOrDefault(c => c != null);
                 }
                 if (clip != null)

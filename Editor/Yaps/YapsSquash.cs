@@ -309,6 +309,12 @@ namespace AvatarBridge
             // Each reason said, so a tester knows whether the rebuild is theirs to press. The
             // shader is copied into the build, so a YAPS update reaches it only through one.
             tone = Tone.Warn;
+            // Checked before staleness: with its source gone a build reads as stale, and a
+            // rebuild would patch whatever shader it found instead.
+            var lost = mats.FirstOrDefault(m => YapsShaderPatcher.SourceShaderOf(m) != null && YapsShaderPatcher.OriginalShaderOf(m) == null);
+            if (lost != null)
+                return $"The shader \"{YapsShaderPatcher.SourceShaderOf(lost)}\" that {lost.name} was patched from is not in this project. " +
+                       "Import it before rebuilding, or the rebuild patches a different shader.";
             if (mats.Any(YapsShaderPatcher.IsStale))
                 return "Needs a rebuild: it was built by an older YAPS, so it still squashes the old way.";
             if (s != null && s.pairs.Count > 0 && RegionsOf(root, out string refusal) == null && refusal != null)
@@ -1219,7 +1225,7 @@ namespace AvatarBridge
             var leave = LeftAlone(root);
             // Patched in one batch first, as Add does: one at a time, each import cost about a
             // minute in a large project.
-            var pending = new List<Material>();
+            var pending = new List<(Material m, YapsShaderPatcher.Roles roles)>();
             Hold();
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -1227,9 +1233,12 @@ namespace AvatarBridge
                 var mats = smr.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
                     if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
-                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn") && !leave.Contains(m)));
+                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn") && !leave.Contains(m))
+                            .Select(m => (m, YapsShaderPatcher.RolesOf(mats[slot].shader))));
             }
-            YapsShaderPatcher.Prewrite(pending, YapsShaderPatcher.Roles.Squash);
+            // With the roles of the copy each swap stands in for, as the patch below asks for them.
+            foreach (var group in pending.GroupBy(x => x.roles))
+                YapsShaderPatcher.Prewrite(group.Select(x => x.m), group.Key);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mats = smr.sharedMaterials;
@@ -1469,12 +1478,26 @@ namespace AvatarBridge
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
                 list.Add(v);
             }
+            // Cells holding any share. A vertex with none of its own and none of these around it comes
+            // out zero whatever the weights, so it is skipped: most of a layer lies far from the parts.
+            var live = new HashSet<Vector3Int>(grid.Where(c => c.Value.Any(s => Some(body.share[s]))).Select(c => c.Key));
+            // Exactly zero: Vector4 == treats a tiny share as none.
+            bool Some(Vector4 q) => q.x != 0f || q.y != 0f || q.z != 0f || q.w != 0f;
+            bool Reaches(Vector3Int k)
+            {
+                for (int x = -2; x <= 2; x++)
+                    for (int y = -2; y <= 2; y++)
+                        for (int z = -2; z <= 2; z++)
+                            if (live.Contains(k + new Vector3Int(x, y, z))) return true;
+                return false;
+            }
             foreach (var m in skins)
             {
                 if (m != body)
                     for (int v = 0; v < m.at.Length; v++)
                     {
                         var k = Key(m.at[v]);
+                        if (!Some(m.share[v]) && !Reaches(k)) continue;
                         var sum = Vector4.zero;
                         float total = 0f, nearest = Fade * Fade;
                         for (int x = -2; x <= 2; x++)

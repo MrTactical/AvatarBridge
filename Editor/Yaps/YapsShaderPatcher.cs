@@ -562,7 +562,8 @@ namespace AvatarBridge
                 AssetDatabase.Refresh();
             }
             var written = Deferred = new List<string>();
-            Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
+            // Kept across calls in one pass: a caller writing two sets of roles makes two calls.
+            if (Prewritten == null) Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
             try
             {
                 foreach (var m in list) Patch(m, null, out _, out _, roles: roles);
@@ -596,6 +597,76 @@ namespace AvatarBridge
         // go stale, and dropped at the pass's end because a squash's copies run to megabytes.
         static Dictionary<string, (string[] Texts, int Passes, string Refusal, int Shadows, bool Frameless)> Prewritten;
 
+        // Across conversions and editor restarts: which copy a source came out as, so a conversion
+        // that would write the same copies again skips the text edits, ten to twenty seconds an
+        // avatar on a body of many Poiyomi materials. Keyed on what the edits read plus this build
+        // of the tool, so new patch code misses it; a copy changed or gone since misses it too.
+        // ponytail: the file only grows, one line a new copy; clear Library to reset it.
+        static Dictionary<string, (string[] Paths, long[] Sizes, long[] Times, int Passes, int Shadows, bool Frameless)> Memo;
+        static readonly string Build = "\0" + typeof(YapsShaderPatcher).Assembly.ManifestModule.ModuleVersionId;
+        static string MemoFile => Path.Combine(Path.GetDirectoryName(Application.dataPath), "Library", "AvatarBridge", "yaps-patch-memo.tsv");
+
+        static Shader Recall(string key, out int passes, out int shadows, out bool frameless)
+        {
+            passes = shadows = 0;
+            frameless = false;
+            if (Memo == null) LoadMemo();
+            if (!Memo.TryGetValue(key, out var m)) return null;
+            for (int i = 0; i < m.Paths.Length; i++)
+            {
+                var info = new FileInfo(m.Paths[i]);
+                if (!info.Exists || info.Length != m.Sizes[i] || info.LastWriteTimeUtc.Ticks != m.Times[i]) return null;
+            }
+            var shader = AssetDatabase.LoadAssetAtPath<Shader>(m.Paths[0]);
+            if (shader == null || Broken(shader) != null) return null;
+            passes = m.Passes;
+            shadows = m.Shadows;
+            frameless = m.Frameless;
+            return shader;
+        }
+
+        static void Remember(string key, string[] paths, int passes, int shadows, bool frameless)
+        {
+            if (Memo == null) LoadMemo();
+            var infos = paths.Select(p => new FileInfo(p)).ToArray();
+            if (infos.Any(i => !i.Exists)) return;
+            var entry = (paths, infos.Select(i => i.Length).ToArray(), infos.Select(i => i.LastWriteTimeUtc.Ticks).ToArray(), passes, shadows, frameless);
+            Memo[key] = entry;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(MemoFile));
+                File.AppendAllText(MemoFile, string.Join("\t", new[] { key.Replace("\0", " "), passes.ToString(), shadows.ToString(), frameless ? "1" : "0" }
+                    .Concat(paths.Select((p, i) => p + "\t" + entry.Item2[i] + "\t" + entry.Item3[i]))) + "\n");
+            }
+            catch (IOException) { }
+        }
+
+        static void LoadMemo()
+        {
+            Memo = new Dictionary<string, (string[], long[], long[], int, int, bool)>();
+            try
+            {
+                if (!File.Exists(MemoFile)) return;
+                foreach (string line in File.ReadAllLines(MemoFile))
+                {
+                    var f = line.Split('\t');
+                    if (f.Length < 7 || (f.Length - 4) % 3 != 0) continue;
+                    int n = (f.Length - 4) / 3;
+                    var paths = new string[n];
+                    var sizes = new long[n];
+                    var times = new long[n];
+                    bool ok = int.TryParse(f[1], out int passes) & int.TryParse(f[2], out int shadows);
+                    for (int i = 0; i < n; i++)
+                    {
+                        paths[i] = f[4 + 3 * i];
+                        ok &= long.TryParse(f[5 + 3 * i], out sizes[i]) & long.TryParse(f[6 + 3 * i], out times[i]);
+                    }
+                    if (ok) Memo[f[0].Replace(" ", "\0")] = (paths, sizes, times, passes, shadows, f[3] == "1");
+                }
+            }
+            catch (IOException) { }
+        }
+
         static string TransformKey(string shaderName, string yaps, List<ShaderSpiPatcher.SourceFile> unit) =>
             Hash(shaderName + "\0" + yaps + string.Concat(unit.Select(f => "\0" + f.OriginalPath + "\0" + f.Text.Length + "\0" + f.Text)), 32);
 
@@ -605,12 +676,12 @@ namespace AvatarBridge
         sealed class Timings
         {
             public long ErrorMs, MessagesMs, ImportMs, CompileMs;
-            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Loads, Compiled;
+            public int ErrorCalls, MessagesCalls, Imported, Patches, Reused, Remembered, Loads, Compiled;
             public bool Any => Patches + Loads + Imported > 0;
 
             public override string ToString() =>
                 $"compile {CompileMs} ({Compiled} copies), error check {ErrorMs} ({ErrorCalls} calls), messages {MessagesMs} ({MessagesCalls} calls), " +
-                $"prewrite import {ImportMs} ({Imported} files), patches {Patches} ({Reused} from Prewrite), " +
+                $"prewrite import {ImportMs} ({Imported} files), patches {Patches} ({Reused} from Prewrite, {Remembered} remembered), " +
                 $"YAPS source loads {Loads}";
         }
 
@@ -778,10 +849,19 @@ namespace AvatarBridge
             // A squash patches each material in Prewrite and again in its slot loop, and the
             // edits below come out the same both times.
             string key = Prewritten == null ? null : TransformKey(material.shader.name, yaps, unit);
-            int patchedPasses;
-            string blockRefusal;
-            bool frameless;
-            if (key != null && Prewritten.TryGetValue(key, out var done))
+            int patchedPasses = 0;
+            string blockRefusal = null;
+            bool frameless = false;
+            // A borrowed pass's copy is named from its lender's, which the key does not read. The
+            // source's GUID too: the copy records it, and two installs can hold the same text.
+            string memoKey = lent.Count == 0
+                ? TransformKey(material.shader.name, yaps, unit) + "\0" + AssetDatabase.AssetPathToGUID(sourcePath) + Build : null;
+            var remembered = memoKey != null ? Recall(memoKey, out patchedPasses, out skippedShadowPasses, out frameless) : null;
+            if (remembered != null)
+            {
+                Timing.Remembered++;
+            }
+            else if (key != null && Prewritten.TryGetValue(key, out var done))
             {
                 Timing.Reused++;
                 if (done.Texts != null)
@@ -845,8 +925,11 @@ namespace AvatarBridge
                 return null;
             }
 
-            var patched = WriteAndVerify(unit, sourcePath, SharedFolder, hash, out string compileError);
+            string compileError = null;
+            var patched = remembered ?? WriteAndVerify(unit, sourcePath, SharedFolder, hash, out compileError);
             if (patched != null && (compileError = Compiled(patched, asked)) != null) patched = null;
+            if (patched != null && remembered == null && memoKey != null)
+                Remember(memoKey, unit.Select(f => SharedFolder + "/" + f.OutputName).ToArray(), patchedPasses, skippedShadowPasses, frameless);
             if (patched == null)
             {
                 refusal = "the patched shader did not compile: " + compileError;
