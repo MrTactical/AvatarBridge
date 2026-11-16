@@ -952,16 +952,10 @@ namespace AvatarBridge
             var left = new List<string>();
             int patched = 0;
             var jellied = Parts(root, names, dented);
-            var worn = Worns(root);
-            int reading = Enumerable.Range(0, YapsSquash.JellySlots).LastOrDefault(x => x < names.Count && worn.Contains(names[x])) + 1;
+            int reading = Reading(root, names);
             foreach (var m in mats)
             {
-                // The squash compiled in only while it still dents something: on every part it
-                // carries the jelly has taken over, it costs a body's vertex program 85% of its
-                // code to return early.
-                var roles = YapsShaderPatcher.RolesOf(m.shader) & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
-                    | YapsShaderPatcher.JellyReading(reading);
-                if (SquashIdle(m, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
+                var roles = RolesFor(m, reading, jellied);
                 var shader = YapsShaderPatcher.WithRoles(m, roles, report, out string why);
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                 {
@@ -1017,8 +1011,12 @@ namespace AvatarBridge
             m.SetVector("_YAPS_JellyParts", Parts(root, names, dented));
         }
 
-        static HashSet<string> Worns(Transform root) =>
-            new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+        static HashSet<string> Worns(Transform root)
+        {
+            var worn = new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+            if (Planned != null) worn.UnionWith(Planned);
+            return worn;
+        }
 
         static Vector4 Parts(Transform root, List<string> names, List<string> dented)
         {
@@ -1079,13 +1077,91 @@ namespace AvatarBridge
             var on = new List<string>();
             var refused = new List<string>();
             var found = YapsSquash.PartsOf(root, out _);
-            foreach (var (name, _) in found?.parts ?? new List<(string, int)>())
+            var names = found?.parts.Select(x => x.name).ToList() ?? new List<string>();
+            var dented = YapsSquash.SettingsOf(root)?.dented ?? new List<string>();
+            // Each part changes what the materials read, so put on one at a time every material
+            // was patched again for each, one import apiece: a minute and a half a part on an
+            // avatar with many. Planned as all on, they are patched once, in one batch.
+            Planned = new HashSet<string>(names.Take(YapsSquash.JellySlots));
+            try
             {
-                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options { probes = YapsSquash.SettingsOf(root)?.otherColliders == true }, report, found);
-                Debug.Log("[YAPS] Jelly: " + said);
-                (said.StartsWith("On ") ? on : refused).Add(said);
+                if (names.Count > 0) Prepatch(root, names, dented, report);
+                foreach (var name in names)
+                {
+                    string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options { probes = YapsSquash.SettingsOf(root)?.otherColliders == true }, report, found);
+                    Debug.Log("[YAPS] Jelly: " + said);
+                    (said.StartsWith("On ") ? on : refused).Add(said);
+                }
             }
+            finally { Planned = null; }
+            // A part it refused was planned as on: its materials go back to what is really worn.
+            if (refused.Count > 0) Settle(root, names, dented, report);
             return (on, refused);
+        }
+
+        // Set while On puts every part on: the parts still to come count as worn.
+        static HashSet<string> Planned;
+
+        // What a squash material compiles in with these parts on the jelly. The squash only while it
+        // still dents something: on every part the jelly has taken over, it costs a body's vertex
+        // program 85% of its code to return early.
+        static YapsShaderPatcher.Roles RolesFor(Material m, int reading, Vector4 jellied)
+        {
+            var roles = YapsShaderPatcher.RolesOf(m.shader) & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
+                | YapsShaderPatcher.JellyReading(reading);
+            if (SquashIdle(m, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
+            return roles;
+        }
+
+        static int Reading(Transform root, List<string> names)
+        {
+            var worn = Worns(root);
+            return Enumerable.Range(0, YapsSquash.JellySlots).LastOrDefault(x => x < names.Count && worn.Contains(names[x])) + 1;
+        }
+
+        // Every squash material onto the shader it ends on, written and imported in one batch.
+        static void Prepatch(Transform root, List<string> names, List<string> dented, BridgeReport report)
+        {
+            int reading = Reading(root, names);
+            var jellied = Parts(root, names, dented);
+            // A plug drawing its second copy is left to its own patch: a stand-in made from the
+            // original shader cannot carry the value that asks for the copy.
+            var wanted = YapsSquash.Materials(root).Where(m => YapsShaderPatcher.OriginalShaderOf(m) != null && !YapsShaderPatcher.Duplicate(m))
+                .Select(m => (m, roles: RolesFor(m, reading, jellied)))
+                .Where(x => YapsShaderPatcher.RolesOf(x.m.shader) != x.roles || YapsShaderPatcher.IsStale(x.m)).ToList();
+            foreach (var group in wanted.GroupBy(x => x.roles))
+            {
+                var stands = group.Select(x => new Material(YapsShaderPatcher.OriginalShaderOf(x.m)) { name = x.m.name }).ToList();
+                try { YapsShaderPatcher.Prewrite(stands, group.Key); }
+                finally { foreach (var stand in stands) Object.DestroyImmediate(stand); }
+            }
+            // A copy that would not compile is left as it was; the part's own pass reports it.
+            foreach (var (m, roles) in wanted)
+            {
+                var shader = YapsShaderPatcher.WithRoles(m, roles, report, out _);
+                if (shader == null || ShaderUtil.ShaderHasError(shader)) continue;
+                YapsShaderPatcher.Wear(m, shader);
+                EditorUtility.SetDirty(m);
+            }
+        }
+
+        static void Settle(Transform root, List<string> names, List<string> dented, BridgeReport report)
+        {
+            int reading = Reading(root, names);
+            var jellied = Parts(root, names, dented);
+            bool any = jellied != Vector4.zero;
+            foreach (var m in YapsSquash.Materials(root))
+            {
+                if (!m.HasProperty("_YAPS_JellyParts")) continue;
+                // None on at all: the squash alone, as before the jelly was tried.
+                var roles = any ? RolesFor(m, reading, jellied)
+                    : YapsShaderPatcher.RolesOf(m.shader) & ~(YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.JellyUnread) | YapsShaderPatcher.Roles.Squash;
+                var shader = YapsShaderPatcher.WithRoles(m, roles, report, out _);
+                if (shader == null || ShaderUtil.ShaderHasError(shader)) continue;
+                YapsShaderPatcher.Wear(m, shader);
+                if (m.HasProperty("_YAPS_JellyParts")) Carried(m, root, names, dented);
+                EditorUtility.SetDirty(m);
+            }
         }
 
         // Every part's jelly off, the squash materials back on the squash alone. What was done.
