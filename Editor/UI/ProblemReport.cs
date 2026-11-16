@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -106,7 +105,7 @@ namespace AvatarBridge
                 b.Add(what);
                 b.Add(BridgeElements.Hint(
                     "Make the report packs a small zip into your output folder: what you wrote, the recent console " +
-                    "lines and the last conversion's report. It holds your project's file paths and object names, " +
+                    "lines and the last run's reports. It holds your project's file paths and object names, " +
                     "never the avatar's files. Nothing is sent: it opens a GitHub issue for you to check and submit."));
                 b.Add(BridgeElements.ButtonRow(
                     BridgeElements.Btn("Make the report", MakeReport, "Writes the zip and opens a pre-filled GitHub issue.", ButtonKind.Strong),
@@ -128,7 +127,7 @@ namespace AvatarBridge
         }
 
         // A log line as a person reads it: the tool's tag and the level off the front.
-        static string Plain(string line) => Regex.Replace(line, @"^\[(AvatarBridge|YAPS)\]\s*(Error:\s*)?", "");
+        static string Plain(string line) => Regex.Replace(line, @"^\[(AvatarBridge|YAPS)\]\s*(Error:\s*)?(✗\s*)?", "");
 
         internal static string Tool => _tool;
 
@@ -192,21 +191,55 @@ namespace AvatarBridge
             string console;
             lock (Recent) console = string.Join("\n\n", Recent);
 
-            using (var stream = new FileStream(zip, FileMode.Create))
-            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create))
-            {
-                void Add(string name, string text)
-                {
-                    using (var w = new StreamWriter(archive.CreateEntry(name).Open(), new UTF8Encoding(false))) w.Write(text);
-                }
-                Add("What happened.txt", sb.ToString());
-                Add("Console.txt", console);
-                if (reports.Count > 0)
-                    foreach (var md in Directory.GetFiles(folder, "*.md"))
-                        Add(Path.GetFileName(md), File.ReadAllText(md));
-            }
+            var files = new List<(string name, string text)> { ("What happened.txt", sb.ToString()), ("Console.txt", console) };
+            if (reports.Count > 0)
+                files.AddRange(Directory.GetFiles(folder, "*.md").Select(md => (Path.GetFileName(md), File.ReadAllText(md))));
+            File.WriteAllBytes(zip, StoredZip(files));
             AssetDatabase.Refresh();
             return zip;
+        }
+
+        // A zip of text files, stored rather than compressed: System.IO.Compression's ZipArchive is
+        // missing from a project on the .NET Framework profile, and the tool would not compile there.
+        static byte[] StoredZip(List<(string name, string text)> files)
+        {
+            var output = new MemoryStream();
+            var w = new BinaryWriter(output);
+            var central = new MemoryStream();
+            var c = new BinaryWriter(central);
+            foreach (var (name, text) in files)
+            {
+                byte[] n = Encoding.UTF8.GetBytes(name), data = new UTF8Encoding(false).GetBytes(text);
+                uint crc = Crc32(data);
+                uint at = (uint) output.Position;
+                // Local header: version 2.0, the UTF-8 name flag, stored, no date.
+                w.Write(0x04034b50u); w.Write((ushort) 20); w.Write((ushort) 0x0800); w.Write((ushort) 0);
+                w.Write(0u); w.Write(crc); w.Write((uint) data.Length); w.Write((uint) data.Length);
+                w.Write((ushort) n.Length); w.Write((ushort) 0); w.Write(n); w.Write(data);
+                c.Write(0x02014b50u); c.Write((ushort) 20); c.Write((ushort) 20); c.Write((ushort) 0x0800); c.Write((ushort) 0);
+                c.Write(0u); c.Write(crc); c.Write((uint) data.Length); c.Write((uint) data.Length);
+                c.Write((ushort) n.Length); c.Write((ushort) 0); c.Write((ushort) 0); c.Write((ushort) 0); c.Write((ushort) 0);
+                c.Write(0u); c.Write(at); c.Write(n);
+            }
+            uint start = (uint) output.Position;
+            c.Flush();
+            w.Write(central.ToArray());
+            w.Write(0x06054b50u); w.Write((ushort) 0); w.Write((ushort) 0);
+            w.Write((ushort) files.Count); w.Write((ushort) files.Count);
+            w.Write((uint) central.Length); w.Write(start); w.Write((ushort) 0);
+            w.Flush();
+            return output.ToArray();
+        }
+
+        static uint Crc32(byte[] data)
+        {
+            uint crc = 0xFFFFFFFF;
+            foreach (byte b in data)
+            {
+                crc ^= b;
+                for (int k = 0; k < 8; k++) crc = (crc >> 1) ^ (0xEDB88320u & (uint) -(int) (crc & 1));
+            }
+            return ~crc;
         }
 
         // The converter's output folder as last saved, without needing the CCK to read the settings.

@@ -1,5 +1,4 @@
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -33,15 +32,18 @@ namespace AvatarBridge.Regression
                 File.WriteAllBytes(Path.Combine(full, "Body.png"), new byte[] { 1, 2, 3 });
                 zip = ProblemReport.WriteZip("AvatarBridge", "The toggle stayed on.");
                 Check(Path.GetDirectoryName(zip) == full.TrimEnd(Path.DirectorySeparatorChar), $"beside the newest report ({zip})");
-                using (var archive = new ZipArchive(File.OpenRead(zip), ZipArchiveMode.Read))
-                {
-                    var names = archive.Entries.Select(e => e.FullName).OrderBy(n => n).ToArray();
-                    Check(names.SequenceEqual(new[] { "Console.txt", "ConversionReport.md", "Diagnostics.md", "What happened.txt" }),
-                        "text only: " + string.Join(", ", names));
-                    string what;
-                    using (var r = new StreamReader(archive.GetEntry("What happened.txt").Open())) what = r.ReadToEnd();
-                    Check(what.Contains("The toggle stayed on.") && what.Contains("AvatarBridge:"), "it holds the user's words and the versions");
-                }
+                // Read back with Windows' own unzip, as the person opening it would.
+                string outDir = Path.Combine(Path.GetTempPath(), "ProblemReportTest");
+                if (Directory.Exists(outDir)) Directory.Delete(outDir, true);
+                var unzip = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("tar", $"-xf \"{zip}\" -C \"{Directory.CreateDirectory(outDir).FullName}\"")
+                    { UseShellExecute = false, CreateNoWindow = true });
+                unzip.WaitForExit();
+                var names = Directory.GetFiles(outDir).Select(Path.GetFileName).OrderBy(n => n).ToArray();
+                Check(unzip.ExitCode == 0 && names.SequenceEqual(new[] { "Console.txt", "ConversionReport.md", "Diagnostics.md", "What happened.txt" }),
+                    $"it unzips, text only (exit {unzip.ExitCode}): " + string.Join(", ", names));
+                string what = File.Exists(Path.Combine(outDir, "What happened.txt")) ? File.ReadAllText(Path.Combine(outDir, "What happened.txt")) : "";
+                Check(what.Contains("The toggle stayed on.") && what.Contains("AvatarBridge:"), "it holds the user's words and the versions");
+                Directory.Delete(outDir, true);
             }
             finally
             {
