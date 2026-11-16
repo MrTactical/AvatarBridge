@@ -2476,7 +2476,7 @@ Find your symptom:
 | **Physics in game** | [broken chain](#a-bone-chain-hangs-broken-or-magicacloth-throws-in-the-scene-view) · [floating hair](#hair-or-a-tail-floats-upward-in-game-and-im-using-dynamicbone) · [moves differently than Unity](#a-chain-moves-differently-in-game-than-in-unity) · [numbered cloth objects](#numbered-cloth-objects-magicacloth_something-magicacloth_something-2) |
 | **Face, eyes, viewpoint** | [face tracking missing](#face-tracking-wasnt-set-up-and-the-avatar-definitely-has-it) · [blink problems](#your-eyes-stay-open-start-closed-or-lose-a-pupil) · [viewpoint off the head](#the-viewpoint-or-voice-position-is-nowhere-near-the-head) |
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
-| **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) |
+| **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) · [live tissue jumps or breaks Mini Me](#the-live-tissue-jumps-or-flickers-when-pressed-or-mini-me-breaks-the-avatar) |
 | **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [plug stops at a portal](#yaps-a-plug-stops-at-a-portal-entrance) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
 
@@ -2813,6 +2813,15 @@ The report splits these in two: **FIXABLE** (nothing has flagged it yet) and **P
 (the material already carries the flag and the property still isn't in the shader: the
 section is off, or the animation predates the installed Poiyomi). The second group is worth knowing
 before you spend an evening on it.
+
+### The live tissue jumps or flickers when pressed, or Mini Me breaks the avatar
+
+**Reconvert on a current release**, and read the report. A build in one project kept the live
+tissue's own helper files empty or at their defaults: the tissue then read nothing sensible when a
+hand pressed it, and a clone of the avatar (Mini Me) failed on the empty mesh and took the avatar
+with it. The helper mesh is now written whole at once, and the build reads its files back after
+saving. If they still come back empty, the report says **"The jelly on ... did not save"** with the
+file it lost: send `Diagnostics.md` and the avatar's `Jelly` folder with the bug report.
 
 ### Other people see my avatar flickering, cycling colours or thrashing: I don't
 

@@ -982,6 +982,10 @@ namespace AvatarBridge
             }
             Lap("Materials");
             AssetDatabase.SaveAssets();
+            if (Unsaved(made) is string lost)
+                report?.Error(YapsSquash.Category, $"The jelly on {names[pair]} did not save",
+                    $"Read back after saving, {lost}, so it would do nothing in game and can break a clone of the avatar. " +
+                    "Convert again. If it happens again, send Diagnostics.md and the avatar's Jelly folder with the bug report.");
             Lap("Save");
             // Off with the mass; with the cloth carrying it, left as it was: switched on here, a
             // physics toggle off by default came on with it.
@@ -1747,6 +1751,7 @@ namespace AvatarBridge
                 mat.SetFloat("_JellyProbes", probed);
                 mat.SetFloat("_JellyProbeReach", reach);
                 EditorUtility.SetDirty(mat);
+                AssetDatabase.SaveAssetIfDirty(mat);
             }
             // The client disposes the skinned buffer it fetched right after binding it, so the
             // squash read zeros; the previous-buffer mode binds a copy the provider owns.
@@ -2034,6 +2039,29 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
             if (side) m.EnableKeyword("JELLY_SCAN");
             if (pass == 2) m.EnableKeyword("JELLY_POINTS");
             return m;
+        }
+
+        // What of a jelly's own files came back empty or at its defaults, read from memory and from
+        // disk, or null. One tester's build kept the skin mesh empty and the step materials at their
+        // defaults, and nothing said so until the avatar broke in game.
+        internal static string Unsaved(GameObject made)
+        {
+            var mesh = made.GetComponentsInChildren<SkinnedMeshRenderer>(true).FirstOrDefault(r => r.name.StartsWith("Jelly skin"))?.sharedMesh;
+            if (mesh != null && (mesh.vertexCount == 0 || OnDisk(mesh, @"^\s*m_VertexCount: 0\s*$")))
+                return $"its skin mesh is empty ({AssetDatabase.GetAssetPath(mesh)})";
+            foreach (var m in made.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(q => q.materials ?? new Material[0]).Distinct())
+                if (m != null && mesh != null && m.HasProperty("_JellySkinStride")
+                    && (m.GetFloat("_JellySkinStride") == 0f || OnDisk(m, @"^\s*- _JellySkinStride: 0\s*$")))
+                    return $"{m.name} is back at its defaults ({AssetDatabase.GetAssetPath(m)})";
+            return null;
+        }
+
+        // Only text assets can be read back; a binary project is checked in memory alone.
+        static bool OnDisk(Object asset, string pattern)
+        {
+            string path = AssetDatabase.GetAssetPath(asset);
+            return EditorSettings.serializationMode == SerializationMode.ForceText && File.Exists(path)
+                   && Regex.IsMatch(File.ReadAllText(path), pattern, RegexOptions.Multiline);
         }
 
         // Kept in place when it exists (remade at the same path, scene copies read it Missing), and

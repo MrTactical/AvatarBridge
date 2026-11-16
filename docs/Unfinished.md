@@ -3783,6 +3783,26 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
+### 46. A Mini Me clone never squashes or jiggles. Joe in game, 2026-11-16, OPEN, waits for his call
+
+The clone (ChilloutVR's ContentCloneManager, as used by Mini Me) draws the host's skinned buffer with
+the host's materials under its own `unity_ObjectToWorld`, somewhere else and smaller. The dent
+(`yaps_dent.cginc` 807, 1397) and the jelly (`yaps_jelly.cginc` 402, 429) take a vertex to world
+through that matrix and measure it against host-world data (the follow matrices, the skin buffer,
+the lattice and anchors), so every clone vertex reads out of reach and keeps its rest shape. Not
+proven in game; read from the code by the plush build session. Partly by design: 98d8aaaf and
+96188335 leave another copy's skin alone on purpose, because the clone's chest and hips were
+dragged across to the wearer as long bars. A fix makes the clone deform, a feature, not a repair.
+
+Possible fix: deform in the host's frame when the draw is a displaced clone (its translation more
+than about a centimetre off the host's), mapping back with the host's inverse so the clone's own
+matrix then places and scales it. Needs the host's render matrix per material copy (the follow
+array is full, so one more data provider per renderer) and the exact matrix Unity draws a skinned
+renderer with. The host, mirrors and the first-person copy keep today's path.
+
+Also seen on the same avatars: a jelly whose skin mesh shipped empty crashed the clone outright
+("vertex buffer #0 is null") and broke the host. FilledMesh (089b0d74) writes the skin full at once.
+
 ### 45. Two squash setup notes from moving a squashed avatar between projects. 2026-11-16, from the plush build session
 
 - **Fixed on dev:** with the shader a squash material was patched from missing (the patch names its
@@ -6131,6 +6151,10 @@ times in `Diagnostics.md`. Still open, largest first:
 - **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
   10-15 s on a large VRCFury controller).
 - **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **Upload time, not measured yet** (Joe, 2026-11-16: "add the upload timing to the queue"). The
+  CCK's bundle build compiles every patched shader's variants; fewer copies should help, nothing
+  measured. A/B with `BundleBuildProbe` on one avatar, cold (salted include so Unity's shader
+  cache cannot answer): the conversion from before the speed work against the current one.
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
 - **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler

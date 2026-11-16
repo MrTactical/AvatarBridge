@@ -36,6 +36,21 @@ namespace AvatarBridge.Regression
                 var again = YapsJelly.FilledMesh(path, m => { m.vertices = points.Take(8).ToArray(); m.triangles = Enumerable.Range(0, 24).Select(i => i / 3).ToArray(); });
                 Check(ReferenceEquals(kept, again), "an existing mesh is kept in place");
                 Check(File.ReadAllText(path).Contains("m_VertexCount: 8"), "a refill is on disk when it returns");
+
+                // The read-back: a jelly whose skin is empty, in memory or on disk, is named.
+                var made = new GameObject("JellySkinOnDiskMade");
+                try
+                {
+                    var skin = new GameObject("Jelly skin [FPR]").AddComponent<SkinnedMeshRenderer>();
+                    skin.transform.SetParent(made.transform, false);
+                    skin.sharedMesh = again;
+                    Check(YapsJelly.Unsaved(made) == null, "a filled skin reads as saved");
+                    var empty = YapsJelly.FilledMesh(folder + "/Empty_Skin.asset", m => { });
+                    skin.sharedMesh = empty;
+                    string said = YapsJelly.Unsaved(made);
+                    Check(said != null && said.Contains("empty"), $"an empty skin is named ({said})");
+                }
+                finally { Object.DestroyImmediate(made); }
             }
             finally
             {
