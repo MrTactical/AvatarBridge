@@ -6099,7 +6099,7 @@ these avatars is in a headset, and the two halves of the cost scale differently:
 
 ### Conversion speed: what is left (2026-11-16)
 
-The first pass (b0185855) compiled each squash shader once, in parallel, skipped the soft bake when
+The first pass compiled each squash shader once, skipped the soft bake when
 the jelly takes every dented part, and batched clip and emote writes. Measured from each step's
 times in `Diagnostics.md`. Still open, largest first:
 
@@ -6116,3 +6116,6 @@ times in `Diagnostics.md`. Still open, largest first:
 - **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
+- **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler
+  at once measured nothing: in batch, Unity compiles a copy during its import, and the per-pass
+  check after it returns in ~0 ms either way. The import is the cost (~10 s per 70 files here).
