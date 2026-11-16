@@ -3285,6 +3285,9 @@ namespace AvatarBridge.Regression
         //   -jellyHandSway m period     the held hand drifts m sideways and up and back, period frames a round
         //   -jellyHandSweep period      the held hand goes from the skin to its depth and back, period frames
         //   -jellyHandArm deg           the arm comes in deg off the part's outward, from above
+        //   -jellyHandBob m hz          once the hand is in, it stays put in the world and the avatar bobs m up
+        //                               and down every 1.5 s, moved hz times a second (0 every frame), as a
+        //                               remote copy's idle comes in packets
         class Stab
         {
             public int frames = 300, glideEnd = 200, hitchAt = -1, hitchN = 1, turnAt = -1, poisonAt = -1, kickAt = -1, shoveAt = -1, rings, firstBad = -1, badFrames;
@@ -3292,6 +3295,9 @@ namespace AvatarBridge.Regression
             public int handSweep, handSwayPeriod;
             public float handDepth, handGesture, handTall = 1.6f, handCollider, handSway, handArm, jumpMost, jumpSum, jerkMost, lastJump, lastFurthest = -1f;
             public Transform handCapsule;
+            public float handBob, handBobHz;
+            public Vector3 bobBase, handFixed, chestFixed;
+            public bool bobSet, handFixedSet;
             public float[] gripW = new float[8];
             public float speed, hitchSecs, turnDeg, kickBy, shoveBy, fps, bgBase = -1f, bgMost, furthestMost, tearMost, relMost, after30Most;
             public float[] pace;
@@ -3320,6 +3326,7 @@ namespace AvatarBridge.Regression
                 if (Arg("-jellyHandSway") is string hs) { handSway = F(hs); handSwayPeriod = int.Parse(Arg("-jellyHandSway", 2)); }
                 if (Arg("-jellyHandSweep") is string hw) handSweep = int.Parse(hw);
                 if (Arg("-jellyHandArm") is string ha) handArm = F(ha);
+                if (Arg("-jellyHandBob") is string hb) { handBob = F(hb); handBobHz = F(Arg("-jellyHandBob", 2)); }
                 said = string.Join(" ", a.SkipWhile(x => x != "-jellyStab").Skip(1).Where(x => x != "-logFile"));
             }
         }
@@ -3359,6 +3366,13 @@ namespace AvatarBridge.Regression
             Time.captureDeltaTime = next;
             if (st.speed > 0 && frame >= 30 && frame < st.glideEnd) carried.position += carried.forward * (st.speed * Mathf.Min((frame - 30) / 30f, 1f) * Time.deltaTime);
             if (frame == st.turnAt) carried.rotation = Quaternion.AngleAxis(st.turnDeg, Vector3.up) * carried.rotation;
+            if (st.handBob > 0f && st.handAt >= 0 && frame >= st.handAt + 21)
+            {
+                if (!st.bobSet) { st.bobBase = carried.position; st.bobSet = true; }
+                float t = Time.timeSinceLevelLoad;
+                if (st.handBobHz > 0f) t = Mathf.Floor(t * st.handBobHz) / st.handBobHz;
+                carried.position = st.bobBase + Vector3.up * (st.handBob * Mathf.Sin(2f * Mathf.PI * t / 1.5f));
+            }
 
             if (st.handAt >= 0) StabHands(st);
             var raw = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
@@ -3515,8 +3529,15 @@ namespace AvatarBridge.Regression
                     float ph = 2f * Mathf.PI * frame / st.handSwayPeriod;
                     wrist += st.handSway * (Mathf.Sin(ph) * breastRegions[0].right + Mathf.Sin(2f * ph) * 0.5f * breastRegions[0].up + Mathf.Cos(ph) * 0.5f * outward);
                 }
+                var chest = wrist + arm * 0.45f;
+                if (st.handBob > 0f && frame >= st.handAt + 20)
+                {
+                    if (!st.handFixedSet) { st.handFixed = wrist; st.chestFixed = chest; st.handFixedSet = true; }
+                    wrist = st.handFixed;
+                    chest = st.chestFixed;
+                }
                 hand[1] = new Vector4(wrist.x, wrist.y, wrist.z, g);
-                chestAt[1] = wrist + arm * 0.45f;
+                chestAt[1] = chest;
                 root[1] = new Vector4(chestAt[1].x, swing.position.y, chestAt[1].z, st.handTall);
 #if AVATARBRIDGE_MAGICA
                 if (st.handCollider > 0f)

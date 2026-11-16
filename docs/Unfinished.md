@@ -3790,13 +3790,14 @@ arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the
   4.3-9 mm a frame at worst. Full verify unchanged (grip pull 88.4 mm, ring 16.3 mm).
 - **Not reproduced:** a steady open hand, 4 to 10 cm in, still or swaying 1 cm, sliding in and
   out, arm 60 degrees off, a smaller player, a second player's hand shifting the slots, uneven
-  frame times, a MagicaCloth capsule on the hand with and without Other Colliders' probes: all
-  0 to 0.6 mm a frame, no grips. Desktop gestures change only on a keyboard combo
+  frame times, a MagicaCloth capsule on the hand with and without Other Colliders' probes, the hand
+  fixed in the world while the avatar bobs 1-2 cm in 10 Hz packet steps or smoothly: all 0 to
+  1.7 mm a frame, no grips. Desktop gestures change only on a keyboard combo
   (`CVRInputModule_Keyboard.Update_Emotes`), so his gesture was steady and the flicker fix is
   probably not his case.
-- Next: Joe retests on rc18 (reconverted). If it still jumps, record the remote copy (packet-step
-  anchor) and his own hand's values: the harness's anchor is local and smooth, which is the one
-  difference left untried.
+- Next: Joe retests on rc18 (reconverted). If it still jumps, record his own hand's values in game
+  (the provider's `_CVR_PlayerLeftHandPositions[0]`, w the gesture, and the root's w, his
+  avatar's height) and the slot texels 0 to 15 and 112 to 119 while it jumps.
 
 ## 5.0.1
 
