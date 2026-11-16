@@ -6155,6 +6155,12 @@ times in `Diagnostics.md`. Still open, largest first:
   CCK's bundle build compiles every patched shader's variants; fewer copies should help, nothing
   measured. A/B with `BundleBuildProbe` on one avatar, cold (salted include so Unity's shader
   cache cannot answer): the conversion from before the speed work against the current one.
+  Measured 2026-11-16 instead, once, cold (Library/ShaderCache cleared, 535eae0e, 8 cores at
+  BelowNormal): the bundle build took 100 s, 85 s of it shader compiles. The two squash body copies
+  took ~28 s each (base, Outline and ForwardAdd passes ~9 s apiece), JellyStep 10 s (57 s CPU,
+  already shader_feature_local). The A/B was dropped: the speed work leaves the final shaders
+  identical, so it cannot change what the upload compiles. Levers left: fewer body copies (each
+  role set is its own copy), or a cheaper JellyStep fragment.
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
 - **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler
