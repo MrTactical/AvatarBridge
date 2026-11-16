@@ -562,7 +562,8 @@ namespace AvatarBridge
                 AssetDatabase.Refresh();
             }
             var written = Deferred = new List<string>();
-            Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
+            // Kept across calls in one pass: a caller writing two sets of roles makes two calls.
+            if (Prewritten == null) Prewritten = new Dictionary<string, (string[], int, string, int, bool)>();
             try
             {
                 foreach (var m in list) Patch(m, null, out _, out _, roles: roles);

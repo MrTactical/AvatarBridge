@@ -146,7 +146,7 @@ namespace AvatarBridge
                 string path = ctx.OutputDir + "/ConversionReport.md";
                 string name = ctx.Target != null ? ctx.Target.name : descriptor.gameObject.name;
                 File.WriteAllText(Path.GetFullPath(Path.Combine(Application.dataPath, "..", path)),
-                    ctx.Report.ToMarkdown(name));
+                    ctx.Report.ToMarkdown(name), DiagnosticsWriter.Marked);
                 AssetDatabase.ImportAsset(path);
                 ctx.Report.SavedReportPath = path;
             }

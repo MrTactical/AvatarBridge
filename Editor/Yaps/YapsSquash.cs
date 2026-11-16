@@ -1219,7 +1219,7 @@ namespace AvatarBridge
             var leave = LeftAlone(root);
             // Patched in one batch first, as Add does: one at a time, each import cost about a
             // minute in a large project.
-            var pending = new List<Material>();
+            var pending = new List<(Material m, YapsShaderPatcher.Roles roles)>();
             Hold();
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
@@ -1227,9 +1227,12 @@ namespace AvatarBridge
                 var mats = smr.sharedMaterials;
                 for (int slot = 0; slot < mats.Length; slot++)
                     if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
-                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn") && !leave.Contains(m)));
+                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn") && !leave.Contains(m))
+                            .Select(m => (m, YapsShaderPatcher.RolesOf(mats[slot].shader))));
             }
-            YapsShaderPatcher.Prewrite(pending, YapsShaderPatcher.Roles.Squash);
+            // With the roles of the copy each swap stands in for, as the patch below asks for them.
+            foreach (var group in pending.GroupBy(x => x.roles))
+                YapsShaderPatcher.Prewrite(group.Select(x => x.m), group.Key);
             foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
                 var mats = smr.sharedMaterials;

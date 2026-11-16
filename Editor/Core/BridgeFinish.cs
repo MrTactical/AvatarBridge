@@ -84,7 +84,7 @@ namespace AvatarBridge
         {
             string path = ctx.OutputDir + "/" + reportName;
             string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
-            File.WriteAllText(absolute, ctx.Report.ToMarkdown(ctx.Target.name));
+            File.WriteAllText(absolute, ctx.Report.ToMarkdown(ctx.Target.name), DiagnosticsWriter.Marked);
             AssetDatabase.ImportAsset(path);
             ctx.Report.SavedReportPath = path;
             Debug.Log($"[AvatarBridge] {label} written to {path}");

@@ -31,6 +31,10 @@ namespace AvatarBridge
     // nothing precisely when it is needed most.
     public static class DiagnosticsWriter
     {
+        // UTF-8 with its marker: without one, a viewer on another system codepage read the
+        // reports' middle dots as Chinese characters.
+        internal static readonly Encoding Marked = new UTF8Encoding(true);
+
         public static void Write(BridgeContext ctx, string reportName = "ConversionReport.md")
         {
             var text = new StringBuilder();
@@ -60,7 +64,7 @@ namespace AvatarBridge
             {
                 string path = ctx.OutputDir + "/Diagnostics.md";
                 string absolute = Path.GetFullPath(Path.Combine(Application.dataPath, "..", path));
-                File.WriteAllText(absolute, text.ToString());
+                File.WriteAllText(absolute, text.ToString(), Marked);
                 AssetDatabase.ImportAsset(path);
                 Debug.Log($"[AvatarBridge] Diagnostics written to {path}");
             }
@@ -99,7 +103,8 @@ namespace AvatarBridge
                 // A component every release has. ModularAvatarInformation never existed, so
                 // every report said "not installed".
                 Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator")),
-                Row("MagicaCloth2", VersionOf("MagicaCloth2.MagicaCloth")),
+                // The Asset Store install has no package and its assembly reads 0.0.0.0.
+                Row("MagicaCloth2", VersionOf("MagicaCloth2.MagicaCloth", Constant("MagicaCloth2.AboutMenu", "MagicaClothVersion"))),
                 Row("DynamicBone", VersionOf("DynamicBone")),
             };
             return Table(new[] { "Package", "Assembly / version" }, rows);
@@ -141,19 +146,22 @@ namespace AvatarBridge
 
         // The CCK lives under Assets and compiles into Assembly-CSharp, which has no version of its
         // own. Read by name, because not every CCK spells the constant the same way.
-        static string CckVersion()
+        static string CckVersion() => Constant("ABI.CCK.Scripts.CVRCommon", "CCK_VERSION_FULL", "CCK_VERSION");
+
+        // A version a package states in its own code, by the first of the names it has.
+        static string Constant(string typeName, params string[] members)
         {
             const BindingFlags flags = BindingFlags.Public | BindingFlags.Static;
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 try
                 {
-                    var common = assembly.GetType("ABI.CCK.Scripts.CVRCommon", false);
+                    var common = assembly.GetType(typeName, false);
                     if (common == null)
                     {
                         continue;
                     }
-                    foreach (string member in new[] { "CCK_VERSION_FULL", "CCK_VERSION" })
+                    foreach (string member in members)
                     {
                         object value = common.GetProperty(member, flags)?.GetValue(null)
                                        ?? common.GetField(member, flags)?.GetValue(null);
