@@ -786,7 +786,9 @@ namespace AvatarBridge
 
         void Built(string at, List<string> lines)
         {
-            foreach (var line in lines) Debug.Log("[YAPS] " + line);
+            // A failed step as an error, so the report pop-up offers itself.
+            foreach (var line in lines)
+                if (line.StartsWith("✗")) Debug.LogError("[YAPS] " + line); else Debug.Log("[YAPS] " + line);
             _saidAt = at;
             _saidTone = lines.Any(l => l.StartsWith("✗")) ? Tone.Bad : lines.Any(l => l.Contains("⚠")) ? Tone.Warn : Tone.Good;
             _said = lines.Count == 0

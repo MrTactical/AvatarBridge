@@ -856,7 +856,8 @@ namespace AvatarBridge
                 string what = cut > 0 && cut < 40 ? text.Substring(0, cut) : "Build";
                 string rest = cut > 0 && cut < 40 ? text.Substring(cut + 1).Trim() : text;
                 rows.Add(BridgeElements.ReportRow(tone, tone == Tone.Bad ? "Failed: " + what : what, rest));
-                Debug.Log("[YAPS] " + line);
+                // A failed step as an error, so the report pop-up offers itself.
+                if (tone == Tone.Bad) Debug.LogError("[YAPS] " + line); else Debug.Log("[YAPS] " + line);
             }
             if (rows.Count > 0) _buildLog.Add(BridgeElements.ReportList(rows));
 

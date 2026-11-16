@@ -23,6 +23,9 @@ namespace AvatarBridge.Regression
             {
                 Debug.LogError("[AvatarBridge] Error: [Test] a problem for the report test");
                 Check(ProblemReport.RecentText().Contains("a problem for the report test"), "the error is kept for the report");
+                Check(ProblemReport.Tool == "AvatarBridge", "an AvatarBridge error names AvatarBridge");
+                Debug.LogError("[YAPS] ✗ Bake: a YAPS problem for the report test");
+                Check(ProblemReport.Tool == "YAPS", "a failed YAPS step names YAPS");
 
                 Directory.CreateDirectory(full);
                 File.WriteAllText(Path.Combine(full, "ConversionReport.md"), "# report");

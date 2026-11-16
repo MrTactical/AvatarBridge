@@ -244,11 +244,19 @@ namespace AvatarBridge.Regression
                     var problems = (System.Collections.Generic.List<string>) type.GetField("Problems", Any).GetValue(null);
                     problems.Clear();
                     problems.Add("[AvatarBridge] Error: [Conversion] Unhandled exception - Object reference not set to an instance of an object");
+                    type.GetField("_tool", Any).SetValue(null, "AvatarBridge");
                 }
                 return new (string, Action<EditorWindow>)[]
                 {
                     ("", Seed),
                     ("-made", w => { Seed(w); type.GetField("_zip", Any).SetValue(w, "Assets/AvatarBridgeOutput/Avatar/AvatarBridge problem report 2026-11-16 1400.zip"); }),
+                    ("-yaps", w =>
+                    {
+                        var problems = (System.Collections.Generic.List<string>) type.GetField("Problems", Any).GetValue(null);
+                        problems.Clear();
+                        problems.Add("[YAPS] ✗ Bake: the patched shader did not compile: line 4857: syntax error: unexpected token '('");
+                        type.GetField("_tool", Any).SetValue(null, "YAPS");
+                    }),
                 };
             }
             // The setup window's second tab, and the painter, which draws nothing until handed an avatar.

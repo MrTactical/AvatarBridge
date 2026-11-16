@@ -55,12 +55,13 @@ namespace AvatarBridge
                 Recent.Add($"{type}: {condition}" + (bad && !string.IsNullOrEmpty(stack) ? "\n" + Trim(stack, 1500) : ""));
                 if (Recent.Count > Kept) Recent.RemoveAt(0);
             }
-            if (!ours || !bad || Application.isBatchMode || !Ask) return;
+            if (!ours || !bad) return;
             lock (Problems)
             {
                 if (Problems.Count < 20) Problems.Add(Trim(condition, 400));
                 if (condition.StartsWith("[YAPS]") || stack != null && stack.Contains("AvatarBridge.Yaps")) _tool = "YAPS";
             }
+            if (Application.isBatchMode || !Ask) return;
             // After whatever logged it has finished: a conversion logs many errors in one call.
             if (_pending) return;
             _pending = true;
@@ -123,15 +124,18 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Ask me when something goes wrong",
                 "Off: errors stay in the Console. Turn it back on under Tools ▸ Avatar Bridge.",
                 Ask, v => EditorPrefs.SetBool(AskKey, v)));
-            scroll.Add(BridgeElements.Footer(BridgeLinks.Repo + "#reporting-a-bug", OpenIssue));
+            scroll.Add(BridgeElements.Footer(_tool == "YAPS" ? BridgeLinks.YapsHelp : BridgeLinks.Repo + "#reporting-a-bug", OpenIssue));
         }
 
         // A log line as a person reads it: the tool's tag and the level off the front.
         static string Plain(string line) => Regex.Replace(line, @"^\[(AvatarBridge|YAPS)\]\s*(Error:\s*)?", "");
 
+        internal static string Tool => _tool;
+
         void Dismiss()
         {
             lock (Problems) Problems.Clear();
+            _tool = "AvatarBridge";
             _zip = null;
             _what = "";
             Close();
