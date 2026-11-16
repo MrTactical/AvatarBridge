@@ -6183,6 +6183,17 @@ times in `Diagnostics.md`. Still open, largest first:
      The jelly step went 43.8k to 8.5k instructions this way.
   3. Fewer passes run the deform: ForwardAdd and the outline pass could take the base pass's
      deformed position only if the plug skipped them, which changes how it lights. Ask Joe first.
+  Step 1 measured the same night (the plush session, fxc on the exact preprocessed base-pass vertex
+  variant, Unity's own compile 2.6 to 3.8 s a plug variant; not re-run here yet): full 2589 ms /
+  2808 slots, YapsDeform stubbed 65 ms, YapsResolveChain stubbed with its result kept live 899 ms /
+  2019 slots. So the chain scan (3 scans x 3x3x3 cells x 2 homes x 8 octants, plus the 4-entry
+  sorted insert into a dynamically indexed local array) is ~65% of the compile at ~28% of the
+  instructions. By instructions nothing passes half (YapsResolveChain 20.5%, YapsDeform 15.1%,
+  YapsWalk 7.3%, YapsSafeNormalize 6.3% inlined many times). Not a duplicated block, so step 2
+  becomes: flatten the cell, home and octant loops into one `[loop]`, and keep the four nearest as
+  named scalars with compare-swaps instead of the array. YAPS_CHAIN_MAX below 4 does not compile
+  (indices written out for 4). Shader Filtering applies: the scan's loops are `[loop]`, so check
+  the flattened one still resolves with the filter on.
   4. Last resort: the deform in a blit (as the jelly does), the vertex program only reading it.
      A redesign, measured against the in-game cost first.
   Proof each step: cold bundle build on one plug avatar before and after, plus an in-game look
