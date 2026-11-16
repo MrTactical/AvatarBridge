@@ -974,7 +974,7 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        static BridgeSettings CorpusSettings() => new BridgeSettings
+        internal static BridgeSettings CorpusSettings() => new BridgeSettings
         {
             convertYapsSystems = YapsMode,
             cloneAvatar = true,

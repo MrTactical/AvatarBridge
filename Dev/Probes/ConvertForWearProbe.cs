@@ -34,9 +34,11 @@ namespace AvatarBridge.Regression
                 var source = roots.First(r => r.name == name);
                 source.SetActive(true);
                 var descriptor = source.GetComponentInChildren<VRCAvatarDescriptor>(true);
+                // -abCorpus: the corpus's own profile, which never edits source textures, so a timing
+                // run in the corpus project leaves it as it was (AVATARBRIDGE_SOFT=1 for soft parts).
                 var settings = Flag("-abSaved")
                     ? JsonUtility.FromJson<BridgeSettings>(EditorPrefs.GetString(CvrSetup.SettingsPrefsKey, "{}"))
-                    : Everything();
+                    : Flag("-abCorpus") ? RegressionRunner.CorpusSettings() : Everything();
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var report = BridgeConverter.Convert(descriptor, settings);
                 Debug.Log($"[ConvertForWear] converted in {clock.Elapsed.TotalMinutes:0.0} min: " +

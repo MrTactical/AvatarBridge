@@ -387,6 +387,9 @@ namespace AvatarBridge
 
         internal static string PairOn(Transform picked, Regex want, string folder, string shaders, Options o, BridgeReport report, YapsSquash.SoftParts found = null)
         {
+            var laps = new List<string>();
+            var lapClock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step) { laps.Add($"{step} {lapClock.ElapsedMilliseconds}"); lapClock.Restart(); }
             var root = AvatarOf(picked);
             var animator = root != null ? root.GetComponentInChildren<Animator>() : null;
             if (animator == null || !animator.isHuman) return root == null ? "Select a humanoid avatar in the scene first." : $"{root.name} is not humanoid, so the jelly has no trunk to hang from.";
@@ -419,6 +422,7 @@ namespace AvatarBridge
             body.BakeMesh(baked);
             var at = baked.vertices;
             Object.DestroyImmediate(baked);
+            Lap("Measure");
             var pairSkin = Enumerable.Range(0, Mathf.Min(at.Length, shares[0].Length))
                 .Where(v => shares.Any(s => s[v] >= 0.5f))
                 .Select(v => body.transform.position + body.transform.rotation * at[v]).ToArray();
@@ -532,6 +536,7 @@ namespace AvatarBridge
             float spacing = Mathf.Max(size.x / (n.x - 1), size.y / (n.y - 1), size.z / (n.z - 1));
 
             var core = Core(into, shaders, n, spacing, regions: sides, sleeps: false, withRider: false, offFar: true, lift: 1f);
+            Lap("Core");
             if (core == null) return "The jelly did not build; the console says why.";
             float radius = (size.x + size.y + size.z) / 6f - 0.01f;
             // How far each breast's own skin reaches toward the other off its centre: where the two
@@ -556,6 +561,7 @@ namespace AvatarBridge
             // w marks a part a cloth swings, for Live to turn the stretch back on.
             motion.w = clothed ? 1f : 0f;
             var depthMap = DepthMap(sides, shares, at, body, chest, undo, los, his, into);
+            Lap("Depth map");
             // The third pass too, which judges the same reach to wake a rest.
             foreach (var mat in core.provider.materials)
             {
@@ -603,6 +609,7 @@ namespace AvatarBridge
             for (int side = 0; side < sides; side++)
                 made.transform.Find($"Jelly Region {side}").SetPositionAndRotation(chest.position + turn * new Vector3(0.5f * (los[side].x + his[side].x), 0.5f * (los[side].y + his[side].y), los[side].z), turn);
             Undo.RegisterCreatedObjectUndo(made, "Put the breasts on the jelly");
+            Lap("Made");
             // Each region rides the bone that carries most of its breast's skin, which the cloth
             // swings: the anchor handed the bone, the region's place on it in the step's materials.
             // The region stays out of the bone's tree, where the cloth would take it for a bone of
@@ -732,23 +739,28 @@ namespace AvatarBridge
             }.Select(b => animator.GetBoneTransform(b)).ToArray();
             var ownRadii = new float[8];
             var weights = body.sharedMesh.boneWeights;
+            // Read once: body.bones copies the whole array on every call, and this ran per vertex.
+            var bones = body.bones;
+            Vector3 bodyAt = body.transform.position;
+            Quaternion bodyTurn = body.transform.rotation;
             for (int c = 0; c < 8; c++)
             {
                 int s0 = (c >> 2) * 6 + ((c & 3) < 3 ? (c & 3) : 4);
                 Transform from = ownBones[s0], to = ownBones[s0 + 1];
                 if (from == null || to == null) continue;
+                var owns = bones.Select(b => b != null && b.IsChildOf(from) && !b.IsChildOf(to)).ToArray();
+                Vector3 fp = from.position, seg = to.position - fp;
                 // The skin whose strongest bone hangs from this one and not from the next (twist bones
                 // and, for the hand, its fingers), round the middle of the bone alone: taken to the
                 // ends it took in the shoulder and the hip, an upper arm 98 mm thick, a thigh 184.
                 var near = new List<float>();
                 for (int v = 0; v < Mathf.Min(at.Length, weights.Length); v++)
                 {
-                    var bone = body.bones[weights[v].boneIndex0];
-                    if (bone == null || !bone.IsChildOf(from) || bone.IsChildOf(to)) continue;
-                    var w = body.transform.position + body.transform.rotation * at[v];
-                    var seg = to.position - from.position;
-                    float along = Vector3.Dot(w - from.position, seg) / Mathf.Max(seg.sqrMagnitude, 1e-9f);
-                    if (along > 0.2f && along < 0.8f) near.Add(Vector3.Distance(w, from.position + seg * along));
+                    int b = weights[v].boneIndex0;
+                    if (b >= owns.Length || !owns[b]) continue;
+                    var w = bodyAt + bodyTurn * at[v];
+                    float along = Vector3.Dot(w - fp, seg) / Mathf.Max(seg.sqrMagnitude, 1e-9f);
+                    if (along > 0.2f && along < 0.8f) near.Add(Vector3.Distance(w, fp + seg * along));
                 }
                 // ponytail: a low share, as a capsule is round and a limb is not: the median left one avatar's
                 // hand 56 mm thick and a thigh 236, pushing skin before they reached it. A limb a
@@ -850,6 +862,7 @@ namespace AvatarBridge
             // down and held, a squeeze shaking it. Shrunk, the tissue takes every touch and the cloth
             // only swings.
             var shrunk = PairShrink(root, part, made.transform);
+            Lap("Collide");
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
             for (int i = 0; i < pressing.Count; i++)
@@ -938,21 +951,16 @@ namespace AvatarBridge
                 });
             }
             string wired = !o.wire ? "the menu and animator left alone" : Wired(root.GetComponent<CVRAvatar>(), tells, squashed != null ? squashed.twitchSize : 0.02f, folder);
+            Lap("Wire");
 
             var state = core.state;
             var left = new List<string>();
             int patched = 0;
             var jellied = Parts(root, names, dented);
-            var worn = Worns(root);
-            int reading = Enumerable.Range(0, YapsSquash.JellySlots).LastOrDefault(x => x < names.Count && worn.Contains(names[x])) + 1;
+            int reading = Reading(root, names);
             foreach (var m in mats)
             {
-                // The squash compiled in only while it still dents something: on every part it
-                // carries the jelly has taken over, it costs a body's vertex program 85% of its
-                // code to return early.
-                var roles = YapsShaderPatcher.RolesOf(m.shader) & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
-                    | YapsShaderPatcher.JellyReading(reading);
-                if (SquashIdle(m, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
+                var roles = RolesFor(m, reading, jellied);
                 var shader = YapsShaderPatcher.WithRoles(m, roles, report, out string why);
                 if (shader == null || ShaderUtil.ShaderHasError(shader))
                 {
@@ -965,9 +973,6 @@ namespace AvatarBridge
                 }
                 Undo.RecordObject(m, "Put the breasts on the jelly");
                 YapsShaderPatcher.Wear(m, shader);
-                // A skinned mesh is never instanced, so with no material asking, the build strips
-                // the instancing copy of every variant.
-                m.enableInstancing = false;
                 m.SetTexture(StateOf(pair), state);
                 m.SetVector(LatticeOf(pair), new Vector4(n.x, n.y, n.z, spacing));
                 m.SetVector("_YAPS_JellySlap", Slapped);
@@ -975,10 +980,13 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(m);
                 patched++;
             }
+            Lap("Materials");
             AssetDatabase.SaveAssets();
+            Lap("Save");
             // Off with the mass; with the cloth carrying it, left as it was: switched on here, a
             // physics toggle off by default came on with it.
             var off = cloth ? restored : PairPhysics(root, part, on: false);
+            Lap("Physics"); Debug.Log("[AvatarBridge] Jelly steps (ms): " + string.Join(", ", laps));
             string each = sides == 2 ? " each" : "", litres = string.Join(" and ", volume.Select(x => $"{1000f * x:0.0}")) + " litres";
             return $"On {root.name}: {names[pair]} on {(sides == 2 ? "two lattices" : "a lattice")} of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles{each}, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
@@ -1005,8 +1013,12 @@ namespace AvatarBridge
             m.SetVector("_YAPS_JellyParts", Parts(root, names, dented));
         }
 
-        static HashSet<string> Worns(Transform root) =>
-            new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+        static HashSet<string> Worns(Transform root)
+        {
+            var worn = new HashSet<string>(root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(Worn + " ")).Select(t => t.name.Substring(Worn.Length + 1)));
+            if (Planned != null) worn.UnionWith(Planned);
+            return worn;
+        }
 
         static Vector4 Parts(Transform root, List<string> names, List<string> dented)
         {
@@ -1022,9 +1034,8 @@ namespace AvatarBridge
 
         // Every part the squash built on m (a reach above 0) carried by the jelly, so its dent,
         // baked presses included, returns before doing anything (yaps_dent.cginc).
-        static bool SquashIdle(Material m, Vector4 parts)
+        static bool SquashIdle(Vector4 reach, Vector4 parts)
         {
-            var reach = m.GetVector("_YAPS_SquashReach");
             for (int c = 0; c < 4; c++)
                 if (reach[c] > 0f && !(parts[c] > 0f)) return false;
             return parts != Vector4.zero;
@@ -1066,14 +1077,97 @@ namespace AvatarBridge
         {
             var on = new List<string>();
             var refused = new List<string>();
-            var found = YapsSquash.PartsOf(root, out _);
-            foreach (var (name, _) in found?.parts ?? new List<(string, int)>())
+            var found = YapsSquash.Measured.root == root && YapsSquash.Measured.parts != null ? YapsSquash.Measured.parts : YapsSquash.PartsOf(root, out _);
+            var names = found?.parts.Select(x => x.name).ToList() ?? new List<string>();
+            var dented = YapsSquash.SettingsOf(root)?.dented ?? new List<string>();
+            // Each part changes what the materials read, so put on one at a time every material
+            // was patched again for each, one import apiece: a minute and a half a part on an
+            // avatar with many. Planned as all on, they are patched once, in one batch.
+            Planned = new HashSet<string>(names.Take(YapsSquash.JellySlots));
+            try
             {
-                string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options { probes = YapsSquash.SettingsOf(root)?.otherColliders == true }, report, found);
-                Debug.Log("[YAPS] Jelly: " + said);
-                (said.StartsWith("On ") ? on : refused).Add(said);
+                if (names.Count > 0) Prepatch(root, names, dented, report);
+                foreach (var name in names)
+                {
+                    string said = PairOn(root, new Regex("^" + Regex.Escape(name) + "$", RegexOptions.IgnoreCase), into, Shaders, new Options { probes = YapsSquash.SettingsOf(root)?.otherColliders == true }, report, found);
+                    Debug.Log("[YAPS] Jelly: " + said);
+                    (said.StartsWith("On ") ? on : refused).Add(said);
+                }
             }
+            finally { Planned = null; }
+            // A part it refused was planned as on: its materials go back to what is really worn.
+            if (refused.Count > 0) Settle(root, names, dented, report);
             return (on, refused);
+        }
+
+        // Set while On puts every part on: the parts still to come count as worn.
+        static HashSet<string> Planned;
+
+        // What a squash material compiles in with these parts on the jelly. The squash only while it
+        // still dents something: on every part the jelly has taken over, it costs a body's vertex
+        // program 85% of its code to return early.
+        static YapsShaderPatcher.Roles RolesFor(Material m, int reading, Vector4 jellied) =>
+            RolesFor(YapsShaderPatcher.RolesOf(m.shader), m.GetVector("_YAPS_SquashReach"), reading, jellied);
+
+        // From what a copy has and the squash's reach, before the copy exists: the squash patches
+        // straight to these, so its shaders are not compiled twice.
+        internal static YapsShaderPatcher.Roles RolesFor(YapsShaderPatcher.Roles have, Vector4 reach, int reading, Vector4 jellied)
+        {
+            var roles = have & ~YapsShaderPatcher.Roles.JellyUnread | YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.Squash
+                | YapsShaderPatcher.JellyReading(reading);
+            if (SquashIdle(reach, jellied)) roles &= ~YapsShaderPatcher.Roles.Squash;
+            return roles;
+        }
+
+        static int Reading(Transform root, List<string> names)
+        {
+            var worn = Worns(root);
+            return Enumerable.Range(0, YapsSquash.JellySlots).LastOrDefault(x => x < names.Count && worn.Contains(names[x])) + 1;
+        }
+
+        // Every squash material onto the shader it ends on, written and imported in one batch.
+        static void Prepatch(Transform root, List<string> names, List<string> dented, BridgeReport report)
+        {
+            int reading = Reading(root, names);
+            var jellied = Parts(root, names, dented);
+            // A plug drawing its second copy is left to its own patch: a stand-in made from the
+            // original shader cannot carry the value that asks for the copy.
+            var wanted = YapsSquash.Materials(root).Where(m => YapsShaderPatcher.OriginalShaderOf(m) != null && !YapsShaderPatcher.Duplicate(m))
+                .Select(m => (m, roles: RolesFor(m, reading, jellied)))
+                .Where(x => YapsShaderPatcher.RolesOf(x.m.shader) != x.roles || YapsShaderPatcher.IsStale(x.m)).ToList();
+            foreach (var group in wanted.GroupBy(x => x.roles))
+            {
+                var stands = group.Select(x => new Material(YapsShaderPatcher.OriginalShaderOf(x.m)) { name = x.m.name }).ToList();
+                try { YapsShaderPatcher.Prewrite(stands, group.Key); }
+                finally { foreach (var stand in stands) Object.DestroyImmediate(stand); }
+            }
+            // A copy that would not compile is left as it was; the part's own pass reports it.
+            foreach (var (m, roles) in wanted)
+            {
+                var shader = YapsShaderPatcher.WithRoles(m, roles, report, out _);
+                if (shader == null || ShaderUtil.ShaderHasError(shader)) continue;
+                YapsShaderPatcher.Wear(m, shader);
+                EditorUtility.SetDirty(m);
+            }
+        }
+
+        static void Settle(Transform root, List<string> names, List<string> dented, BridgeReport report)
+        {
+            int reading = Reading(root, names);
+            var jellied = Parts(root, names, dented);
+            bool any = jellied != Vector4.zero;
+            foreach (var m in YapsSquash.Materials(root))
+            {
+                if (!m.HasProperty("_YAPS_JellyParts")) continue;
+                // None on at all: the squash alone, as before the jelly was tried.
+                var roles = any ? RolesFor(m, reading, jellied)
+                    : YapsShaderPatcher.RolesOf(m.shader) & ~(YapsShaderPatcher.Roles.Jelly | YapsShaderPatcher.Roles.JellyUnread) | YapsShaderPatcher.Roles.Squash;
+                var shader = YapsShaderPatcher.WithRoles(m, roles, report, out _);
+                if (shader == null || ShaderUtil.ShaderHasError(shader)) continue;
+                YapsShaderPatcher.Wear(m, shader);
+                if (m.HasProperty("_YAPS_JellyParts")) Carried(m, root, names, dented);
+                EditorUtility.SetDirty(m);
+            }
         }
 
         // Every part's jelly off, the squash materials back on the squash alone. What was done.

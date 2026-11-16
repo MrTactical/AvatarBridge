@@ -23,6 +23,7 @@ namespace AvatarBridge
 
         static readonly List<string> Recent = new List<string>();
         static readonly List<string> Problems = new List<string>();
+        static readonly List<string> Timed = new List<string>();
         static bool _pending;
         static string _tool = "AvatarBridge";
 
@@ -48,6 +49,13 @@ namespace AvatarBridge
             bool ours = condition.StartsWith("[AvatarBridge]") || condition.StartsWith("[YAPS]")
                         || stack != null && stack.Contains("AvatarBridge.") && !stack.Contains("AvatarBridge.Regression");
             bool bad = type == LogType.Error || type == LogType.Exception || type == LogType.Assert;
+            // Each step's time, for Diagnostics.md: where a slow conversion spent it.
+            if (ours && condition.Contains(" (ms): "))
+                lock (Timed)
+                {
+                    Timed.Add(condition.Replace("[AvatarBridge] ", ""));
+                    if (Timed.Count > 50) Timed.RemoveAt(0);
+                }
             if (!ours && !bad) return;
             lock (Recent)
             {
@@ -105,7 +113,7 @@ namespace AvatarBridge
                 b.Add(what);
                 b.Add(BridgeElements.Hint(
                     "Make the report packs a small zip into your output folder: what you wrote, the recent console " +
-                    "lines and the last run's reports. It holds your project's file paths and object names, " +
+                    "lines and the last run's reports, with your PC's processor, memory and graphics card. It holds your project's file paths and object names, " +
                     "never the avatar's files. Nothing is sent: it opens a GitHub issue for you to check and submit."));
                 b.Add(BridgeElements.ButtonRow(
                     BridgeElements.Btn("Make the report", MakeReport, "Writes the zip and opens a pre-filled GitHub issue.", ButtonKind.Strong),
@@ -248,6 +256,17 @@ namespace AvatarBridge
             var m = Regex.Match(EditorPrefs.GetString("AvatarBridge.Settings", ""), "\"outputFolder\"\\s*:\\s*\"([^\"]+)\"");
             string root = m.Success ? m.Groups[1].Value : "";
             return root.StartsWith("Assets") ? root : "Assets/AvatarBridgeOutput";
+        }
+
+        // The step times logged since the last call.
+        internal static List<string> TakeTimings()
+        {
+            lock (Timed)
+            {
+                var taken = Timed.ToList();
+                Timed.Clear();
+                return taken;
+            }
         }
 
         internal static string RecentText()

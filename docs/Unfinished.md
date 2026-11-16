@@ -3807,6 +3807,34 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   next import). Left as is.
 - Open: Joe in game, with the GS2 nightly.
 
+### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", after 5.0.0
+
+Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
+**Update**, so a reconvert keeps the changes made by hand that do not conflict. Today every Convert
+rebuilds the output from the source and writes over it; only the window's settings and the
+*Since the last conversion* comparison carry over.
+
+- **Proposed (not built): Unity's prefab Variant of the OUTPUT.** Convert writes a base prefab and
+  makes a Variant beside it once; the user edits the Variant. Update rewrites the base; the Variant's
+  overrides (added objects, moved bones, changed components) ride over it, and a value both set is
+  the user's, shown as an override. No merge logic of ours.
+- **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
+- **Differs from the parked Variant-of-the-ORIGINAL idea** under Major Ideas: the base here is our
+  own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
+- **Decided (Joe, 2026-11-16: "write it"):**
+  - **The slot.** A Variant AvatarBridge made: Update rewrites its base. An older output with no
+    Variant: the button reads **Update and keep a backup**, rebuilds, keeps the old prefab beside it,
+    and makes the Variant from then on (hand edits on that copy cannot be told apart). Anything else
+    (a VRChat avatar, another tool's output) is refused with a one-line reason.
+  - **Edits on objects the new base dropped.** Unity keeps them on the Variant as unused overrides,
+    so nothing is lost silently; the report lists them under *Edits that no longer apply* with each
+    path, and the user decides whether to remove them. An object added under a parent that is gone
+    is moved to the avatar root and listed, not dropped.
+  - **The upload id** lives on the Variant, so every Update re-uploads to the same ChilloutVR avatar.
+  - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
+    button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
+    (UiOffscreenProbe) before building.
+
 ### 32. The 5.0.0 review, what it left for 5.0.1. 2026-11-06, Joe: "do one giant like review of everything we've done in 5.0.0"
 
 Seven reviewers over every shipped file of main..dev, each finding checked by a second reader against
@@ -6068,3 +6096,26 @@ buys memory and load, not frame time, and a bench that reports zero there is doi
 
 **It has to answer in VR terms, or it answers the wrong question.** Almost everyone wearing
 these avatars is in a headset, and the two halves of the cost scale differently:
+
+### Conversion speed: what is left (2026-11-16)
+
+The first pass compiled each squash shader once, skipped the soft bake when
+the jelly takes every dented part, and batched clip and emote writes. Measured from each step's
+times in `Diagnostics.md`. Still open, largest first:
+
+- **The soft bake itself (~13 s a pair)** when it does run (a squash with no jelly, a refused
+  part): run the presses in parallel with each press single-threaded instead of ~100 small
+  `Parallel.For` calls per substep, and cache the result by a hash of every input it reads.
+- **The texture-size scan (~7 s in a large project, again in the window after Convert).** Not
+  built: a cached material map would have to catch every material change, or a texture shared
+  with another avatar gets shrunk; and the conversion itself writes materials, so a cache cleared
+  on any material import saves nothing on the common path. Reuse the conversion's plan in the
+  window instead.
+- **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
+  10-15 s on a large VRCFury controller).
+- **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **A repatch's compile check uses the original's default keywords**, not the material's, so the
+  variant a scene draws compiles again later.
+- **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler
+  at once measured nothing: in batch, Unity compiles a copy during its import, and the per-pass
+  check after it returns in ~0 ms either way. The import is the cost (~10 s per 70 files here).

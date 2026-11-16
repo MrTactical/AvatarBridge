@@ -333,7 +333,13 @@ namespace AvatarBridge
         }
 
         // A swap that keeps the material's own render queue; the converter's copies use the same.
-        public static void Wear(Material m, Shader shader) => ShaderSpiPatcher.Wear(m, shader);
+        // Instancing off: a skinned mesh is never instanced, and with no material asking, the
+        // build strips the instancing copy of every variant.
+        public static void Wear(Material m, Shader shader)
+        {
+            ShaderSpiPatcher.Wear(m, shader);
+            m.enableInstancing = false;
+        }
 
         // The shader a material already carrying YAPS needs to take on one more role: its own
         // when that is compiled in and current, else its original patched again with both. A
