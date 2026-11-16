@@ -3821,9 +3821,19 @@ rebuilds the output from the source and writes over it; only the window's settin
 - **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
 - **Differs from the parked Variant-of-the-ORIGINAL idea** under Major Ideas: the base here is our
   own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
-- **Open:** what the slot accepts (a Variant of a past output, or any converted avatar), what Update
-  does to a Variant whose override names an object the new base no longer has, and the window
-  mock-up for Joe before building.
+- **Decided (Joe, 2026-11-16: "write it"):**
+  - **The slot.** A Variant AvatarBridge made: Update rewrites its base. An older output with no
+    Variant: the button reads **Update and keep a backup**, rebuilds, keeps the old prefab beside it,
+    and makes the Variant from then on (hand edits on that copy cannot be told apart). Anything else
+    (a VRChat avatar, another tool's output) is refused with a one-line reason.
+  - **Edits on objects the new base dropped.** Unity keeps them on the Variant as unused overrides,
+    so nothing is lost silently; the report lists them under *Edits that no longer apply* with each
+    path, and the user decides whether to remove them. An object added under a parent that is gone
+    is moved to the avatar root and listed, not dropped.
+  - **The upload id** lives on the Variant, so every Update re-uploads to the same ChilloutVR avatar.
+  - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
+    button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
+    (UiOffscreenProbe) before building.
 
 ### 32. The 5.0.0 review, what it left for 5.0.1. 2026-11-06, Joe: "do one giant like review of everything we've done in 5.0.0"
 
