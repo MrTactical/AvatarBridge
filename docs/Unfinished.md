@@ -6096,3 +6096,23 @@ buys memory and load, not frame time, and a bench that reports zero there is doi
 
 **It has to answer in VR terms, or it answers the wrong question.** Almost everyone wearing
 these avatars is in a headset, and the two halves of the cost scale differently:
+
+### Conversion speed: what is left (2026-11-16)
+
+The first pass (b0185855) compiled each squash shader once, in parallel, skipped the soft bake when
+the jelly takes every dented part, and batched clip and emote writes. Measured from each step's
+times in `Diagnostics.md`. Still open, largest first:
+
+- **The soft bake itself (~13 s a pair)** when it does run (a squash with no jelly, a refused
+  part): run the presses in parallel with each press single-threaded instead of ~100 small
+  `Parallel.For` calls per substep, and cache the result by a hash of every input it reads.
+- **The texture-size scan (~7 s in a large project, again in the window after Convert).** Not
+  built: a cached material map would have to catch every material change, or a texture shared
+  with another avatar gets shrunk; and the conversion itself writes materials, so a cache cleared
+  on any material import saves nothing on the common path. Reuse the conversion's plan in the
+  window instead.
+- **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
+  10-15 s on a large VRCFury controller).
+- **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **A repatch's compile check uses the original's default keywords**, not the material's, so the
+  variant a scene draws compiles again later.
