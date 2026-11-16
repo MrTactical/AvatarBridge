@@ -182,17 +182,27 @@ Shader "YAPS/Standard"
             #include "UnityStandardShadow.cginc"
             #include "YapsStandardInput.cginc"
 
-            VertexOutput yapsVertShadowCaster (YAPS_CASTER_OUTPUTS YapsStandardInput v)
+            // Unity's vertShadowCaster body, not a call to it: up to 2022.3.22 it returns the
+            // output, from 2022.3.58 it takes it as an out parameter, so a call compiles on
+            // one of them only (the shadow pass fails to compile on the other).
+            VertexOutput yapsVertShadowCaster (YAPS_CASTER_OUTPUTS YapsStandardInput i)
             {
+                VertexInput v = YapsToUnity(i);
+                VertexOutput output;
                 UNITY_SETUP_INSTANCE_ID(v);
-                return vertShadowCaster(YapsToUnity(v)
-                #ifdef UNITY_STANDARD_USE_SHADOW_OUTPUT_STRUCT
-                    , o
-                #endif
+                UNITY_TRANSFER_INSTANCE_ID(v, output);
                 #ifdef UNITY_STANDARD_USE_STEREO_SHADOW_OUTPUT_STRUCT
-                    , os
+                    UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(os);
                 #endif
-                    );
+                TRANSFER_SHADOW_CASTER_NOPOS(o, output.pos)
+                #if defined(UNITY_STANDARD_USE_SHADOW_UVS)
+                    o.tex = TRANSFORM_TEX(v.uv0, _MainTex);
+                    #ifdef _PARALLAXMAP
+                        TANGENT_SPACE_ROTATION;
+                        o.viewDirForParallax = mul (rotation, ObjSpaceViewDir(v.vertex));
+                    #endif
+                #endif
+                return output;
             }
             ENDCG
         }
