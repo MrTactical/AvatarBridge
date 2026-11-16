@@ -91,6 +91,11 @@ namespace AvatarBridge
             try
             {
                 PhysBoneConverter.Run(ctx);
+#if AVATARBRIDGE_MAGICA
+                // As the converter does: without it a cloth keeps gravity in metres at any avatar size.
+                if (ctx.ConvertedPhysicsChains.Count > 0 && settings.physicsTarget == PhysicsTarget.MagicaCloth2)
+                    MagicaClothWriter.PinStartScale(ctx);
+#endif
                 // The override's own clips too: one it swaps in is refused, not missed.
                 if (shipped != null && (ctx.ConvertedPhysicsChains.Count > 0 || ctx.PhysicsColliderHosts.Count > 0)
                     && shipped.animationClips.Concat(over != null ? over.animationClips : new AnimationClip[0]).Any(touches))

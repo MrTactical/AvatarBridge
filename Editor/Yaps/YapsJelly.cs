@@ -206,7 +206,15 @@ namespace AvatarBridge
                 var worn = avatar.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => pair.Key != null && t.name == WornName(pair.Key));
                 var carrier = worn != null ? worn.GetComponentsInChildren<CVRMaterialDataProvider>(true).FirstOrDefault(q => q.transforms != null && q.transforms.Length > 0)?.transforms[0] : null;
                 var part = carrier != null && !carrier.IsChildOf(worn) ? PartFrom(carrier, skeleton) : null;
-                PairCollide(avatar, part ?? (pair.Key != null ? PartOf(pair.Key) : Breast), pair.Select(t => t.parent).Distinct().SelectMany(t => t.GetComponents<Component>()).Where(IsCollider), with: true);
+                // Each collider back into the cloth it came out of, as its ends' marks list; a build
+                // from before the marks lists none, and it goes into every cloth of its kind.
+                foreach (var held in pair.GroupBy(t => t.parent))
+                {
+                    var listed = held.SelectMany(t => t.GetComponentsInChildren<Transform>(true)).Where(t => t.name.StartsWith(ListedMark))
+                        .Select(t => ClothAt(avatar, t.name.Substring(ListedMark.Length))).Where(b => b != null).ToList();
+                    PairCollide(avatar, part ?? (pair.Key != null ? PartOf(pair.Key) : Breast), held.Key.GetComponents<Component>().Where(IsCollider),
+                        with: true, only: listed.Count > 0 ? listed : null);
+                }
             }
             foreach (var end in ends) Undo.DestroyObjectImmediate(end.gameObject);
             var stale = avatar.GetComponentsInChildren<Transform>(true)
@@ -835,7 +843,7 @@ namespace AvatarBridge
                 // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
                 else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
-            PairCollide(root, part, pressing.Select(p => p.c), with: false);
+            var unlisted = PairCollide(root, part, pressing.Select(p => p.c), with: false);
             // And every other collider, other players' among them: the client adds theirs to every
             // cloth at runtime, past any list, and the cloth's balls, the source's size, moved the
             // bones under each hand the tissue was denting. One touch answered twice: a breast shoved
@@ -853,6 +861,16 @@ namespace AvatarBridge
                     t.SetParent(pressing[i].c.transform, false);
                     t.position = place;
                     colEnds.Add(t);
+                    if (end != "a") continue;
+                    // Which cloth it came out of, so taking the jelly off puts it back there alone.
+                    foreach (var b in unlisted.Where(u => u.c == pressing[i].c).Select(u => u.b))
+                    {
+                        string type = b.GetType().Name;
+                        int nth = Array.IndexOf(b.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == type).ToArray(), b);
+                        var mark = new GameObject($"{ListedMark}{type} {nth} {AnimationUtility.CalculateTransformPath(b.transform, root)}");
+                        Undo.RegisterCreatedObjectUndo(mark, "Put the breasts on the jelly");
+                        mark.transform.SetParent(t, false);
+                    }
                 }
                 colRadii[i] = pressing[i].r;
             }
@@ -1317,24 +1335,41 @@ namespace AvatarBridge
         }
 
         // The pair's cloth and dynamic bones made to collide with these or not, each with its own
-        // kind. ponytail: put back into every cloth of the pair of its kind, not only the ones it was in.
-        static void PairCollide(Transform root, Regex part, IEnumerable<Component> colliders, bool with)
+        // kind, only those in `only` when given; each collider taken out and the cloth it left.
+        static List<(Component c, Behaviour b)> PairCollide(Transform root, Regex part, IEnumerable<Component> colliders, bool with,
+            ICollection<Behaviour> only = null)
         {
             var set = colliders.ToList();
-            if (set.Count == 0) return;
+            var taken = new List<(Component c, Behaviour b)>();
+            if (set.Count == 0) return taken;
             foreach (var b in PairCloth(root, part))
             {
+                if (only != null && !only.Contains(b)) continue;
                 bool magica = b.GetType().Name == "MagicaCloth";
                 var so = new SerializedObject(b);
                 var list = so.FindProperty(magica ? "serializeData.colliderCollisionConstraint.colliderList" : "m_Colliders");
                 if (list == null || !list.isArray) continue;
                 var have = Enumerable.Range(0, list.arraySize).Select(i => list.GetArrayElementAtIndex(i).objectReferenceValue as Component).ToList();
                 var want = with ? have.Concat(set.Where(c => !have.Contains(c) && c.GetType().Name.StartsWith("Magica") == magica)).ToList() : have.Where(c => !set.Contains(c)).ToList();
+                if (!with) taken.AddRange(have.Where(set.Contains).Select(c => (c, b)));
                 if (want.Count == have.Count) continue;
                 list.arraySize = want.Count;
                 for (int i = 0; i < want.Count; i++) list.GetArrayElementAtIndex(i).objectReferenceValue = want[i];
                 so.ApplyModifiedProperties();
             }
+            return taken;
+        }
+
+        const string ListedMark = "Jelly listed in ";
+
+        // "<type> <nth of its type there> <path>" back to the cloth or dynamic bone.
+        static Behaviour ClothAt(Transform root, string mark)
+        {
+            var bits = mark.Split(new[] { ' ' }, 3);
+            if (bits.Length < 3 || !int.TryParse(bits[1], out int nth)) return null;
+            // By path, not Find: a slash in a name reads as missing to Find.
+            var at = root.GetComponentsInChildren<Transform>(true).FirstOrDefault(t => AnimationUtility.CalculateTransformPath(t, root) == bits[2]);
+            return at != null ? at.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == bits[0]).ElementAtOrDefault(nth) : null;
         }
 
         // A jellied part's cloth balls, MagicaCloth's least.

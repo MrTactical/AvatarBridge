@@ -861,7 +861,9 @@ namespace AvatarBridge
             {
                 EnsureFolder(dir);
                 mesh.name = light.parent.parent.name + " toy length";
-                AssetDatabase.CreateAsset(mesh, AssetDatabase.GenerateUniqueAssetPath($"{dir}/{Sanitise(mesh.name)}.asset"));
+                // Claimed, not made unique: a reconvert starts from a fresh clone with no
+                // mesh to reuse, and a unique name left the last run's beside it every time.
+                AssetDatabase.CreateAsset(mesh, OutputAssetPaths.Claim($"{dir}/{Sanitise(mesh.name)}.asset"));
             }
             else EditorUtility.SetDirty(mesh);
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
@@ -2069,7 +2071,16 @@ namespace AvatarBridge
             var avatar = t.GetComponentInParent<CVRAvatar>(true);
             if (avatar != null) return avatar.transform;
             var prop = t.GetComponentInParent<CVRSpawnable>(true);
-            return prop != null ? prop.transform : t.root;
+            if (prop != null) return prop.transform;
+            // Before conversion a VRChat avatar has neither, and the scene root of one
+            // parented under a container is the container. Read by name, so the add-on
+            // builds without the VRChat SDK.
+            for (var at = t; at != null; at = at.parent)
+            {
+                foreach (var c in at.GetComponents<Component>())
+                    if (c != null && c.GetType().Name == "VRCAvatarDescriptor") return at;
+            }
+            return t.root;
         }
 
         internal static string Sanitise(string s)

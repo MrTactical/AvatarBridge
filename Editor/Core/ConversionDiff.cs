@@ -104,8 +104,9 @@ namespace AvatarBridge
                 return;
             }
 
-            var settings = changed.Where(c => c.StartsWith("setting ", StringComparison.Ordinal) || c.StartsWith("version ", StringComparison.Ordinal))
-                .Select(c => c.Substring(c.IndexOf(' ') + 1)).ToList();
+            var settings = changed.Where(c => c.StartsWith("setting ", StringComparison.Ordinal))
+                .Select(c => Readable(c.Substring(8))).ToList();
+            var version = changed.FirstOrDefault(c => c.StartsWith("version ", StringComparison.Ordinal));
             var kinds = changed.Concat(gone).Concat(added).Select(l => l.Substring(0, l.IndexOf(' ')))
                 .Where(k => k != "setting" && k != "version" && k != "count")
                 .GroupBy(k => k).Select(g => BridgeElements.Count(g.Count(), Noun(g.Key, false), Noun(g.Key, true))).ToList();
@@ -113,6 +114,7 @@ namespace AvatarBridge
             string summary = kinds.Count > 0 ? string.Join(", ", kinds) + " changed"
                 : counts ? "only the counts moved" : "only settings or the version changed";
             report.Converted(Category, $"Since the last conversion: {summary}",
+                (version != null ? $"Updated {version.Substring(8)}. " : "") +
                 (settings.Count > 0 ? $"You changed {string.Join("; ", settings)}. " : "") +
                 $"Compared with {since}. The full list is in {reportName}, under Since the last conversion.");
 
@@ -140,6 +142,70 @@ namespace AvatarBridge
         }
 
         static string Value(string v) => v == null ? "" : " = " + v;
+
+        // "field: old to new" with the window's label for the field and on/off for a tick.
+        static string Readable(string change)
+        {
+            int colon = change.IndexOf(": ", StringComparison.Ordinal);
+            string field = change.Substring(0, colon), values = change.Substring(colon + 2);
+            values = Regex.Replace(values, @"\b(True|False)\b", m => m.Value == "True" ? "on" : "off");
+            return (WindowLabels.TryGetValue(field, out var label) ? label : field) + ": " + values;
+        }
+
+        // The converter window's own labels, "(recommended)" left off. ConversionDiffTest
+        // fails when one stops appearing in the window.
+        internal static readonly Dictionary<string, string> WindowLabels = new Dictionary<string, string>
+        {
+            ["cloneAvatar"] = "Work on a clone",
+            ["outputFolder"] = "Output folder",
+            ["linkConvertedPrefab"] = "Keep the converted avatar a prefab",
+            ["convertBaseLayer"] = "Base / locomotion",
+            ["convertAdditiveLayer"] = "Additive",
+            ["convertGestureLayer"] = "Gesture (hand poses)",
+            ["convertActionLayer"] = "Action (emotes, AFK)",
+            ["convertFxLayer"] = "FX (toggles, expressions)",
+            ["toggleStyle"] = "Toggle style",
+            ["preserveParameterSyncState"] = "Preserve parameter sync state",
+            ["exposeMenulessSyncedParameters"] = "Expose menu-less synced parameters",
+            ["physicsTarget"] = "Convert PhysBones to",
+            ["deleteConvertedPhysBones"] = "Delete PhysBones after converting",
+            ["grabbyBonesSupport"] = "GrabbyBones mod support",
+            ["groupIdenticalPhysBones"] = "Group identical PhysBone chains",
+            ["useMagicaPresets"] = "Match a preset to each chain",
+            ["fitToPhysBone"] = "Fit the preset to the PhysBone",
+            ["derivePhysicsFromPhysBone"] = "Derive physics from the PhysBone",
+            ["fitRadiusToMesh"] = "Size particles from the mesh",
+            ["fitCollidersToMesh"] = "Fit colliders to the mesh",
+            ["sizePhysicsForLargest"] = "Size for the largest a slider makes the body",
+            ["boundSwingToSourceLimit"] = "Bound swing to the source's limit",
+            ["capParticleRadius"] = "Cap particle radius to bone spacing",
+            ["convertToePhysBones"] = "Convert toe PhysBones",
+            ["autoAssignNearbyColliders"] = "Auto-assign nearby colliders",
+            ["addPhysicsToRiggedStyles"] = "Add physics to toggled rigs that have none",
+            ["weighAvatar"] = "Say what this avatar costs",
+            ["surveyAvatar"] = "Say what this avatar does",
+            ["stripGogoLoco"] = "Remove GoGo Loco",
+            ["gogoEmotes"] = "Put GoGo poses in the emote wheel",
+            ["stripSpsSystems"] = "Penetration",
+            ["convertYapsSystems"] = "Penetration",
+            ["keepHapticsContacts"] = "Keep the OGB / PCS haptics contacts",
+            ["syncHapticsForOsc"] = "Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
+            ["syncSocketDepthForOthers"] = "Show the avatar's OWN depth animations to other players",
+            ["squashSoftParts"] = "Soft body shape: squash where parts press together",
+            ["extraStripKeywords"] = "Extra strip keywords",
+            ["stripDeadMaterialAnimation"] = "Remove animation that can't do anything",
+            ["convertContacts"] = "Convert contact senders/receivers",
+            ["createDefaultColliderPointers"] = "Recreate built-in VRC colliders as pointers",
+            ["sizeContactZonesForLargest"] = "Grow contact zones with the body's sliders",
+            ["slimTexturesOnConvert"] = "Resize oversized textures",
+            ["patchNonSpiShaders"] = "Patch non-SPI shaders for VR",
+            ["convertConstraints"] = "Convert VRC constraints",
+            ["convertHeadChop"] = "Convert VRC Head Chop",
+            ["convertSpatialAudio"] = "Convert spatial audio",
+            ["wireBlinkBlendshapes"] = "Auto-wire blink blendshapes",
+            ["addAvatarScaler"] = "Add height scaler",
+            ["faceTrackingMode"] = "Face tracking",
+        };
 
         static string Noun(string kind, bool many) =>
             kind == "report" ? (many ? "report lines" : "report line")

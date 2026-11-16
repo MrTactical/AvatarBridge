@@ -31,7 +31,16 @@ namespace AvatarBridge.Regression
             var entry = report.Entries.Single();
             Debug.Log($"[ConversionDiffTest]   {entry.Subject}: {entry.Detail}\n{report.ChangesCard}");
             Check(entry.Subject == "Since the last conversion: 1 component, 1 menu entry, 1 report line changed", "summary counts each kind once");
-            Check(entry.Detail.Contains("stripGogoLoco: True to False") && entry.Detail.Contains("AvatarBridge: 4.7.2 to 5.0.0"), "names the settings and version that changed");
+            Check(entry.Detail.Contains("You changed Remove GoGo Loco: on to off.") && !entry.Detail.Contains("stripGogoLoco"),
+                "names a changed setting by its window label");
+            Check(entry.Detail.Contains("Updated AvatarBridge: 4.7.2 to 5.0.0.") && !entry.Detail.Contains("You changed AvatarBridge"),
+                "the version update has its own line, not under You changed");
+            string window = System.IO.File.ReadAllText("Assets/AvatarBridge/Editor/AvatarBridgeWindow.cs");
+            var unlabelled = typeof(BridgeSettings).GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                .Select(f => f.Name).Where(n => !ConversionDiff.WindowLabels.ContainsKey(n)).ToList();
+            var stale = ConversionDiff.WindowLabels.Values.Where(l => !window.Contains("\"" + l)).Distinct().ToList();
+            Check(unlabelled.Count == 0, "every setting has a window label" + (unlabelled.Count > 0 ? ": missing " + string.Join(", ", unlabelled) : ""));
+            Check(stale.Count == 0, "every label is still in the window" + (stale.Count > 0 ? ": gone " + string.Join(", ", stale) : ""));
             Check(report.ChangesCard.Contains("- menu Hat (Hat, Toggle)") && report.ChangesCard.Contains("+ report Warning [Sync] over the limit"), "lists what went and what came");
             Check(!report.ChangesCard.Contains("layer [FX] Hat"), "an unchanged layer is not listed");
 

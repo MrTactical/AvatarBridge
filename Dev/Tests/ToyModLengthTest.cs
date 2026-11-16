@@ -18,6 +18,7 @@ namespace AvatarBridge.Regression
         {
             failures = 0;
             var generated = GeneratedFiles.Snapshot();
+            OutputAssetPaths.Reset();
             var avatar = new GameObject("ToyLengthAvatar");
             try
             {
@@ -48,6 +49,19 @@ namespace AvatarBridge.Regression
                 YapsNativeBuilder.AnnouncePlug(plug, origin, Quaternion.identity, 0.15f, 0.02f, true, true);
                 Check(plug.GetComponentsInChildren<MeshFilter>(true).Length == 0, "switched off, the mesh goes");
                 Check(string.IsNullOrEmpty(path) || AssetDatabase.LoadAssetAtPath<Mesh>(path) == null, "and so does its asset");
+
+                // A reconvert announces the plug again on a fresh clone, with no mesh to reuse.
+                string dir = YapsNativeBuilder.OutputRoot + "/ToyLengthTest";
+                OutputAssetPaths.Reset();
+                YapsNativeBuilder.AnnouncePlug(plug, origin, Quaternion.identity, 0.15f, 0.02f, true, true, dir);
+                int before = AssetDatabase.FindAssets("t:Mesh", new[] { dir }).Length;
+                var again = Object.Instantiate(plug.gameObject, armature);
+                again.name = plug.name;
+                Object.DestroyImmediate(again.transform.Find("YAPS Markers").gameObject);
+                OutputAssetPaths.Reset();
+                YapsNativeBuilder.AnnouncePlug(again.transform, origin, Quaternion.identity, 0.15f, 0.02f, true, true, dir);
+                int after = AssetDatabase.FindAssets("t:Mesh", new[] { dir }).Length;
+                Check(before == 1 && after == 1, $"a reconvert replaces the length mesh instead of adding one ({before} then {after})");
             }
             finally
             {

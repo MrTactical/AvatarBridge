@@ -69,6 +69,8 @@ namespace AvatarBridge.Regression
                 AssetDatabase.SaveAssets();
                 Check(!report.Entries.Any(e => e.Status == ReportStatus.Error), "no error");
                 Check(Cloths(avatar) == 1, "one cloth made");
+                Check(avatar.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true).All(c => c.GetSerializeData2().initData?.HasData() == true),
+                    "the cloth records its start scale, as a converted one does");
                 Check(avatar.GetComponentsInChildren<VRCPhysBone>(true).Length == 0, "the PhysBone is deleted");
                 Check(files.All(f => File.Exists(f.Key) && File.ReadAllText(f.Key) == f.Value),
                     "the user's controller, override, tree and clips are byte-identical");

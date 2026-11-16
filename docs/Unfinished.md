@@ -3816,25 +3816,31 @@ ordinary hole on an avatar, Remove unused patched shaders trashing the lender li
 through, the squash inspector's jelly check and the knobs the tissue ignores, the jelly's folder on a
 project's first build, the "0 Ignore Transforms honoured" row, a prefab asset in PhysBones to cloth, the
 README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
-1. **The copy as others see it starts from the wearer's animated state** (`CckAnimatorTester.Remote.cs`
-   ShowTwin instantiates the live object), so a state writing no curve shows the wearer's value on the
-   copy where a remote client shows the rest value. Reset the copy's animated values to the prefab's.
-2. **PhysBones to cloth never pins each cloth's start scale** (`PhysBonesInPlace.cs`; the converter runs
-   `MagicaClothWriter.PinStartScale`). Uncertain: MagicaCloth may write it itself. Settle in game.
-3. **KeepOut rewrites a hand-painted cloth selection with no Undo** (`MagicaClothKeepOut.cs`): only Invalid
-   points survive, every other bone back to Fixed or Move.
-4. **"Since the last conversion" names settings by their field names** and lists a version update under
-   "You changed" (`ConversionDiff.cs`). Use the window labels; give the version its own line.
-5. **A refused squash rebuild still tears the working one down** (`YapsSquash.Add` strips before it
-   checks), and the card then blames a hand deletion. Check first, strip after.
-6. **Below shader target 4.5 the squash reads the matrix slots**, which by its own comment never see the
-   cloth move (`yaps_dent.cginc`). YAPS Standard is at 3.0. Uncertain; parts on the jelly are unaffected.
-7. **The painter takes a nested VRChat avatar's parent for the avatar** (`YapsNativeBuilder.AvatarRoot`
-   falls back to `t.root` with no CVRAvatar): Copy to other side splits about the parent's middle.
-8. **Toy length meshes pile up on every reconvert** (`YapsNativeBuilder.ToyModLength` names each one
-   afresh with GenerateUniqueAssetPath into the reused output folder).
-9. **Taking the jelly off puts the pressing colliders into every cloth of the pair**, not only those
-   they came from (`YapsJelly.Unworn`, its ponytail note).
+1. ~~**The copy as others see it starts from the wearer's animated state**~~ **FIXED on dev 2026-11-16.**
+   The tester reads every animated value of each avatar when Play starts and samples them onto the copy
+   (`TwinRestTest`). A tester opened after Play began has none, and the copy's note says so. In editor
+   Play mode, untested by hand.
+2. ~~**PhysBones to cloth never pins each cloth's start scale**~~ **FIXED on dev 2026-11-16.** Settled: the
+   old code left `initData` empty (`PhysBonesInPlaceTest` WRONG before), so MagicaCloth does not write it
+   itself. The card now runs `PinStartScale` as the converter does.
+3. ~~**KeepOut rewrites a hand-painted cloth selection with no Undo**~~ **FIXED on dev 2026-11-16.** Every bone
+   keeps the attribute it had; Undo is recorded (`KeepOutPaintTest`: both WRONG before).
+4. ~~**"Since the last conversion" names settings by their field names**~~ **FIXED on dev 2026-11-16.** Window
+   labels, on/off for a tick, "Updated AvatarBridge: ..." on its own. `ConversionDiffTest` fails when a
+   setting has no label or a label leaves the window.
+5. ~~**A refused squash rebuild still tears the working one down**~~ **Already fixed on dev 2026-11-12**
+   (ea7d58c4, every refusal before the strip); found unmarked here 2026-11-16. The two refusals after the
+   strip need the shader patch to run, which the old build passed.
+6. ~~**Below shader target 4.5 the squash reads the matrix slots**~~ **YAPS Standard FIXED on dev 2026-11-16:**
+   every pass at 4.5 (`StandardTargetTest`). A user's own shader below 4.5 still reads the matrices; the
+   patcher leaves its target alone. Whether the skinned slots now move the squash with the cloth: in game.
+7. ~~**The painter takes a nested VRChat avatar's parent for the avatar**~~ **FIXED on dev 2026-11-16.**
+   `AvatarRoot` stops at a VRChat descriptor, read by type name (`AvatarRootTest`).
+8. ~~**Toy length meshes pile up on every reconvert**~~ **FIXED on dev 2026-11-16.** Claimed through
+   `OutputAssetPaths` as every other output (`ToyModLengthTest`: 1 then 2 before).
+9. ~~**Taking the jelly off puts the pressing colliders into every cloth of the pair**~~ **FIXED on dev
+   2026-11-16.** Each collider's end carries a "Jelly listed in" mark per cloth it left, and goes back
+   there alone; a jelly put on before the marks goes back as before (`JellyUnwornCollidersTest`).
 10. **No check times a fresh compile of a patched body.** Unity's shader cache survives a renamed
     shader, so a body whose vertex program took 346 s in fxc (past Unity's limit, magenta) passed every
     run for days until an include's line numbers moved. Fixed for 5.0.0 (the jelly region compiled once

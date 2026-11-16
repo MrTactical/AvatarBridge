@@ -18,10 +18,12 @@ namespace AvatarBridge
     // No VRChat SDK here, so the add-on builds without one.
     public static class MagicaClothKeepOut
     {
-        // Every bone under the cloth's roots listed, roots fixed, keep and all below invalid, the
-        // rest moving. Bones already kept out stay out, read from the attributes it had.
+        // Every bone under the cloth's roots listed, keep and all below invalid. A bone the cloth
+        // already had an attribute for keeps it, so a hand-painted selection survives; a new one
+        // is fixed at a root and moves elsewhere.
         public static void KeepOut(MagicaCloth cloth, IEnumerable<Transform> keep)
         {
+            Undo.RecordObject(cloth, "Keep bones out of cloth");
             var sdata = cloth.SerializeData;
             var sdata2 = cloth.GetSerializeData2();
             var toCloth = cloth.ClothTransform.worldToLocalMatrix;
@@ -38,10 +40,10 @@ namespace AvatarBridge
             {
                 if (!seen.Add(t)) return;
                 Vector3 at = toCloth.MultiplyPoint3x4(t.position);
-                bool was = had && WasInvalid(old, at);
-                bool invalid = under || off.Contains(t) || was;
+                var was = had ? Had(old, at) : null;
+                bool invalid = under || off.Contains(t) || was?.IsInvalid() == true;
                 positions.Add(at);
-                attributes.Add(invalid ? VertexAttribute.Invalid : roots.Contains(t) ? VertexAttribute.Fixed : VertexAttribute.Move);
+                attributes.Add(invalid ? VertexAttribute.Invalid : was ?? (roots.Contains(t) ? VertexAttribute.Fixed : VertexAttribute.Move));
                 if (hasParent) longest = Mathf.Max(longest, (at - parent).magnitude);
                 for (int i = 0; i < t.childCount; i++) Walk(t.GetChild(i), invalid, at, true);
             }
@@ -75,12 +77,12 @@ namespace AvatarBridge
         }
 
         // Within a millimetre: the positions are the same bones', read in the same space.
-        static bool WasInvalid(SelectionData old, Vector3 at)
+        static VertexAttribute? Had(SelectionData old, Vector3 at)
         {
             for (int i = 0; i < old.positions.Length; i++)
-                if (old.attributes[i].IsInvalid() && ((Vector3) old.positions[i] - at).sqrMagnitude < 1e-6f)
-                    return true;
-            return false;
+                if (((Vector3) old.positions[i] - at).sqrMagnitude < 1e-6f)
+                    return old.attributes[i];
+            return null;
         }
 
         // MagicaCloth2 reads a cloth's transforms afresh when it starts, and ChilloutVR applies a

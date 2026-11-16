@@ -89,7 +89,8 @@ Shader "YAPS/Standard"
             ZWrite [_ZWrite]
 
             CGPROGRAM
-            #pragma target 3.0
+            // 4.5, not Standard's 3.0: below it the squash reads the bone matrices, which never see the cloth swing.
+            #pragma target 4.5
 
             #pragma shader_feature_local _NORMALMAP
             #pragma shader_feature_local _ _ALPHATEST_ON _ALPHABLEND_ON _ALPHAPREMULTIPLY_ON
@@ -131,7 +132,7 @@ Shader "YAPS/Standard"
             ZTest LEqual
 
             CGPROGRAM
-            #pragma target 3.0
+            #pragma target 4.5
 
             #pragma shader_feature_local _NORMALMAP
             #pragma shader_feature_local _ _ALPHATEST_ON _ALPHABLEND_ON _ALPHAPREMULTIPLY_ON
@@ -166,7 +167,7 @@ Shader "YAPS/Standard"
             ZWrite On ZTest LEqual
 
             CGPROGRAM
-            #pragma target 3.0
+            #pragma target 4.5
 
             #pragma shader_feature_local _ _ALPHATEST_ON _ALPHABLEND_ON _ALPHAPREMULTIPLY_ON
             #pragma shader_feature_local _METALLICGLOSSMAP
@@ -202,7 +203,7 @@ Shader "YAPS/Standard"
             Tags { "LightMode" = "Deferred" }
 
             CGPROGRAM
-            #pragma target 3.0
+            #pragma target 4.5
             #pragma exclude_renderers nomrt
 
             #pragma shader_feature_local _NORMALMAP

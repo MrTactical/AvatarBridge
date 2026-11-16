@@ -155,6 +155,7 @@ namespace AvatarBridge
         void OnPlayModeChanged(PlayModeStateChange change)
         {
             PhysicsPlayModeChanged(change);
+            if (change == PlayModeStateChange.ExitingEditMode) CaptureTwinRest();
             // Later, so whatever else stops on the same change has stopped before the cards read it.
             RebuildLater();
         }
