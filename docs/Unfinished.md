@@ -3779,6 +3779,25 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
   client's MagicaCloth2 lacks `disableMode`); a material-swap toggle on a jellied part; Player.log has
   no `[ClipMaterialCrawler] ... disabled` line; the first-load hitch, re-measured.
 
+### 47. A remote hand held in live tissue made it jump and stretch up the arm. Joe in game on rc16, 2026-11-16, PART FIXED in rc18
+Joe, desktop, holding his hand still in a remote player's breast: "it just jumps and jitters up my
+arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the rest in
+`JellySpikeBuilder`) put a generated remote hand in Kar's first breast for 300 frames.
+- **Fixed (256c6653, 7a4d2163):** a gesture flickering between open and fist with the hand 6 cm in
+  started a grip on every close and moved the part 32 mm in a frame; opening a fist inside moved
+  it 47-62 mm; a deep grip letting go threw the tissue 36 mm. Now the slot's gesture eases at 5 a
+  second (a flicker under ~0.15 s never grips) and a let-go hand's plow eases in over 0.2 s:
+  4.3-9 mm a frame at worst. Full verify unchanged (grip pull 88.4 mm, ring 16.3 mm).
+- **Not reproduced:** a steady open hand, 4 to 10 cm in, still or swaying 1 cm, sliding in and
+  out, arm 60 degrees off, a smaller player, a second player's hand shifting the slots, uneven
+  frame times, a MagicaCloth capsule on the hand with and without Other Colliders' probes: all
+  0 to 0.6 mm a frame, no grips. Desktop gestures change only on a keyboard combo
+  (`CVRInputModule_Keyboard.Update_Emotes`), so his gesture was steady and the flicker fix is
+  probably not his case.
+- Next: Joe retests on rc18 (reconverted). If it still jumps, record the remote copy (packet-step
+  anchor) and his own hand's values: the harness's anchor is local and smooth, which is the one
+  difference left untried.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
