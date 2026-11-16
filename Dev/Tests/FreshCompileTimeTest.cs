@@ -57,6 +57,19 @@ namespace AvatarBridge.Regression
                     var clock = Stopwatch.StartNew();
                     var shader = YapsShaderPatcher.Patch(pick, null, out string refusal, out _, roles: YapsShaderPatcher.Roles.All | YapsShaderPatcher.Roles.Jelly);
                     double s = clock.Elapsed.TotalSeconds;
+                    if (shader == null)
+                    {
+                        // Kept for reading, outside Assets; then again without the nonce, so a refusal
+                        // the nonce caused is not blamed on the patch.
+                        string keep = System.IO.Path.GetFullPath("Temp/FreshCompile");
+                        System.IO.Directory.CreateDirectory(keep);
+                        foreach (var f in System.IO.Directory.GetFiles(YapsNativeBuilder.OutputRoot, "*.shader", System.IO.SearchOption.AllDirectories)
+                                     .Where(f => System.IO.File.GetLastWriteTime(f) > System.DateTime.Now.AddMinutes(-5)))
+                            System.IO.File.Copy(f, System.IO.Path.Combine(keep, System.IO.Path.GetFileName(f)), true);
+                        YapsShaderPatcher.FreshCompileNonce = null;
+                        var plain = YapsShaderPatcher.Patch(pick, null, out string plainRefusal, out _, roles: YapsShaderPatcher.Roles.All | YapsShaderPatcher.Roles.Jelly);
+                        Debug.Log($"[FreshCompileTimeTest] note  {host} without the nonce: {(plain != null ? "compiles, so the nonce broke it" : "refused too: " + plainRefusal)}; copies in {keep}");
+                    }
                     bool ok = shader != null && s < LimitSeconds;
                     if (!ok) failures++;
                     timed++;

@@ -3555,7 +3555,13 @@ run's counts, and **Copy diagnostics** beside it puts the same text on your clip
 line. The link leaves the lines out because they name parts of your avatar, so you choose where to
 paste them. A bug somebody hit while wearing an avatar comes before any other open work.
 
-Two things make a report solvable immediately:
+**When AvatarBridge or YAPS hits an error, a window asks what you were doing.** **Make the report**
+packs a small zip into your output folder (what you wrote, the recent console lines, and the last
+conversion's reports, never the avatar's own files) and opens a pre-filled GitHub issue; drag the zip
+into it and press Submit. Nothing is sent without you. Turn the window off, or back on, under
+**Tools ▸ Avatar Bridge ▸ Ask me to report problems**.
+
+Without it, two things make a report solvable immediately:
 
 1. **Attach `ConversionReport.md` and `Diagnostics.md`** from `Assets/AvatarBridgeOutput/<avatar>/`.
    Nearly every bug fixed so far was diagnosed from the report; `Diagnostics.md` carries the

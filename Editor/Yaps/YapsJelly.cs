@@ -1044,7 +1044,20 @@ namespace AvatarBridge
             // Unity names nothing under a folder that is not there yet: on a project's first build
             // the answer was empty, and the jelly's folder of "" threw.
             YapsNativeBuilder.EnsureFolderPublic(folder);
-            return AssetDatabase.GenerateUniqueAssetPath(folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly");
+            // A fresh conversion has nothing to read it off. The last build of this name is written
+            // over, so a folder is not left behind each time, unless another avatar in the open
+            // scenes wears it: a unique name every time left one numbered set per conversion.
+            var others = Object.FindObjectsOfType<Renderer>(true).Where(r => !r.transform.IsChildOf(root))
+                .SelectMany(r => r.sharedMaterials).Where(m => m != null).Distinct().ToList();
+            bool Worn(string dir) => others.Any(m => Enumerable.Range(0, YapsSquash.JellySlots).Any(s =>
+                m.HasProperty(StateOf(s)) && m.GetTexture(StateOf(s)) is Texture t && t != null
+                && Path.GetDirectoryName(AssetDatabase.GetAssetPath(t)).Replace('\\', '/') == dir + (s > 0 ? "_" + (s + 1) : "")));
+            string mine = folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly";
+            for (int n = 1; ; n++)
+            {
+                string at = n == 1 ? mine : mine + " " + n;
+                if (!Worn(at)) return at;
+            }
         }
 
         // Every pair the squash found put on the jelly with a user's defaults, its assets in the

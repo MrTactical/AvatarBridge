@@ -62,6 +62,7 @@ namespace AvatarBridge.Regression
             ("tester", "AvatarBridge.CckAnimatorTester", true),
             ("yaps", "AvatarBridge.YapsSetupWindow", true),
             ("painter", "AvatarBridge.YapsSquashPainter", true),
+            ("problem", "AvatarBridge.ProblemReport", false),
         };
 
         internal const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
@@ -234,6 +235,21 @@ namespace AvatarBridge.Regression
                         ((Action)typeof(Clickable).GetField("clicked", Any).GetValue(check.clickable))();
                     }),
                 }).ToArray();
+            }
+            // The pop-up as an error leaves it, then after the report is made.
+            if (key == "problem")
+            {
+                void Seed(EditorWindow w)
+                {
+                    var problems = (System.Collections.Generic.List<string>) type.GetField("Problems", Any).GetValue(null);
+                    problems.Clear();
+                    problems.Add("[AvatarBridge] Error: [Conversion] Unhandled exception - Object reference not set to an instance of an object");
+                }
+                return new (string, Action<EditorWindow>)[]
+                {
+                    ("", Seed),
+                    ("-made", w => { Seed(w); type.GetField("_zip", Any).SetValue(w, "Assets/AvatarBridgeOutput/Avatar/AvatarBridge problem report 2026-11-16 1400.zip"); }),
+                };
             }
             // The setup window's second tab, and the painter, which draws nothing until handed an avatar.
             if (key == "yaps")
