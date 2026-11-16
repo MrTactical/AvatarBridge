@@ -6166,6 +6166,27 @@ times in `Diagnostics.md`. Still open, largest first:
   off the main pass compiled the same variants itself. Off the plush's 173 s of shaders, the plug
   shader alone is 72 s (1010 s CPU) and each squash copy ~20 s (156 variants each). Levers, in
   order: the plug shader's variant count, then the number and cost of squash copies. After 5.0.0.
+  **Plug shader plan (read-only, 2026-11-16).** The cost is the vertex program, not the
+  fragment: per pass 32 vertex variants at ~10 s CPU each (325 s and 359 s for two passes) against
+  16 fragment variants at ~0.4 s. Four passes compile. The YAPS deform is the same in every
+  variant; only Poiyomi's lighting keywords differ (from the plush's compiler logs: DIRECTIONAL,
+  STEREO_INSTANCING_ON, VERTEXLIGHT_ON, SHADOWS_SCREEN, LIGHTPROBE_SH in the base pass; POINT, SPOT,
+  the cookies and SHADOWS_* in ForwardAdd; SHADOWS_DEPTH/CUBE in the caster). No double-wide
+  stereo variants compile, so the YapsJelly skip_variants trick buys nothing here; instancing and
+  the vertex-light keyword are both needed in ChilloutVR. Steps, cheapest first:
+  1. Measure where one vertex variant's time goes: fxc `/Zi /Fc` plus the per-function attribution
+     script used on the jelly step, on one base-pass variant. The walk (8 steps unrolled, kept so
+     because Shader Filtering cuts a late `[loop]`), the resolve's 3x3x3 atlas scan, and the chain
+     loops are the suspects. Pass bar: name the function that holds over half the instructions.
+  2. If it is a block written out several times (an unrolled step carrying its own copy, a
+     function inlined at several callers), write it out once, as the walk's landing already is.
+     The jelly step went 43.8k to 8.5k instructions this way.
+  3. Fewer passes run the deform: ForwardAdd and the outline pass could take the base pass's
+     deformed position only if the plug skipped them, which changes how it lights. Ask Joe first.
+  4. Last resort: the deform in a blit (as the jelly does), the vertex program only reading it.
+     A redesign, measured against the in-game cost first.
+  Proof each step: cold bundle build on one plug avatar before and after, plus an in-game look
+  with Shader Filtering on (the walk's unroll exists because of it).
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
 - **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler
