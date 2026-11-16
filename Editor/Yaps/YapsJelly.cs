@@ -2977,15 +2977,21 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     float3 w = kw.xyz, t = kt.xyz, pb, fa, fb;
                     float rf, hold;
+                    // The slot's hand a step before, if it is this one: within its hold and a step's
+                    // move of where it was held.
+                    float4 pw = _MainTex.Load(int3(2 * slot, side, 0)), pt = _MainTex.Load(int3(2 * slot + 1, side, 0));
+                    bool same = pt.w > 0.5 && distance(w, pw.xyz) < floor((pt.w - 10) / 10) / 1000 + 0.15 * scale;
+                    // Opening and closing eases in over a fifth of a second. Taken at once, a hand deep
+                    // in the tissue shortened or grew by 5 cm in a frame, and a gesture flickering
+                    // between open and fist, as tracked fingers do, shoved the part 3 cm each frame
+                    // and started a grip on every close.
+                    float gp = fmod(pt.w - 10, 10), gt = kt.w - 10;
+                    if (same && gp < 1.5 && gt < 1.5) kt.w = 10 + gp + clamp(gt - gp, -5 * FrameDt, 5 * FrameDt);
                     // Held by as far as the hand reaches as drawn, a fist's knuckles or a finger out:
                     // by the open fingertips, a fist closing on the skin sat 3 cm off it, and gripped
                     // only if the frame it closed on caught it still in.
                     Hand(kw, kt, pb, fa, fb, rf);
                     float3 reach = rf > 0 ? fb : pb, was = w;
-                    // The slot's hand a step before, if it is this one: within its hold and a step's
-                    // move of where it was held.
-                    float4 pw = _MainTex.Load(int3(2 * slot, side, 0)), pt = _MainTex.Load(int3(2 * slot + 1, side, 0));
-                    bool same = pt.w > 0.5 && distance(w, pw.xyz) < floor((pt.w - 10) / 10) / 1000 + 0.15 * scale;
                     float3 fw = same ? pw.xyz : w;
                     Held(w, reach, kw.w, rf > 0 ? rf : kw.w, true, fw, fw + reach - w, m, scale, hold);
                     t += w - was;

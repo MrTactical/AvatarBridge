@@ -3274,9 +3274,25 @@ namespace AvatarBridge.Regression
         //   -jellyPoison kind f         particle | inf | mass | anchor | shape written into the state at frame f
         //   -jellyKick f mps            the first region's particles given mps forward against their anchor
         //   -jellyShove f m             the first region's particles moved m forward, at rest
+        //   -jellyHandIn f depth g      another player's hand from frame f eased over 20 frames to depth m
+        //                               past the first part's front and held still, gesture g
+        //   -jellyHandOther period      a second player, earlier in player order, whose hand comes into
+        //                               reach and goes for period frames each, shifting the slots
+        //   -jellyHandFlicker period    the held hand's gesture flips between g and 0 every period frames
+        //   -jellyHandTall m            the players' height (1.6)
+        //   -jellyHandCollider r        the held hand also carries a MagicaCloth capsule of radius r, wrist to
+        //                               tip, in every cloth under the avatar, as the client gives each hand
+        //   -jellyHandSway m period     the held hand drifts m sideways and up and back, period frames a round
+        //   -jellyHandSweep period      the held hand goes from the skin to its depth and back, period frames
+        //   -jellyHandArm deg           the arm comes in deg off the part's outward, from above
         class Stab
         {
             public int frames = 300, glideEnd = 200, hitchAt = -1, hitchN = 1, turnAt = -1, poisonAt = -1, kickAt = -1, shoveAt = -1, rings, firstBad = -1, badFrames;
+            public int handAt = -1, handOther, handFlicker, grips, heldFrames;
+            public int handSweep, handSwayPeriod;
+            public float handDepth, handGesture, handTall = 1.6f, handCollider, handSway, handArm, jumpMost, jumpSum, jerkMost, lastJump, lastFurthest = -1f;
+            public Transform handCapsule;
+            public float[] gripW = new float[8];
             public float speed, hitchSecs, turnDeg, kickBy, shoveBy, fps, bgBase = -1f, bgMost, furthestMost, tearMost, relMost, after30Most;
             public float[] pace;
             public string poison = "", said = "";
@@ -3296,6 +3312,14 @@ namespace AvatarBridge.Regression
                 if (Arg("-jellyPoison") is string k) { poison = k; poisonAt = int.Parse(Arg("-jellyPoison", 2)); }
                 if (Arg("-jellyKick") is string kk) { kickAt = int.Parse(kk); kickBy = F(Arg("-jellyKick", 2)); }
                 if (Arg("-jellyShove") is string sh) { shoveAt = int.Parse(sh); shoveBy = F(Arg("-jellyShove", 2)); }
+                if (Arg("-jellyHandIn") is string hi) { handAt = int.Parse(hi); handDepth = F(Arg("-jellyHandIn", 2)); handGesture = F(Arg("-jellyHandIn", 3)); }
+                if (Arg("-jellyHandOther") is string ho) handOther = int.Parse(ho);
+                if (Arg("-jellyHandFlicker") is string hf) handFlicker = int.Parse(hf);
+                if (Arg("-jellyHandTall") is string ht) handTall = F(ht);
+                if (Arg("-jellyHandCollider") is string hc) handCollider = F(hc);
+                if (Arg("-jellyHandSway") is string hs) { handSway = F(hs); handSwayPeriod = int.Parse(Arg("-jellyHandSway", 2)); }
+                if (Arg("-jellyHandSweep") is string hw) handSweep = int.Parse(hw);
+                if (Arg("-jellyHandArm") is string ha) handArm = F(ha);
                 said = string.Join(" ", a.SkipWhile(x => x != "-jellyStab").Skip(1).Where(x => x != "-logFile"));
             }
         }
@@ -3336,6 +3360,7 @@ namespace AvatarBridge.Regression
             if (st.speed > 0 && frame >= 30 && frame < st.glideEnd) carried.position += carried.forward * (st.speed * Mathf.Min((frame - 30) / 30f, 1f) * Time.deltaTime);
             if (frame == st.turnAt) carried.rotation = Quaternion.AngleAxis(st.turnDeg, Vector3.up) * carried.rotation;
 
+            if (st.handAt >= 0) StabHands(st);
             var raw = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State.renderTexture"));
             bool alone = breastRegions[0] == breastRegions[1];
             int Ix(int r, int p, int half = 0) => (r * (side + 1) + p / Row) * Wide + p % Row + half * Row;
@@ -3425,12 +3450,110 @@ namespace AvatarBridge.Regression
                 if (st.bgBase >= 0f) st.bgMost = Mathf.Max(st.bgMost, bg - st.bgBase);
             }
             if (frame >= st.frames - 30) st.after30Most = Mathf.Max(st.after30Most, furthest);
+            // Held still in the skin: how far the part jumps frame to frame, and each grip that starts.
+            if (st.handAt >= 0)
+            {
+                for (int e = 0; e < 8; e++)
+                {
+                    float gw = s[SideIx(0, 112 + e)].w;
+                    if (gw > 0f && !(st.gripW[e] > 0f)) { st.grips++; if (st.grips <= 12) Debug.Log($"[Jelly] hand: grip in slot {e} at frame {frame}"); }
+                    st.gripW[e] = gw;
+                }
+                if (frame >= st.handAt + 40)
+                {
+                    if (st.lastFurthest >= 0f)
+                    {
+                        float signed = furthest - st.lastFurthest, jump = Mathf.Abs(signed);
+                        st.jumpMost = Mathf.Max(st.jumpMost, jump);
+                        // A steady move changes little frame to frame; a jump changes all at once.
+                        if (st.heldFrames > 0) st.jerkMost = Mathf.Max(st.jerkMost, Mathf.Abs(signed - st.lastJump));
+                        st.lastJump = signed;
+                        st.jumpSum += jump;
+                        st.heldFrames++;
+                    }
+                    st.lastFurthest = furthest;
+                }
+                if (frame % 5 == 0)
+                    Debug.Log($"[Jelly] hand {frame}: furthest {1000f * furthest:0.0} mm, grips {string.Join(" ", st.gripW.Select(w => w.ToString("0.00", CultureInfo.InvariantCulture)))}, slots {Enumerable.Range(0, 8).Count(e => s[SideIx(0, 2 * e + 1)].w > 0.5f)}");
+            }
             if (badCount > 0) { st.badFrames++; if (st.firstBad < 0) st.firstBad = frame; }
             if (++frame < st.frames) return;
             st.tsv.Close();
             Debug.Log($"[Jelly] PASS stab ({st.said}): lattice {n.x}x{n.y}x{n.z}, L {1000f * L:0} mm; furthest {1000f * st.furthestMost:0.0} mm, over the last 30 frames {1000f * st.after30Most:0.0} mm; " +
                       $"tear {st.tearMost:0.00}; relative speed {st.relMost:0.00} m/s; rings {st.rings}; bad texels on {st.badFrames} frames from {st.firstBad}; background up {100f * st.bgMost:0.00}% of the picture");
+            if (st.handAt >= 0)
+                Debug.Log($"[Jelly] HAND ({st.said}): {st.grips} grips started; held, the part jumped {1000f * st.jumpMost:0.0} mm at most between frames, " +
+                          $"{1000f * st.jumpSum / Mathf.Max(st.heldFrames, 1):0.00} mm on average over {st.heldFrames} frames, its frame-to-frame change {1000f * st.jerkMost:0.0} mm at most");
             EditorApplication.Exit(0);
+        }
+
+        // -jellyHandIn and the rest: player 1's left hand held in the first part, player 0's coming
+        // and going in front of the second when asked.
+        static void StabHands(Stab st)
+        {
+            var far = new Vector4(50f, 50f, 50f, 0f);
+            var hand = Enumerable.Repeat(far, 255).ToArray();
+            var other = Enumerable.Repeat(far, 255).ToArray();
+            var chestAt = Enumerable.Repeat(far, 255).ToArray();
+            var root = Enumerable.Repeat(new Vector4(50f, 0f, 50f, st.handTall), 255).ToArray();
+            var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
+            var outward = breastRegions[0].forward;
+            var front = breastRegions[0].TransformPoint(0f, 0f, box.z);
+            float reach = 0.11f * st.handTall;
+            if (frame >= st.handAt)
+            {
+                float into = Mathf.SmoothStep(0f, 1f, (frame - st.handAt) / 20f);
+                if (st.handSweep > 0 && frame >= st.handAt + 20)
+                    into = 0.5f + 0.5f * Mathf.Cos(2f * Mathf.PI * (frame - st.handAt - 20) / st.handSweep);
+                float g = st.handFlicker > 0 && (frame / st.handFlicker) % 2 == 1 ? 0f : st.handGesture;
+                // The arm's way into the part, tipped from above; the hand's tip lands where it would have.
+                var arm = Quaternion.AngleAxis(-st.handArm, breastRegions[0].right) * outward;
+                var tipAt = front - outward * (st.handDepth * into - 0.08f * (1f - into));
+                var wrist = tipAt + arm * reach;
+                if (st.handSwayPeriod > 0)
+                {
+                    float ph = 2f * Mathf.PI * frame / st.handSwayPeriod;
+                    wrist += st.handSway * (Mathf.Sin(ph) * breastRegions[0].right + Mathf.Sin(2f * ph) * 0.5f * breastRegions[0].up + Mathf.Cos(ph) * 0.5f * outward);
+                }
+                hand[1] = new Vector4(wrist.x, wrist.y, wrist.z, g);
+                chestAt[1] = wrist + arm * 0.45f;
+                root[1] = new Vector4(chestAt[1].x, swing.position.y, chestAt[1].z, st.handTall);
+#if AVATARBRIDGE_MAGICA
+                if (st.handCollider > 0f)
+                {
+                    if (st.handCapsule == null)
+                    {
+                        st.handCapsule = new GameObject("Stab hand collider").transform;
+                        var cap = st.handCapsule.gameObject.AddComponent<MagicaCloth2.MagicaCapsuleCollider>();
+                        cap.direction = MagicaCloth2.MagicaCapsuleCollider.Direction.Y;
+                        cap.alignedOnCenter = true;
+                        cap.SetSize(st.handCollider, st.handCollider, reach);
+                        var cloths = jelly.transform.root.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true);
+                        foreach (var net in cloths)
+                        {
+                            net.SerializeData.colliderCollisionConstraint.colliderList.Add(cap);
+                            net.SetParameterChange();
+                        }
+                        Debug.Log($"[Jelly] hand collider r {st.handCollider} in {cloths.Length} cloths: {string.Join(", ", cloths.Select(c => c.name))}");
+                    }
+                    // Wrist to tip, the arm's way, as the arrays' hand reads.
+                    st.handCapsule.SetPositionAndRotation(wrist - arm * 0.5f * reach, Quaternion.FromToRotation(Vector3.up, arm));
+                }
+#endif
+            }
+            if (st.handOther > 0 && frame >= st.handAt && (frame / st.handOther) % 2 == 1)
+            {
+                var otherFront = breastRegions[1].TransformPoint(0f, 0f, box.z);
+                var wrist = otherFront + breastRegions[1].forward * (reach + 0.02f);
+                other[0] = new Vector4(wrist.x, wrist.y, wrist.z, 0f);
+                chestAt[0] = wrist + breastRegions[1].forward * 0.45f;
+                root[0] = new Vector4(chestAt[0].x, swing.position.y, chestAt[0].z, st.handTall);
+            }
+            Shader.SetGlobalVectorArray("_CVR_PlayerLeftHandPositions", hand);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRightHandPositions", other);
+            Shader.SetGlobalVectorArray("_CVR_PlayerChestPositions", chestAt);
+            Shader.SetGlobalVectorArray("_CVR_PlayerRootPositions", root);
+            Shader.SetGlobalVector("CVRGlobalParams1", new Vector4(0f, 2f, 0f, 0f));
         }
 
         // Seated: each thigh a quarter turn forward at the hip, the shin back down, as on a chair;

@@ -2823,6 +2823,12 @@ with it. The helper mesh is now written whole at once, and the build reads its f
 saving. If they still come back empty, the report says **"The jelly on ... did not save"** with the
 file it lost: send `Diagnostics.md` and the avatar's `Jelly` folder with the bug report.
 
+A hand that opens or closes while it is inside the tissue now changes shape over a fifth of a
+second. Before, the change came in one frame: a hand deep in the part grew or shrank by about 5 cm
+at once and shoved the part several centimetres, and a gesture flickering between open and fist
+(tracked fingers near a threshold) made it jump on every flicker and grab on every close. A fist
+now grips only once it has stayed closed for about that long.
+
 ### Other people see my avatar flickering, cycling colours or thrashing: I don't
 
 Look for **"layers may thrash on OTHER players' screens right after the avatar loads"** in the
