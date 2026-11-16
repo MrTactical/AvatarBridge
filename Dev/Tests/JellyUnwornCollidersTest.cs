@@ -1,12 +1,14 @@
 #if CVR_CCK_EXISTS && AVATARBRIDGE_YAPS && AVATARBRIDGE_MAGICA
 using System.Linq;
 using AvatarBridge.Yaps;
-using MagicaCloth2;
 using UnityEditor;
 using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+    using MagicaCloth2;
+
     // Taking the jelly off puts each pressing collider back into the cloth it came out of, and
     // no other cloth of the pair. Put back into every cloth, a collider one side never had
     // started pushing that side's bones.
