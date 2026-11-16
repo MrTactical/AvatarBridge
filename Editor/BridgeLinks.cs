@@ -97,6 +97,7 @@ namespace AvatarBridge
             sb.AppendLine($"DynamicBone:   {(BridgeDefines.HasDynamicBone ? "yes" : "no")}");
             // Without the add-on penetration is removed, not converted.
             sb.AppendLine($"YAPS add-on:   {(BridgeDefines.HasYaps ? "yes" : "no")}");
+            sb.AppendLine($"Machine:       {SystemInfo.processorType.Trim()}, {SystemInfo.processorCount} threads, {SystemInfo.systemMemorySize / 1024f:0.#} GB");
 
             if (report != null)
             {

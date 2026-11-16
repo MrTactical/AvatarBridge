@@ -3557,7 +3557,7 @@ paste them. A bug somebody hit while wearing an avatar comes before any other op
 
 **When AvatarBridge or YAPS hits an error, a window asks what you were doing.** **Make the report**
 packs a small zip into your output folder (what you wrote, the recent console lines, and the last
-conversion's reports, never the avatar's own files) and opens a pre-filled GitHub issue; drag the zip
+conversion's reports with your PC's specs and each step's time, never the avatar's own files) and opens a pre-filled GitHub issue; drag the zip
 into it and press Submit. Nothing is sent without you. Turn the window off, or back on, under
 **Tools ▸ Avatar Bridge ▸ Ask me to report problems**.
 
@@ -3566,8 +3566,9 @@ Without it, two things make a report solvable immediately:
 1. **Attach `ConversionReport.md` and `Diagnostics.md`** from `Assets/AvatarBridgeOutput/<avatar>/`.
    Nearly every bug fixed so far was diagnosed from the report; `Diagnostics.md` carries the
    measurements behind it: package versions, every setting used, the rig's shape, where the head
-   and eye bones actually sit against the viewpoint, the constraint census, and which asset
-   references resolve to nothing. It's all facts and no advice, so it diffs cleanly between two
+   and eye bones actually sit against the viewpoint, the constraint census, which asset
+   references resolve to nothing, your PC's processor, memory and graphics card, and how long each
+   step of the conversion took. It's all facts and no advice, so it diffs cleanly between two
    conversions. Nothing in either file leaves your machine unless you send it. A conversion an
    error stopped writes `ConversionReport.md` alone, naming the step that failed; attach that.
 2. **Attach the right log:**

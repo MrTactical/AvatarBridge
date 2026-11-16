@@ -46,6 +46,8 @@ namespace AvatarBridge
 
             Section(text, "Packages", () => Packages(ctx));
             Section(text, "Editor", () => EditorEnvironment());
+            Section(text, "Machine", () => Machine());
+            Section(text, "Time taken", () => TimeTaken());
             Section(text, "Settings used", () => SettingsDump(ctx));
             Section(text, "Rig", () => Rig(ctx));
             Section(text, "Head, eyes and the viewpoint", () => HeadGeometry(ctx));
@@ -189,6 +191,23 @@ namespace AvatarBridge
                     options.HasFlag(EnterPlayModeOptions.DisableSceneReload) ? "**disabled**" : "on"));
             }
             return Table(new[] { "", "" }, rows);
+        }
+
+        // A slow conversion reads differently on a laptop than on a desktop.
+        static string Machine() => Table(new[] { "", "" }, new List<string>
+        {
+            Row("Processor", $"{SystemInfo.processorType.Trim()} ({SystemInfo.processorCount} threads)"),
+            Row("Memory", $"{SystemInfo.systemMemorySize / 1024f:0.#} GB"),
+            Row("Graphics", $"{SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsMemorySize / 1024f:0.#} GB)"),
+            Row("System", SystemInfo.operatingSystem),
+        });
+
+        // Each step's time in milliseconds, as the steps logged it: one that runs far longer than
+        // the rest, or runs more often than the avatar has parts, is where a slow conversion went.
+        static string TimeTaken()
+        {
+            var lines = ProblemReport.TakeTimings();
+            return lines.Count == 0 ? "No step times were logged." : string.Join("\n", lines.Select(l => "- " + l));
         }
 
         static string SettingsDump(BridgeContext ctx)
