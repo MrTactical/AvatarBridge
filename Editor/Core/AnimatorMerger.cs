@@ -1016,17 +1016,26 @@ namespace AvatarBridge
                     foreach (var child in machine.states)
                     {
                         RemapMotionGestureParameters(child.state.motion, ctx);
-                        child.state.transitions = RewriteTransitions(child.state.transitions, ctx);
+                        // Set only when rewritten: each setter rebuilds the machine natively, and
+                        // setting every state's array back unchanged cost seconds a conversion.
+                        var had = child.state.transitions;
+                        var made = RewriteTransitions(had, ctx);
+                        if (!ReferenceEquals(made, had)) child.state.transitions = made;
                     }
-                    machine.anyStateTransitions = RewriteTransitions(machine.anyStateTransitions, ctx);
-                    machine.entryTransitions = RewriteTransitions(machine.entryTransitions, ctx);
+                    var any = machine.anyStateTransitions;
+                    var anyMade = RewriteTransitions(any, ctx);
+                    if (!ReferenceEquals(anyMade, any)) machine.anyStateTransitions = anyMade;
+                    var entry = machine.entryTransitions;
+                    var entryMade = RewriteTransitions(entry, ctx);
+                    if (!ReferenceEquals(entryMade, entry)) machine.entryTransitions = entryMade;
                     foreach (var childMachine in machine.stateMachines)
                     {
                         var transitions = machine.GetStateMachineTransitions(childMachine.stateMachine);
                         if (transitions != null && transitions.Length > 0)
                         {
-                            machine.SetStateMachineTransitions(childMachine.stateMachine,
-                                RewriteTransitions(transitions, ctx));
+                            var made = RewriteTransitions(transitions, ctx);
+                            if (!ReferenceEquals(made, transitions))
+                                machine.SetStateMachineTransitions(childMachine.stateMachine, made);
                         }
                     }
                 });
@@ -1070,8 +1079,10 @@ namespace AvatarBridge
             }
         }
 
+        // The same array back when no transition has a gesture condition.
         static T[] RewriteTransitions<T>(T[] transitions, BridgeContext ctx) where T : AnimatorTransitionBase, new()
         {
+            bool changed = false;
             var result = new List<T>();
             foreach (var transition in transitions)
             {
@@ -1081,6 +1092,7 @@ namespace AvatarBridge
                     result.Add(transition);
                     continue;
                 }
+                changed = true;
                 foreach (var branch in branches)
                 {
                     var clone = CloneForBranch(transition);
@@ -1088,7 +1100,7 @@ namespace AvatarBridge
                     result.Add(clone);
                 }
             }
-            return result.ToArray();
+            return changed ? result.ToArray() : transitions;
         }
 
         static List<AnimatorCondition[]> RewriteConditions(AnimatorCondition[] conditions, BridgeContext ctx)
@@ -1378,10 +1390,15 @@ namespace AvatarBridge
             {
                 WalkMachines(layer.stateMachine, machine =>
                 {
-                    machine.behaviours = ConvertBehaviours(master, machine.behaviours, null, ctx, skippedBehaviourCounts, bodyControlStats, parameterTypes);
+                    // Set only when converted: each setter costs a native rebuild, on every state.
+                    var had = machine.behaviours;
+                    var made = ConvertBehaviours(master, had, null, ctx, skippedBehaviourCounts, bodyControlStats, parameterTypes);
+                    if (!ReferenceEquals(made, had)) machine.behaviours = made;
                     foreach (var child in machine.states)
                     {
-                        child.state.behaviours = ConvertBehaviours(master, child.state.behaviours, child.state, ctx, skippedBehaviourCounts, bodyControlStats, parameterTypes);
+                        var stateHad = child.state.behaviours;
+                        var stateMade = ConvertBehaviours(master, stateHad, child.state, ctx, skippedBehaviourCounts, bodyControlStats, parameterTypes);
+                        if (!ReferenceEquals(stateMade, stateHad)) child.state.behaviours = stateMade;
                     }
                 });
             }
@@ -1802,7 +1819,8 @@ namespace AvatarBridge
                     result.Add(behaviour);
                 }
             }
-            return result.ToArray();
+            // The same array back when nothing was converted, so the caller sets nothing.
+            return result.SequenceEqual(behaviours) ? behaviours : result.ToArray();
         }
 
         // Running totals so the report gets one line, not one per behaviour.
@@ -9212,6 +9230,9 @@ namespace AvatarBridge
             // flagged it" and "flagging it did not help", and the second is not fixable by
             // repeating the flag-and-relock advice.
             var flaggedAndStillMissing = new HashSet<string>();
+            // One verdict per renderer and property: every colour channel and every clip of a toggle
+            // asked the renderer and its materials again, seconds a conversion. Null: nothing to count.
+            var verdicts = new Dictionary<(string, string), (string shader, bool locked, bool flagged)?>();
 
             void Audit(Motion motion)
             {
@@ -9241,53 +9262,68 @@ namespace AvatarBridge
                     {
                         property = property.Substring(0, dot);
                     }
-                    var target = BridgeContext.FindByAnimationPath(root, binding.path);
-                    var renderer = target != null ? target.GetComponent<Renderer>() : null;
-                    if (renderer == null)
-                    {
-                        continue; // a dead path, AuditClipBindings owns that report
-                    }
-                    Material carrier = null;
-                    foreach (var material in renderer.sharedMaterials)
-                    {
-                        if (material != null && material.HasProperty(property))
-                        {
-                            carrier = material;
-                            break;
-                        }
-                    }
-                    if (carrier != null)
+                    if (!verdicts.TryGetValue((binding.path, property), out var verdict))
+                        verdicts[(binding.path, property)] = verdict = Verdict(binding.path, property);
+                    if (verdict == null)
                     {
                         continue;
                     }
-                    string shaderName = null;
-                    foreach (var material in renderer.sharedMaterials)
-                    {
-                        if (material != null && material.shader != null)
-                        {
-                            shaderName = material.shader.name;
-                            // Thry's optimiser writes its output under these names; a locked
-                            // shader is the difference between "author forgot" and "author
-                            // flagged it but never re-locked".
-                            if (shaderName.StartsWith("Hidden/Locked/")
-                                || material.shader.name.Contains("/OptimizedShaders/"))
-                            {
-                                locked.Add(property);
-                            }
-                            // Poiyomi records "animate this" as an override
-                            // tag. Present here, the usual advice was
-                            // already followed and still failed; do not
-                            // repeat it.
-                            if (!string.IsNullOrEmpty(material.GetTag(property + "Animated", false, "")))
-                            {
-                                flaggedAndStillMissing.Add(property);
-                            }
-                            break;
-                        }
-                    }
+                    if (verdict.Value.locked) locked.Add(property);
+                    if (verdict.Value.flagged) flaggedAndStillMissing.Add(property);
                     dead.TryGetValue(property, out var entry);
-                    dead[property] = (entry.count + 1, entry.path ?? binding.path, entry.shader ?? shaderName);
+                    dead[property] = (entry.count + 1, entry.path ?? binding.path, entry.shader ?? verdict.Value.shader);
                 }
+            }
+
+            // Null when the property is alive on the renderer, or the path has none.
+            (string shader, bool locked, bool flagged)? Verdict(string path, string property)
+            {
+                var target = BridgeContext.FindByAnimationPath(root, path);
+                var renderer = target != null ? target.GetComponent<Renderer>() : null;
+                if (renderer == null)
+                {
+                    return null; // a dead path, AuditClipBindings owns that report
+                }
+                Material carrier = null;
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    if (material != null && material.HasProperty(property))
+                    {
+                        carrier = material;
+                        break;
+                    }
+                }
+                if (carrier != null)
+                {
+                    return null;
+                }
+                string shaderName = null;
+                bool isLocked = false, flagged = false;
+                foreach (var material in renderer.sharedMaterials)
+                {
+                    if (material != null && material.shader != null)
+                    {
+                        shaderName = material.shader.name;
+                        // Thry's optimiser writes its output under these names; a locked
+                        // shader is the difference between "author forgot" and "author
+                        // flagged it but never re-locked".
+                        if (shaderName.StartsWith("Hidden/Locked/")
+                            || material.shader.name.Contains("/OptimizedShaders/"))
+                        {
+                            isLocked = true;
+                        }
+                        // Poiyomi records "animate this" as an override
+                        // tag. Present here, the usual advice was
+                        // already followed and still failed; do not
+                        // repeat it.
+                        if (!string.IsNullOrEmpty(material.GetTag(property + "Animated", false, "")))
+                        {
+                            flagged = true;
+                        }
+                        break;
+                    }
+                }
+                return (shaderName, isLocked, flagged);
             }
 
             foreach (var layer in master.layers)

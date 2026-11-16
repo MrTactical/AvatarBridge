@@ -1478,12 +1478,26 @@ namespace AvatarBridge
                 if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
                 list.Add(v);
             }
+            // Cells holding any share. A vertex with none of its own and none of these around it comes
+            // out zero whatever the weights, so it is skipped: most of a layer lies far from the parts.
+            var live = new HashSet<Vector3Int>(grid.Where(c => c.Value.Any(s => Some(body.share[s]))).Select(c => c.Key));
+            // Exactly zero: Vector4 == treats a tiny share as none.
+            bool Some(Vector4 q) => q.x != 0f || q.y != 0f || q.z != 0f || q.w != 0f;
+            bool Reaches(Vector3Int k)
+            {
+                for (int x = -2; x <= 2; x++)
+                    for (int y = -2; y <= 2; y++)
+                        for (int z = -2; z <= 2; z++)
+                            if (live.Contains(k + new Vector3Int(x, y, z))) return true;
+                return false;
+            }
             foreach (var m in skins)
             {
                 if (m != body)
                     for (int v = 0; v < m.at.Length; v++)
                     {
                         var k = Key(m.at[v]);
+                        if (!Some(m.share[v]) && !Reaches(k)) continue;
                         var sum = Vector4.zero;
                         float total = 0f, nearest = Fade * Fade;
                         for (int x = -2; x <= 2; x++)

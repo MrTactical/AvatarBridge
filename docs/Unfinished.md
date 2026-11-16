@@ -6113,7 +6113,11 @@ these avatars is in a headset, and the two halves of the cost scale differently:
 ### Conversion speed: what is left (2026-11-16)
 
 The first pass compiled each squash shader once, skipped the soft bake when
-the jelly takes every dented part, and batched clip and emote writes. Measured from each step's
+the jelly takes every dented part, and batched clip and emote writes. The second pass (on dev,
+2026-11-16) remembers each shader copy across conversions and restarts (Library/AvatarBridge),
+skips squash spread on skin far from every part, re-patches a jelly's materials in one batch,
+sets animator transitions and behaviours only when they changed, caches the material audit per
+renderer and property, and finds GoGo clips with one search. Measured from each step's
 times in `Diagnostics.md`. Still open, largest first:
 
 - **The soft bake itself (~13 s a pair)** when it does run (a squash with no jelly, a refused
