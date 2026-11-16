@@ -1728,7 +1728,9 @@ build set, because a clip keying one part alone sets the other three to 0 (on th
 `_YAPS_JellyLattice` values that tears the skin). The last step, **Build**, says whether the
 build is up to date and, if not, why: its parts, the layers left alone or the twitch changed, the painted body
 changed, or it was built by an older YAPS (the squash code is copied into the build, so an update
-reaches it only through a rebuild). **Rebuild the squash** stands out only then, and a preview
+reaches it only through a rebuild). If the shader a material was patched from is missing, as when an
+avatar is moved to another project in a package without it, the step names that shader instead:
+import it before rebuilding, or the rebuild patches a different shader. **Rebuild the squash** stands out only then, and a preview
 running in the tester carries on through it. The step also removes the squash (the knobs stay on
 the component). The component on a VRChat avatar carries into its conversion, knobs and
 regions alike, and ChilloutVR strips it at upload.

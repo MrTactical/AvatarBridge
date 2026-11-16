@@ -309,6 +309,12 @@ namespace AvatarBridge
             // Each reason said, so a tester knows whether the rebuild is theirs to press. The
             // shader is copied into the build, so a YAPS update reaches it only through one.
             tone = Tone.Warn;
+            // Checked before staleness: with its source gone a build reads as stale, and a
+            // rebuild would patch whatever shader it found instead.
+            var lost = mats.FirstOrDefault(m => YapsShaderPatcher.SourceShaderOf(m) != null && YapsShaderPatcher.OriginalShaderOf(m) == null);
+            if (lost != null)
+                return $"The shader \"{YapsShaderPatcher.SourceShaderOf(lost)}\" that {lost.name} was patched from is not in this project. " +
+                       "Import it before rebuilding, or the rebuild patches a different shader.";
             if (mats.Any(YapsShaderPatcher.IsStale))
                 return "Needs a rebuild: it was built by an older YAPS, so it still squashes the old way.";
             if (s != null && s.pairs.Count > 0 && RegionsOf(root, out string refusal) == null && refusal != null)

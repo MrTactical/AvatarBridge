@@ -3783,6 +3783,19 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
+### 45. Two squash setup notes from moving a squashed avatar between projects. 2026-11-16, from the plush build session
+
+- **Fixed on dev:** with the shader a squash material was patched from missing (the patch names its
+  source only in a hidden property, so `GetDependencies` misses it and a package export leaves it
+  out), Status said "built by an older YAPS" and sent the tester to rebuild from whatever shader it
+  then found. Status now names the missing shader first. Still open: an export helper or a
+  setup-window warning that lists the patch sources a package must carry.
+- **Open, low:** pressing Squash in the setup window logs a Unity-internal NullReferenceException in
+  `SerializedObjectBindingToBaseField.OnFieldAttached` on 2022.3.58f1. It comes from
+  `YapsSquash.Show` calling `ExecuteMenuItem("Window/General/Inspector")`; the setup window's own
+  `ExecuteMenuItem` at `YapsSetupWindow.cs` does the same. Try focusing an existing Inspector
+  instead of opening one through the menu, then check the console on 58f1.
+
 ### 42. The first-load freeze. Joe, 2026-11-15: "the freeze freezes everybody". DONE on dev, Joe to check in game
 A viewer's driver builds each shader at its first draw, on the thread the whole client waits on, so
 everyone in the instance freezes. Measured on Kar with the tissue (scratch `d3d-load.py`, salted
