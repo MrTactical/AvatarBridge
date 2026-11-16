@@ -31,6 +31,13 @@ namespace AvatarBridge.Regression
                 said = YapsSquash.Status(root.transform, out tone);
                 fail += Check($"built by bone name ({said})", tone == Tone.Good && said.Contains("by bone name"));
 
+                // Regions are read against the body they were painted on; without one they are refused.
+                var body = new GameObject("Body").AddComponent<SkinnedMeshRenderer>();
+                body.transform.SetParent(root.transform, false);
+                body.sharedMesh = new Mesh { vertices = new[] { Vector3.zero, Vector3.right, Vector3.up } };
+                s.body = body;
+                s.vertexCount = 3;
+                s.fingerprint = YapsSquash.Fingerprint(body.sharedMesh);
                 s.pairs.Add(new YapsSquashSettings.Pair { a = new byte[] { 0, 255, 128 }, b = new byte[] { 255, 0, 0 } });
                 said = YapsSquash.Status(root.transform, out tone);
                 fail += Check($"regions painted after the build ask for a rebuild ({said})", tone == Tone.Warn && said.Contains("rebuild"));
