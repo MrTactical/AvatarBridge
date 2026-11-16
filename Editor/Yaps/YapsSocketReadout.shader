@@ -166,7 +166,7 @@ Shader "YAPS/Socket Readout"
                 float plugDepth = -1;
                 [unroll] for (uint i = 0; i < 4; i++)
                 {
-                    if (dot(unity_LightColor[i].rgb, unity_LightColor[i].rgb) > 0.0001) continue;
+                    if (!YapsLightIsMarker(i)) continue;
                     int digit = YapsLightDigit(i);
                     if (digit < 0) continue;
                     float3 lp = YapsLightPosition(i);

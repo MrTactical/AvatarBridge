@@ -2,7 +2,7 @@
 //
 // Dev only, in this project. Not part of AvatarBridge.
 //
-//   Tools > YAPS > Screen atlas: position round trip
+//   Tools > Avatar Bridge > Dev > Atlas > Screen atlas: position round trip
 //
 // Spike 1 proved a named GrabPass survives a ChilloutVR upload and returns
 // what another object rendered. It round-tripped a constant, so it said
@@ -21,7 +21,7 @@ using UnityEngine;
 
 public class SpikePosition : EditorWindow
 {
-    [MenuItem("Tools/YAPS/Screen atlas: position round trip")]
+    [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Screen atlas: position round trip")]
     static void Open() { GetWindow<SpikePosition>("Atlas position"); }
 
     const string Root = "YAPS Atlas Position Spike";

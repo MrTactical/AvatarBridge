@@ -31,7 +31,7 @@ namespace AvatarBridge.Dev
             ("foot", 760240793u), ("footleft", 1814848884u), ("footright", 1439624737u),
         };
 
-        [MenuItem("Tools/AvatarBridge Dev/Probe: YAPS tags")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Checks/YAPS tags")]
         public static void Run()
         {
             var fail = new List<string>();

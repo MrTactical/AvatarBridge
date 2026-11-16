@@ -87,10 +87,11 @@ namespace AvatarBridge.Regression
 
             // Everything hanging off each doomed renderer, to look for after.
             var expected = new List<string>();
-            foreach (string path in plan.Strip)
+            foreach (var renderer in plan.Strip)
             {
-                var found = BridgeContext.FindByAnimationPath(avatar.transform, path);
-                if (found == null) continue;
+                if (renderer == null) continue;
+                var found = renderer.transform;
+                string path = AnimationUtility.CalculateTransformPath(found, avatar.transform);
                 foreach (var t in found.GetComponentsInChildren<Transform>(true))
                 {
                     expected.Add(AnimationUtility.CalculateTransformPath(t, avatar.transform));

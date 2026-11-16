@@ -151,7 +151,7 @@ namespace AvatarBridge
             }
 
             // PhysBone reads Endpoint Position in the bone's own scaled units
-            // (measured, Dev/Probes/EndpointScaleProbe), DynamicBone reads
+            // (measured), DynamicBone reads
             // m_EndOffset in metres, so on an armature at scale 100 the tip
             // came out a hundred times short.
             // ponytail: length only; DynamicBone turns the offset by its own
@@ -160,11 +160,19 @@ namespace AvatarBridge
             var tipScale = data.Root.lossyScale;
             db.m_EndOffset = data.EndpointPosition *
                              ((Mathf.Abs(tipScale.x) + Mathf.Abs(tipScale.y) + Mathf.Abs(tipScale.z)) / 3f);
-            db.m_Exclusions = new List<Transform>(data.Ignores);
+            db.m_Exclusions = data.Ignores.Concat(data.NestedExclusions).ToList();
+            if (data.NestedExclusions.Count > 0)
+            {
+                ctx.Report.Approximated(Category, data.Root.name,
+                    $"{BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")} added to the exclusions: " +
+                    $"{string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below, which VRChat leaves to their own PhysBone " +
+                    "(Ignore Other PhysBones).");
+            }
             if (data.HumanoidExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) added to the exclusions: " +
+                    $"{BridgeElements.Count(data.HumanoidExclusions.Count, "humanoid-mapped bone", "humanoid-mapped bones")} added to the exclusions: " +
                     $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK drive " +
                     "humanoid bones every frame, so simulating one fights them for the transform.");
@@ -173,7 +181,7 @@ namespace AvatarBridge
             if (data.ToeExclusions.Count > 0)
             {
                 ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.ToeExclusions.Count} toe branch(es) added to the exclusions: " +
+                    $"{BridgeElements.Count(data.ToeExclusions.Count, "toe branch", "toe branches")} added to the exclusions: " +
                     $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} and below. Turn on \"Convert toe PhysBones\" " +
                     "if they are deliberate.");
@@ -217,7 +225,7 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category, data.Root.name,
-                $"DynamicBone with {data.Colliders.Count} collider(s). Source PhysBone was " +
+                $"DynamicBone with {BridgeElements.Count(data.Colliders.Count, "collider", "colliders")}. Source PhysBone was " +
                 $"pull {data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, " +
                 $"gravity {data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. " +
                 "Tune the DynamicBone directly if this chain wants a different feel.");

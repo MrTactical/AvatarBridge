@@ -31,7 +31,7 @@ namespace AvatarBridge
     // nothing precisely when it is needed most.
     public static class DiagnosticsWriter
     {
-        public static void Write(BridgeContext ctx)
+        public static void Write(BridgeContext ctx, string reportName = "ConversionReport.md")
         {
             var text = new StringBuilder();
             text.AppendLine($"# AvatarBridge diagnostics: {ctx.Target.name}");
@@ -40,7 +40,7 @@ namespace AvatarBridge
                             $"{DateTime.Now:yyyy-MM-dd HH:mm}*");
             text.AppendLine();
             text.AppendLine("Facts about this conversion, for attaching to a bug report. No advice here: ");
-            text.AppendLine("that's in ConversionReport.md. Nothing in this file leaves your machine unless ");
+            text.AppendLine($"that's in {reportName}. Nothing in this file leaves your machine unless ");
             text.AppendLine("you send it.");
             text.AppendLine();
 
@@ -94,7 +94,9 @@ namespace AvatarBridge
                 Row("VRChat SDK", VersionOf("VRC.SDK3.Avatars.Components.VRCAvatarDescriptor")),
                 Row("ChilloutVR CCK", VersionOf("ABI.CCK.Components.CVRAvatar", CckVersion())),
                 Row("VRCFury", VersionOf("VF.Model.VRCFury")),
-                Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarInformation")),
+                // A component every release has. ModularAvatarInformation never existed, so
+                // every report said "not installed".
+                Row("Modular Avatar", VersionOf("nadena.dev.modular_avatar.core.ModularAvatarMergeAnimator")),
                 Row("MagicaCloth2", VersionOf("MagicaCloth2.MagicaCloth")),
                 Row("DynamicBone", VersionOf("DynamicBone")),
             };
@@ -491,11 +493,11 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                rows.Add(Row($"`{pair.Key}`", $"{pair.Value} reference(s)"));
+                rows.Add(Row($"`{pair.Key}`", $"{BridgeElements.Count(pair.Value, "reference", "references")}"));
             }
             return rows.Count == 0
-                ? $"All {counts.Count} referenced GUID(s) in the saved controller resolve to assets in this project."
-                : $"{rows.Count} of {counts.Count} referenced GUID(s) resolve to nothing:\n\n"
+                ? $"All {BridgeElements.Count(counts.Count, "referenced GUID in the saved controller resolves", "referenced GUIDs in the saved controller resolve")} to assets in this project."
+                : $"{rows.Count} of {BridgeElements.Count(counts.Count, "referenced GUID resolves", "referenced GUIDs resolve")} to nothing:\n\n"
                   + Table(new[] { "GUID", "Times referenced" }, rows);
         }
 

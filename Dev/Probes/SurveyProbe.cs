@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
 {
     public static class SurveyProbe
     {
-        [MenuItem("Tools/AvatarBridge Dev/Survey the selected avatar")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Probes/Survey the selected avatar")]
         public static void Run()
         {
             var avatar = Selection.activeGameObject != null

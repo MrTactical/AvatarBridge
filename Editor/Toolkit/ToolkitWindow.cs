@@ -49,7 +49,7 @@ namespace AvatarBridge
         readonly List<(Button button, bool needsAvatar)> _gated = new List<(Button, bool)>();
         Label _noAvatar;
         const string NeedsAvatar = "Needs a CVRAvatar on the root";
-        const string NeedsTarget = "Pick an avatar or prop in the first card";
+        const string NeedsTarget = "Pick an avatar or prop in step 1 first";
 
         // Mounts into a container the host owns. The banner belongs to the
         // window, not to the panel: a tab already sits under one.
@@ -57,8 +57,6 @@ namespace AvatarBridge
         {
             _embedded |= embedded;
             _pages = _embedded ? new VisualElement() : BridgeElements.Scroll();
-            // No step badges here, so the arrow gives up the badge's slot.
-            _pages.AddToClassList("ab-cards-plain");
             parent.Add(_pages);
             // Polled: nothing announces a CVRAvatar added after the pick, and
             // the buttons it gates would stay off until something rebuilt.
@@ -67,6 +65,10 @@ namespace AvatarBridge
         }
 
         const string OutputRoot = "Assets/AvatarBridgeOutput";
+
+        // The converter's physics pass, handed in from there: the add-on's package carries this
+        // panel without it, and without the VRChat SDK a PhysBone is a missing script anyway.
+        internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> ConvertPhysBones;
 
         GameObject _target;
         AnimatorController _mergeTarget;
@@ -79,12 +81,10 @@ namespace AvatarBridge
             _pages.Clear();
             _gated.Clear();
 
-            // No step numbers here. The converter and the setup flow ARE
-            // sequences; this is a menu, and numbering it says you are not
-            // finished until you have merged some animators.
-            var pick = new BridgeElements.Card("Pick your avatar or prop");
-            // Fixed among folding cards: its title moves into their column.
-            pick.AddToClassList("ab-card-static");
+            // Step 1 and only step 1: the tools after it are a menu, and
+            // numbering them says you are not finished until you have merged
+            // some animators.
+            var pick = new BridgeElements.Card("Pick your avatar or prop").Step(1, 1);
             pick.Body.Add(BridgeElements.ObjectPicker<GameObject>("Avatar or prop", _target, picked =>
             {
                 _target = picked;
@@ -101,7 +101,7 @@ namespace AvatarBridge
             var avatarHere = _target != null ? _target.GetComponent<CVRAvatar>() : null;
             if (tester != null && avatarHere != null)
             {
-                pick.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open in the CCK Animator Tester",
+                pick.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open in the Avatar Tester",
                     () => tester.GetMethod("OpenFor", BindingFlags.NonPublic | BindingFlags.Static)?.Invoke(null, new object[] { avatarHere }),
                     "Opens the tester already pointed at this avatar: gestures, menu, face, physics, played the way the game does.")));
             }
@@ -116,18 +116,13 @@ namespace AvatarBridge
             _pages.Add(Face());
             _pages.Add(Audio());
             _pages.Add(Bounds());
+            if (ConvertPhysBones != null) _pages.Add(PhysBones());
             _pages.Add(Height());
             _pages.Add(Description());
             _pages.Add(MergeAnimators());
             _pages.Add(More());
 
-            if (!_embedded)
-            {
-                _pages.Add(BridgeElements.Footer(
-                    BridgeElements.ExternalLink("Guide", BridgeLinks.Repo + "#chilloutvr-toolkit", "What each card does, in the README"),
-                    BridgeElements.ExternalLink("Report an issue", () => BridgeLinks.OpenBugReport(),
-                        "Opens a GitHub issue with your Unity and package versions filled in")));
-            }
+            if (!_embedded) _pages.Add(BridgeElements.Footer(BridgeLinks.Repo + "#chilloutvr-toolkit"));
             Gate();
         }
 
@@ -145,17 +140,17 @@ namespace AvatarBridge
                 card.Body.Add(BridgeElements.Row(said, link));
             }
             if (!_embedded && BridgeLinks.HasAvatarBridge)
-                Item("AvatarBridge converts VRChat avatars.", BridgeElements.Btn("AvatarBridge",
+                Item("AvatarBridge converts VRChat avatars.", BridgeElements.Btn("Open AvatarBridge",
                     () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/VRChat to ChilloutVR Converter")));
             if (BridgeDefines.HasYaps)
                 Item("YAPS adds penetration to any avatar or prop.",
-                    BridgeElements.Btn("YAPS", () => EditorApplication.ExecuteMenuItem("Tools/YAPS/Setup")));
+                    BridgeElements.Btn("Open YAPS Setup", () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/YAPS/Setup")));
             else
                 Item("YAPS, a separate 18+ add-on, adds penetration to any avatar or prop.",
                     BridgeElements.ExternalLink("Get the YAPS add-on", BridgeLinks.YapsRepo));
             if (typeof(ToolkitPanel).Assembly.GetType("AvatarBridge.CckAnimatorTester", false) != null)
-                Item("CCK Animator Tester plays an avatar as the game does.", BridgeElements.Btn("CCK Animator Tester",
-                    () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/CCK Animator Tester")));
+                Item("Avatar Tester plays an avatar as the game does.", BridgeElements.Btn("Open the Avatar Tester",
+                    () => EditorApplication.ExecuteMenuItem("Tools/Avatar Bridge/Avatar Tester")));
             return card;
         }
 
@@ -264,12 +259,14 @@ namespace AvatarBridge
         // The converter window's Output folder, kept in its saved settings
         // (CvrSetup.SettingsPrefsKey), and refused the way the converter
         // refuses it. The default where that window never ran.
-        static string SavedOutputFolder()
+        static string SavedOutputFolder() => CvrSetup.CheckedOutputFolder(SavedSettings().outputFolder) ?? OutputRoot;
+
+        static BridgeSettings SavedSettings()
         {
             var saved = new BridgeSettings();
             try { JsonUtility.FromJsonOverwrite(EditorPrefs.GetString(CvrSetup.SettingsPrefsKey, "{}"), saved); }
-            catch (System.Exception) { return OutputRoot; }
-            return CvrSetup.CheckedOutputFolder(saved.outputFolder) ?? OutputRoot;
+            catch (System.Exception) { return new BridgeSettings(); }
+            return saved;
         }
 
         const string ReadsOnly = "reads only";
@@ -279,7 +276,7 @@ namespace AvatarBridge
         // run replaces that with what the run found. fix and putBack are the
         // costs card's: Fix it writes the record Put the textures back spends,
         // so each run decides whether Put the textures back shows.
-        BridgeElements.Card Tool(string title, string summary, VisualElement hint, string button, ButtonKind kind,
+        BridgeElements.Card Tool(string title, string summary, VisualElement hint, string button,
             System.Func<BridgeReport> run, string whenEmpty, bool needsAvatar = false, VisualElement option = null,
             System.Func<BridgeReport> fix = null, System.Func<BridgeReport> putBack = null, System.Func<bool> canPutBack = null)
         {
@@ -302,7 +299,7 @@ namespace AvatarBridge
                 return b;
             }
 
-            var buttons = BridgeElements.ButtonRow(Act(button, kind, run, needsAvatar));
+            var buttons = BridgeElements.ButtonRow(Act(button, ButtonKind.Strong, run, needsAvatar));
             if (fix != null) buttons.Add(Act("Fix it", ButtonKind.Strong, fix, needsAvatar));
             if (putBack != null)
             {
@@ -337,13 +334,15 @@ namespace AvatarBridge
                 rows.Add(BridgeElements.Hint(whenEmpty));
         }
 
-        BridgeElements.Card Check() => Tool("Check this avatar", ReadsOnly,
-            BridgeElements.Hint("What ChilloutVR will break without saying.",
-                "Stripped components, the sync budget, unwired parameters, one-eyed shaders and rootless cloth."),
-            "Check", ButtonKind.Secondary, () =>
+        BridgeElements.Card Check() => Tool("Check before upload", ReadsOnly,
+            BridgeElements.Hint("What the CCK will refuse to upload, then what ChilloutVR will break without saying.",
+                "Missing scripts, texture and sound import settings, anything the upload drops, stripped " +
+                "components, the sync budget, unwired parameters, one-eyed shaders and rootless cloth."),
+            "Check", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
+                UploadPreflight.Run(report, ctx.CvrAvatar);
                 if (ctx.MergedController != null) BridgeDiagnostics.Run(ctx, ctx.MergedController);
                 else
                 {
@@ -355,9 +354,9 @@ namespace AvatarBridge
             }, "Nothing to report. That is the good outcome.");
 
         BridgeElements.Card Survey() => Tool("What this avatar does", ReadsOnly,
-            BridgeElements.Hint("Names features never wired up and layers fighting over the same thing.",
-                "Also menu controls nothing reads, and objects that could be props."),
-            "Survey it", ButtonKind.Secondary, () =>
+            BridgeElements.Hint("Names features never wired up and toggles a layer above always overrides.",
+                "Also states that can never play or that put the body in the bicycle pose, menu controls nothing reads, and objects that could be props."),
+            "Survey it", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
@@ -374,7 +373,7 @@ namespace AvatarBridge
             BridgeElements.Hint("Weigh it measures what the game will be charged. Fix it trims what can go.",
                 "Texture memory against the surface each map covers, contacts, triangles, cloth, unused " +
                 "blendshapes and locked shaders."),
-            "Weigh it", ButtonKind.Secondary, () =>
+            "Weigh it", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
@@ -429,7 +428,7 @@ namespace AvatarBridge
 
         BridgeElements.Card Tidy() => Tool("Free wins", Changes,
             BridgeElements.Hint("Removes empty layers and parameters nothing reads or writes, into a copy of the controller."),
-            "Tidy it", ButtonKind.Strong, () =>
+            "Tidy it", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
@@ -453,7 +452,7 @@ namespace AvatarBridge
         BridgeElements.Card Stereo() => Tool("Stereo shaders", Changes,
             BridgeElements.Hint("A shader without stereo support draws into one eye in VR. This patches copies that have it.",
                 "The materials are pointed at the copies. Materials an animation swaps in are left alone."),
-            "Patch shaders for VR stereo", ButtonKind.Strong, () =>
+            "Patch shaders for VR stereo", () =>
             {
                 var report = new BridgeReport();
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Patch stereo shaders");
@@ -475,12 +474,12 @@ namespace AvatarBridge
 
         BridgeElements.Card Face() => Tool("Face: visemes and blink", Changes,
             BridgeElements.Hint("Wires the face mesh's viseme and blink shapes onto the CVRAvatar."),
-            "Wire face", ButtonKind.Strong, () => CvrSetup.WireFace(_target, new BridgeSettings()),
+            "Wire face", () => CvrSetup.WireFace(_target, new BridgeSettings()),
             "Nothing found to wire.", needsAvatar: true);
 
         BridgeElements.Card Audio() => Tool("Audio limits", Changes,
             BridgeElements.Hint("Clamps every audio source to safe spatial settings; a zero minimum distance can mute the game."),
-            "Clamp audio sources", ButtonKind.Strong, () =>
+            "Clamp audio sources", () =>
             {
                 var report = new BridgeReport();
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Clamp audio");
@@ -490,7 +489,7 @@ namespace AvatarBridge
 
         BridgeElements.Card Bounds() => Tool("Mesh bounds", Changes,
             BridgeElements.Hint("Fits every skinned mesh's bounds to the avatar, so meshes stop vanishing at the screen's edge."),
-            "Fix mesh bounds", ButtonKind.Strong, () =>
+            "Fix mesh bounds", () =>
             {
                 var report = new BridgeReport();
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Fix mesh bounds");
@@ -498,9 +497,23 @@ namespace AvatarBridge
                 return report;
             }, "Bounds were already right.");
 
+        // The Convert tab's Physics options, read when pressed: the hint is only as fresh as the card.
+        BridgeElements.Card PhysBones()
+        {
+            var target = SavedSettings().physicsTarget;
+            return Tool("PhysBones to cloth", Changes,
+                BridgeElements.Hint(target == PhysicsTarget.None
+                        ? "Physics is set to None in the Convert tab, so this converts nothing until it is set again."
+                        : $"Converts the PhysBones still on it to {(target == PhysicsTarget.DynamicBone ? "DynamicBone" : "MagicaCloth2")}, in place, with the Convert tab's Physics options.",
+                    "For an avatar already on ChilloutVR. Animations that switch its PhysBones are rewired in a copy " +
+                    "of its controller, never its own. A VRChat avatar is converted in the Convert tab instead. Ctrl+Z undoes it."),
+                "Convert PhysBones", () => ConvertPhysBones(_target, SavedSettings(), WriteFolder),
+                "No PhysBones on it.");
+        }
+
         BridgeElements.Card Height() => Tool("Height slider", Changes,
             BridgeElements.Hint("Adds a Height slider, 0.25x to 4x, to the menu. Edits the avatar's controller asset."),
-            "Add height slider", ButtonKind.Strong, () =>
+            "Add height slider", () =>
             {
                 // Refusals are warnings, as on every other card: nothing broke, it declined.
                 var report = new BridgeReport();
@@ -550,7 +563,7 @@ namespace AvatarBridge
         // Not gated: the description reads a CVRAvatar when there is one and does without.
         BridgeElements.Card Description() => Tool("Store description", "fills the upload page",
             BridgeElements.Hint("Writes a 256-character description into the upload page when its box is empty, and copies it."),
-            "Write description", ButtonKind.Strong, () =>
+            "Write description", () =>
             {
                 var report = new BridgeReport();
                 var ctx = Context(report);
@@ -583,7 +596,9 @@ namespace AvatarBridge
             {
                 go?.SetEnabled(_mergeTarget != null && _mergeSources.Any(s => s != null));
                 // One empty field is what clear leaves, so there is nothing to clear.
-                clear?.SetEnabled(_mergeSources.Count > 1 || _mergeSources.Any(s => s != null));
+                bool any = _mergeSources.Count > 1 || _mergeSources.Any(s => s != null);
+                clear?.SetEnabled(any);
+                if (clear != null) clear.tooltip = any ? "Empties the source list." : "No source to clear yet.";
             }
 
             card.Body.Add(BridgeElements.ObjectPicker<AnimatorController>("Target", _mergeTarget,
@@ -609,16 +624,16 @@ namespace AvatarBridge
             }
             DrawSources();
             card.Body.Add(list);
-            clear = BridgeElements.TextLink("clear", () => { _mergeSources.Clear(); DrawSources(); });
+            clear = BridgeElements.TextLink("Clear", () => { _mergeSources.Clear(); DrawSources(); });
             card.Body.Add(BridgeElements.ButtonRow(
-                BridgeElements.TextLink("+ another source", () => { _mergeSources.Add(null); DrawSources(); }),
+                BridgeElements.TextLink("+ Another source", () => { _mergeSources.Add(null); DrawSources(); }),
                 clear));
 
             card.Body.Add(BridgeElements.Choice("Write to", "Into a copy leaves the target as it is.",
                 new[] { "A copy beside the target (recommended)", "The target itself" }, _mergeIntoCopy ? 0 : 1,
                 i => _mergeIntoCopy = i == 0));
 
-            // Strong, not the gradient primary: an animator utility is not the crossing.
+            // Strong, as every tool card's own action is.
             var rows = new VisualElement();
             go = BridgeElements.Btn("Merge", () =>
             {
@@ -649,7 +664,7 @@ namespace AvatarBridge
     // not a second implementation.
     public class ToolkitWindow : EditorWindow
     {
-        [MenuItem("Tools/Avatar Bridge/ChilloutVR Toolkit")]
+        [MenuItem("Tools/Avatar Bridge/ChilloutVR Toolkit", false, 982)]
         public static void Open()
         {
             var w = GetWindow<ToolkitWindow>();
@@ -664,8 +679,8 @@ namespace AvatarBridge
         void CreateGUI()
         {
             var root = BridgeElements.Root(rootVisualElement);
-            root.Add(BridgeElements.Banner("ChilloutVR Toolkit", "utilities for any avatar or prop",
-                "v" + BridgeDefines.Version, BridgeTheme.Span.Cvr));
+            root.Add(BridgeElements.Banner("ChilloutVR Toolkit", "utilities for any ChilloutVR avatar or prop",
+                "v" + BridgeDefines.Version));
             new ToolkitPanel(target, onTargetChanged: t => target = t).Mount(root);
         }
     }

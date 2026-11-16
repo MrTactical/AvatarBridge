@@ -426,7 +426,7 @@ namespace AvatarBridge
             master.parameters = source.parameters.Select(AnimatorDeepCopier.CloneParameter).ToArray();
             master.layers = source.layers.Select(copier.CloneLayer).ToArray();
             ctx.Report.Converted(Category, "CCK base animator",
-                $"Copied {master.layers.Length} layer(s): locomotion, hand poses and emotes stay CVR-native.");
+                $"Copied {BridgeElements.Count(master.layers.Length, "layer", "layers")}: locomotion, hand poses and emotes stay CVR-native.");
             return master;
         }
 

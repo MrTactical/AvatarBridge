@@ -49,6 +49,7 @@ namespace AvatarBridge
             // against the parent the transform has when it is created.
             relocated = new Dictionary<string, string>();   // per conversion, never carried over
             sourceIndex = new Dictionary<string, int>();
+            sourceStandIns.Clear();
             reparented = AlignLocalSpaceRelays(ctx);
             // VrcConstraintTypeNames below gates this loop deliberately, rather than sitting
             // beside it as a list someone has to remember to update: AvatarAdvisor counts what
@@ -102,7 +103,7 @@ namespace AvatarBridge
 
             if (converted > 0)
             {
-                ctx.Report.Converted(Category, $"{converted} VRC constraint(s) -> Unity constraints");
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(converted, "VRC constraint", "VRC constraints")} -> Unity constraints");
             }
             // Curve rewriting happens later, on owned copies.
             // See RepointCurvesOnOurCopies.
@@ -196,7 +197,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Converted(Category,
-                $"{disabled.Count} unfollowable local-space constraint(s) disabled: their animation takes over",
+                $"{BridgeElements.Count(disabled.Count, "unfollowable local-space constraint", "unfollowable local-space constraints")} disabled: their animation takes over",
                 $"{string.Join(", ", disabled)}: local-space constraints Unity cannot match, also posed by an " +
                 "animation. The animation holds the bone; the live follow is lost.");
         }
@@ -344,7 +345,7 @@ namespace AvatarBridge
             if (protectedSources.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{protectedSources.Count} clip(s) left untouched to protect your original files",
+                    $"{BridgeElements.Count(protectedSources.Count, "clip", "clips")} left untouched to protect your original files",
                     $"{string.Join(", ", System.Linq.Enumerable.Take(protectedSources, 6))}" +
                     $"{(protectedSources.Count > 6 ? ", …" : "")}: the avatar's own files, not copies. What they " +
                     "switch (limb lock, sit, flight) will not work. Convert from a baked copy to fix it.");
@@ -352,14 +353,14 @@ namespace AvatarBridge
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{repointed} animation curve(s) repointed at the Unity constraints",
+                    $"{BridgeElements.Count(repointed, "animation curve", "animation curves")} repointed at the Unity constraints",
                     "So limb-lock, sit and flight toggles still work." +
                     (followed > 0 ? $" {followed} followed their constraint to a new object." : ""));
             }
             if (dropped.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{dropped.Count} curve(s) drove a constraint property Unity doesn't have",
+                    $"{BridgeElements.Count(dropped.Count, "curve", "curves")} drove a constraint property Unity doesn't have",
                     "Dropped rather than left pointing at nothing: almost always 'Freeze To " +
                     "World', which has no Unity or ChilloutVR equivalent. A toggle relying on it " +
                     "will change the constraint but not pin anything in place: " +
@@ -368,7 +369,7 @@ namespace AvatarBridge
             if (droppedOffsets.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{droppedOffsets.Count} curve(s) animated a constraint offset, which is not carried over",
+                    $"{BridgeElements.Count(droppedOffsets.Count, "curve", "curves")} animated a constraint offset, which is not carried over",
                     "Dropped rather than left pointing at nothing. The constraint keeps the offset it was " +
                     "built with, so whatever the animation shifted stays at rest: " +
                     string.Join("; ", droppedOffsets) + ".");
@@ -376,21 +377,21 @@ namespace AvatarBridge
             if (droppedRest.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{droppedRest.Count} curve(s) animated a constraint's rest pose or axes, which is not carried over",
+                    $"{BridgeElements.Count(droppedRest.Count, "curve", "curves")} animated a constraint's rest pose or axes, which is not carried over",
                     "Dropped rather than left pointing at nothing. The constraint keeps the rest pose and axes " +
                     "it was built with: " + string.Join("; ", droppedRest) + ".");
             }
             if (unmappedSources.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{unmappedSources.Count} curve(s) animated a constraint source that was not carried over",
+                    $"{BridgeElements.Count(unmappedSources.Count, "curve", "curves")} animated a constraint source that was not carried over",
                     "Usually an empty source slot, which converts to nothing. Dropped rather than left " +
                     "driving a different source: " + string.Join("; ", unmappedSources) + ".");
             }
             if (lost.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{lost.Count} curve(s) drove a constraint on an object that is now GONE",
+                    $"{BridgeElements.Count(lost.Count, "curve", "curves")} drove a constraint on an object that is now GONE",
                     "Objects removed with a stripped system are not counted here, so this is unexpected. " +
                     "Please report it: " +
                     string.Join("; ", lost) + ".");
@@ -398,7 +399,7 @@ namespace AvatarBridge
             if (movedByBake.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{movedByBake.Count} curve(s) name a path the avatar's own build step didn't produce",
+                    $"{BridgeElements.Count(movedByBake.Count, "curve names", "curves name")} a path the avatar's own build step didn't produce",
                     "The object is under a different parent: a VRCFury or Modular Avatar bake stopped short. " +
                     "Get the source avatar building cleanly and convert again. Found: " +
                     string.Join("; ", movedByBake) + ".");
@@ -406,7 +407,7 @@ namespace AvatarBridge
             if (neverBuilt.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{neverBuilt.Count} curve(s) drove a constraint that was never built",
+                    $"{BridgeElements.Count(neverBuilt.Count, "curve", "curves")} drove a constraint that was never built",
                     "Usually a VRCFury or Modular Avatar bake that errored partway. Build a test copy of the " +
                     "source avatar and check it completes: " + string.Join("; ", neverBuilt) + ".");
             }
@@ -448,7 +449,7 @@ namespace AvatarBridge
             {
                 return false;
             }
-            return string.IsNullOrEmpty(path) || ctx.Target.transform.Find(path) != null;
+            return BridgeContext.FindByAnimationPath(ctx.Target.transform, path) != null;
         }
 
         // A per-source property comes back with {0} where the Unity index goes and `source` set to
@@ -475,7 +476,7 @@ namespace AvatarBridge
             if (dot > 0 && int.TryParse(vrcProperty.Substring(fieldPrefix.Length, dot - fieldPrefix.Length),
                     out int n))
             {
-                // Parent offsets copy 1:1, same axes and same units (measured, Dev/Probes/ConstraintOffsetProbe).
+                // Parent offsets copy 1:1, same axes and same units (measured).
                 // ConvertParent copies the static values raw too, so an animated one agrees with them.
                 string field = vrcProperty.Substring(dot + 1);
                 const string position = "ParentPositionOffset.", rotation = "ParentRotationOffset.";
@@ -525,9 +526,7 @@ namespace AvatarBridge
 
         static Type ConstraintTypeOnPath(BridgeContext ctx, string path, string vrcTypeName)
         {
-            var transform = string.IsNullOrEmpty(path)
-                ? ctx.Target.transform
-                : ctx.Target.transform.Find(path);
+            var transform = BridgeContext.FindByAnimationPath(ctx.Target.transform, path);
             if (transform == null)
             {
                 return null;
@@ -576,7 +575,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning(Category,
-                $"{mirrored.Count} constraint(s) sit under a mirrored parent and will be reflected",
+                $"{BridgeElements.Count(mirrored.Count, "constraint sits", "constraints sit")} under a mirrored parent and will be reflected",
                 "Unity's constraints do not correct for a negatively scaled parent. Un-mirror those bones " +
                 "and re-rig; no setting changes it.\n\n" +
                 string.Join("\n", mirrored));
@@ -618,6 +617,45 @@ namespace AvatarBridge
                     continue;
                 }
 
+                // A bone whose parent a PhysBone moves, carrying bones of its own, cannot go: moved,
+                // its children stop following the chain. A physics add-on's cascade hangs every later
+                // stage off such a bone, and moving it parked them on a still part of the rig, 11 cm
+                // out of place at rest (Play-mode trace, 2026-10-07). When the source never changes
+                // its own rotation, a fixed copy of it under the bone's parent gives the same answer
+                // in world space, and nothing moves.
+                if (constrained.childCount > 0 && Simulated(ctx, constrained.parent))
+                {
+                    // The bone's own parent stands in for the source, its offset measured from the
+                    // pose. A new object would land inside the simulated chain, and MagicaCloth2 takes
+                    // every transform under a root as a particle, so the copy would swing. Measured
+                    // only for one full-weight source, as ConvertRotation measures it.
+                    var only = ReadSources(component);
+                    bool measured = Get(component, "IsActive", true) && component.gameObject.activeInHierarchy
+                        && Mathf.Approximately(Get(component, "GlobalWeight", 1f), 1f)
+                        && only.Count == 1 && only[0].Weight >= 0.999f;
+                    if (measured && StaticLocally(ctx, source, animatedPaths))
+                    {
+                        sourceStandIns[(component, source)] = constrained.parent;
+                        ctx.Report.Converted(Category, ctx.PathInTarget(constrained),
+                            $"Local-space rotation relay from \"{source.name}\": that source never changes its own " +
+                            $"rotation, so this bone's own parent (\"{constrained.parent.name}\") drives it instead, " +
+                            "and a world-space constraint reproduces it exactly while the bone stays where it is, " +
+                            "with the bones it carries.");
+                    }
+                    else
+                    {
+                        string cause = measured
+                            ? "the source changes its own rotation, so its parent cannot stand in for it"
+                            : "its offset could not be measured from the pose (the constraint is inactive, or has " +
+                              "more than one source or less than full weight), so its parent cannot stand in for the source";
+                        ctx.Report.Approximated(Category, ctx.PathInTarget(constrained),
+                            $"Solved in local space against \"{source.name}\", which Unity cannot do. Moving the " +
+                            $"bone would take the bones it carries out of the physics chain it hangs from, and {cause}. " +
+                            "Converted as a world-space constraint; it will not follow correctly.");
+                    }
+                    continue;
+                }
+
                 string why = BlocksMove(ctx, constrained, skinned, animatedPaths)
                              ?? BlocksMirroredMove(constrained, source.parent);
                 if (why != null)
@@ -645,6 +683,67 @@ namespace AvatarBridge
                 RepointMaskPaths(ctx);
             }
             return moved;
+        }
+
+        // A local-space relay's source, swapped per constraint for the constrained bone's
+        // parent. Per conversion.
+        static readonly Dictionary<(object, Transform), Transform> sourceStandIns =
+            new Dictionary<(object, Transform), Transform>();
+
+        // Whether physics simulates this bone: it sits under a chain's root. This pass runs after
+        // physics conversion, so the chain may already be a MagicaCloth2 or DynamicBone component.
+        static bool Simulated(BridgeContext ctx, Transform t)
+        {
+            if (t == null) return false;
+            foreach (var c in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null) continue;
+                var roots = new List<Transform>();
+                switch (c.GetType().Name)
+                {
+                    case "VRCPhysBone":
+                        var root = Get<Transform>(c, "rootTransform", null);
+                        roots.Add(root != null ? root : c.transform);   // Unity's null, which ?? does not see
+                        break;
+                    case "DynamicBone":
+                        roots.Add(Get<Transform>(c, "m_Root", null));
+                        break;
+                    case "MagicaCloth":
+                        if (Get<object>(Get<object>(c, "SerializeData", null), "rootBones", null) is IEnumerable bones)
+                        {
+                            foreach (var b in bones) roots.Add(b as Transform);
+                        }
+                        break;
+                    default:
+                        continue;
+                }
+                foreach (var r in roots)
+                {
+                    if (r != null && (t == r || t.IsChildOf(r))) return true;
+                }
+            }
+            return false;
+        }
+
+        // Whether nothing ever changes this bone's rotation relative to its parent: no animation,
+        // no constraint writing it, no PhysBone simulating it, and no humanoid mapping, since
+        // muscle curves bind at the root and tracking writes no curve at all.
+        static bool StaticLocally(BridgeContext ctx, Transform t, HashSet<string> animatedPaths)
+        {
+            if (animatedPaths.Contains(ctx.PathInTarget(t)) || Simulated(ctx, t)) return false;
+            var animator = ctx.Target.GetComponent<Animator>();
+            if (animator != null && animator.isHuman)
+                for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
+                    if (animator.GetBoneTransform(bone) == t) return false;
+            foreach (var c in ctx.Target.GetComponentsInChildren<Component>(true))
+            {
+                if (c == null) continue;
+                if (c is UnityEngine.Animations.IConstraint && c.transform == t) return false;
+                if (!c.GetType().Name.StartsWith("VRC") || !c.GetType().Name.EndsWith("Constraint")) continue;
+                var target = Get<Transform>(c, "TargetTransform", null);
+                if ((target != null ? target : c.transform) == t) return false;
+            }
+            return true;
         }
 
         static HashSet<Transform> SkinningBones(GameObject root)
@@ -815,6 +914,16 @@ namespace AvatarBridge
             {
                 return;
             }
+            // A relay whose bone's parent stands in for the source was solved, and reported,
+            // when it was aligned. The stand-in's own parent is the grandparent, so the test
+            // below would call it a cross-chain relay.
+            foreach (var key in sourceStandIns.Keys)
+            {
+                if (ReferenceEquals(key.Item1, vrc))
+                {
+                    return;
+                }
+            }
             // The Unity constraint may sit on TargetTransform instead.
             // Not "?? vrc.transform": an unassigned Transform is
             // Unity's fake null, and ?? passes it through.
@@ -864,7 +973,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning(Category,
-                $"{crossChain.Count} constraint(s) relayed a bone from another chain in local space",
+                $"{BridgeElements.Count(crossChain.Count, "constraint", "constraints")} relayed a bone from another chain in local space",
                 "Unity solves constraints in world space only, so these will not follow their source. A gap " +
                 "in the conversion: please report the avatar.\n\n" +
                 string.Join("\n", crossChain));
@@ -901,6 +1010,10 @@ namespace AvatarBridge
                 if (transform == null)
                 {
                     continue; // a source with no transform constrains to nothing, and null-sources crash AddSource
+                }
+                if (sourceStandIns.TryGetValue((vrcConstraint, transform), out var standIn))
+                {
+                    transform = standIn;
                 }
                 result.Add(new SourceData
                 {

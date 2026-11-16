@@ -139,46 +139,22 @@ namespace AvatarBridge
             ((rgb >> 8) & 0xFF) / 255f,
             (rgb & 0xFF) / 255f);
 
-        // The stretch of the ramp a window lives on. Only the converter crosses platforms, so
-        // only it starts in VRChat blue; every ChilloutVR-only surface runs plum to orange.
-        public sealed class Span
-        {
-            public static readonly Span Bridge = new Span(0f, 1f, 0.5f);
-            // The even middle of plum to orange is the rust stop, dE 18 from orange, so badges 2
-            // and 3 of a three-step card matched. The perceptual middle is the crimson the rust
-            // stop exists to avoid. 0.6 is berry: dE 31 from plum, 60 from orange, and further
-            // from the bad tone than orange itself.
-            public static readonly Span Cvr = new Span(0.5f, 1f, 0.6f);
-
-            readonly float _from, _to, _middle;
-            Texture2D _gradient;
-
-            Span(float from, float to, float middle) { _from = from; _to = to; _middle = middle; }
-
-            public Color At(float t) => BridgeTheme.At(Mathf.Lerp(_from, _to, Mathf.Clamp01(t)));
-
-            // A step badge: the first and last steps sit on the span's ends, the middle on _middle.
-            public Color Step(int step, int of)
-            {
-                float u = of <= 1 ? 0f : Mathf.Clamp01((step - 1) / (float)(of - 1));
-                return BridgeTheme.At(u < 0.5f
-                    ? Mathf.Lerp(_from, _middle, u * 2f)
-                    : Mathf.Lerp(_middle, _to, u * 2f - 1f));
-            }
-
-            internal Texture2D Gradient()
-            {
-                if (_gradient == null)
-                {
-                    _gradient = Ramp(At, "AvatarBridge Gradient");
-                }
-                return _gradient;
-            }
-        }
+        // Every surface runs the whole ramp, so a step or a tab means the same colour in every
+        // window: the first on the blue end, the last on the orange.
+        public static Color Step(int step, int of) => At(of <= 1 ? 0f : (step - 1) / (float)(of - 1));
 
         // ------------------------------------------------------------- textures ----
 
-        public static Texture2D Gradient(Span span) => span.Gradient();
+        static Texture2D _gradient;
+
+        public static Texture2D Gradient()
+        {
+            if (_gradient == null)
+            {
+                _gradient = Ramp(At, "AvatarBridge Gradient");
+            }
+            return _gradient;
+        }
 
         static Texture2D Ramp(System.Func<float, Color> colour, string name)
         {
@@ -203,7 +179,7 @@ namespace AvatarBridge
         static GUIStyle _imTitle, _imSub, _imPill;
 
         // The UI Toolkit banner for IMGUI panels, at the inspector's 52px.
-        public static void DrawBanner(Rect rect, string title, string subtitle, string pill, Span span)
+        public static void DrawBanner(Rect rect, string title, string subtitle, string pill)
         {
             if (Event.current.type != EventType.Repaint)
             {
@@ -228,7 +204,7 @@ namespace AvatarBridge
                 };
             }
 
-            GUI.DrawTexture(rect, Gradient(span), ScaleMode.StretchToFill);
+            GUI.DrawTexture(rect, Gradient(), ScaleMode.StretchToFill);
 
             const float left = 16f, right = 12f;
             float textRight = rect.xMax - right;

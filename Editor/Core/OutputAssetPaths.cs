@@ -35,7 +35,9 @@ namespace AvatarBridge
             ClaimedThisRun.Clear();
         }
 
-        internal static string Claim(string desiredPath)
+        // With stale, the previous run's file is listed instead of deleted, for a caller that
+        // deletes them all in one call: each DeleteAsset is a refresh of its own.
+        internal static string Claim(string desiredPath, List<string> stale = null)
         {
             string normalised = desiredPath.Replace('\\', '/');
             string dir = Path.GetDirectoryName(normalised)?.Replace('\\', '/') ?? "";
@@ -54,9 +56,23 @@ namespace AvatarBridge
             // loading the old asset to test the path deserialised a whole mesh just to delete it.
             if (!string.IsNullOrEmpty(AssetDatabase.AssetPathToGUID(candidate, AssetPathToGUIDOptions.OnlyExistingAssets)))
             {
-                AssetDatabase.DeleteAsset(candidate);
+                if (stale != null)
+                {
+                    stale.Add(candidate);
+                }
+                else
+                {
+                    AssetDatabase.DeleteAsset(candidate);
+                }
             }
             return candidate;
+        }
+
+        // For a writer that picks its own names: a later Claim of the same path must see it
+        // taken, or it deletes the file this run just wrote. False when it already was.
+        internal static bool Reserve(string path)
+        {
+            return ClaimedThisRun.Add(path.Replace('\\', '/'));
         }
 
         // Directory plus a full Refresh, as both callers always did. CreateFolder would skip the

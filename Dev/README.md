@@ -12,6 +12,11 @@ whole folder, and a public `.unitypackage` never contains it.
 | `Scenes/` | building and cleaning the test scenes the corpus runs against |
 | `Spikes/` | throwaway experiments, gitignored |
 
+A test that patches or bakes writes into the shared `Assets/YAPS/Generated`,
+so it takes `GeneratedFiles.Snapshot()` first and calls
+`GeneratedFiles.DeleteNew` in its `finally`: only what the run added goes,
+never a copy that was there before it.
+
 The corpus reads its avatar lists from `Regression/corpus.cfg` and its
 repo root from the `AVATARBRIDGE_REPO` environment variable. Digests are
 written to `Regression/`, which is gitignored: they describe the

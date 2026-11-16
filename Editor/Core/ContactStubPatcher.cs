@@ -75,7 +75,7 @@ namespace AvatarBridge
             {
                 AssetDatabase.DeleteAsset(dir);
             }
-            Debug.Log($"[AvatarBridge] Removed {removed} generated contact declaration(s). " +
+            Debug.Log($"[AvatarBridge] Removed {BridgeElements.Count(removed, "generated contact declaration", "generated contact declarations")}. " +
                       "Contacts convert through ChilloutVR pointers and triggers now; " +
                       "reconvert any avatar that used the old native-contact option.");
         }

@@ -20,7 +20,8 @@ namespace AvatarBridge
     //
     // The generated entries deliberately have no GameObject targets: the converted FX
     // layers already react to the parameters, the entries only exist so CVR shows menu
-    // controls and syncs the values.
+    // controls and saves the values to the profile. Sync comes from the animator's own
+    // parameter list, entry or not.
     public static class ParameterMenuConverter
     {
         const string Category = "Parameters & menu";
@@ -120,7 +121,7 @@ namespace AvatarBridge
                 if (resynced.Count > 0)
                 {
                     ctx.Report.Converted(Category,
-                        $"{resynced.Count} menu parameter(s) synced although VRChat marked them local",
+                        $"{BridgeElements.Count(resynced.Count, "menu parameter", "menu parameters")} synced although VRChat marked them local",
                         string.Join(", ", resynced.Take(12)) + (resynced.Count > 12 ? ", …" : "") +
                         ": a menu drives each, so others should see what it does.");
                 }
@@ -201,7 +202,7 @@ namespace AvatarBridge
 
             if (ftSkipped > 0)
             {
-                ctx.Report.Converted(Category, $"{ftSkipped} face-tracking parameter(s) left as-is",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(ftSkipped, "face-tracking parameter", "face-tracking parameters")} left as-is",
                     "Not exposed as menu toggles: the FT animator layers drive them.");
             }
 
@@ -302,7 +303,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            ctx.Report.Warning(Category, $"{packed.Count} packed sync slot(s) must stay in the menu",
+            ctx.Report.Warning(Category, $"{BridgeElements.Count(packed.Count, "packed sync slot", "packed sync slots")} must stay in the menu",
                 $"{string.Join(", ", packed.Take(4))}{(packed.Count > 4 ? ", …" : "")}: they carry the real " +
                 "toggles to other players. Deleting them breaks that.");
         }
@@ -345,7 +346,8 @@ namespace AvatarBridge
             }
 
             string display = hasMenu
-                ? FriendlyMenuName(paramUses[0].DisplayName, leafCounts)
+                ? (p.valueType == VRCExpressionParameters.ValueType.Int ? DropdownTitle(paramUses) : null)
+                    ?? FriendlyMenuName(paramUses[0].DisplayName, leafCounts)
                 : FriendlyParamName(p.name);
             display = MakeUnique(display, usedNames);
 
@@ -508,7 +510,8 @@ namespace AvatarBridge
                 }
                 else if (animatorValues.TryGetValue(i, out var stateName))
                 {
-                    label = stateName ?? $"Option {i}";
+                    // A VRChat menu has no button for 0: switching a toggle off returns the int there.
+                    label = stateName ?? (i == 0 && hasMenu ? "None" : $"Option {i}");
                     live++;
                 }
                 else
@@ -750,6 +753,23 @@ namespace AvatarBridge
                 }
             }
             return leaf;
+        }
+
+        // A dropdown is a submenu of toggles each setting one value, so it takes the submenu's name,
+        // not its first option's. Null for a lone toggle, or toggles with no submenu in common.
+        static string DropdownTitle(List<MenuUse> uses)
+        {
+            if (uses.Select(u => u.Value).Distinct().Count() < 2) return null;
+            var common = uses[0].DisplayName.Split(MenuSeparator);
+            int shared = common.Length - 1;
+            foreach (var use in uses.Skip(1))
+            {
+                var parts = use.DisplayName.Split(MenuSeparator);
+                int n = 0;
+                while (n < shared && n < parts.Length - 1 && parts[n] == common[n]) n++;
+                shared = n;
+            }
+            return shared > 0 ? common[shared - 1] : null;
         }
 
         static string FriendlyParamName(string name)

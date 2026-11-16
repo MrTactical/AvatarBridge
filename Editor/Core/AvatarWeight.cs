@@ -46,7 +46,7 @@ namespace AvatarBridge
             public long DiskBytes;
             public int Materials;
 
-            // Lowest density among the materials using it, never the
+            // Lowest density among the surfaces using it, never the
             // average: the use with the fewest texels per metre needs every
             // one it has, so it decides. Highest let a button shrink a shirt.
             public float Density;
@@ -94,6 +94,7 @@ namespace AvatarBridge
             public int Cloth;
             public int ClothColliders;
             public int ClothParticles;
+            public int ClothMeshVertices;   // a ceiling: MeshCloth reduction merges an unknown share
             public int Pointers;
             public int Triggers;
             public readonly List<string> Atlas = new List<string>();
@@ -105,6 +106,8 @@ namespace AvatarBridge
             public long DeadBytes;
             public long DeadDownloadBytes;
             public readonly List<string> Dead = new List<string>();
+            // The same renderers, as found: a path can name a same-named sibling instead.
+            public readonly List<Renderer> DeadRenderers = new List<Renderer>();
             // Dead, but everything it draws is drawn by something visible
             // too. Stripping frees the mesh and the draw call, no texture.
             public readonly List<string> DeadFreesNothing = new List<string>();
@@ -114,7 +117,7 @@ namespace AvatarBridge
                 new Dictionary<string, string>(System.StringComparer.Ordinal);
         }
 
-        class Area
+        internal class Area
         {
             public double World;
             public double Uv;
@@ -190,7 +193,7 @@ namespace AvatarBridge
                 // on: it is carried, downloaded and never seen. With no
                 // controller read, nothing proves it is never switched on.
                 bool dead = survey != null && survey.Controller != null && !Live(r, avatar.transform, switched);
-                if (dead) report.Dead.Add(path);
+                if (dead) { report.Dead.Add(path); report.DeadRenderers.Add(r); }
 
                 foreach (var m in r.sharedMaterials)
                 {
@@ -284,7 +287,7 @@ namespace AvatarBridge
                 var t = pair.Key;
                 Add(r, pair.Value, $"\"{t.Name}\" is {t.Width}x{t.Height} across {t.WorldArea:0.###} m2 of surface. " +
                                    $"That is {t.Density:N0} texels per metre where {TargetDensity:N0} is ample. " +
-                                   $"{t.Suggested}x{t.Suggested} is the same picture.", 0, t.Name);
+                                   $"{t.Suggested}x{t.Suggested} is the same picture.", 0, KeyOf(pair.Key.Texture, t.Name));
             }
             if (oversized.Count > Named)
             {
@@ -305,14 +308,14 @@ namespace AvatarBridge
                 long saved = t.Bytes - t.Bytes / perPixel;
                 keeps[t] /= perPixel;
                 Add(r, saved, $"\"{t.Name}\" is {t.Format}, {perPixel} bytes a pixel, uncompressed. " +
-                              "Compressing it costs nothing anybody will see.", 0, t.Name);
+                              "Compressing it costs nothing anybody will see.", 0, KeyOf(t.Texture, t.Name));
             }
 
             var readable = r.Textures.Where(t => t.Readable).ToList();
             if (readable.Count > 0)
             {
                 long saved = readable.Sum(t => t.Bytes);
-                Add(r, saved, $"{readable.Count} texture(s) have Read/Write Enabled ticked, which keeps a second " +
+                Add(r, saved, $"{BridgeElements.Count(readable.Count, "texture has", "textures have")} Read/Write Enabled ticked, which keeps a second " +
                               "copy in system memory for the whole session. Nothing on an avatar reads pixels " +
                               "back. Untick it in the importer.");
             }
@@ -320,7 +323,7 @@ namespace AvatarBridge
             int costly = r.Dead.Count - r.DeadFreesNothing.Count;
             if (StripAdvised(r))
             {
-                Add(r, r.DeadBytes, $"{costly} renderer(s) are switched off and nothing in the animator can " +
+                Add(r, r.DeadBytes, $"{BridgeElements.Count(costly, "renderer is", "renderers are")} switched off and nothing in the animator can " +
                                     "switch them on, so their textures are downloaded and never seen. Either wire " +
                                     "them to a toggle or strip them.");
             }
@@ -335,7 +338,7 @@ namespace AvatarBridge
             // so none come back, and the mesh is still skinned every frame.
             if (r.DeadFreesNothing.Count > 0)
             {
-                Add(r, 0, $"{r.DeadFreesNothing.Count} more renderer(s) are switched off with nothing to switch " +
+                Add(r, 0, $"{BridgeElements.Count(r.DeadFreesNothing.Count, "more renderer is", "more renderers are")} switched off with nothing to switch " +
                           "them on. Their textures are shared with something visible, so none of that comes back, " +
                           "but the mesh is still carried and still skinned every frame.");
             }
@@ -351,7 +354,7 @@ namespace AvatarBridge
             {
                 Add(r, 0, $"{r.Materials} materials on {r.Shaders.Count} distinct shaders, which means every " +
                           "material carries its own locked copy. The client compiles them one by one on first " +
-                          "sight of you. Unlock, or lock once and share.", 2);
+                          "sight of you. Lock them together in one go, so materials set alike share one shader.", 2);
             }
 
             if (r.ClothParticles > 900)
@@ -396,7 +399,7 @@ namespace AvatarBridge
 
             if (r.Atlas.Count > 0)
             {
-                Add(r, 0, $"{r.Atlas.Count} set(s) of materials share a shader and are never animated apart: " +
+                Add(r, 0, $"{BridgeElements.Count(r.Atlas.Count, "set of materials shares a shader and is", "sets of materials share a shader and are")} never animated apart: " +
                           string.Join(", ", r.Atlas) + ". One texture each would cut draw calls. Reported only, " +
                           "because merging them rewrites UVs and breaks per-slot material animation.", 2);
             }
@@ -428,8 +431,19 @@ namespace AvatarBridge
         static long Reclaimable(Report r)
         {
             bool strip = StripAdvised(r);
-            return r.Textures.Sum(t => (strip && t.Dead) || !r.LeftAlone.ContainsKey(t.Name) ? t.Reclaim : 0);
+            return r.Textures.Sum(t => (strip && t.Dead) || !r.LeftAlone.ContainsKey(KeyOf(t.Texture, t.Name)) ? t.Reclaim : 0);
         }
+
+        // Two textures of one file name are common across packages, so the
+        // left-alone notes go by asset path and only show the name.
+        internal static string KeyOf(Texture texture, string name)
+        {
+            string path = texture != null ? AssetDatabase.GetAssetPath(texture) : null;
+            return string.IsNullOrEmpty(path) ? name : path;
+        }
+
+        internal static string Shown(string key) =>
+            key != null && key.Contains("/") ? System.IO.Path.GetFileNameWithoutExtension(key) : key;
 
         static string LeftAloneNote(string user) =>
             $" Left alone though: {user} uses it too, and the size lives on the texture rather than on the " +
@@ -446,24 +460,42 @@ namespace AvatarBridge
 
         // ---- density ------------------------------------------------------
 
-        static void Densities(Dictionary<Texture, TextureUse> textures, Dictionary<Material, Area> areas)
+        internal static void Densities(Dictionary<Texture, TextureUse> textures, Dictionary<Material, Area> areas)
         {
+            // One surface per set of maps at one tiling, however many materials draw it. A pass
+            // that gives every slot its own copy of a material would otherwise leave each copy
+            // one slot's share of the area, and the texture covering a fraction of its surface.
+            var surfaces = new Dictionary<string, (List<Texture> maps, Vector2 scale, Area area)>();
             foreach (var pair in areas)
             {
-                var area = pair.Value;
+                var scale = pair.Key.HasProperty("_MainTex") ? pair.Key.mainTextureScale : Vector2.one;
+                // A data texture, a bake or a lookup, is read value by value and never spread
+                // over a surface. It has no density, and fewer texels would be fewer numbers,
+                // so it is never offered smaller, and the texture pass never resizes it. It is
+                // left out of the key too, so a bake one copy gained does not split the surface.
+                var maps = TexturesOf(pair.Key)
+                    .Where(t => textures.TryGetValue(t, out var u) && !u.Data)
+                    .Distinct()
+                    .OrderBy(t => t.GetInstanceID())
+                    .ToList();
+                if (maps.Count == 0) continue;
+                string key = $"{scale.x:R},{scale.y:R}|{string.Join(",", maps.Select(t => t.GetInstanceID()))}";
+                if (!surfaces.TryGetValue(key, out var surface)) surfaces[key] = surface = (maps, scale, new Area());
+                surface.area.World += pair.Value.World;
+                surface.area.Uv += pair.Value.Uv;
+            }
+
+            foreach (var surface in surfaces.Values)
+            {
+                var area = surface.area;
                 if (area.World <= 0.0001 || area.Uv <= 0.0001) continue;
 
                 // Tiling repeats the map, so it multiplies coverage.
-                var scale = pair.Key.HasProperty("_MainTex") ? pair.Key.mainTextureScale : Vector2.one;
-                double uv = area.Uv * Mathf.Max(0.01f, Mathf.Abs(scale.x) * Mathf.Abs(scale.y));
+                double uv = area.Uv * Mathf.Max(0.01f, Mathf.Abs(surface.scale.x) * Mathf.Abs(surface.scale.y));
 
-                foreach (var tex in TexturesOf(pair.Key))
+                foreach (var tex in surface.maps)
                 {
-                    // A data texture, a bake or a lookup, is read value by
-                    // value and never spread over a surface. It has no density,
-                    // and fewer texels would be fewer numbers, so it is never
-                    // offered smaller, and the texture pass never resizes it.
-                    if (!textures.TryGetValue(tex, out var use) || use.Data) continue;
+                    var use = textures[tex];
                     double texels = (double)use.Width * use.Height * uv;
                     float density = (float)System.Math.Sqrt(texels / area.World);
                     if (use.Density > 0f && density >= use.Density) continue;
@@ -552,18 +584,43 @@ namespace AvatarBridge
             {
                 foreach (var entry in settings) paths.UnionWith(AvatarSurvey.TargetPaths(entry));
             }
+            // An Animator on a child object runs its own controller, with paths
+            // from itself. Its layers never compete with the avatar's, so only
+            // what it switches is read, rebased onto the avatar.
+            foreach (var child in avatar.GetComponentsInChildren<Animator>(true))
+            {
+                if (child.gameObject == avatar.gameObject || child.runtimeAnimatorController == null) continue;
+                string at = AnimationUtility.CalculateTransformPath(child.transform, avatar.transform);
+                foreach (var clip in child.runtimeAnimatorController.animationClips.Where(c => c != null).Distinct())
+                {
+                    foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                    {
+                        if (b.propertyName == "m_IsActive" || b.propertyName == "m_Enabled")
+                            paths.Add(string.IsNullOrEmpty(b.path) ? at : at + "/" + b.path);
+                    }
+                }
+            }
             return paths;
         }
 
         static bool Live(Renderer r, Transform root, HashSet<string> switched)
         {
-            if (r.gameObject.activeInHierarchy && r.enabled) return true;
+            if (r.enabled && ShownUnder(r.transform, root)) return true;
             for (var t = r.transform; t != null; t = t.parent)
             {
                 if (switched.Contains(AnimationUtility.CalculateTransformPath(t, root))) return true;
                 if (t == root) break;
             }
             return false;
+        }
+
+        // Active up to the avatar, not the scene: an avatar switched off in the scene read every
+        // renderer as hidden, and Slim down stripped them all.
+        static bool ShownUnder(Transform t, Transform root)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (!t.gameObject.activeSelf) return false;
+            return true;
         }
 
         // ---- measurement ----------------------------------------------------
@@ -580,6 +637,7 @@ namespace AvatarBridge
                 {
                     report.Cloth++;
                     report.ClothParticles += ParticlesUnder(c);
+                    report.ClothMeshVertices += MeshClothVertices(c);
                     // Solvers whose chains hang off one parent are the
                     // merge candidates: one solver could hold every root.
                     var parent = c.transform.parent;
@@ -624,6 +682,26 @@ namespace AvatarBridge
             return count;
         }
 
+        // A MeshCloth has no roots: it simulates its source meshes' vertices,
+        // fewer once reduction merges near ones by rules only the package
+        // applies. So the count is a ceiling, and never called transforms.
+        static int MeshClothVertices(MonoBehaviour solver)
+        {
+            var data = solver.GetType().GetProperty("SerializeData")?.GetValue(solver);
+            if (data?.GetType().GetField("clothType")?.GetValue(data)?.ToString() != "MeshCloth") return 0;
+            if (!(data.GetType().GetField("sourceRenderers")?.GetValue(data) is IEnumerable<Renderer> renderers)) return 0;
+            int count = 0;
+            foreach (var r in renderers)
+            {
+                if (r == null) continue;
+                // GetComponent hands back a fake null in the editor, so no ?. on it.
+                var filter = r is SkinnedMeshRenderer ? null : r.GetComponent<MeshFilter>();
+                var mesh = r is SkinnedMeshRenderer skin ? skin.sharedMesh : filter != null ? filter.sharedMesh : null;
+                if (mesh != null) count += mesh.vertexCount;
+            }
+            return count;
+        }
+
         // Materials that could share one texture, if anybody ever wrote the
         // pass: same shader, and nothing animates them apart.
         //
@@ -647,7 +725,15 @@ namespace AvatarBridge
                     }
                     foreach (var b in AnimationUtility.GetCurveBindings(clip))
                     {
-                        if (b.propertyName.StartsWith("material.", System.StringComparison.Ordinal)) animated.Add(b.path);
+                        // A property curve names its renderer, and reaches every material on it.
+                        if (!b.propertyName.StartsWith("material.", System.StringComparison.Ordinal)) continue;
+                        var at = BridgeContext.FindByAnimationPath(avatar.transform, b.path);
+                        var renderer = at != null ? at.GetComponent(b.type) as Renderer : null;
+                        if (renderer == null) continue;
+                        foreach (var m in renderer.sharedMaterials)
+                        {
+                            if (m != null) animated.Add(m.name);
+                        }
                     }
                 }
             }
@@ -764,11 +850,14 @@ namespace AvatarBridge
         internal static IEnumerable<Texture> TexturesOf(Material m)
         {
             if (m == null || m.shader == null) yield break;
-            int count = ShaderUtil.GetPropertyCount(m.shader);
-            for (int i = 0; i < count; i++)
+            // Asked by name, never by shader property index: scanning a whole project, a
+            // broken or recompiling shader reported more properties than it would hand out.
+            foreach (int id in m.GetTexturePropertyNameIDs())
             {
-                if (ShaderUtil.GetPropertyType(m.shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
-                var tex = m.GetTexture(ShaderUtil.GetPropertyName(m.shader, i));
+                // The list keeps slots saved under any shader the material ever had, so a
+                // missing shader or an old one's leftovers would count as rendered.
+                if (!m.HasTexture(id)) continue;
+                var tex = m.GetTexture(id);
                 if (tex != null) yield return tex;
             }
         }
@@ -787,13 +876,16 @@ namespace AvatarBridge
               .Append(r.Triangles.ToString("N0")).Append(" tris, ").Append(r.SubMeshes).Append(" submeshes, ")
               .Append(r.Bones).Append(" bones\n");
             sb.Append("blendshapes ").Append(r.BlendShapes).Append(" (").Append(r.AnimatedBlendShapes).Append(" animated)\n");
-            sb.Append("materials  ").Append(r.Materials).Append(" on ").Append(r.Shaders.Count).Append(" shader(s)\n");
+            sb.Append("materials  ").Append(r.Materials).Append(" on ").Append(BridgeElements.Count(r.Shaders.Count, "shader", "shaders")).Append("\n");
             sb.Append("contacts   ").Append(r.Pointers + r.Triggers)
               .Append(" (").Append(r.Pointers).Append(" pointers, ").Append(r.Triggers)
               .Append(" triggers) against 512 overlapping pairs a frame for the whole instance\n");
             sb.Append("physics    ").Append(r.Cloth).Append(" cloth simulating ")
               .Append(r.ClothParticles.ToString("N0")).Append(" transforms, ")
-              .Append(r.ClothColliders).Append(" colliders\n");
+              .Append(r.ClothColliders).Append(" colliders");
+            if (r.ClothMeshVertices > 0)
+                sb.Append(", and mesh cloth on up to ").Append(r.ClothMeshVertices.ToString("N0")).Append(" vertices before reduction");
+            sb.Append('\n');
             if (r.ContactFamilies.Count > 0)
             {
                 sb.Append("pointers   ")
@@ -888,7 +980,7 @@ namespace AvatarBridge
                 // Advice the optimiser has already refused stops being advice.
                 if (c.Subject != null && weight.LeftAlone.TryGetValue(c.Subject, out string user))
                 {
-                    report.Add(ReportStatus.Approximated, "Weight", $"\"{c.Subject}\" left alone",
+                    report.Add(ReportStatus.Approximated, "Weight", $"\"{Shown(c.Subject)}\" left alone",
                         c.Text + LeftAloneNote(user));
                     continue;
                 }

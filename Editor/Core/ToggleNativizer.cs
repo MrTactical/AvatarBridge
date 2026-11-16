@@ -109,7 +109,7 @@ namespace AvatarBridge
                 vrcLayers.Remove(layer);
                 nativizedParams.Add(param);
                 ctx.Report.Converted(Category, entry.name,
-                    $"{targets.Count} object(s) toggled natively by CVR; layer \"{layer.name}\" removed.");
+                    $"{BridgeElements.Count(targets.Count, "object", "objects")} toggled natively by CVR; layer \"{layer.name}\" removed.");
             }
 
             // Modern VRCFury merges many toggles as branches of shared direct blend
@@ -141,6 +141,7 @@ namespace AvatarBridge
             var expandedParams = new HashSet<string>();
             foreach (var layer in vrcLayers)
             {
+                int before = expandedLayers.Count;
                 SystemStripper.WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
@@ -151,6 +152,14 @@ namespace AvatarBridge
                         }
                     }
                 });
+                // A branch split out of FX is still FX, so it is kept off the body like its layer.
+                if (AnimatorMerger.FxMachines.Contains(layer.stateMachine))
+                {
+                    for (int i = before; i < expandedLayers.Count; i++)
+                    {
+                        AnimatorMerger.FxMachines.Add(expandedLayers[i].stateMachine);
+                    }
+                }
             }
             if (expandedLayers.Count > 0)
             {
@@ -230,12 +239,12 @@ namespace AvatarBridge
             if (nativizedParams.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{nativizedParams.Count} toggle(s) handed to CVR's own animator builder");
+                    $"{BridgeElements.Count(nativizedParams.Count, "toggle", "toggles")} handed to CVR's own animator builder");
             }
             if (expandedLayers.Count > 0 || renamedLayers.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{expandedLayers.Count + renamedLayers.Count} toggle(s) given their own animator layer",
+                    $"{BridgeElements.Count(expandedLayers.Count + renamedLayers.Count, "toggle given its own", "toggles given their own")} animator layer",
                     "They work from the generated controller without running \"Create Controller\".");
             }
         }
@@ -261,7 +270,7 @@ namespace AvatarBridge
                         nativizedParams.Add(child.directBlendParameter);
                         changed = true;
                         ctx.Report.Converted(Category, entry.name,
-                            $"{targets.Count} object(s) toggled natively by CVR; branch removed from \"{layerName}\".");
+                            $"{BridgeElements.Count(targets.Count, "object", "objects")} toggled natively by CVR; branch removed from \"{layerName}\".");
                         continue; // drop this branch
                     }
                 }
@@ -303,7 +312,7 @@ namespace AvatarBridge
                         restore == null
                             ? "Expanded into a classic On/Off toggle layer (it animates more than object on/off)."
                             : "Expanded into a classic On/Off toggle layer, with an Off clip restoring the " +
-                              "original material(s), which Write Defaults never puts back.");
+                              "original materials, which Write Defaults never puts back.");
                     continue;
                 }
                 var keptChild = child;
@@ -656,32 +665,37 @@ namespace AvatarBridge
             EditorUtility.SetDirty(ctx.CvrAvatar);
         }
 
-        // A contact rebuilt under a rootTransform elsewhere is not under the object the toggle
-        // switches, and a native toggle has no clip for a repoint pass to carry. So its host
-        // joins the toggle, and the contact stops when its object does.
+        // A contact or collider rebuilt under a rootTransform elsewhere is not under the object
+        // the toggle switches, and a native toggle has no clip for a repoint pass to carry. So
+        // its host joins the toggle, and it stops when its object does.
         static List<TargetInfo> WithContactHosts(BridgeContext ctx, List<TargetInfo> targets)
         {
             var all = new List<TargetInfo>(targets);
-            foreach (var pair in ctx.ContactHosts)
+            var hosted = ctx.ContactHosts.Select(p => (path: p.Key.path, hosts: p.Value))
+                .Concat(ctx.PhysicsColliderHosts.Select(p => (path: p.Key, hosts: p.Value)));
+            foreach (var pair in hosted)
             {
                 // The closest target decides: a clip can switch Outfit on and Outfit/Hat off.
-                var owner = targets.Where(t => IsUnder(pair.Key.path, t.Path))
+                var owner = targets.Where(t => IsUnder(pair.path, t.Path))
                     .OrderByDescending(t => t.Path.Length).FirstOrDefault();
                 if (owner == null || BridgeContext.FindByAnimationPath(ctx.Target.transform, owner.Path) == null) continue;
-                foreach (string host in pair.Value)
+                foreach (string host in pair.hosts)
                 {
                     if (IsUnder(host, owner.Path)) continue;
                     var go = BridgeContext.FindByAnimationPath(ctx.Target.transform, host);
                     if (go == null) continue;
-                    // In native mode MatchRestState turns a host off only for a disabled contact,
-                    // and the toggle must not wake it. If that mode ever gets the inactive-ancestor
-                    // rule, this needs the contact's enabled state recorded beside ContactHosts.
-                    if (!go.gameObject.activeSelf) continue;
+                    // A host off because its object starts off is the toggle's to wake; one off
+                    // because its component was off stays off whatever its object does.
+                    if (ctx.DisabledHosts.Contains(host)) continue;
                     all.Add(new TargetInfo { Path = host, OnState = owner.OnState });
                 }
             }
             return all;
         }
+
+        internal static List<string> ContactHostsJoiningForTest(BridgeContext ctx, string target, bool onState) =>
+            WithContactHosts(ctx, new List<TargetInfo> { new TargetInfo { Path = target, OnState = onState } })
+                .Skip(1).Select(t => t.Path).ToList();
 
         static bool IsUnder(string path, string root) =>
             !string.IsNullOrEmpty(root) && path != null
@@ -772,7 +786,7 @@ namespace AvatarBridge
             if (refreshed > 0)
             {
                 EditorUtility.SetDirty(ctx.CvrAvatar);
-                ctx.Report.Converted(Category, $"{refreshed} native toggle target path(s) updated",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(refreshed, "native toggle target path", "native toggle target paths")} updated",
                     "Their objects moved or were renamed after the toggle was built.");
             }
         }

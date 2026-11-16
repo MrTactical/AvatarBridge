@@ -36,9 +36,8 @@ namespace AvatarBridge.Regression
                 AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/" + Name);
                 AssetDatabase.DeleteAsset(Sources);
                 AssetDatabase.CreateFolder("Assets", Sources.Substring("Assets/".Length));
-                // A foreign shader the patcher takes: it needs SV_VertexID in the
-                // vertex input. Refused, the collar keeps its own shader and
-                // never rides at all, which tests nothing here.
+                // A foreign shader the patcher takes. Refused, the collar keeps its
+                // own shader and never rides at all, which tests nothing here.
                 string shaderPath = Sources + "/Probe.shader";
                 System.IO.File.WriteAllText(shaderPath, ProbeShader);
                 AssetDatabase.ImportAsset(shaderPath, ImportAssetOptions.ForceSynchronousImport);

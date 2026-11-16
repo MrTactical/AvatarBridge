@@ -44,6 +44,7 @@ namespace AvatarBridge
         {
             if (root == null || controller == null) return null;
             int unnumbered = ApplySelf(root);
+            Relays(root);
             var targets = root.GetComponentsInChildren<Renderer>(true)
                 .Where(r => r.sharedMaterials.Any(m => m != null && m.HasProperty(Property)))
                 .ToList();
@@ -63,19 +64,20 @@ namespace AvatarBridge
                 controller.AddParameter(Parameter, AnimatorControllerParameterType.Float);
             }
             AddLayer(root.transform, controller, targets);
-            return $"owner id on {targets.Count} renderer(s), from the parameter stream, synced (32 bits)"
+            return $"owner id on {BridgeElements.Count(targets.Count, "renderer", "renderers")}, from the parameter stream, synced (32 bits)"
                    + (unnumbered > 0
-                       ? $"; {unnumbered} socket(s) past the first {MaxSelfSockets} carry no number, so the plugs judge them by the hips alone"
+                       ? $"; {BridgeElements.Count(unnumbered, "socket", "sockets")} past the first {MaxSelfSockets} carry no number, so the plugs judge them by the hips alone"
                        : "");
         }
 
         // Numbers the atlas carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
         public const int MaxSelfSockets = 15;
 
-        // Every socket of the avatar numbered on its atlas writer, and every
-        // plug told which of them it may enter, a bit per number. Materials
-        // only, nothing in the animator, so the inspector can run it on every
-        // click. Returns how many sockets were past the numbers.
+        // Every socket of the avatar numbered on its atlas writer, each portal
+        // exit keyed by its entrance's number, and every plug told which of
+        // them it may enter, a bit per number. Materials only, nothing in the
+        // animator, so the inspector can run it on every click. Returns how
+        // many sockets were past the numbers.
         //
         // Numbered by hierarchy path, so the order holds from build to build;
         // a plug's choices name sockets, not numbers, so a socket added in the
@@ -139,7 +141,7 @@ namespace AvatarBridge
         public static Dictionary<YapsSocket, int> NumberWriters(GameObject root, bool avatar)
         {
             var sockets = root.GetComponentsInChildren<YapsSocket>(true)
-                .OrderBy(s => AnimationUtility.CalculateTransformPath(s.transform, root.transform), StringComparer.Ordinal)
+                .OrderBy(s => YapsScanner.StablePath(s.transform, root.transform), StringComparer.Ordinal)
                 .ToList();
             int offset = avatar || sockets.Count > 8 ? 0 : (int) (Fnv(root.name) % (uint) (16 - sockets.Count));
             var numbers = new Dictionary<YapsSocket, int>();
@@ -168,7 +170,31 @@ namespace AvatarBridge
                     r.sharedMaterial = numbered;
                 }
             }
+            KeyExits(root, numbers);
             return numbers;
+        }
+
+        // Each portal exit keyed by its entrance's number, here because every
+        // door that renumbers comes through. A writer no entrance leads to goes
+        // to 0, which publishes nothing: left keyed, it would send plugs out of
+        // whichever socket inherited the number, or out of an old exit.
+        static void KeyExits(GameObject root, Dictionary<YapsSocket, int> numbers)
+        {
+            var keyed = new Dictionary<Renderer, int>();
+            foreach (var kv in numbers)
+            {
+                if (!YapsSocketBuilder.Leads(kv.Key, kv.Key.builtExit)) continue;
+                var r = kv.Key.builtExit.GetComponent<MeshRenderer>();
+                if (r != null) keyed[r] = kv.Value;
+            }
+            foreach (var r in root.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (!YapsAtlas.IsExit(r.sharedMaterial)) continue;
+                var m = YapsAtlas.Exit(keyed.TryGetValue(r, out int n) ? n : 0);
+                if (m == null || m == r.sharedMaterial) continue;
+                Undo.RecordObject(r, "YAPS own sockets");
+                r.sharedMaterial = m;
+            }
         }
 
         // string.GetHashCode is not promised to hold between runs.
@@ -221,6 +247,36 @@ namespace AvatarBridge
 
         static SelfRules RulesOf(IEnumerable<Material> materials) =>
             materials.Select(RulesOn).FirstOrDefault(x => x != null);
+
+        // Numbers the relay carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
+        const int MaxRelays = 15;
+
+        // Each plug numbered among the avatar's on its materials and on the relay
+        // that hands its marker lights to its other passes, in hierarchy order
+        // like the sockets. Only a plug whose shader reads the number gets a
+        // relay, and a relay whose plug is gone goes with it. Wire picks the
+        // relays up, since their material carries the owner too.
+        internal static void Relays(GameObject root)
+        {
+            var keep = new HashSet<SkinnedMeshRenderer>();
+            int count = 0;
+            foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
+            {
+                var own = MaterialsOf(plug).Where(m => m.HasProperty("_YAPS_PlugIndex")).ToList();
+                if (plug.Target == null || own.Count == 0) continue;
+                int n = ++count <= MaxRelays ? count : 0;
+                foreach (var m in own)
+                {
+                    if (Mathf.RoundToInt(m.GetFloat("_YAPS_PlugIndex")) == n) continue;
+                    Undo.RecordObject(m, "YAPS light relays");
+                    m.SetFloat("_YAPS_PlugIndex", n);
+                    EditorUtility.SetDirty(m);
+                }
+                if (n > 0 && YapsAtlas.AddRelay(plug.Target, n) is SkinnedMeshRenderer relay) keep.Add(relay);
+            }
+            foreach (var r in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                if (YapsAtlas.IsRelay(r.sharedMaterial) && !keep.Contains(r)) Undo.DestroyObjectImmediate(r.gameObject);
+        }
 
         // The materials this plug baked: its slot and the slots it recorded,
         // on whichever mesh, and on its own mesh every slot wearing the same

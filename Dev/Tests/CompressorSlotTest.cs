@@ -4,6 +4,8 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
+using VRC.SDK3.Avatars.ScriptableObjects;
 
 namespace AvatarBridge.Regression
 {
@@ -27,9 +29,13 @@ namespace AvatarBridge.Regression
     // So the case that matters here is SLOTS WITH NO MIRRORS. That is the shape where the miss
     // stops being cosmetic: both lists come back empty, the pass returns before doing anything,
     // and every parameter goes local.
+    //
+    // The restore takes expression parameters only. Taking every animator parameter also synced
+    // the floats clips drive, which never sync in ChilloutVR, and the budget check counted them:
+    // one avatar read 4856 of 3200 bits with 2016 of them clip-driven.
     public static class CompressorSlotTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: parameter compressor slots")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Parameter compressor slots")]
         public static void Run()
         {
             int fail = 0;
@@ -66,6 +72,24 @@ namespace AvatarBridge.Regression
                 // Built-ins the compressor never touched: one nothing feeds, one the game drives.
                 controller.AddParameter("VelocityMagnitude", AnimatorControllerParameterType.Float);
                 controller.AddParameter("VelocityX", AnimatorControllerParameterType.Float);
+                // A helper the menu never lists, and an expression parameter a clip drives.
+                controller.AddParameter("Helper", AnimatorControllerParameterType.Float);
+                controller.AddParameter("Driven", AnimatorControllerParameterType.Float);
+                var clip = new AnimationClip { name = "Driven" };
+                clip.SetCurve("", typeof(Animator), "Driven", AnimationCurve.Constant(0f, 1f, 1f));
+                AssetDatabase.AddObjectToAsset(clip, controller);
+                controller.AddMotion(clip);
+
+                var expressions = ScriptableObject.CreateInstance<VRCExpressionParameters>();
+                expressions.parameters = new[]
+                {
+                    new VRCExpressionParameters.Parameter
+                        { name = "Accessories", valueType = VRCExpressionParameters.ValueType.Bool, networkSynced = false },
+                    new VRCExpressionParameters.Parameter
+                        { name = "Driven", valueType = VRCExpressionParameters.ValueType.Float, networkSynced = false },
+                };
+                var descriptor = avatar.AddComponent<VRCAvatarDescriptor>();
+                descriptor.expressionParameters = expressions;
 
                 var ctx = new BridgeContext
                 {
@@ -73,6 +97,7 @@ namespace AvatarBridge.Regression
                     Report = new BridgeReport(),
                     Settings = new BridgeSettings(),
                     MergedController = controller,
+                    SourceDescriptor = descriptor,
                 };
                 var vrcLayers = controller.layers.ToList();
                 SystemStripper.StripParameterCompressorForTest(ctx, controller, vrcLayers);
@@ -84,13 +109,19 @@ namespace AvatarBridge.Regression
                 fail += Check("the real de-synced parameter is preserved, not localised",
                     ctx.PreserveParameters.Contains("Accessories"));
                 fail += Check("all 8 slot spellings counted, not just SyncIndex",
-                    entry != null && entry.Subject.Contains("8 slot parameter(s)"));
+                    entry != null && entry.Subject.Contains("8 slot parameters"));
                 fail += Check("VRCFury's own working value is left alone",
                     !ctx.PreserveParameters.Contains("VF113_frameTime")
                     && controller.parameters.Any(p => p.name == "VF113_frameTime"));
                 fail += Check("built-ins are not preserved, so a frozen one can still be pruned",
                     !ctx.PreserveParameters.Contains("VelocityMagnitude")
                     && !ctx.PreserveParameters.Contains("VelocityX"));
+                fail += Check("an animator parameter no menu lists is not synced on the compressor's account",
+                    !ctx.PreserveParameters.Contains("Helper"));
+                fail += Check("a clip-driven float is not synced, it never can be",
+                    !ctx.PreserveParameters.Contains("Driven"));
+                fail += Check("the budget check sees the clip-driven float, and only it",
+                    CvrParameterNames.CurveDriven(controller).SetEquals(new[] { "Driven" }));
             }
             finally
             {

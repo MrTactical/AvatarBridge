@@ -42,6 +42,11 @@ namespace AvatarBridge
         static readonly Regex VertexPragma = new Regex(@"#pragma\s+vertex\s+(\w+)");
         static readonly Regex FragmentPragma = new Regex(@"#pragma\s+fragment\s+(\w+)");
         static readonly Regex SurfacePragma = new Regex(@"#pragma\s+surface\b");
+        // Unity's own Standard includes, never in a unit read from the project, name every
+        // stereo macro in the output structs and vertex functions they define. A pass built
+        // on them read as missing both, so YAPS Standard warned it drew one eye.
+        static readonly Regex StandardStereoInclude =
+            new Regex(@"#include\s+""UnityStandard(?:Core|CoreForward|CoreForwardSimple|Shadow)\.cginc""");
         static readonly Regex DepthDeclaration =
             new Regex(@"(?:uniform\s+)?sampler2D(?:_float|_half)?\s+_CameraDepthTexture\s*;");
         static readonly Regex DepthRead = new Regex(@"\btex2D(proj|lod)?\s*\(\s*_CameraDepthTexture\s*,");
@@ -60,10 +65,37 @@ namespace AvatarBridge
         // good copy still included.
         static readonly HashSet<string> Claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        // Written text, file names included, whose copy passed both compile
+        // checks this session. The variant compile costs seconds a pass.
+        static readonly HashSet<string> CompiledCopies = new HashSet<string>();
+
+        // Log-only timings for one conversion, reset by Run. Never the report.
+        static class Times
+        {
+            internal static int Judged, SameText, Patched, Reused, VariantChecks, VerdictPlans, FullPlans;
+            internal static readonly System.Diagnostics.Stopwatch Planning = new System.Diagnostics.Stopwatch(),
+                Patching = new System.Diagnostics.Stopwatch(), Variants = new System.Diagnostics.Stopwatch();
+
+            internal static void Reset()
+            {
+                Judged = SameText = Patched = Reused = VariantChecks = VerdictPlans = FullPlans = 0;
+                Planning.Reset();
+                Patching.Reset();
+                Variants.Reset();
+            }
+        }
+
+        internal static string TimingSummary() =>
+            $"judged {Times.Judged} ({Times.SameText} from the cache, planning {Times.Planning.ElapsedMilliseconds}: " +
+            $"{Times.VerdictPlans} verdict plans, {Times.FullPlans} full), " +
+            $"Patched {Times.Patched} in {Times.Patching.ElapsedMilliseconds} ({Times.Reused} copies reused, " +
+            $"StereoVariantError {Times.VariantChecks} in {Times.Variants.ElapsedMilliseconds})";
+
         public static void Run(BridgeContext ctx)
         {
             _patched = null;
             _clones = null;
+            Times.Reset();
             if (!ctx.Settings.patchNonSpiShaders)
             {
                 return;
@@ -92,7 +124,14 @@ namespace AvatarBridge
             Outcome outcome)
         {
             int swapsRepointed = 0;
-            foreach (var clip in ClipsOf(controller))
+            var clips = ClipsOf(controller).ToList();
+            var swapped = clips.SelectMany(c => AnimationUtility.GetObjectReferenceCurveBindings(c)
+                    .SelectMany(b => AnimationUtility.GetObjectReferenceCurve(c, b) ?? Array.Empty<ObjectReferenceKeyframe>()))
+                .Select(k => k.value is Material m && m != null ? m.shader : null)
+                .Where(s => s != null && !patched.ContainsKey(s)).ToList();
+            Prepared = Prejudge(swapped);
+            Prepare(swapped, dir, patched, outcome);
+            foreach (var clip in clips)
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
@@ -125,10 +164,11 @@ namespace AvatarBridge
                     }
                 }
             }
+            Prepared = null;
             if (swapsRepointed > 0)
             {
                 report.Converted(Category,
-                    $"{swapsRepointed} material-swap curve(s) repointed at a patched shader",
+                    $"{BridgeElements.Count(swapsRepointed, "material-swap curve", "material-swap curves")} repointed at a patched shader",
                     "Materials an animation swaps in now swap in the patched copy.");
             }
         }
@@ -150,40 +190,113 @@ namespace AvatarBridge
         // into the outcome.
         static Shader Judge(Shader shader, string dir, Dictionary<Shader, Shader> patched, Outcome outcome)
         {
-            if (patched.TryGetValue(shader, out var known))
+            if (!patched.ContainsKey(shader)) Prepare(new[] { shader }, dir, patched, outcome);
+            return patched[shader];
+        }
+
+        // One shader on its way through Prepare.
+        sealed class Weighed
+        {
+            public Shader Shader, Result;
+            public bool Correct, Tried, Grabbed;
+            public string Reason;
+            public List<string> Left;
+            public Staged Staged;
+        }
+
+        // Every shader not judged yet, in the order met. Each copy is written first, then all of
+        // them import in one batch, then each is checked and reported in that same order, so the
+        // names, the outcome and the report come out as one at a time made them. One at a time,
+        // each copy cost its own imports and every package's import hooks with them.
+        static void Prepare(IEnumerable<Shader> shaders, string dir, Dictionary<Shader, Shader> patched, Outcome outcome)
+        {
+            var weighed = new List<Weighed>();
+            // A throw still imports and reports every copy written before it, as one at a time
+            // did: written and never imported, they turned up unchecked at the next refresh.
+            try
             {
-                return known;
+                foreach (var shader in shaders.Where(s => s != null && !patched.ContainsKey(s)).Distinct())
+                {
+                    weighed.Add(Weigh(shader, dir));
+                }
             }
-            Shader result = null;
+            finally { Settle(weighed, patched, outcome); }
+        }
+
+        static Weighed Weigh(Shader shader, string dir)
+        {
+            var w = new Weighed { Shader = shader };
             string source = SourcePathOf(shader);
             // Engine shaders have no source on disk and ship stereo-correct.
             if (source != null)
             {
-                if (DeclaresStereo(source))
+                // One read and at most one plan: the patch follows the plan the
+                // verdict came from instead of reading and planning it again. A
+                // throw goes on to the patch, which reads again and refuses it by name.
+                List<SourceFile> unit;
+                StereoPlan plan;
+                try
                 {
-                    outcome.AlreadyCorrect.Add(shader.name);
+                    // Planned beside the others by Prejudge, the plan made for this very unit.
+                    if (Prepared == null || !Prepared.TryGetValue(source, out var ready)) ready = (ReadUnit(source), null);
+                    Prepared?.Remove(source);
+                    unit = ready.unit;
+                    w.Correct = StereoProblems(unit, out plan).Count == 0;
+                    plan = plan ?? ready.plan;
                 }
-                else
+                catch
                 {
-                    result = TryPatch(source, shader.name, dir, out string reason, out bool grabbed,
-                        out var passesLeft);
-                    if (result == null)
-                    {
-                        outcome.Refused.Add($"{shader.name} ({reason})");
-                    }
-                    else
-                    {
-                        outcome.Repointed.Add(shader.name);
-                        if (grabbed) outcome.GrabLimited.Add(shader.name);
-                        if (passesLeft.Count > 0)
-                        {
-                            outcome.PartlyPatched.Add($"{shader.name}: {string.Join(", ", passesLeft)}");
-                        }
-                    }
+                    unit = null;
+                    plan = null;
+                    w.Correct = false;
+                }
+                if (!w.Correct)
+                {
+                    w.Tried = true;
+                    Times.Patched++;
+                    Times.Patching.Start();
+                    try { w.Staged = Stage(source, shader.name, dir, unit, plan, out w.Reason, out w.Grabbed, out w.Left, out w.Result); }
+                    finally { Times.Patching.Stop(); }
                 }
             }
-            patched[shader] = result;
-            return result;
+            return w;
+        }
+
+        static void Settle(List<Weighed> weighed, Dictionary<Shader, Shader> patched, Outcome outcome)
+        {
+            Times.Patching.Start();
+            Import(weighed.Where(w => w.Staged != null).Select(w => w.Staged).ToList());
+            var doomed = new List<string>();
+            foreach (var w in weighed.Where(w => w.Staged != null))
+            {
+                w.Result = Finish(w.Staged, doomed, out w.Reason);
+            }
+            // Every file of a failed copy goes, not just the shader: no orphaned
+            // include copies in the output folder.
+            if (doomed.Count > 0) AssetDatabase.DeleteAssets(doomed.ToArray(), new List<string>());
+            Times.Patching.Stop();
+
+            foreach (var w in weighed)
+            {
+                if (w.Correct)
+                {
+                    outcome.AlreadyCorrect.Add(w.Shader.name);
+                }
+                else if (w.Tried && w.Result == null)
+                {
+                    outcome.Refused.Add($"{w.Shader.name} ({w.Reason})");
+                }
+                else if (w.Tried)
+                {
+                    outcome.Repointed.Add(w.Shader.name);
+                    if (w.Grabbed) outcome.GrabLimited.Add(w.Shader.name);
+                    if (w.Left.Count > 0)
+                    {
+                        outcome.PartlyPatched.Add($"{w.Shader.name}: {string.Join(", ", w.Left)}");
+                    }
+                }
+                patched[w.Shader] = w.Result;
+            }
         }
 
         static void Report(BridgeReport report, Outcome o, bool swaps)
@@ -194,13 +307,13 @@ namespace AvatarBridge
                 if (swaps)
                 {
                     report.Approximated(Category,
-                        $"{o.Repointed.Distinct().Count()} shader(s) patched for VR stereo, found only in animated swaps",
+                        $"{BridgeElements.Count(o.Repointed.Distinct().Count(), "shader", "shaders")} patched for VR stereo, found only in animated swaps",
                         $"{string.Join(", ", o.Repointed.Distinct())}: never on a renderer at rest, assigned by a " +
                         "toggle. Copied into RehomedAssets with the stereo macros added and the swap repointed.");
                 }
                 else
                 {
-                    report.Approximated(Category, $"{o.Repointed.Distinct().Count()} shader(s) patched for VR stereo",
+                    report.Approximated(Category, $"{BridgeElements.Count(o.Repointed.Distinct().Count(), "shader", "shaders")} patched for VR stereo",
                         $"{string.Join(", ", o.Repointed.Distinct())}: copied into RehomedAssets with the single-pass " +
                         "instanced macros added; originals untouched. They compile, the single-pass instanced " +
                         "variant included; check both eyes in VR.");
@@ -208,21 +321,21 @@ namespace AvatarBridge
             }
             if (o.PartlyPatched.Count > 0)
             {
-                report.Warning(Category, $"{o.PartlyPatched.Count} shader(s){where} patched in some passes only",
+                report.Warning(Category, $"{BridgeElements.Count(o.PartlyPatched.Count, "shader", "shaders")}{where} patched in some passes only",
                     $"{string.Join("; ", o.PartlyPatched)}: those passes are left as they were and still draw into " +
                     "one eye. The rest of each shader draws in both.");
             }
             if (o.GrabLimited.Count > 0)
             {
                 report.Warning(Category,
-                    $"{o.GrabLimited.Distinct().Count()} patched shader(s){where} grab the screen: the background they " +
+                    $"{BridgeElements.Count(o.GrabLimited.Distinct().Count(), "patched shader", "patched shaders")}{where} grab the screen: the background they " +
                     "refract comes from one eye",
                     $"{string.Join(", ", o.GrabLimited.Distinct())}: they draw in both eyes, but refraction shows one " +
                     "eye's view. Unfixable here; use a shader that doesn't grab the screen if it bothers you.");
             }
             if (o.Refused.Count > 0)
             {
-                report.Warning(Category, $"{o.Refused.Count} shader(s){where} could not be patched for VR stereo",
+                report.Warning(Category, $"{BridgeElements.Count(o.Refused.Count, "shader", "shaders")}{where} could not be patched for VR stereo",
                     $"{string.Join(", ", o.Refused)}: " + (swaps
                         ? "these still draw into one eye when the toggle assigns them."
                         : "these still won't draw correctly in both eyes. Patching is only attempted on plainly " +
@@ -234,7 +347,7 @@ namespace AvatarBridge
             if (o.AlreadyCorrect.Count > 0)
             {
                 report.Converted(Category,
-                    $"{o.AlreadyCorrect.Distinct().Count()} shader(s){where} already speak single-pass instanced: left untouched",
+                    $"{BridgeElements.Count(o.AlreadyCorrect.Distinct().Count(), "shader", "shaders")}{where} already speak single-pass instanced: left untouched",
                     $"{string.Join(", ", o.AlreadyCorrect.Distinct())}.");
             }
         }
@@ -249,7 +362,11 @@ namespace AvatarBridge
             var clones = new Dictionary<Material, Material>();
             var outcome = new Outcome();
 
-            foreach (var renderer in target.GetComponentsInChildren<Renderer>(true))
+            var renderers = target.GetComponentsInChildren<Renderer>(true);
+            var worn = renderers.SelectMany(r => r.sharedMaterials).Where(m => m != null).Select(m => m.shader).ToList();
+            Prepared = Prejudge(worn);
+            Prepare(worn, dir, patched, outcome);
+            foreach (var renderer in renderers)
             {
                 var materials = renderer.sharedMaterials;
                 bool changed = false;
@@ -273,6 +390,7 @@ namespace AvatarBridge
                     renderer.sharedMaterials = materials;
                 }
             }
+            Prepared = null;
 
             // Materials that arrive by animated swap sit on no renderer
             // right now, invisible to the loop above, and draw into one
@@ -315,27 +433,122 @@ namespace AvatarBridge
 
         // What keeps a shader from drawing in both eyes, for the report: the
         // macros a pass is missing. A surface shader's passes are Unity's own,
-        // generated with every macro (measured, Dev/Probes/SpiFactsProbe), so
+        // generated with every macro (measured), so
         // only its vertex and fragment passes count, and a shader with none
         // of them has nothing to fix. A plain depth read alone is not counted:
         // locked Poiyomi Pro names every macro in every pass and still declares
         // a plain depth texture for optional features, and counting it sent
         // most Poiyomi materials to be copied (SpiSweepProbe).
-        internal static List<string> StereoProblems(string path)
+        internal static List<string> StereoProblems(string path) => StereoProblems(ReadUnit(path), out _);
+
+        // Verdicts by the text they came from, for the editor session. The
+        // advisor, the patch pass and the report each judge the same shaders,
+        // on every avatar wearing them, and one plan can take seconds. Keyed
+        // by content, never path: a patched copy is rewritten in place.
+        static readonly Dictionary<string, List<string>> ProblemsByContent = new Dictionary<string, List<string>>();
+
+        // The plan comes back only when this call made it.
+        static List<string> StereoProblems(List<SourceFile> unit, out StereoPlan plan)
         {
-            var unit = ReadUnit(path);
-            var plan = PlanStereo(unit);
-            var problems = new List<string>();
-            if (plan.Passes == 0 && plan.SurfaceOnly)
+            plan = null;
+            Times.Judged++;
+            string key = ContentKey(unit, false);
+            if (ProblemsByContent.TryGetValue(key, out var known))
             {
-                return problems;
+                Times.SameText++;
+                return new List<string>(known);
             }
-            // A pass it cannot read is judged the old way, by the macros
-            // being named anywhere in the unit.
-            var missing = StereoMacros.Where(m => plan.Adds.Contains(m)
-                || ((plan.Passes == 0 || plan.Left.Count > 0) && !unit.Any(f => f.Text.Contains(m)))).ToList();
-            if (missing.Count > 0) problems.Add("missing " + string.Join(", ", missing));
+            Times.Planning.Start();
+            var made = PlanStereo(unit, forPatch: false);
+            Times.Planning.Stop();
+            plan = made;
+            var problems = Verdict(unit, made);
+            ProblemsByContent[key] = new List<string>(problems);
             return problems;
+        }
+
+        static List<string> Verdict(List<SourceFile> unit, StereoPlan made)
+        {
+            var problems = new List<string>();
+            if (!(made.Passes == 0 && made.SurfaceOnly))
+            {
+                // A pass it cannot read is judged the old way, by the macros
+                // being named anywhere in the unit.
+                bool standard = unit.Any(f => StandardStereoInclude.IsMatch(f.Text));
+                var missing = StereoMacros.Where(m => made.Adds.Contains(m)
+                    || ((made.Passes == 0 || made.Left.Count > 0) && !standard && !unit.Any(f => f.Text.Contains(m)))).ToList();
+                if (missing.Count > 0) problems.Add("missing " + string.Join(", ", missing));
+            }
+            return problems;
+        }
+
+        // Set while a pass judges: each shader's unit as read, with its plan when Prejudge made one.
+        static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prepared;
+
+        // Every shader a pass is about to judge, planned at once on the thread pool: one plan can
+        // take seconds, and they ran one after another. Planning is string work on text already
+        // read; reading stays here, since the AssetDatabase answers only on the main thread. The
+        // verdicts land in ProblemsByContent, so the judging after it never plans these again.
+        // With forPatch, a shader the verdict sends to the patch gets its full plan here too.
+        internal static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prejudge(IEnumerable<Shader> shaders,
+            bool forPatch = true)
+        {
+            var units = new Dictionary<string, (List<SourceFile> unit, StereoPlan plan)>();
+            foreach (var shader in shaders.Where(s => s != null).Distinct())
+            {
+                string path = SourcePathOf(shader);
+                if (path == null || units.ContainsKey(path)) continue;
+                // One that throws is read again by Judge, which refuses it by name.
+                try { units[path] = (ReadUnit(path), null); }
+                catch { }
+            }
+            var fresh = units.Select(u => (path: u.Key, u.Value.unit, key: ContentKey(u.Value.unit, false)))
+                .Where(u => !ProblemsByContent.ContainsKey(u.key)).GroupBy(u => u.key).Select(g => g.First()).ToList();
+            var plans = new StereoPlan[fresh.Count];
+            var verdicts = new List<string>[fresh.Count];
+            Times.Planning.Start();
+            System.Threading.Tasks.Parallel.For(0, fresh.Count, i =>
+            {
+                try
+                {
+                    plans[i] = PlanStereo(fresh[i].unit, forPatch: false);
+                    verdicts[i] = Verdict(fresh[i].unit, plans[i]);
+                    if (forPatch && verdicts[i].Count > 0) plans[i] = PlanStereo(fresh[i].unit);
+                }
+                catch { plans[i] = null; }
+            });
+            Times.Planning.Stop();
+            for (int i = 0; i < fresh.Count; i++)
+            {
+                if (plans[i] == null) continue;
+                ProblemsByContent[fresh[i].key] = verdicts[i];
+                units[fresh[i].path] = (fresh[i].unit, plans[i]);
+            }
+            return units;
+        }
+
+        // Every file of a unit in order, with the names written when they
+        // decide what an include finds. A length goes first so two files
+        // never read as one. UTF-8 is exact: decoded text holds no lone surrogate.
+        static string ContentKey(List<SourceFile> unit, bool names)
+        {
+            using (var sha = System.Security.Cryptography.SHA256.Create())
+            {
+                void Feed(string text)
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(text ?? "");
+                    var length = BitConverter.GetBytes(bytes.Length);
+                    sha.TransformBlock(length, 0, length.Length, null, 0);
+                    sha.TransformBlock(bytes, 0, bytes.Length, null, 0);
+                }
+                foreach (var file in unit)
+                {
+                    if (names) Feed(file.OutputName);
+                    Feed(file.Text);
+                }
+                sha.TransformFinalBlock(Array.Empty<byte>(), 0, 0);
+                return Convert.ToBase64String(sha.Hash);
+            }
         }
 
         // Every edit a shader's stereo patch needs, found on the text as read
@@ -355,18 +568,24 @@ namespace AvatarBridge
             public bool Depth;              // reads _CameraDepthTexture as a plain texture
             public bool DepthRewritable;    // and every such read takes only the depth value
             public bool SurfaceOnly;
+            public bool Full;               // carries the fragment edits and depth flags a patch needs
         }
 
-        internal static StereoPlan PlanStereo(List<SourceFile> unit)
+        // Without forPatch, only what Verdict reads (passes, macros to add, passes left): the
+        // fragment eye-index search and the depth flags feed only the patch, and were about
+        // half of every plan the judges made.
+        internal static StereoPlan PlanStereo(List<SourceFile> unit, bool forPatch = true)
         {
-            var plan = new StereoPlan();
+            if (forPatch) System.Threading.Interlocked.Increment(ref Times.FullPlans);
+            else System.Threading.Interlocked.Increment(ref Times.VerdictPlans);
+            var plan = new StereoPlan { Full = forPatch };
             var offPc = unit.ToDictionary(f => f, f => OffPcPrograms(f.Text));
             bool OnPc(SourceFile f, int at) => !offPc[f].Any(r => at >= r.from && at < r.to);
             var vertNames = unit.SelectMany(f => VertexPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
                 .Select(m => m.Groups[1].Value).Distinct().ToList();
-            var fragNames = unit.SelectMany(f => FragmentPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
+            var fragNames = !forPatch ? new List<string>() : unit.SelectMany(f => FragmentPragma.Matches(f.Text).Cast<Match>().Where(m => OnPc(f, m.Index)))
                 .Select(m => m.Groups[1].Value).Distinct().ToList();
-            plan.Depth = unit.Any(f => DepthRead.IsMatch(f.Text));
+            plan.Depth = forPatch && unit.Any(f => DepthRead.IsMatch(f.Text));
             plan.DepthRewritable = plan.Depth && unit.All(f => DepthRead.Matches(f.Text).Cast<Match>().All(m =>
             {
                 int shut = MatchParen(f.Text, m.Index + m.Value.IndexOf('('));
@@ -391,10 +610,33 @@ namespace AvatarBridge
             // POI_INITIALIZE_VERTEX_OUTPUT_STEREO, a #define holding Unity's.
             // Reading names literally sent every Poiyomi material to be patched
             // a second time (SpiSweepProbe), so a #define or a called function
-            // that holds the macro counts, one level deep.
+            // that holds the macro counts, one level deep. One scan for every
+            // #define, not one per macro.
+            var defines = unit.SelectMany(f => DefineLine.Matches(f.Text).Cast<Match>())
+                .Select(d => (name: d.Groups[1].Value, body: d.Groups[2].Value)).ToList();
             var wrappers = StereoMacros.Concat(new[] { EyeIndexMacro }).ToDictionary(m => m, m =>
-                unit.SelectMany(f => DefineLine.Matches(f.Text).Cast<Match>())
-                    .Where(d => d.Groups[2].Value.Contains(m)).Select(d => d.Groups[1].Value).Distinct().ToList());
+                defines.Where(d => d.body.Contains(m)).Select(d => d.name).Distinct().ToList());
+
+            // A called name's definition bodies, one per file that has one, found
+            // once per plan: every pass calls the same helpers, and each search
+            // scans the whole unit. A file without the name cannot match.
+            var helpers = new Dictionary<string, List<string>>();
+            List<string> HelpersOf(string callee)
+            {
+                if (helpers.TryGetValue(callee, out var found)) return found;
+                found = new List<string>();
+                var definition = new Regex($@"\b\w+\s+{Regex.Escape(callee)}\s*\([^;{{)]*\)\s*\{{");
+                foreach (var f in unit)
+                {
+                    if (f.Text.IndexOf(callee, StringComparison.Ordinal) < 0) continue;
+                    var d = definition.Match(f.Text);
+                    if (!d.Success) continue;
+                    int open = d.Index + d.Length - 1, close = MatchBrace(f.Text, open);
+                    found.Add(close > open ? f.Text.Substring(open, close - open) : "");
+                }
+                helpers[callee] = found;
+                return found;
+            }
             bool Has(string code, string macro)
             {
                 if (code.Contains(macro) || wrappers[macro].Any(w => Regex.IsMatch(code, $@"\b{Regex.Escape(w)}\b")))
@@ -404,13 +646,8 @@ namespace AvatarBridge
                 foreach (string callee in Regex.Matches(code, @"\b([A-Za-z_]\w*)\s*\(").Cast<Match>()
                              .Select(c => c.Groups[1].Value).Distinct())
                 {
-                    var definition = new Regex($@"\b\w+\s+{Regex.Escape(callee)}\s*\([^;{{)]*\)\s*\{{");
-                    foreach (var f in unit)
+                    foreach (string helper in HelpersOf(callee))
                     {
-                        var d = definition.Match(f.Text);
-                        if (!d.Success) continue;
-                        int open = d.Index + d.Length - 1, close = MatchBrace(f.Text, open);
-                        string helper = close > open ? f.Text.Substring(open, close - open) : "";
                         if (helper.Contains(macro) || wrappers[macro].Any(w => Regex.IsMatch(helper, $@"\b{Regex.Escape(w)}\b")))
                         {
                             return true;
@@ -432,14 +669,22 @@ namespace AvatarBridge
                 }
             }
 
+            // Built once per name, not per file. The look-behind only skips
+            // starts inside a word, where the leftmost match never begins, and
+            // retrying there cost the square of every word's length.
+            var vertSignatures = vertNames.ToDictionary(n => n,
+                n => new Regex($@"(?<!\w)(\w+)\s+{Regex.Escape(n)}\s*\(\s*(\w+)\s+(\w+)\s*\)"));
+            var fragSignatures = fragNames.ToDictionary(n => n,
+                n => new Regex($@"\b\w+\s+{Regex.Escape(n)}\s*\(\s*(\w+)\s+(\w+)"));
+
             var outputTypes = new HashSet<string>();
             var defined = new HashSet<string>();
             foreach (var file in unit)
             {
                 foreach (string vertName in vertNames)
                 {
-                    var signature = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(\s*(\w+)\s+(\w+)\s*\)");
-                    foreach (Match sig in signature.Matches(file.Text))
+                    if (file.Text.IndexOf(vertName, StringComparison.Ordinal) < 0) continue;
+                    foreach (Match sig in vertSignatures[vertName].Matches(file.Text))
                     {
                         int open = BodyOpen(file.Text, sig.Index + sig.Length);
                         if (open < 0) continue; // a call or a prototype, not the definition
@@ -501,8 +746,8 @@ namespace AvatarBridge
             {
                 foreach (string fragName in fragNames)
                 {
-                    var signature = new Regex($@"\b\w+\s+{Regex.Escape(fragName)}\s*\(\s*(\w+)\s+(\w+)");
-                    foreach (Match sig in signature.Matches(file.Text))
+                    if (file.Text.IndexOf(fragName, StringComparison.Ordinal) < 0) continue;
+                    foreach (Match sig in fragSignatures[fragName].Matches(file.Text))
                     {
                         if (!outputTypes.Contains(sig.Groups[1].Value) || !OnPc(file, sig.Index)) continue;
                         int paren = file.Text.IndexOf('(', sig.Index + sig.Groups[0].Value.IndexOf(fragName, StringComparison.Ordinal));
@@ -528,7 +773,9 @@ namespace AvatarBridge
         static readonly Regex ExcludeRenderers = new Regex(@"#pragma[ \t]+exclude_renderers\b([^\r\n]*)");
         static readonly Regex D3D11 = new Regex(@"\bd3d11\b");
 
+        // Both pragmas spell "_renderers", and a text without it was still split into programs.
         static List<(int from, int to)> OffPcPrograms(string text) =>
+            text.IndexOf("_renderers", StringComparison.Ordinal) < 0 ? new List<(int from, int to)>() :
             Program.Matches(text).Cast<Match>().Where(p =>
             {
                 var only = OnlyRenderers.Match(p.Groups[1].Value);
@@ -690,11 +937,13 @@ namespace AvatarBridge
             Regex.Replace(text, @"^([ \t]*)Shader\s*""[^""]+""",
                 m => m.Groups[1].Value + "Shader \"" + newName + "\"", RegexOptions.Multiline);
 
+        // Searched with comments blanked: a commented-out copy of a function, ahead of the
+        // real one, was patched in its place and broke the compile.
         internal static SourceFile FindIn(List<SourceFile> unit, string pattern, out Match match)
         {
             foreach (var file in unit)
             {
-                var m = Regex.Match(file.Text, pattern);
+                var m = Regex.Match(Uncommented(file.Text), pattern);
                 if (m.Success)
                 {
                     match = m;
@@ -705,20 +954,60 @@ namespace AvatarBridge
             return null;
         }
 
-        static Shader TryPatch(string sourcePath, string shaderName, string dir, out string reason,
-            out bool grabPassLimited, out List<string> passesLeft)
+        // The text with its comments turned to spaces, every offset kept. Strings are stepped
+        // over: a "/*" inside one would blank everything up to the next "*/".
+        internal static string Uncommented(string text)
+        {
+            var c = text.ToCharArray();
+            for (int i = 0; i < c.Length - 1; i++)
+            {
+                if (c[i] == '"')
+                {
+                    while (++i < c.Length - 1 && c[i] != '"' && c[i] != '\n') { }
+                }
+                else if (c[i] == '/' && c[i + 1] == '/')
+                {
+                    while (i < c.Length && c[i] != '\n') c[i++] = ' ';
+                }
+                else if (c[i] == '/' && c[i + 1] == '*')
+                {
+                    int close = text.IndexOf("*/", i + 2, StringComparison.Ordinal);
+                    for (close = close < 0 ? c.Length : close + 2; i < close; i++)
+                        if (c[i] != '\n') c[i] = ' ';
+                    i--;
+                }
+            }
+            return new string(c);
+        }
+
+        // A copy written and waiting for its import and its checks.
+        sealed class Staged
+        {
+            public List<SourceFile> Unit;
+            public string Key, OutPath, Dir;
+            public List<string> Written;
+        }
+
+        // Everything up to the import: the plan applied, the files named and written. Null with
+        // `reused` set for a copy already in place, or with the reason it was refused. The unit
+        // and plan are the judge's, or null to make them here.
+        static Staged Stage(string sourcePath, string shaderName, string dir, List<SourceFile> unit,
+            StereoPlan plan, out string reason, out bool grabPassLimited, out List<string> passesLeft, out Shader reused)
         {
             grabPassLimited = false;
+            reused = null;
             passesLeft = new List<string>();
-            List<SourceFile> unit;
-            try
+            if (unit == null)
             {
-                unit = ReadUnit(sourcePath);
-            }
-            catch (Exception e)
-            {
-                reason = "source unreadable: " + e.Message;
-                return null;
+                try
+                {
+                    unit = ReadUnit(sourcePath);
+                }
+                catch (Exception e)
+                {
+                    reason = "source unreadable: " + e.Message;
+                    return null;
+                }
             }
             if (unit.Count == 0)
             {
@@ -732,7 +1021,7 @@ namespace AvatarBridge
             // inconsistent endings on import and blame AvatarBridge for it. An include can easily
             // disagree with its shader, so this can't be decided once for the whole unit.
 
-            var plan = PlanStereo(unit);
+            if (plan == null || !plan.Full) plan = PlanStereo(unit);
             if (plan.Passes == 0)
             {
                 reason = plan.SurfaceOnly
@@ -788,7 +1077,14 @@ namespace AvatarBridge
             // Name every file, then repoint the #include lines at the copies. Flattened into one
             // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc", and
             // named apart from every other file this run writes there.
-            Directory.CreateDirectory(dir);
+            // A folder the AssetDatabase has not seen takes no imports, so it is made and seen
+            // before the first write, while nothing of this batch is in it. A refresh rescans
+            // the whole project, so only once.
+            if (!(AssetDatabase.IsValidFolder(dir) && Directory.Exists(dir)))
+            {
+                Directory.CreateDirectory(dir);
+                AssetDatabase.Refresh();
+            }
             foreach (var file in unit)
             {
                 file.OutputName = Claim(dir, Path.GetFileNameWithoutExtension(file.OriginalPath) + "_SPI",
@@ -825,57 +1121,122 @@ namespace AvatarBridge
                 }
             }
 
+            // A reconvert into the same folder writes the same text again, and a
+            // rewritten file is reimported and recompiled for nothing. Only byte for
+            // byte what is already there; text not proven this session, after a
+            // restart, is checked where it lies, and written again only if that fails.
+            string key = ContentKey(unit, true);
+            bool proven = CompiledCopies.Contains(key);
+            string outPath = dir + "/" + shaderFile.OutputName;
+            if (unit.All(f => Unchanged(dir + "/" + f.OutputName, f.Text))
+                && AssetDatabase.LoadAssetAtPath<Shader>(outPath) is Shader existing
+                && (proven || Verify(existing) == null))
+            {
+                CompiledCopies.Add(key);
+                Times.Reused++;
+                reason = null;
+                reused = existing;
+                return null;
+            }
+
             var written = new List<string>();
-            foreach (var file in unit)
+            var before = new Dictionary<string, byte[]>();
+            try
             {
-                string path = dir + "/" + file.OutputName;
-                File.WriteAllText(path, file.Text);
-                written.Add(path);
+                foreach (var file in unit)
+                {
+                    string path = dir + "/" + file.OutputName;
+                    before[path] = File.Exists(path) ? File.ReadAllBytes(path) : null;
+                    File.WriteAllText(path, file.Text);
+                    written.Add(path);
+                }
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                // Nothing of it is imported yet, so putting the disk back is the whole undo: what
+                // this copy made goes and what it overwrote gets its old bytes, so a reconvert's
+                // half copy never turns up mixed with the last one at the next refresh.
+                foreach (var old in before)
+                {
+                    try
+                    {
+                        if (old.Value == null) File.Delete(old.Key);
+                        else File.WriteAllBytes(old.Key, old.Value);
+                    }
+                    catch { }
+                }
+                reason = "the copy could not be written: " + e.Message;
+                return null;
             }
 
-            // Includes first, shader last. Importing the shader is what
-            // compiles it, and it fails on includes not yet in the
-            // AssetDatabase.
-            foreach (string path in written.Skip(1))
+            reason = null;
+            return new Staged { Unit = unit, Key = key, OutPath = outPath, Dir = dir, Written = written };
+        }
+
+        // Includes first, shaders last. Importing a shader is what compiles it, and it fails on
+        // includes not yet in the AssetDatabase. One batch each, for every copy at once.
+        static void Import(List<Staged> staged)
+        {
+            if (staged.Count == 0) return;
+            foreach (bool shaders in new[] { false, true })
             {
-                AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                AssetDatabase.StartAssetEditing();
+                try
+                {
+                    foreach (var s in staged)
+                    {
+                        foreach (string path in shaders ? new List<string> { s.OutPath } : s.Written.Skip(1).ToList())
+                        {
+                            AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
+                        }
+                    }
+                }
+                finally { AssetDatabase.StopAssetEditing(); }
             }
-            AssetDatabase.Refresh();
+        }
 
-            string outPath = written[0];
-            AssetDatabase.ImportAsset(outPath, ImportAssetOptions.ForceSynchronousImport);
-
-            var result = AssetDatabase.LoadAssetAtPath<Shader>(outPath);
-            string errors = result == null ? "copy failed to import"
-                : ShaderUtil.ShaderHasError(result) ? ShaderErrors(result)
-                : StereoVariantError(result);
+        // The imported copy, checked, or null and why. A failed copy's files join `doomed`.
+        static Shader Finish(Staged s, List<string> doomed, out string reason)
+        {
+            // Checked even when the same text passed in another folder: an include
+            // left as text can resolve differently beside a different copy.
+            var result = AssetDatabase.LoadAssetAtPath<Shader>(s.OutPath);
+            string errors = Verify(result);
             if (errors != null)
             {
                 // Keep the failed source, as .txt so Unity never tries to compile it, every file
                 // of it: the edits often land in an include, and keeping the shader alone kept
                 // nothing of the line that failed.
                 bool kept = true;
-                foreach (var file in unit)
+                foreach (var file in s.Unit)
                 {
-                    try { File.WriteAllText(dir + "/" + file.OutputName + ".failed.txt", file.Text); }
+                    try { File.WriteAllText(s.Dir + "/" + file.OutputName + ".failed.txt", file.Text); }
                     catch { kept = false; }
                 }
-                // Every file of the unit goes, not just the shader.
-                // No orphaned include copies in the output folder.
-                foreach (string path in written)
-                {
-                    AssetDatabase.DeleteAsset(path);
-                }
+                doomed.AddRange(s.Written);
                 reason = "patched copy did not compile: " + errors +
                          (kept
-                             ? $". The attempted source was kept in {dir} as {unit[0].OutputName}.failed.txt" +
-                               (unit.Count > 1 ? $" and {unit.Count - 1} include(s) beside it" : "") +
+                             ? $". The attempted source was kept in {s.Dir} as {s.Unit[0].OutputName}.failed.txt" +
+                               (s.Unit.Count > 1 ? $" and {BridgeElements.Count(s.Unit.Count - 1, "include", "includes")} beside it" : "") +
                                ": attach them to a bug report"
                              : "");
                 return null;
             }
+            CompiledCopies.Add(s.Key);
             reason = null;
             return result;
+        }
+
+        static string Verify(Shader copy) => copy == null ? "copy failed to import"
+            : ShaderUtil.ShaderHasError(copy) ? ShaderErrors(copy)
+            : StereoVariantError(copy);
+
+        // Exactly what WriteAllText would put there: UTF-8 with no byte order mark.
+        static bool Unchanged(string path, string text)
+        {
+            if (!File.Exists(path)) return false;
+            var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            return new FileInfo(path).Length == bytes.Length && File.ReadAllBytes(path).SequenceEqual(bytes);
         }
 
         // A file name in the output folder nothing else this run has taken.
@@ -909,6 +1270,8 @@ namespace AvatarBridge
         // (SpiFactsProbe). Null when every pass compiles.
         static string StereoVariantError(Shader shader)
         {
+            Times.VariantChecks++;
+            Times.Variants.Start();
             var data = ShaderUtil.GetShaderData(shader);
             var keywords = new[] { "STEREO_INSTANCING_ON" };
             for (int s = 0; s < data.SubshaderCount; s++)
@@ -934,10 +1297,12 @@ namespace AvatarBridge
                             .Select(m => m.line > 0 ? $"{m.message} at line {m.line}" : m.message)
                             .FirstOrDefault() ?? "no message";
                         string passName = string.IsNullOrEmpty(pass.Name) ? $"pass {p}" : $"pass \"{pass.Name}\"";
+                        Times.Variants.Stop();
                         return $"its single-pass instanced {stage.ToString().ToLowerInvariant()} variant fails in {passName}: {first}";
                     }
                 }
             }
+            Times.Variants.Stop();
             return null;
         }
 
@@ -1008,13 +1373,25 @@ namespace AvatarBridge
             }
 
             var copy = UnityEngine.Object.Instantiate(original);
-            copy.shader = patchedShader;
+            Wear(copy, patchedShader);
             Directory.CreateDirectory(dir);
             // CreateAsset renames the object after the file, so the path decides the final name.
             string path = OutputAssetPaths.Claim(dir + "/" + original.name + "_SPI.mat");
             AssetDatabase.CreateAsset(copy, path);
             clones[original] = copy;
             return copy;
+        }
+
+        // Unity drops a material's own render queue whenever its shader changes, and Standard and
+        // Poiyomi keep a transparent mode's queue there: a copy on another shader drew in the
+        // opaque queue. A queue the material took from its shader follows the new one.
+        public static void Wear(Material m, Shader shader)
+        {
+            if (m.shader == shader) return;
+            int queue = m.renderQueue;
+            bool own = m.shader != null && queue != m.shader.renderQueue;
+            m.shader = shader;
+            if (own) m.renderQueue = queue;
         }
     }
 }

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
+using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
@@ -105,7 +106,7 @@ namespace AvatarBridge
             // description handed in. The description is the argument;
             // the assigned avatar should not get a vote.
             var previous = animator.avatar;
-            animator.avatar = null;
+            var layers = Detach(animator);
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
 
             // Second attempt, from the live hierarchy: the baked skeleton
@@ -133,7 +134,7 @@ namespace AvatarBridge
 
             if (rebuilt == null || !rebuilt.isValid)
             {
-                animator.avatar = previous;   // put it back; a null rig is worse than a wrong jaw
+                Reattach(animator, previous, layers);   // put it back; a null rig is worse than a wrong jaw
                 if (rebuilt != null)
                 {
                     Object.DestroyImmediate(rebuilt);
@@ -148,31 +149,61 @@ namespace AvatarBridge
                 return;
             }
 
-            // Saved, because an Avatar built in memory does not survive the scene: the animator
-            // would come back with a null rig and the avatar would stop being humanoid at all.
-            //
             // The name comes from "previous"; animator.avatar is null
             // here, cleared before the build.
-            rebuilt.name = previous.name;
-            string safe = new string(rebuilt.name.Select(c =>
-                System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
-            // Claim, not GenerateUniqueAssetPath. Unique-against-disk
-            // includes the last conversion's rig, and reconverting
-            // would park numbered copies forever.
-            string assetPath = OutputAssetPaths.Claim($"{ctx.OutputDir}/{safe}_NoJaw.asset");
-            AssetDatabase.CreateAsset(rebuilt, assetPath);
-            int orphans = DeleteStaleRigs(ctx.OutputDir, assetPath);
-            animator.avatar = rebuilt;
+            SaveRig(ctx, rebuilt, previous.name, "_NoJaw", out int orphans);
+            // Built from the skeleton pass's rig when that one ran, so its copy is no longer used.
+            orphans += DeleteStaleRigs(ctx.OutputDir, null, "_Matched");
+            Reattach(animator, rebuilt, layers);
             EditorUtility.SetDirty(animator);
 
             ctx.Report.Converted(Category,
                 $"Humanoid Jaw unmapped: it pointed at \"{jaw.name}\", which is not a jaw",
                 "Rebuilt without a Jaw, so your voice and visemes don't follow that object." +
                 (usedLiveSkeleton ? " Rebuilt from the current pose, since the rig's own was refused." : "") +
-                (orphans > 0 ? $" {orphans} old rig(s) removed." : ""));
+                (orphans > 0 ? $" {BridgeElements.Count(orphans, "old rig", "old rigs")} removed." : ""));
         }
 
-        static int DeleteStaleRigs(string dir, string keep)
+        // The descriptor's inspector drops the Additive and Gesture layers from an avatar with
+        // no humanoid rig and adds them back empty once it has one, so a rig detached for a
+        // rebuild cost both layers their controllers. Detach and reattach through these.
+        internal static VRCAvatarDescriptor.CustomAnimLayer[] Detach(Animator animator)
+        {
+            var descriptor = animator.GetComponent<VRCAvatarDescriptor>();
+            var layers = descriptor != null && descriptor.baseAnimationLayers != null
+                ? (VRCAvatarDescriptor.CustomAnimLayer[])descriptor.baseAnimationLayers.Clone()
+                : null;
+            animator.avatar = null;
+            return layers;
+        }
+
+        internal static void Reattach(Animator animator, Avatar avatar, VRCAvatarDescriptor.CustomAnimLayer[] layers)
+        {
+            animator.avatar = avatar;
+            var descriptor = animator.GetComponent<VRCAvatarDescriptor>();
+            if (descriptor != null && layers != null)
+            {
+                descriptor.baseAnimationLayers = layers;
+                EditorUtility.SetDirty(descriptor);
+            }
+        }
+
+        // Saved, because an Avatar built in memory does not survive the scene: the animator
+        // would come back with a null rig and the avatar would stop being humanoid at all.
+        internal static void SaveRig(BridgeContext ctx, Avatar rebuilt, string name, string suffix, out int orphans)
+        {
+            rebuilt.name = name;
+            string safe = new string(name.Select(c =>
+                System.IO.Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+            // Claim, not GenerateUniqueAssetPath. Unique-against-disk
+            // includes the last conversion's rig, and reconverting
+            // would park numbered copies forever.
+            string assetPath = OutputAssetPaths.Claim($"{ctx.OutputDir}/{safe}{suffix}.asset");
+            AssetDatabase.CreateAsset(rebuilt, assetPath);
+            orphans = DeleteStaleRigs(ctx.OutputDir, assetPath, suffix);
+        }
+
+        static int DeleteStaleRigs(string dir, string keep, string suffix)
         {
             if (!AssetDatabase.IsValidFolder(dir))
             {
@@ -187,12 +218,12 @@ namespace AvatarBridge
                     continue;
                 }
                 string file = System.IO.Path.GetFileNameWithoutExtension(path);
-                int cut = file.LastIndexOf("_NoJaw", System.StringComparison.Ordinal);
+                int cut = file.LastIndexOf(suffix, System.StringComparison.Ordinal);
                 if (cut < 0)
                 {
                     continue;
                 }
-                string tail = file.Substring(cut + "_NoJaw".Length).Trim();
+                string tail = file.Substring(cut + suffix.Length).Trim();
                 if (tail.Length > 0 && !int.TryParse(tail, out _))
                 {
                     continue;
@@ -205,7 +236,7 @@ namespace AvatarBridge
             return removed;
         }
 
-        static string AmbiguousBoneNames(Transform root, HumanDescription description)
+        internal static string AmbiguousBoneNames(Transform root, HumanDescription description)
         {
             var wanted = new System.Collections.Generic.HashSet<string>(
                 description.human.Select(h => h.boneName).Where(n => !string.IsNullOrEmpty(n)));

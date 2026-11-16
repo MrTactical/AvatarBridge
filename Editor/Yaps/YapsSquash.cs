@@ -1,0 +1,2223 @@
+// The squash in the YAPS-patched body shader: every layer over a soft part takes the same move,
+// worked out on the GPU from where the parts are. A material data provider writes each part's
+// follow (a plain child of the bone the cloth moves most, at the part's centre) into the
+// materials every frame, on every client, with nothing synced and no camera.
+//
+// How it feels comes from the avatar's YAPS Squash component, added on the first build. Its
+// knobs write straight to the materials, so tuning needs no rebuild.
+//
+// Three ways to say where the parts are. Regions painted with the squash region tool, when the
+// avatar carries them; else bones picked on the component, two to a pair; else bones found by
+// name (breast, boob, butt, booty, glute, one each side). With bones, each vertex's share is the
+// skin weight its part's bones carry. The squash's own dent takes the first two pairs; the jelly
+// put on over it takes any part, a pair or one side alone, four a body. Materials listed as left
+// alone are never copied. Measured at rest, in edit mode. A shader the patcher refuses is reported and its layer
+// left as it was.
+#if CVR_CCK_EXISTS
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using ABI.CCK.Components;
+using AvatarBridge.Yaps;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using UnityEngine.Rendering;
+
+namespace AvatarBridge
+{
+    public static class YapsSquash
+    {
+        public const string Category = "Squash";
+        const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
+        // On each copy's importer, before the material it was copied from, for Strip to put back.
+        internal const string Mark = "squash:";
+        // The stretch in motion as real flesh's: 0.6 a reach of swing past a tenth of it, at most 1.12.
+        internal static readonly Vector4 Stretch = new Vector4(0.6f, 0.1f, 1.12f, 0f);
+        static readonly Regex Soft = new Regex("breast|boob|butt|booty|glute", RegexOptions.IgnoreCase);
+        static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
+
+        // Every property the squash sets, so a swapped-in look can take the same values.
+        internal static readonly string[] Properties =
+        {
+            "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_DentSwing", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
+            "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
+            "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
+            "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
+            "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
+            "_YAPS_SquashSurfaceOn", "_YAPS_SoftRow", "_YAPS_SoftTable", "_YAPS_SoftDepth", "_YAPS_SoftOut", "_YAPS_SoftIn",
+            "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB", "_YAPS_SoftBelow", "_YAPS_JellyOwn",
+        };
+
+        sealed class Part
+        {
+            public string name;
+            // The bone the follow rides and the one its rest sits on.
+            public Transform mover, restOn, follow;
+            public List<(Transform bone, float weight)> carriers;
+            public List<Vector3> points;
+            public Vector3 centre;
+            // Where the part hangs from: the top of its chain, which the physics hold still.
+            public Vector3 hangsFrom;
+            public float reach, volume;
+        }
+
+        // A skinned renderer as it stands: each vertex posed, and its share of every part.
+        sealed class Skin
+        {
+            public SkinnedMeshRenderer smr;
+            public Transform[] bones;
+            public BoneWeight[] weights;
+            public Vector3[] at;
+            public Vector4[] share;
+            // Per renderer bone, the part whose bones hold it, or -1. Bone-name parts only.
+            public int[] owner;
+        }
+
+        static bool Sided(Transform t) => Soft.IsMatch(t.name) && Side.IsMatch(t.name);
+
+        // Skinned chain roots naming a side, paired by name with the side taken out. Skinned,
+        // so a cloth or collider object named after its chain does not pair up as well; a side,
+        // so a root both parts hang from is not taken for one of them.
+        static List<List<Transform>> Pairs(Transform root, out string none)
+        {
+            var picked = SettingsOf(root)?.partBones;
+            if (picked != null && picked.Count > 0) return Picked(root, picked, out none);
+            var skinned = new HashSet<Transform>(root.GetComponentsInChildren<SkinnedMeshRenderer>(true).SelectMany(r => r.bones).Where(t => t != null));
+            var found = skinned
+                .Where(t => Sided(t) && (t.parent == null || !Sided(t.parent)))
+                .GroupBy(t => Side.Replace(t.name, "").ToLowerInvariant())
+                .Where(g => g.Count() == 2)
+                .Select(g => g.OrderBy(t => root.InverseTransformPoint(t.position).x).ToList())
+                .ToList();
+            none = found.Count > 0 ? null : "no soft pair found by name among " + string.Join(", ", skinned.Where(t => Soft.IsMatch(t.name)).Select(t => t.name + "<" + t.parent?.name));
+            return found;
+        }
+
+        // The component's hand-picked bones, two to a pair in list order, each pair ordered by side
+        // as the name search orders it.
+        static List<List<Transform>> Picked(Transform root, List<Transform> picked, out string none)
+        {
+            none = picked.Any(t => t == null) ? "a picked part bone is empty"
+                : picked.Count % 2 != 0 ? "picked part bones come in pairs, one each side, and one is alone"
+                : picked.Distinct().Count() != picked.Count ? "a part bone is picked twice"
+                : picked.FirstOrDefault(t => !t.IsChildOf(root)) is Transform away ? $"picked part bone \"{away.name}\" is not on this avatar"
+                : null;
+            if (none != null) return new List<List<Transform>>();
+            return Enumerable.Range(0, picked.Count / 2)
+                .Select(i => new[] { picked[2 * i], picked[2 * i + 1] }.OrderBy(t => root.InverseTransformPoint(t.position).x).ToList())
+                .ToList();
+        }
+
+        // Whether the avatar carries a squash build.
+        public static bool Has(Transform root) => root != null && root.Find(ShaderHostName) != null;
+
+        // Layers and toggle keys still on a squash copy. A build deleted by hand instead of
+        // removed leaves them all, and Has no longer sees it; each copy's mark still leads back
+        // to its original, so Remove can hand them back.
+        internal static int Worn(Transform root, IList<AnimationClip> clips = null)
+        {
+            if (root == null) return 0;
+            int n = root.GetComponentsInChildren<SkinnedMeshRenderer>(true).Sum(r => r.sharedMaterials.Count(m => SourceOf(m) != null));
+            clips = clips ?? YapsSwapFollow.RunnableClips(root);
+            n += YapsSwapFollow.MissingKeys(clips);
+            foreach (var clip in clips)
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    if (YapsSwapFollow.SlotIndex(binding.propertyName) >= 0)
+                        n += (AnimationUtility.GetObjectReferenceCurve(clip, binding) ?? new ObjectReferenceKeyframe[0])
+                            .Count(k => k.value is Material m && SourceOf(m) != null);
+            return n;
+        }
+
+        public static YapsSquashSettings SettingsOf(Transform root) => root != null ? root.GetComponentInChildren<YapsSquashSettings>(true) : null;
+
+        // The avatar a component belongs to, wherever under it the component sits.
+        public static Transform RootOf(YapsSquashSettings s) => s != null ? YapsNativeBuilder.AvatarRoot(s.transform) : null;
+
+        // Where a component goes: the bone the parts hang from, as a plug's sits on its own bone,
+        // so it opens in a short Inspector. The avatar root while no part is found.
+        public static Transform HomeFor(Transform root)
+        {
+            var bones = Pairs(root, out _).Take(2).SelectMany(p => p).ToList();
+            if (bones.Count == 0) return root;
+            var home = bones[0].parent;
+            while (home != null && home != root && !bones.All(b => b.IsChildOf(home))) home = home.parent;
+            return home != null && home.IsChildOf(root) ? home : root;
+        }
+
+        // The avatar's component, added at home, or an older one moved there from the avatar root.
+        public static YapsSquashSettings Ensure(Transform root)
+        {
+            var s = SettingsOf(root);
+            var home = HomeFor(root);
+            if (s == null) return Undo.AddComponent<YapsSquashSettings>(home.gameObject);
+            if (s.transform != root || home == root) return s;
+            var moved = Undo.AddComponent<YapsSquashSettings>(home.gameObject);
+            UnityEditorInternal.ComponentUtility.CopyComponent(s);
+            UnityEditorInternal.ComponentUtility.PasteComponentValues(moved);
+            Undo.DestroyObjectImmediate(s);
+            return moved;
+        }
+
+        // Selected and shown in the Inspector, as the setup window shows a plug or socket.
+        public static void Show(YapsSquashSettings s)
+        {
+            if (s == null) return;
+            Selection.activeGameObject = s.gameObject;
+            EditorGUIUtility.PingObject(s);
+            EditorApplication.ExecuteMenuItem("Window/General/Inspector");
+        }
+
+        // The old hand dent's swing away and depth, for a pair no soft body was built for. Knobs
+        // until the soft body, which moves under a hand as its tissue was solved and reads neither.
+        const float BendGive = 0.35f, DeepestDent = 0.35f;
+
+        // The knobs onto one squash material. The skin stride in the hands' w is the build's.
+        public static void WriteKnobs(YapsSquashSettings s, Material m)
+        {
+            var hands = m.GetVector("_YAPS_SquashHands");
+            m.SetVector("_YAPS_SquashTune", new Vector4(s.lyingBack, s.strength, BendGive, DeepestDent));
+            m.SetVector("_YAPS_SquashShape", new Vector4(s.flattest, s.volumeKept, s.widest, s.meet ? 1f : 0f));
+            m.SetFloat("_YAPS_DentSpill", s.spill);
+            // The push's dead zone and the arms' soft edge are not knobs.
+            m.SetVector("_YAPS_SquashPush", new Vector4(s.clothPush, 0.03f, 0.25f, s.ownArms > 0f ? 1f : 0f));
+            m.SetVector("_YAPS_SquashHands", new Vector4(s.ownArms, s.handSize, s.othersHands, hands.w));
+            m.SetFloat("_YAPS_SquashPlug", s.plugs);
+            // Like real flesh: the stretch per reach of swing, the swing ignored as the sag the physics
+            // settle into, and the longest it gets. An anime style stretched every hop into a teardrop.
+            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion ? Stretch : Vector4.zero);
+        }
+
+        // Every material the build's providers write, alternates included.
+        public static List<Material> Materials(Transform root)
+        {
+            var host = root != null ? root.Find(ShaderHostName) : null;
+            if (host == null) return new List<Material>();
+            return host.GetComponents<CVRMaterialDataProvider>().SelectMany(p => p.materials ?? new Material[0])
+                .Where(m => m != null && m.HasProperty("_YAPS_DentOwn")).Distinct().ToList();
+        }
+
+        // The component's knobs onto the build, without rebuilding. How many materials took them.
+        public static int Apply(Transform root)
+        {
+            var s = SettingsOf(root);
+            var mats = s != null ? Materials(root) : new List<Material>();
+            foreach (var m in mats)
+            {
+                WriteKnobs(s, m);
+                EditorUtility.SetDirty(m);
+            }
+            // The live tissue's step materials too: each part's feel and the knobs it reads.
+            if (s != null)
+                foreach (var worn in root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
+                    YapsJelly.Retune(worn, s);
+            return mats.Count;
+        }
+
+        // The slots as the provider writes them in game, for the edit mode preview.
+        public static Transform[] Slots(Transform root)
+        {
+            var host = root != null ? root.Find(ShaderHostName) : null;
+            var provider = host != null ? host.GetComponents<CVRMaterialDataProvider>()
+                .FirstOrDefault(p => p.dataMode == CVRMaterialDataProvider.DataMode.TransformLocalToWorld) : null;
+            return provider != null ? provider.transforms : null;
+        }
+
+        // The YAPS tool's build: the squash, then the toggles' swaps pointed at it.
+        // The last build's whole message, measurements and all, for the setup window's diagnostics.
+        // Probes: each part's skin and the six reaches of its ellipsoid, in world units, in the frame
+        // the shader builds, and its follow's unit. Set, a build stops once it has measured.
+        internal static Action<string, Vector3, Vector3, Vector3, List<Vector3>, float[], float> MeasuredForTest;
+        // Probes: each pair's soft body as baked, its skin and shares, its moves per way and depth,
+        // and its centres, across, out and reach, before the table stores them.
+        internal static Action<string, Vector3[], Vector2[], Vector3[][], Vector3[]> SoftBakedForTest;
+
+        internal static string LastSaid;
+        internal static bool LastBuilt;
+
+        public static string Build(Transform root, out bool built)
+        {
+            built = false;
+            if (YapsNativeBuilder.Playing) return YapsNativeBuilder.NotInPlayMode;
+            // Back into the folder the last build used, so a rebuild writes over its own copies
+            // and anything pointing at them keeps pointing, instead of leaving a second set.
+            string folder = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
+                .Where(m => SourceOf(m) != null).Select(m => System.IO.Path.GetDirectoryName(AssetDatabase.GetAssetPath(m)).Replace('\\', '/'))
+                .FirstOrDefault() ?? YapsNativeBuilder.OutputRoot + "/Squash";
+            var clips = YapsSwapFollow.RunnableClips(root);
+            YapsLock.Animate(null, clips);
+            Reuse = Owned(root, clips);
+            string jellyAt = YapsJelly.FolderFor(root, folder);
+            string said;
+            var jelly = (on: new List<string>(), refused: new List<string>());
+            try
+            {
+                said = Add(root, folder, out built);
+                if (built)
+                {
+                    said += " " + FollowSwaps(root, clips, folder, null);
+                    jelly = YapsJelly.On(root, jellyAt, null);
+                }
+            }
+            finally
+            {
+                Reuse = null;
+                YapsShaderPatcher.EndPass(null, null);
+            }
+            Debug.Log("[YAPS] Squash: " + said);
+            LastSaid = said.Trim();
+            LastBuilt = built;
+            if (!built) return said.Trim();
+            // The measurements stay in the Console: on a card they were a wall nobody read.
+            return $"Squash built on {BridgeElements.Count(Materials(root).Count, "material", "materials")}, parts {PartsFrom(SettingsOf(root))}, " +
+                   $"{BridgeElements.Count(jelly.on.Count, "part", "parts")} on the jelly{(jelly.refused.Count > 0 ? ", " + jelly.refused.Count + " not on it" : "")}. The measurements are in the Console.";
+        }
+
+        // Where the build takes its parts from, in the order Add tries them.
+        internal static string PartsFrom(YapsSquashSettings s) =>
+            s != null && s.pairs.Count > 0 ? "from painted regions" : s != null && s.partBones.Count > 0 ? "from picked bones" : "by bone name";
+
+        // Built or not, and whether the regions were painted since, in one line for every place
+        // that builds it. A tester could not tell whether the build had happened at all.
+        internal static string Status(Transform root, out Tone tone)
+        {
+            tone = Tone.Info;
+            int gone = YapsSwapFollow.MissingKeys(YapsSwapFollow.RunnableClips(root));
+            if (gone > 0)
+            {
+                tone = Tone.Warn;
+                return $"{(gone == 1 ? "A material swap names a material" : gone + " material swaps name materials")} deleted by hand, " +
+                       "which draws pink in game: Remove squash puts " + (gone == 1 ? "it" : "them") + " back on what " +
+                       (gone == 1 ? "it" : "they") + " held before.";
+            }
+            if (!Has(root))
+            {
+                int left = Worn(root);
+                if (left == 0) return "Not built yet.";
+                tone = Tone.Warn;
+                return $"Not built, but {(left == 1 ? "a layer or toggle is" : left + " layers and toggles are")} still on squash copies " +
+                       "from a build deleted by hand: Remove squash puts them back on their own materials.";
+            }
+            var s = SettingsOf(root);
+            var mats = Materials(root);
+            string on = BridgeElements.Count(mats.Count, "material", "materials");
+            // Each reason said, so a tester knows whether the rebuild is theirs to press. The
+            // shader is copied into the build, so a YAPS update reaches it only through one.
+            tone = Tone.Warn;
+            if (mats.Any(YapsShaderPatcher.IsStale))
+                return "Needs a rebuild: it was built by an older YAPS, so it still squashes the old way.";
+            if (s != null && s.pairs.Count > 0 && RegionsOf(root, out string refusal) == null && refusal != null)
+                return $"Needs painting again: {refusal}.";
+            if (s != null && RegionsHash(s) != s.builtFrom)
+                return "Needs a rebuild: the parts, the layers left alone or the twitch changed since it was built.";
+            tone = Tone.Good;
+            return $"Up to date: built on {on}, parts {PartsFrom(s)}. Knobs need no rebuild.";
+        }
+
+        public static int RegionsHash(YapsSquashSettings s)
+        {
+            unchecked
+            {
+                int h = s.pairs.Count;
+                foreach (var p in s.pairs)
+                {
+                    foreach (byte w in p.a) h = h * 31 + w;
+                    foreach (byte w in p.b) h = h * 31 + w;
+                }
+                // By name, which a reload keeps and an instance id does not. Empty lists add
+                // nothing, so a build from before them does not read as stale.
+                foreach (var t in s.partBones) foreach (char c in t != null ? t.name : "") h = h * 31 + c;
+                foreach (var m in s.leaveAlone) foreach (char c in m != null ? m.name : "") h = h * 37 + c;
+                // Off adds nothing, so a build from before it does not read as stale.
+                if (s.twitch) h = h * 41 + Mathf.RoundToInt(s.twitchSize * 1000f) + 1;
+                if (s.probeMarkers) h = h * 43 + 1;
+                if (s.otherColliders) h = h * 47 + 1;
+                return h;
+            }
+        }
+
+        // The regions to use, or null for parts by bone name. `refusal` says why regions the
+        // avatar carries cannot be used; they are never quietly swapped for the name search.
+        public static YapsSquashSettings RegionsOf(Transform root, out string refusal)
+        {
+            refusal = null;
+            var regions = SettingsOf(root);
+            if (regions == null || regions.pairs.Count == 0) return null;
+            var mesh = regions.body != null ? regions.body.sharedMesh : null;
+            if (mesh == null) refusal = "the squash regions name no body mesh";
+            else if (!regions.body.transform.IsChildOf(root)) refusal = "the squash regions' body mesh is not on this avatar";
+            else if (mesh.vertexCount != regions.vertexCount || Fingerprint(mesh) != regions.fingerprint)
+                refusal = $"\"{mesh.name}\" changed since its squash regions were painted, so every weight would land on the wrong vertex. Paint them again";
+            else if (regions.pairs.Any(p => p.a.Length != mesh.vertexCount || p.b.Length != mesh.vertexCount && p.b.Length != 0))
+                refusal = "a squash region pair is missing weights";
+            return refusal == null ? regions : null;
+        }
+
+        // The mesh as painted: vertex count and positions to the tenth of a millimetre.
+        public static int Fingerprint(Mesh mesh)
+        {
+            unchecked
+            {
+                int h = mesh.vertexCount;
+                foreach (var v in mesh.vertices)
+                    h = h * 31 + Mathf.RoundToInt(v.x * 1e4f) * 73856093 ^ Mathf.RoundToInt(v.y * 1e4f) * 19349663 ^ Mathf.RoundToInt(v.z * 1e4f) * 83492791;
+                return h;
+            }
+        }
+
+        // Vertices sharing a position, one list each: the copies a UV seam splits a point into.
+        // They take one weight, or the seam opens as the part squashes.
+        public static List<int[]> Welds(Mesh mesh)
+        {
+            var verts = mesh.vertices;
+            return Enumerable.Range(0, verts.Length)
+                .GroupBy(v => new Vector3Int(Mathf.RoundToInt(verts[v].x * 1e5f), Mathf.RoundToInt(verts[v].y * 1e5f), Mathf.RoundToInt(verts[v].z * 1e5f)))
+                .Where(g => g.Skip(1).Any()).Select(g => g.ToArray()).ToList();
+        }
+
+        public static string Add(Transform root, string folder, out bool built, BridgeReport report = null, float pulse = 0f)
+        {
+            // Log only, for a conversion: 94% of a first squash was outside every timed call.
+            var times = new List<string>();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step)
+            {
+                times.Add($"{step} {clock.ElapsedMilliseconds}");
+                clock.Restart();
+            }
+            built = false;
+            // Every refusal before the strip, so one leaves the build it found. Pairs is read again
+            // after it: the build's own helpers are skinned to bones of their own.
+            var regions = RegionsOf(root, out string refusal);
+            if (refusal != null) return refusal;
+            if (regions == null)
+            {
+                Pairs(root, out string early);
+                if (early != null) return early;
+            }
+            // Each slot's copy from the last build, by its own file: a rebuild writes over that one.
+            // By the slot's plain name it found none once a build had numbered them ("Body 99"), so
+            // it made new copies and left the old ones stripped, which the prefab still wore.
+            var prior = new Dictionary<(SkinnedMeshRenderer, int), string>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var worn = smr.sharedMaterials;
+                for (int slot = 0; slot < worn.Length; slot++)
+                    if (SourceOf(worn[slot]) != null) prior[(smr, slot)] = AssetDatabase.GetAssetPath(worn[slot]);
+            }
+            Strip(root);
+            List<List<Transform>> found = null;
+            if (regions == null)
+            {
+                found = Pairs(root, out string none);
+                if (none != null) return none;
+            }
+            Lap("Find");
+
+            var animator = root.GetComponent<Animator>();
+            var humanoid = new HashSet<Transform>();
+            if (animator != null && animator.isHuman)
+                for (var b = HumanBodyBones.Hips; b < HumanBodyBones.LastBone; b++)
+                {
+                    var t = animator.GetBoneTransform(b);
+                    if (t != null) humanoid.Add(t);
+                }
+
+            var skins = Skins(root);
+            // The dent takes the first two pairs; a part painted on one side alone is the jelly's.
+            var dentPairs = regions?.pairs.Where(p => p.b.Length > 0).ToList();
+            int pairCount = Mathf.Min(regions != null ? dentPairs.Count : found.Count, 2);
+            Skin named = null;
+            if (regions == null)
+            {
+                var sets = Sets(found);
+                foreach (var s in skins) NameShares(s, sets);
+                // Picked before scaling, which lifts every skin and could change the pick.
+                named = Body(skins);
+                Soften(named);
+                Peak(skins, named);
+            }
+            else
+            {
+                var body = skins.First(s => s.smr == regions.body);
+                for (int k = 0; k < pairCount; k++)
+                    for (int v = 0; v < body.at.Length; v++)
+                    {
+                        body.share[v][2 * k] = dentPairs[k].a[v] / 255f;
+                        body.share[v][2 * k + 1] = dentPairs[k].b[v] / 255f;
+                    }
+                // One weight per point, whatever was painted on each copy of it.
+                foreach (var weld in Welds(regions.body.sharedMesh))
+                {
+                    var mean = weld.Aggregate(Vector4.zero, (sum, v) => sum + body.share[v]) / weld.Length;
+                    foreach (int v in weld) body.share[v] = mean;
+                }
+            }
+
+            Lap("Skins");
+            var parts = new List<Part>();
+            var rests = new List<Transform>();
+            var backs = new List<Transform>();
+            // The socket between each pair, if any: a plug entering it parts the pair.
+            var sockets = root.GetComponentsInChildren<YapsSocket>(true).Select(x => x.transform).ToList();
+            var between = new List<Transform>();
+            var kept = new List<int>();
+            // The pairs the dent carries, in its slot order, by their place among every part, for the
+            // jelly to take them from it by the names it gives them.
+            var dented = new List<int>();
+            var log = new List<string>();
+            var reach = Vector4.zero;
+            // The other five reaches of each part, in the frame the shader builds: away from the
+            // partner, out of the body, into it, and either way along cross(toward, out).
+            var away = Vector4.zero;
+            var outward = Vector4.zero;
+            var inward = Vector4.zero;
+            var sideA = Vector4.zero;
+            var sideB = Vector4.zero;
+            // Where each part hangs from, off its rest in the same frame and the rest's units: a
+            // swing turns it about there, so the shader can tell a turned part from a slid one.
+            var hangToward = Vector4.zero;
+            var hangOut = Vector4.zero;
+            var hangAcross = Vector4.zero;
+            // Each part's own surface, or null where the ellipsoid of its reaches stays.
+            var surfaces = new List<float[]>();
+            // Per part its way toward the partner, unit and six reaches in metres, and per pair the
+            // way out of the body: the frame the shader reads the soft body's answers in.
+            var towards = new List<Vector3>();
+            var units = new List<float>();
+            var reachesOf = new List<float[]>();
+            var outs = new List<Vector3>();
+            var pair = new Vector4(0f, 0.5f, 0f, 0.5f);
+            for (int k = 0; k < pairCount; k++)
+            {
+                string label = regions != null ? dentPairs[k].name : $"{found[k][0].name}/{found[k][1].name}";
+                var measured = Measure(skins, k, regions != null ? null : found[k], humanoid,
+                    regions != null ? new[] { dentPairs[k].name + " A", dentPairs[k].name + " B" } : null);
+                if (measured == null) { log.Add($"{label}: too little skin"); continue; }
+                kept.Add(k);
+                dented.Add(regions != null ? regions.pairs.IndexOf(dentPairs[k]) : k);
+                var (a, b) = (measured[0], measured[1]);
+                var axis = (b.centre - a.centre).normalized;
+                a.reach = Reach(a, axis);
+                b.reach = Reach(b, -axis);
+                float start = Mathf.Min(Vector3.Distance(a.centre, b.centre), a.reach + b.reach);
+                float share = a.volume + b.volume > 0f ? a.volume / (a.volume + b.volume) : 0.5f;
+                int i = parts.Count;
+                // Out of the body, level: from the bone above the pair to the pair's middle,
+                // with the up and down and the line between them taken out. The shader reads
+                // it as the pair's middle minus a node this far behind it on that bone.
+                var restBone = a.restOn;
+                var mid = 0.5f * (a.centre + b.centre);
+                var level = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(mid - restBone.position, Vector3.up), axis);
+                if (level.sqrMagnitude < 1e-6f) level = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(root.forward, Vector3.up), axis);
+                var o = level.normalized;
+                outs.Add(o);
+                var back = Child(restBone, BackName);
+                back.position = mid - o * a.reach;
+                backs.Add(back);
+                // In the gap the pair parts around: near the line from the body to the pair's
+                // middle. Distance to the middle alone missed a socket at the skin between large
+                // parts and could take one in the mouth above them.
+                float Gap(Transform x) => HandleUtility.DistancePointLine(x.position, back.position, mid);
+                var socket = sockets.Where(x => Gap(x) < Mathf.Min(a.reach, b.reach)).OrderBy(Gap).FirstOrDefault();
+                between.Add(socket);
+                if (socket != null) log.Add($"{label}: a plug in \"{socket.name}\" parts it");
+                foreach (var p in measured)
+                {
+                    p.follow = Child(p.mover, FollowName);
+                    p.follow.position = p.centre;
+                    // The same point on the bone above the chain, where the follow sits when
+                    // nothing pushes the part.
+                    var rest = Child(p.restOn, RestName);
+                    rest.position = p.centre;
+                    // Its up axis for the stretch in motion: toward where the part hangs from,
+                    // and up, as a soft part hangs under its weight too. A drop stretches it as
+                    // well as a pull away from the body.
+                    rest.rotation = Quaternion.FromToRotation(Vector3.up, (p.hangsFrom - p.centre).normalized + root.up);
+                    rests.Add(rest);
+                    float unit = Unit(p.follow);
+                    var toward = p == a ? axis : -axis;
+                    var u = Vector3.Cross(toward, o);
+                    reach[parts.Count] = p.reach / unit;
+                    away[parts.Count] = Reach(p, -toward) / unit;
+                    outward[parts.Count] = Reach(p, o) / unit;
+                    inward[parts.Count] = Reach(p, -o) / unit;
+                    sideA[parts.Count] = Reach(p, u) / unit;
+                    sideB[parts.Count] = Reach(p, -u) / unit;
+                    var reaches = new[] { p.reach, Reach(p, -toward), Reach(p, o), Reach(p, -o), Reach(p, u), Reach(p, -u) };
+                    MeasuredForTest?.Invoke(p.name, p.centre, toward, o, p.points, reaches, unit);
+                    surfaces.Add(Surface(p.points, p.centre, toward, o, reaches, unit, out float mapOff, out float ellipsoidOff));
+                    log.Add($"{p.name}: {(surfaces[surfaces.Count - 1] != null ? "its own surface" : "the ellipsoid")}, " +
+                            $"{mapOff * 100f:0.0} cm off its skin against {ellipsoidOff * 100f:0.0}");
+                    var hang = (p.hangsFrom - p.centre) / Unit(rest);
+                    hangToward[parts.Count] = Vector3.Dot(hang, toward);
+                    hangOut[parts.Count] = Vector3.Dot(hang, o);
+                    hangAcross[parts.Count] = Vector3.Dot(hang, u);
+                    towards.Add(toward);
+                    units.Add(unit);
+                    reachesOf.Add(reaches);
+                    parts.Add(p);
+                }
+                pair[i] = start / Unit(a.follow);
+                pair[i + 1] = share;
+                log.Add($"{label} on {a.follow.parent.name}/{b.follow.parent.name}: start {start * 100f:0.0} cm, reach {a.reach * 100f:0.0} + {b.reach * 100f:0.0}, " +
+                        $"out {outward[i] * Unit(a.follow) * 100f:0.0}, in {inward[i] * Unit(a.follow) * 100f:0.0}, share {share:0.00}");
+            }
+            // Every part the jelly can take, the squash's own among them: a layer over any of them is
+            // copied, so the jelly finds a material to draw on. With no pair of its own the squash
+            // still builds for parts the jelly alone takes.
+            var jelly = PartsOf(root, out _);
+            var jellyOwn = new Dictionary<SkinnedMeshRenderer, Texture2D>();
+            if (jelly != null)
+                foreach (var kv in jelly.shares)
+                    if (JellyMoves(kv.Key.sharedMesh, -1, kv.Value)) jellyOwn[kv.Key] = JellyOwn(kv.Value, folder, $"{root.name} {kv.Key.name} jelly parts.asset");
+            if (parts.Count == 0 && jellyOwn.Count == 0) return string.Join("; ", log);
+            Lap("Measure");
+            if (MeasuredForTest != null) return string.Join("; ", log);
+            var surface = surfaces.Any(x => x != null) ? SurfaceTexture(surfaces, folder, $"{root.name} surface.asset") : null;
+            var surfaceOn = Vector4.zero;
+            for (int m = 0; m < surfaces.Count && m < 4; m++) surfaceOn[m] = surfaces[m] != null ? 1f : 0f;
+
+            // A pair with too little skin is dropped, and the ones after it move up a slot.
+            foreach (var s in skins)
+                for (int v = 0; v < s.share.Length; v++)
+                {
+                    var was = s.share[v];
+                    var now = Vector4.zero;
+                    for (int j = 0; j < kept.Count; j++) { now[2 * j] = was[2 * kept[j]]; now[2 * j + 1] = was[2 * kept[j] + 1]; }
+                    s.share[v] = now;
+                }
+
+            // Upper arm, lower arm, hand and middle finger per side, each capsule from one to the
+            // next; its radius from the skin the bone carries, as a share of its length.
+            Transform Bone(params HumanBodyBones[] ways) => animator == null || !animator.isHuman ? null
+                : ways.Select(animator.GetBoneTransform).FirstOrDefault(t => t != null);
+            var arms = new[]
+            {
+                new[] { Bone(HumanBodyBones.LeftUpperArm), Bone(HumanBodyBones.LeftLowerArm), Bone(HumanBodyBones.LeftHand),
+                        Bone(HumanBodyBones.LeftMiddleDistal, HumanBodyBones.LeftMiddleIntermediate, HumanBodyBones.LeftMiddleProximal) },
+                new[] { Bone(HumanBodyBones.RightUpperArm), Bone(HumanBodyBones.RightLowerArm), Bone(HumanBodyBones.RightHand),
+                        Bone(HumanBodyBones.RightMiddleDistal, HumanBodyBones.RightMiddleIntermediate, HumanBodyBones.RightMiddleProximal) },
+            };
+            float[] thickest = { 0.22f, 0.2f, 0.3f };
+            var limbs = arms.Select(arm => new Vector4(
+                Thickness(root, arm[0], arm[1], thickest[0]), Thickness(root, arm[1], arm[2], thickest[1]), Thickness(root, arm[2], arm[3], thickest[2]), 0f)).ToArray();
+            log.Add($"arms {limbs[0].x:0.00}/{limbs[0].y:0.00}/{limbs[0].z:0.00} and {limbs[1].x:0.00}/{limbs[1].y:0.00}/{limbs[1].z:0.00} of their lengths" +
+                    (arms.SelectMany(x => x).Any(t => t == null) ? ", some bones missing" : ""));
+
+            var copies = new List<Material>();
+            var patched = new Dictionary<Material, Shader>();
+            var still = new HashSet<int>();
+            var bodySkin = regions != null ? skins.First(s => s.smr == regions.body) : named;
+            Lap("Arms");
+            var shared = Shares(skins, bodySkin, root.name, folder, jellyOwn.ContainsKey);
+            var swings = Swings(shared, skins, bodySkin, parts, root.name, folder, log);
+            Lap("Shares");
+            var soft = SoftBody(bodySkin, shared, skins, parts, towards, units, reachesOf, surfaces, outs, root, folder, log);
+            Lap("Soft body");
+            // Layers the wearer left out stay on their own material, still, by their choice. So
+            // does a baked plug: it bends on its own and lies on no skin, so it is never what a
+            // squashed part shows through, and a share on top of the bend only adds a compile.
+            var leave = LeftAlone(root);
+            Hold();
+            YapsShaderPatcher.Prewrite(shared.SelectMany(x => x.smr.sharedMaterials
+                    .Where((m, slot) => m != null && !leave.Contains(m) && !YapsMarks.IsBakedMaterial(m) && Takes(x.smr, slot, x.shares)))
+                .Where(m => !m.HasProperty("_YAPS_DentOwn")), YapsShaderPatcher.Roles.Squash);
+            Lap("Prewrite");
+            // A slot moves for the dent or for the jelly.
+            bool Takes(SkinnedMeshRenderer smr, int slot, Vector4[] shares) => Moves(smr.sharedMesh, slot, shares) ||
+                jelly != null && jellyOwn.ContainsKey(smr) && JellyMoves(smr.sharedMesh, slot, jelly.shares[smr]);
+            var shaderFor = new System.Diagnostics.Stopwatch();
+            var saving = new System.Diagnostics.Stopwatch();
+            // The two laps above summed to a second an avatar while the loop took minutes, so the
+            // rest of it is timed too: the lock's basis and the renderer's material assignment.
+            var basis = new System.Diagnostics.Stopwatch();
+            var assign = new System.Diagnostics.Stopwatch();
+            YapsLock.KeyTime.Reset();
+            YapsLock.LoadTime.Reset();
+            foreach (var (smr, own, shares) in shared)
+            {
+                var mats = smr.sharedMaterials;
+                for (int slot = 0; slot < mats.Length; slot++)
+                {
+                    var source = mats[slot];
+                    if (source == null || leave.Contains(source) || YapsMarks.IsBakedMaterial(source) || !Takes(smr, slot, shares)) continue;
+                    if (!patched.TryGetValue(source, out var shader))
+                    {
+                        shaderFor.Start();
+                        patched[source] = shader = ShaderFor(source, report, log);
+                        shaderFor.Stop();
+                    }
+                    if (shader == null)
+                    {
+                        // A layer that cannot move over a part that does: the skin would come
+                        // through it, so the pair under it holds still instead.
+                        var sm = smr.sharedMesh;
+                        int sub = Mathf.Min(slot, sm.subMeshCount - 1);
+                        foreach (int v in sm.GetIndices(sub))
+                            for (int m = 0; m < 4; m++)
+                                if (v < shares.Length && shares[v][m] >= 0.05f && still.Add(m & ~1))
+                                    log.Add($"\"{source.name}\" on {smr.name} cannot follow, so {parts[m & ~1].name}/{parts[m | 1].name} does not squash");
+                        continue;
+                    }
+                    basis.Start();
+                    var copy = new Material(YapsLock.Basis(source)) { name = source.name };
+                    YapsShaderPatcher.Wear(copy, shader);
+                    basis.Stop();
+                    copy.SetFloat("_YAPS_DentPower", 1f);
+                    copy.SetTexture("_YAPS_DentOwn", own);
+                    copy.SetTexture("_YAPS_DentSwing", swings[smr]);
+                    copy.SetTexture("_YAPS_JellyOwn", jellyOwn.TryGetValue(smr, out var parted) ? parted : null);
+                    copy.SetVector("_YAPS_SquashReach", reach);
+                    copy.SetVector("_YAPS_SquashAway", away);
+                    copy.SetVector("_YAPS_SquashOut", outward);
+                    copy.SetVector("_YAPS_SquashIn", inward);
+                    copy.SetVector("_YAPS_SquashSideA", sideA);
+                    copy.SetVector("_YAPS_SquashSideB", sideB);
+                    copy.SetVector("_YAPS_SquashPair", pair);
+                    copy.SetVector("_YAPS_SquashHangToward", hangToward);
+                    copy.SetVector("_YAPS_SquashHangOut", hangOut);
+                    copy.SetVector("_YAPS_SquashHangAcross", hangAcross);
+                    if (surface != null) copy.SetTexture("_YAPS_SquashSurface", surface);
+                    copy.SetVector("_YAPS_SquashSurfaceOn", surfaceOn);
+                    // A test build's pulse: the pair squeezes and lets go every few seconds with
+                    // nobody moving it, which only happens if the provider is writing the follows.
+                    copy.SetFloat("_YAPS_SquashPulse", pulse);
+                    copy.SetVector("_YAPS_SquashLimbL", limbs[0]);
+                    copy.SetVector("_YAPS_SquashLimbR", limbs[1]);
+                    if (soft != null) soft.Set(copy, smr);
+                    saving.Start();
+                    copy = prior.TryGetValue((smr, slot), out string was) && Reuse != null && Reuse.Contains(was)
+                        ? Save(copy, source, System.IO.Path.GetDirectoryName(was).Replace('\\', '/'), System.IO.Path.GetFileName(was))
+                        : Save(copy, source, folder, $"{root.name} {smr.name} {slot}.mat");
+                    saving.Stop();
+                    copies.Add(copy);
+                    mats[slot] = copy;
+                }
+                assign.Start();
+                smr.sharedMaterials = mats;
+                assign.Stop();
+            }
+            // Built with no copy, nothing squashed, and it was reported as converted. The nodes
+            // the measure put on the bones go too.
+            if (copies.Count == 0)
+            {
+                Strip(root);
+                return "no layer over the parts can take the squash: " + string.Join("; ", log);
+            }
+            if (still.Count > 0)
+            {
+                foreach (int m in still) { reach[m] = 0f; reach[m + 1] = 0f; }
+                foreach (var copy in copies) copy.SetVector("_YAPS_SquashReach", reach);
+                if (soft != null)
+                {
+                    foreach (int m in still) { soft.depth[m] = 0f; soft.depth[m + 1] = 0f; }
+                    foreach (var copy in copies) copy.SetVector("_YAPS_SoftDepth", soft.depth);
+                }
+            }
+            Lap($"Slots (ShaderFor {shaderFor.ElapsedMilliseconds}, Save {saving.ElapsedMilliseconds}, Basis {basis.ElapsedMilliseconds} (key {YapsLock.KeyTime.ElapsedMilliseconds}, load {YapsLock.LoadTime.ElapsedMilliseconds}), Assign {assign.ElapsedMilliseconds}, {copies.Count} copies)");
+
+            // Off the root: the client works out whose avatar it is from the parent up.
+            var host = Child(root, ShaderHostName).gameObject;
+            var provider = host.AddComponent<CVRMaterialDataProvider>();
+            provider.materials = copies.ToArray();
+            provider.dataMode = CVRMaterialDataProvider.DataMode.TransformLocalToWorld;
+            // The slots yaps_dent.cginc reads; a node scaled to zero for each one with nothing in it.
+            var empty = Child(host.transform, "empty");
+            empty.localScale = Vector3.zero;
+            var slots = Enumerable.Repeat(empty, 20).ToArray();
+            for (int i = 0; i < parts.Count; i++) { slots[i] = parts[i].follow; slots[4 + i] = rests[i]; }
+            for (int i = 0; i < 8; i++) slots[8 + i] = arms[i / 4][i % 4] ?? empty;
+            for (int i = 0; i < backs.Count; i++) slots[16 + i] = backs[i];
+            for (int i = 0; i < between.Count; i++) slots[18 + i] = between[i] ?? empty;
+            provider.transforms = slots;
+            provider.shaderPropertyName = "_YAPS_SquashFollow";
+
+            // One vertex on each slot, skinned to it, so the slots come through skinning, after
+            // the cloth and the IK. Its triangles have no area, so it draws nothing. "[FPR]" keeps
+            // the client's first-person copy off it: that copy switches the wearer's renderers off
+            // for their own view and stops skinning them offscreen, so the buffer froze where a
+            // mirror or camera last saw it, and turning in place sliced the pair along a plane
+            // left behind.
+            var skin = Child(host.transform, "skin [FPR]").gameObject.AddComponent<SkinnedMeshRenderer>();
+            var skinBones = slots.Select(t => t == empty ? host.transform : t).ToArray();
+            var mesh = new Mesh { name = "YAPS squash skin" };
+            mesh.vertices = slots.Select(t => skin.transform.InverseTransformPoint(t.position)).ToArray();
+            mesh.boneWeights = Enumerable.Range(0, slots.Length).Select(i => new BoneWeight { boneIndex0 = i, weight0 = 1f }).ToArray();
+            mesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();
+            mesh.triangles = Enumerable.Range(0, 3 * slots.Length).Select(i => i / 3).ToArray();
+            mesh = Asset(folder, mesh, $"{root.name} squash skin.asset");
+            var blank = new Material(Shader.Find("Standard")) { name = "YAPS squash skin" };
+            blank = Asset(folder, blank, $"{root.name} squash skin.mat");
+            skin.sharedMesh = mesh;
+            skin.bones = skinBones;
+            skin.sharedMaterial = blank;
+            skin.updateWhenOffscreen = true;
+            skin.shadowCastingMode = ShadowCastingMode.Off;
+            skin.receiveShadows = false;
+            int stride = mesh.GetVertexBufferStride(0);
+            foreach (var copy in copies) copy.SetVector("_YAPS_SquashHands", new Vector4(1f, 0.05f, 1f, stride));
+            // The client disposes the skinned buffer it fetched right after binding it, before
+            // anything draws, and the shader then read zeros. The previous-buffer mode binds a
+            // copy the provider owns, one frame older.
+            var skinned = host.AddComponent<CVRMaterialDataProvider>();
+            skinned.materials = copies.ToArray();
+            skinned.dataMode = CVRMaterialDataProvider.DataMode.SkinnedMeshRendererPreviousVertexBuffer;
+            skinned.smr = skin;
+            skinned.shaderPropertyName = "_YAPS_SquashSkin";
+            log.Add($"skin stride {stride}");
+
+            var controller = host.AddComponent<CVRRenderController>();
+            controller.cvrRenderComponents.Add(provider);
+            controller.cvrRenderComponents.Add(skinned);
+            Lap("Providers");
+
+            // The knobs, from the avatar's component; a first build adds one with the defaults.
+            var knobs = SettingsOf(root);
+            if (knobs == null) knobs = HomeFor(root).gameObject.AddComponent<YapsSquashSettings>();
+            knobs.builtFrom = RegionsHash(knobs);
+            knobs.dented = jelly != null ? dented.Where(i => i < jelly.parts.Count).Select(i => jelly.parts[i].name).ToList() : new List<string>();
+            EditorUtility.SetDirty(knobs);
+            Flush();
+            Lap("Flush");
+            Apply(root);
+            Lap("Apply");
+            AssetDatabase.SaveAssets();
+            Lap("SaveAssets");
+            EditorUtility.SetDirty(root.gameObject);
+            if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
+            if (report != null) Debug.Log("[AvatarBridge] Squash build steps (ms): " + string.Join(", ", times));
+#if AVATARBRIDGE_MAGICA
+            // Its points ride their bones. Under a cloth's roots each was a particle of the cloth's
+            // radius: a follow at a breast's middle, a ball as wide as the breast, held a hand off it.
+            int outOf = MagicaClothKeepOut.KeepOut(root, root.GetComponentsInChildren<Transform>(true)
+                .Where(t => t.name == FollowName || t.name == RestName || t.name == BackName).ToList());
+            if (outOf > 0) log.Add($"its points kept out of {BridgeElements.Count(outOf, "cloth", "cloths")}");
+#endif
+            built = true;
+            return $"{BridgeElements.Count(parts.Count / 2, "pair", "pairs")} {PartsFrom(SettingsOf(root))} on {root.name}, {BridgeElements.Count(copies.Count, "material", "materials")} in {folder}: " + string.Join("; ", log);
+        }
+
+        // The first two pairs' four sides, each every bone of its chain.
+        static List<HashSet<Transform>> Sets(List<List<Transform>> found) =>
+            found.Take(2).SelectMany(p => p).Select(b => new HashSet<Transform>(b.GetComponentsInChildren<Transform>(true))).ToList();
+
+        // Each vertex's share of each part found by name: the weight that part's bones carry.
+        static void NameShares(Skin s, List<HashSet<Transform>> sets)
+        {
+            s.owner = s.bones.Select(t => t == null ? -1 : sets.FindIndex(x => x.Contains(t))).ToArray();
+            for (int v = 0; v < s.at.Length; v++)
+            {
+                var w = s.weights[v];
+                int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                for (int q = 0; q < 4; q++)
+                    if (weight[q] > 0f && s.owner[index[q]] >= 0) s.share[v][s.owner[index[q]]] += weight[q];
+            }
+        }
+
+        // Each part scaled to its peak on the body, as a painted region is: a part's bones can
+        // carry it at a fraction (a seat at 0.67 at most), and it then dented at that fraction.
+        static void Peak(List<Skin> skins, Skin body)
+        {
+            if (body == null) return;
+            for (int c = 0; c < 4; c++)
+            {
+                float most = body.share.Max(x => x[c]);
+                if (most <= 0f) continue;
+                // Eased at both ends: clamped straight, the move stopped dead at half the peak and at
+                // the last weighted vertex, and each read as a crease round the part.
+                foreach (var s in skins)
+                    for (int v = 0; v < s.share.Length; v++) s.share[v][c] = Mathf.SmoothStep(0f, 1f, 2f * s.share[v][c] / most);
+            }
+        }
+
+        // Skin weights fade the way they were painted, often in steps, and the squash multiplies
+        // every step by a move of centimetres, so the part came out lumpy. Two passes of
+        // averaging with the mesh neighbours, seam copies as one point.
+        static void Soften(Skin s)
+        {
+            var mesh = s?.smr.sharedMesh;
+            if (mesh == null) return;
+            int n = s.share.Length;
+            var rep = Enumerable.Range(0, n).ToArray();
+            foreach (var weld in Welds(mesh))
+                foreach (int v in weld)
+                    if (v < n) rep[v] = weld[0];
+            var near = new List<int>[n];
+            for (int sub = 0; sub < mesh.subMeshCount; sub++)
+            {
+                if (mesh.GetTopology(sub) != MeshTopology.Triangles) continue;
+                var tri = mesh.GetTriangles(sub);
+                for (int i = 0; i + 2 < tri.Length; i += 3)
+                    for (int k = 0; k < 3; k++)
+                    {
+                        int a = tri[i + k], b = tri[i + (k + 1) % 3];
+                        if (a >= n || b >= n) continue;
+                        a = rep[a];
+                        b = rep[b];
+                        if (a == b) continue;
+                        (near[a] ??= new List<int>()).Add(b);
+                        (near[b] ??= new List<int>()).Add(a);
+                    }
+            }
+            for (int pass = 0; pass < 2; pass++)
+            {
+                var was = (Vector4[])s.share.Clone();
+                for (int v = 0; v < n; v++)
+                {
+                    if (rep[v] != v || near[v] == null) continue;
+                    var sum = Vector4.zero;
+                    foreach (int x in near[v]) sum += was[x];
+                    s.share[v] = 0.5f * was[v] + 0.5f * sum / near[v].Count;
+                }
+                for (int v = 0; v < n; v++) s.share[v] = s.share[rep[v]];
+            }
+        }
+
+        // The renderer the build measures the parts found by name on, for the region tool to start on.
+        public static SkinnedMeshRenderer NamedBody(Transform root)
+        {
+            var found = Pairs(root, out string none);
+            if (none != null) return null;
+            var skins = Skins(root);
+            var sets = Sets(found);
+            foreach (var s in skins) NameShares(s, sets);
+            return Body(skins)?.smr;
+        }
+
+        // The skin the parts are measured on: of the renderers carrying every part found, the one
+        // weighted to the most bones. Most part vertices was the rule, and dense clothing won it:
+        // shorts holding fourteen thousand vertices of the seat stood in for a body whose chest
+        // they never reach, and every layer copying its share off them lost the chest pair.
+        static Skin Body(List<Skin> skins)
+        {
+            int Carries(Skin s) => Enumerable.Range(0, 4).Count(c => s.share.Any(x => x[c] >= 0.5f));
+            int Spread(Skin s) => s.weights.SelectMany(w => new[] { (w.boneIndex0, w.weight0), (w.boneIndex1, w.weight1), (w.boneIndex2, w.weight2), (w.boneIndex3, w.weight3) })
+                .Where(b => b.Item2 > 0f).Select(b => b.Item1).Distinct().Count();
+            int most = skins.Count == 0 ? 0 : skins.Max(Carries);
+            return most == 0 ? null : skins.Where(s => Carries(s) == most).OrderByDescending(Spread).First();
+        }
+
+        // What the name search would give one renderer, for the region tool to start from.
+        public static Vector4[] NamedShares(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
+        {
+            var all = NamedChannels(root, body, out names, out none);
+            if (all == null) return null;
+            names = names.Take(2).ToList();
+            return Enumerable.Range(0, all[0].Length).Select(v => new Vector4(all[0][v], all[1][v], all.Length > 2 ? all[2][v] : 0f, all.Length > 3 ? all[3][v] : 0f)).ToArray();
+        }
+
+        // Every pair the name search finds, two channels each as NamedShares gives the first two.
+        public static float[][] NamedChannels(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
+        {
+            var found = Pairs(root, out none);
+            names = found.Select(Named).ToList();
+            var skin = none == null ? Skins(root).FirstOrDefault(s => s.smr == body) : null;
+            if (skin == null) return null;
+            var all = new float[2 * found.Count][];
+            for (int g = 0; g < found.Count; g += 2)
+            {
+                skin.share = new Vector4[skin.at.Length];
+                NameShares(skin, Sets(found.Skip(g).ToList()));
+                Soften(skin);
+                Peak(new List<Skin> { skin }, skin);
+                for (int c = 0; c < 4 && 2 * g + c < all.Length; c++) all[2 * g + c] = skin.share.Select(x => x[c]).ToArray();
+            }
+            return all;
+        }
+
+        static string Named(List<Transform> pair) => Side.Replace(pair[0].name, "").Trim('.', '_', ' ');
+
+        // The parts the jelly takes, every one found, in order: painted, picked or by name, each a pair
+        // or one side alone, and every skin's share of each side, the layers' as the squash spreads
+        // them from the body's. Part i side s is channel 2 i + s; one side alone leaves 2 i + 1 null.
+        internal sealed class SoftParts
+        {
+            public readonly List<(string name, int sides)> parts = new List<(string, int)>();
+            public readonly Dictionary<SkinnedMeshRenderer, float[][]> shares = new Dictionary<SkinnedMeshRenderer, float[][]>();
+            public SkinnedMeshRenderer body;
+        }
+
+        // Null when there is none, none saying why.
+        internal static SoftParts PartsOf(Transform root, out string none)
+        {
+            var regions = RegionsOf(root, out none);
+            if (none != null) return null;
+            List<List<Transform>> found = null;
+            if (regions == null)
+            {
+                found = Pairs(root, out none);
+                if (none != null) return null;
+            }
+            var result = new SoftParts();
+            if (regions != null)
+                foreach (var p in regions.pairs) result.parts.Add((p.name, p.b.Length > 0 ? 2 : 1));
+            else
+                foreach (var p in found) result.parts.Add((Named(p), 2));
+            // Two names alike, in any case, would put two jellies under one name.
+            for (int i = 1; i < result.parts.Count; i++)
+                while (result.parts.Take(i).Any(q => string.Equals(q.name, result.parts[i].name, StringComparison.OrdinalIgnoreCase)))
+                    result.parts[i] = ($"{result.parts[i].name} {i + 1}", result.parts[i].sides);
+            var skins = Skins(root);
+            Skin body = regions != null ? skins.FirstOrDefault(s => s.smr == regions.body) : null;
+            var welds = regions != null ? Welds(regions.body.sharedMesh) : null;
+            foreach (var s in skins) result.shares[s.smr] = new float[2 * result.parts.Count][];
+            // Two parts at a time, the four channels a skin's shares hold, each as the squash's own.
+            for (int g = 0; g < result.parts.Count; g += 2)
+            {
+                foreach (var s in skins) s.share = new Vector4[s.at.Length];
+                if (regions != null)
+                {
+                    for (int k = g; k < g + 2 && k < regions.pairs.Count; k++)
+                        for (int v = 0; v < body.at.Length; v++)
+                        {
+                            body.share[v][2 * (k - g)] = regions.pairs[k].a[v] / 255f;
+                            body.share[v][2 * (k - g) + 1] = regions.pairs[k].b.Length > 0 ? regions.pairs[k].b[v] / 255f : 0f;
+                        }
+                    foreach (var weld in welds)
+                    {
+                        var mean = weld.Aggregate(Vector4.zero, (sum, v) => sum + body.share[v]) / weld.Length;
+                        foreach (int v in weld) body.share[v] = mean;
+                    }
+                }
+                else
+                {
+                    var sets = Sets(found.Skip(g).ToList());
+                    foreach (var s in skins) NameShares(s, sets);
+                    // The body picked on the first two, as the squash picks it.
+                    if (g == 0) body = Body(skins);
+                    Soften(body);
+                    Peak(skins, body);
+                }
+                Spread(skins, body);
+                foreach (var s in skins)
+                    for (int k = g; k < g + 2 && k < result.parts.Count; k++)
+                        for (int side = 0; side < result.parts[k].sides; side++)
+                        {
+                            int c = 2 * (k - g) + side;
+                            result.shares[s.smr][2 * k + side] = s.share.Select(x => x[c]).ToArray();
+                        }
+            }
+            result.body = body?.smr;
+            return body == null ? null : result;
+        }
+
+        // The jelly draws the first four parts, a slot each.
+        internal const int JellySlots = 4;
+
+        // Whether any vertex of the slot (any slot for -1) carries a jelly share worth drawing.
+        static bool JellyMoves(Mesh mesh, int slot, float[][] channels)
+        {
+            if (mesh == null || mesh.subMeshCount == 0) return false;
+            var near = slot < 0 ? Enumerable.Range(0, mesh.vertexCount) : mesh.GetIndices(Mathf.Min(slot, mesh.subMeshCount - 1));
+            foreach (int v in near)
+                for (int c = 0; c < channels.Length && c < 2 * JellySlots; c++)
+                    if (channels[c] != null && v < channels[c].Length && (int)(channels[c][v] * 255f + 0.5f) >= MinShare) return true;
+            return false;
+        }
+
+        // A renderer's jelly parts as the draw reads them: per vertex its two strongest of the parts
+        // the slots hold, each as 2 part + side plus one and its share, the shares of all of them
+        // together at most whole.
+        static Texture2D JellyOwn(float[][] channels, string folder, string file)
+        {
+            int count = channels.FirstOrDefault(c => c != null)?.Length ?? 0;
+            int width = 1024, height = Mathf.Max(1, (count + width - 1) / width);
+            var pixels = new Color32[width * height];
+            int used = Mathf.Min(channels.Length, 2 * JellySlots);
+            for (int v = 0; v < count; v++)
+            {
+                float total = 0f;
+                int best = -1, next = -1;
+                for (int c = 0; c < used; c++)
+                {
+                    float s = channels[c] != null ? channels[c][v] : 0f;
+                    if (s <= 0f) continue;
+                    total += s;
+                    if (best < 0 || s > channels[best][v]) { next = best; best = c; }
+                    else if (next < 0 || s > channels[next][v]) next = c;
+                }
+                float scale = 1f / Mathf.Max(total, 1f);
+                byte Of(int c) => c < 0 ? (byte)0 : (byte)(channels[c][v] * scale * 255f + 0.5f);
+                pixels[v] = new Color32((byte)(best + 1), Of(best), (byte)(next + 1), Of(next));
+            }
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            tex.SetPixels32(pixels);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
+        }
+
+        // A material already carrying YAPS gains the squash on its own shader; anything else is
+        // patched with the squash alone.
+        static Shader ShaderFor(Material source, BridgeReport report, List<string> log)
+        {
+            if (source.HasProperty("_YAPS_DentOwn"))
+            {
+                var with = YapsShaderPatcher.WithRole(source, YapsShaderPatcher.Roles.Squash, report);
+                if (with == null) log?.Add($"left \"{source.name}\" as it was: the shader it was patched from is no longer in the project");
+                return with;
+            }
+            var shader = YapsShaderPatcher.Patch(source, report, out string refusal, out int shadows,
+                roles: YapsShaderPatcher.Roles.Squash);
+            // Standard has no source to patch. YAPS Standard is its source, so the skin moves over
+            // unchanged. Simple Lit never stands in on a body: it would repaint the skin.
+            if (shader == null && source.shader != null && source.shader.name == "Standard")
+            {
+                var plain = YapsNativeBuilder.OnFallback(source, out string lacks);
+                if (plain != null)
+                {
+                    shader = YapsShaderPatcher.Patch(plain, report, out string plainRefusal, out shadows,
+                        roles: YapsShaderPatcher.Roles.Squash);
+                    lacks = "YAPS Standard refused too: " + plainRefusal;
+                    UnityEngine.Object.DestroyImmediate(plain);
+                }
+                if (shader != null) log?.Add($"\"{source.name}\" wears YAPS Standard now, every setting carried over");
+                else refusal += "; and " + lacks;
+            }
+            if (shader == null) log?.Add($"left \"{source.name}\" as it was: {refusal}");
+            // Unity's standard caster is wrapped; a caster from anywhere else cannot be reached.
+            else if (shadows > 0) log?.Add($"\"{source.name}\" casts its shadow unsquashed");
+            return shader;
+        }
+
+        static Material Save(Material copy, Material source, string folder, string file)
+        {
+            YapsLock.Stamp(copy, source);
+            if (Held == null)
+            {
+                copy = Asset(folder, copy, file);
+                Remember(copy, source);
+                return copy;
+            }
+            // Claimed now, so the names come out as one at a time would have made them.
+            YapsNativeBuilder.EnsureFolderPublic(folder);
+            string path = AssetDatabase.GenerateUniqueAssetPath(folder + "/" + file);
+            for (int n = 1; !Claimed.Add(path); n++)
+                path = AssetDatabase.GenerateUniqueAssetPath($"{folder}/{System.IO.Path.GetFileNameWithoutExtension(file)} {n}.mat");
+            Held.Add((copy, source, path));
+            return copy;
+        }
+
+        static void Remember(Material copy, Material source) =>
+            AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(copy)).userData = Mark + GlobalObjectId.GetGlobalObjectIdSlow(source);
+
+        // Each CreateAsset was an import of its own, one per slot. Held and written in one batch
+        // instead, never over a rebuild's own files, which are written in place.
+        static List<(Material copy, Material source, string path)> Held;
+        static HashSet<string> Claimed;
+
+        static void Hold()
+        {
+            Held = Reuse == null ? new List<(Material, Material, string)>() : null;
+            Claimed = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Before anything asks a copy for its path or its source, and before the save.
+        static void Flush()
+        {
+            var held = Held;
+            Held = null;
+            if (held == null || held.Count == 0) return;
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                foreach (var (copy, _, path) in held) AssetDatabase.CreateAsset(copy, path);
+            }
+            finally { AssetDatabase.StopAssetEditing(); }
+            // The importer exists only once the batch has imported.
+            foreach (var (copy, source, _) in held) Remember(copy, source);
+        }
+
+        // The component's left-alone layers as originals: the list may hold a squashed copy, which
+        // is what the renderer showed when it was dragged in.
+        static HashSet<Material> LeftAlone(Transform root) =>
+            new HashSet<Material>(SettingsOf(root)?.leaveAlone.Where(m => m != null).Select(Original) ?? Enumerable.Empty<Material>());
+
+        // The material a squash copy was made from, or null when it is not one.
+        static Material SourceOf(Material m)
+        {
+            string data = m == null ? null : AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(m))?.userData;
+            if (data == null || !data.StartsWith(Mark) || !GlobalObjectId.TryParse(data.Substring(Mark.Length), out var id)) return null;
+            return GlobalObjectId.GlobalObjectIdentifierToObjectSlow(id) as Material;
+        }
+
+        // The first material in a chain of copies, so a build over an earlier one copies the
+        // original rather than the copy.
+        static Material Original(Material m)
+        {
+            for (int guard = 0; guard < 8; guard++)
+            {
+                var from = SourceOf(m);
+                if (from == null) return m;
+                m = from;
+            }
+            return m;
+        }
+
+        // Every swap an animation makes into a squashed slot pointed at a squashed look. A toggle
+        // handing the slot back to the original, or in an alternate, would leave that layer
+        // unsquashed over skin that is, and the skin comes through it. Alternates get a copy of
+        // their own with the slot's values, and both providers write into them too. Only clips
+        // the user owns are edited.
+        public static string FollowSwaps(Transform root, IList<AnimationClip> clips, string folder, BridgeReport report)
+        {
+            var host = root.Find(ShaderHostName);
+            if (host == null || clips == null || clips.Count == 0) return null;
+            var providers = host.GetComponents<CVRMaterialDataProvider>();
+            var added = new List<Material>();
+            var copyOf = new Dictionary<(Renderer, Material), Material>();
+            var refused = new SortedSet<string>();
+            var skipped = new SortedSet<string>();
+            int repointed = 0;
+            var leave = LeftAlone(root);
+            // Patched in one batch first, as Add does: one at a time, each import cost about a
+            // minute in a large project.
+            var pending = new List<Material>();
+            Hold();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
+                var mats = smr.sharedMaterials;
+                for (int slot = 0; slot < mats.Length; slot++)
+                    if (mats[slot] != null && SourceOf(mats[slot]) != null && mats[slot].HasProperty("_YAPS_DentOwn"))
+                        pending.AddRange(Keyed(clips, path, slot).Select(Original).Where(m => !m.HasProperty("_YAPS_DentOwn") && !leave.Contains(m)));
+            }
+            YapsShaderPatcher.Prewrite(pending, YapsShaderPatcher.Roles.Squash);
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mats = smr.sharedMaterials;
+                string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
+                for (int slot = 0; slot < mats.Length; slot++)
+                {
+                    var template = mats[slot];
+                    var own = template != null && SourceOf(template) != null && template.HasProperty("_YAPS_DentOwn") ? template.GetTexture("_YAPS_DentOwn") : null;
+                    if (own == null) continue;
+                    copyOf[(smr, Original(template))] = template;
+                    foreach (var was in Keyed(clips, path, slot))
+                    {
+                        if (was.HasProperty("_YAPS_DentOwn") && was.GetTexture("_YAPS_DentOwn") == own)
+                        {
+                            // An alternate's copy from the last build. A rebuild makes new
+                            // providers from the slots alone, so it is handed over again.
+                            if (was != template && !added.Contains(was))
+                            {
+                                foreach (string name in Properties) Carry(template, was, name);
+                                EditorUtility.SetDirty(was);
+                                added.Add(was);
+                            }
+                            continue;
+                        }
+                        var original = Original(was);
+                        if (leave.Contains(original)) continue;
+                        if (!copyOf.TryGetValue((smr, original), out var to))
+                        {
+                            var shader = ShaderFor(original, report, null);
+                            if (shader == null) { refused.Add(original.name); continue; }
+                            to = new Material(YapsLock.Basis(original)) { name = original.name };
+                            YapsShaderPatcher.Wear(to, shader);
+                            foreach (string name in Properties) Carry(template, to, name);
+                            to = Save(to, original, folder, $"{root.name} {smr.name} {slot} {original.name}.mat");
+                            copyOf[(smr, original)] = to;
+                            added.Add(to);
+                        }
+                        repointed += YapsSwapFollow.RepointInClips(clips, path, slot, was, to, skipped);
+                    }
+                }
+            }
+            Flush();
+            foreach (var p in providers)
+            {
+                p.materials = p.materials.Concat(added).Distinct().ToArray();
+                EditorUtility.SetDirty(p);
+            }
+            AssetDatabase.SaveAssets();
+            var said = new List<string>();
+            if (repointed > 0)
+            {
+                string what = $"Pointed {BridgeElements.Count(repointed, "material swap", "material swaps")} at squashed copies";
+                string why = added.Count > 0 ? $"{added.Count} of them alternate looks, given the squash too." : "So a clothing toggle keeps its layer on the skin.";
+                report?.Converted(Category, what, why);
+                said.Add(what + ". " + why);
+            }
+            if (refused.Count > 0)
+            {
+                string what = $"{BridgeElements.Count(refused.Count, "swapped-in material", "swapped-in materials")} cannot squash";
+                string why = "Their shaders refused the patch, so while one is on, the skin can come through that layer: " + string.Join(", ", refused) + ".";
+                report?.Warning(Category, what, why);
+                said.Add(what + ". " + why);
+            }
+            if (skipped.Count > 0)
+            {
+                string what = $"{BridgeElements.Count(skipped.Count, "material swap", "material swaps")} left alone";
+                string why = "They live in a package, so they were not edited. Copy the clip into your project: " + string.Join(", ", skipped) + ".";
+                report?.Warning(Category, what, why);
+                said.Add(what + ". " + why);
+            }
+            return said.Count > 0 ? string.Join(" ", said) : null;
+        }
+
+        static void Carry(Material from, Material to, string name)
+        {
+            if (!from.HasProperty(name) || !to.HasProperty(name)) return;
+            if (name == "_YAPS_DentOwn" || name == "_YAPS_DentSwing" || name == "_YAPS_SquashSurface" || name == "_YAPS_SoftRow" || name == "_YAPS_SoftTable" || name == "_YAPS_JellyOwn")
+                to.SetTexture(name, from.GetTexture(name));
+            else if (name == "_YAPS_DentPower" || name == "_YAPS_SquashPulse" || name == "_YAPS_SquashPlug" || name == "_YAPS_DentSpill") to.SetFloat(name, from.GetFloat(name));
+            else to.SetVector(name, from.GetVector(name));
+        }
+
+        // Every material a clip keys into this path and slot, once each.
+        static List<Material> Keyed(IEnumerable<AnimationClip> clips, string path, int slot)
+        {
+            var seen = new List<Material>();
+            foreach (var clip in clips.Where(c => c != null).Distinct())
+                foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                {
+                    if (binding.path != path || YapsSwapFollow.SlotIndex(binding.propertyName) != slot) continue;
+                    foreach (var key in AnimationUtility.GetObjectReferenceCurve(clip, binding) ?? new ObjectReferenceKeyframe[0])
+                        if (key.value is Material m && !seen.Contains(m)) seen.Add(m);
+                }
+            return seen;
+        }
+
+        static float Unit(Transform follow) => ((Vector3)follow.localToWorldMatrix.GetColumn(0)).magnitude;
+
+        // The median distance from the line between two joints of the skin the first one
+        // carries, as a share of that line's length. Joints left out, which bulge.
+        static float Thickness(Transform root, Transform from, Transform to, float fallback)
+        {
+            if (from == null || to == null) return fallback;
+            var a = from.position;
+            var ab = to.position - a;
+            if (ab.sqrMagnitude < 1e-10f) return fallback;
+            var found = new List<float>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                int bone = mesh == null ? -1 : Array.IndexOf(smr.bones, from);
+                if (bone < 0 || bone >= mesh.bindposes.Length) continue;
+                var skin = from.localToWorldMatrix * mesh.bindposes[bone];
+                var weights = mesh.boneWeights;
+                var verts = mesh.vertices;
+                for (int v = 0; v < Mathf.Min(weights.Length, verts.Length); v++)
+                {
+                    var w = weights[v];
+                    float on = (w.boneIndex0 == bone ? w.weight0 : 0f) + (w.boneIndex1 == bone ? w.weight1 : 0f)
+                             + (w.boneIndex2 == bone ? w.weight2 : 0f) + (w.boneIndex3 == bone ? w.weight3 : 0f);
+                    if (on < 0.5f) continue;
+                    var at = skin.MultiplyPoint3x4(verts[v]);
+                    float t = Vector3.Dot(at - a, ab) / ab.sqrMagnitude;
+                    if (t > 0.15f && t < 0.85f) found.Add(Vector3.Distance(at, a + ab * t));
+                }
+            }
+            if (found.Count < 20) return fallback;
+            found.Sort();
+            return found[found.Count / 2] / ab.magnitude;
+        }
+
+        // Every skinned renderer posed as it stands, its blend shapes on, shares still empty.
+        static bool InJelly(Transform t, Transform root)
+        {
+            for (; t != null && t != root; t = t.parent)
+                if (t.name == YapsJelly.Worn || t.name.StartsWith(YapsJelly.Worn + " ")) return true;
+            return false;
+        }
+
+        static List<Skin> Skins(Transform root)
+        {
+            var list = new List<Skin>();
+            // Never the last build's own skin: one vertex on each part's bone, it carries every
+            // part and won Body's pick, so the painter painted twenty vertices of nothing. Nor the
+            // jelly's, skinned to each part's bone and every probe: it won the seat's pick, and the
+            // film aimed every press at it and missed.
+            var built = root.Find(ShaderHostName);
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mesh = smr.sharedMesh;
+                if (mesh == null || (built != null && smr.transform.IsChildOf(built)) || InJelly(smr.transform, root)) continue;
+                var rb = smr.bones;
+                var weights = mesh.boneWeights;
+                var verts = Shaped(smr);
+                var bind = mesh.bindposes;
+                var skin = rb.Select((t, i) => t != null && i < bind.Length ? t.localToWorldMatrix * bind[i] : Matrix4x4.zero).ToArray();
+                int count = Mathf.Min(weights.Length, verts.Length);
+                var at = new Vector3[count];
+                for (int v = 0; v < count; v++)
+                {
+                    var w = weights[v];
+                    int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                    float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    for (int q = 0; q < 4; q++) at[v] += skin[index[q]].MultiplyPoint3x4(verts[v]) * weight[q];
+                }
+                list.Add(new Skin { smr = smr, bones = rb, weights = weights, at = at, share = new Vector4[count] });
+            }
+            return list;
+        }
+
+        // The mesh as drawn, before skinning: each blend shape on at its weight, between the frames
+        // either side of it, as Unity adds them. Measured off the bare mesh, a body with a shape
+        // holding its chest up baked tissue for a chest that was not there.
+        static Vector3[] Shaped(SkinnedMeshRenderer smr)
+        {
+            var mesh = smr.sharedMesh;
+            var verts = mesh.vertices;
+            var frame = new Vector3[verts.Length];
+            var next = new Vector3[verts.Length];
+            var normals = new Vector3[verts.Length];
+            var tangents = new Vector3[verts.Length];
+            for (int b = 0; b < mesh.blendShapeCount; b++)
+            {
+                float w = smr.GetBlendShapeWeight(b);
+                int frames = mesh.GetBlendShapeFrameCount(b);
+                if (w == 0f || frames == 0) continue;
+                // Past the last frame and short of the first, on along the nearest one.
+                int k = 0;
+                while (k + 1 < frames && mesh.GetBlendShapeFrameWeight(b, k) < w) k++;
+                float wk = mesh.GetBlendShapeFrameWeight(b, k);
+                mesh.GetBlendShapeFrameVertices(b, k, frame, normals, tangents);
+                if (k == 0 || w >= wk)
+                {
+                    float t = wk != 0f ? w / wk : 0f;
+                    for (int v = 0; v < verts.Length; v++) verts[v] += frame[v] * t;
+                    continue;
+                }
+                float wp = mesh.GetBlendShapeFrameWeight(b, k - 1);
+                mesh.GetBlendShapeFrameVertices(b, k - 1, next, normals, tangents);
+                float f = (w - wp) / (wk - wp);
+                for (int v = 0; v < verts.Length; v++) verts[v] += Vector3.LerpUnclamped(next[v], frame[v], f);
+            }
+            return verts;
+        }
+
+        // Each renderer's texture of its shares, in r, g, b, a. The skin is the painted body, or
+        // Body's pick; a layer riding bones of its own takes the skin's share where it lies, from
+        // the skin vertices within 3 cm, easing out by 4, or the skin would squash out from under it. Weighted by
+        // distance: the nearest one alone gave each layer vertex its own step, and a top came out
+        // in facets the skin under it did not have.
+        static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(List<Skin> skins, Skin painted, string name, string folder, Func<SkinnedMeshRenderer, bool> keep = null)
+        {
+            var body = Spread(skins, painted);
+            var result = new List<(SkinnedMeshRenderer, Texture2D, Vector4[])>();
+            // A layer with no share kept when the jelly moves it, its dent still.
+            foreach (var m in skins)
+                if (body != null && m.share.Any(x => x != Vector4.zero) || keep != null && keep(m.smr))
+                    result.Add((m.smr, PerVertex(m.share, folder, $"{name} {m.smr.name} shares.asset"), m.share));
+            return result;
+        }
+
+        // Each layer's share of the skin it lies on, as Shares describes. The skin, or null when it
+        // carries none.
+        static Skin Spread(List<Skin> skins, Skin painted)
+        {
+            int Owned(Skin s) => s.share.Count(x => Mathf.Max(x.x, x.y, x.z, x.w) >= 0.5f);
+            var body = painted ?? Body(skins);
+            if (body == null || Owned(body) == 0) return null;
+            const float Cell = 0.02f, Near = 0.03f, Fade = 0.04f, Spread = 0.01f;
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            Vector3Int Key(Vector3 p) => new Vector3Int(Mathf.FloorToInt(p.x / Cell), Mathf.FloorToInt(p.y / Cell), Mathf.FloorToInt(p.z / Cell));
+            // Skin with no share goes in too: a strap painted onto the part's bones over a shoulder
+            // that never moves must copy that nothing, or it squashes off the skin under it.
+            for (int v = 0; v < body.at.Length; v++)
+            {
+                var k = Key(body.at[v]);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            foreach (var m in skins)
+            {
+                if (m != body)
+                    for (int v = 0; v < m.at.Length; v++)
+                    {
+                        var k = Key(m.at[v]);
+                        var sum = Vector4.zero;
+                        float total = 0f, nearest = Fade * Fade;
+                        for (int x = -2; x <= 2; x++)
+                            for (int y = -2; y <= 2; y++)
+                                for (int z = -2; z <= 2; z++)
+                                {
+                                    if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                                    foreach (int s in list)
+                                    {
+                                        float d = (body.at[s] - m.at[v]).sqrMagnitude;
+                                        if (d >= Fade * Fade) continue;
+                                        float w = Mathf.Exp(-d / (2f * Spread * Spread));
+                                        sum += body.share[s] * w;
+                                        total += w;
+                                        nearest = Mathf.Min(nearest, d);
+                                    }
+                                }
+                        // Eased into the layer's own weights from 3 cm off the skin to 4: cut at 3, a
+                        // top bridging the cleavage stepped from one share to another along a line.
+                        if (total > 0f) m.share[v] = Vector4.Lerp(m.share[v], sum / total, Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(nearest)) / (Fade - Near)));
+                    }
+            }
+            return body;
+        }
+
+        // The pairs' soft body for the shader: every answer in one table, only for the skin that
+        // moves, and per renderer its vertices' rows into it.
+        sealed class SoftBake
+        {
+            public Texture2D table;
+            public readonly Dictionary<SkinnedMeshRenderer, Texture2D> rows = new Dictionary<SkinnedMeshRenderer, Texture2D>();
+            public Vector4 depth, outward, inward, front, sideA, sideB, below;
+
+            public void Set(Material copy, SkinnedMeshRenderer smr)
+            {
+                copy.SetTexture("_YAPS_SoftTable", table);
+                copy.SetTexture("_YAPS_SoftRow", rows[smr]);
+                copy.SetVector("_YAPS_SoftDepth", depth);
+                copy.SetVector("_YAPS_SoftOut", outward);
+                copy.SetVector("_YAPS_SoftIn", inward);
+                copy.SetVector("_YAPS_SoftFront", front);
+                copy.SetVector("_YAPS_SoftSideA", sideA);
+                copy.SetVector("_YAPS_SoftSideB", sideB);
+                copy.SetVector("_YAPS_SoftBelow", below);
+            }
+        }
+
+        // Each pair solved as tissue on the body's skin (YapsSoftBody), its answers stored in the
+        // frame the shader builds from the rests: toward the second part, out of the body, across.
+        // The palms are placed by the extent the shader reads, so a hand reads as pressing where
+        // the bake pressed. A layer rides the skin vertex nearest it, easing off from 5 cm off the
+        // skin to 6: eased off from 3 as its shares are, a cup standing out past the skin stayed
+        // where it was while the skin under a hand went in. Null when no pair gave tissue.
+        static SoftBake SoftBody(Skin body, List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared, List<Skin> skins, List<Part> parts,
+            List<Vector3> towards, List<float> units, List<float[]> reaches, List<float[]> surfaces, List<Vector3> outs, Transform root, string folder, List<string> log)
+        {
+            if (body == null || shared.Count == 0 || parts.Count < 2) return null;
+            string name = root.name;
+            // Across the avatar's middle, which a symmetric avatar is modelled about.
+            Vector3 middle = root.right, origin = root.position;
+            Vector3 Mirrored(Vector3 x) => x - 2f * Vector3.Dot(x - origin, middle) * middle;
+            var twins = Twins(body.at, Mirrored, 0.01f);
+            // What the mirrored answers are read from: the twin, or for the few with none that near
+            // the nearest within 5 cm. Left out, they stood still beside skin that moved, and the
+            // clothing over them folded.
+            var fill = Twins(body.at, Mirrored, 0.05f, twins);
+            var mesh = body.smr.sharedMesh;
+            var tris = mesh.triangles;
+            var welds = Welds(mesh);
+            var bake = new SoftBake();
+            int depths = YapsSoftBody.Depths.Length, entries = YapsSoftBody.Ways * depths;
+            var table = new List<Color32[]>();
+            // Per body vertex its row plus one, negative for the second pair, 0 for none; and whether
+            // it reads its twin's row mirrored.
+            var rowOf = new float[body.at.Length];
+            var flipOf = new bool[body.at.Length];
+            byte Q(float c) => (byte) (Mathf.Clamp(Mathf.RoundToInt(c * 127f), -127, 127) + 127);
+            for (int i = 0; 2 * i + 1 < parts.Count; i++)
+            {
+                int m0 = 2 * i;
+                Vector3 A = towards[m0], O = outs[i], U = Vector3.Cross(A, O);
+                // The shader's YapsExtent: the part's own surface, or the ellipsoid of its reaches.
+                float Extent(int m, Vector3 w)
+                {
+                    var t = towards[m];
+                    var q = new Vector3(Vector3.Dot(w, t), Vector3.Dot(w, Vector3.Cross(t, O)), Vector3.Dot(w, O));
+                    return surfaces[m] != null ? SurfaceAt(surfaces[m], q) * units[m] : Ellipsoid(reaches[m], q);
+                }
+                // As the shader reads them: a byte each, scaled back to one in all where a vertex
+                // between the parts carries more. Raw, the cleavage left the ring each part meets the
+                // body in, its plane tilted, and the tissue answered a deep press from the front
+                // the other way from the tissue solved under the same hand.
+                var share = body.share.Select(x =>
+                {
+                    var q = Stored(x);
+                    var s = new Vector4(q.r, q.g, q.b, q.a) / 255f;
+                    return new Vector2(s[m0], s[m0 + 1]) / Mathf.Max(s.x + s.y + s.z + s.w, 1f);
+                }).ToArray();
+                // Toward the feet: the avatar stands upright while it is built.
+                bake.below[i] = Vector3.Dot(U, Vector3.down) >= 0f ? 1f : -1f;
+                // A pair whose two sides mirror each other is pressed on its first side only, half
+                // the presses, and the second side's skin reads its twin's row, half the table.
+                var ofPair = Enumerable.Range(0, share.Length).Where(v => share[v].x + share[v].y > 0f).ToArray();
+                bool mirrors = ofPair.Length > 0 && ofPair.Count(v => twins[v] >= 0) >= 0.95f * ofPair.Length;
+                var (moves, turns, said) = YapsSoftBody.Bake(body.at, tris, welds, share, parts[m0].centre, parts[m0 + 1].centre, parts[m0].reach,
+                    U, O, U * bake.below[i], (j, w) => Extent(m0 + j, w), mirrors ? fill : null, A);
+                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {said}" +
+                        (mirrors ? $", {ofPair.Count(v => twins[v] < 0)} of its {ofPair.Length} skin vertices with no twin within 1 cm, {ofPair.Count(v => fill[v] < 0)} within 5 cm, " +
+                                   $"the pair's toward {Mathf.Acos(Mathf.Min(Mathf.Abs(Vector3.Dot(A, middle)), 1f)) * Mathf.Rad2Deg:0.0} degrees off the middle's normal" : ""));
+                if (moves == null) continue;
+                SoftBakedForTest?.Invoke(parts[m0].name, body.at, share, moves, new[] { parts[m0].centre, parts[m0 + 1].centre, U, O, new Vector3(parts[m0].reach, units[m0], 0f) });
+                for (int j = 0; j < 2; j++)
+                {
+                    int m = m0 + j;
+                    bake.outward[m] = Extent(m, -towards[m]) / units[m];
+                    bake.inward[m] = Extent(m, towards[m]) / units[m];
+                    bake.front[m] = Extent(m, O) / units[m];
+                    bake.sideA[m] = Extent(m, U) / units[m];
+                    bake.sideB[m] = Extent(m, -U) / units[m];
+                }
+                bake.depth[m0] = YapsSoftBody.Depths[0] * parts[m0].reach / units[m0];
+                bake.depth[m0 + 1] = YapsSoftBody.Depths[1] * parts[m0].reach / units[m0];
+                int first = table.Count;
+                // On the second part's side, a twin within 3 mm on the first's: its row, mirrored.
+                float second = Mathf.Sign(Vector3.Dot(parts[m0 + 1].centre - origin, middle));
+                bool Shares(int v) => mirrors && twins[v] >= 0 && Vector3.Dot(body.at[v] - origin, middle) * second > 0.001f &&
+                                      (body.at[twins[v]] - Mirrored(body.at[v])).sqrMagnitude <= 0.003f * 0.003f;
+                for (int v = 0; v < rowOf.Length; v++)
+                {
+                    // A tenth of a millimetre, or a step of the stored turn.
+                    if (rowOf[v] != 0f || Shares(v) || !Enumerable.Range(0, entries).Any(e => moves[e][v].sqrMagnitude > 1e-8f || turns[e][v].sqrMagnitude > 6e-5f)) continue;
+                    // Each answer in bytes: its move about 127, scaled by the fourth byte's share of
+                    // the part's reach, so a small move is as fine as a large one; then its normal's
+                    // turn the same way, unscaled. Under half a millimetre from the floats, at a
+                    // quarter of their size.
+                    var row = new Color32[2 * entries];
+                    float far = parts[m0].reach / units[m0];
+                    for (int e = 0; e < entries; e++)
+                    {
+                        Vector3 mv = moves[e][v] / units[m0], t = turns[e][v];
+                        var m = new Vector3(Vector3.Dot(mv, A), Vector3.Dot(mv, O), Vector3.Dot(mv, U));
+                        byte scale = (byte) Mathf.Clamp(Mathf.CeilToInt(Mathf.Max(Mathf.Abs(m.x), Mathf.Abs(m.y), Mathf.Abs(m.z)) / far * 255f), 1, 255);
+                        m /= scale / 255f * far;
+                        row[2 * e] = new Color32(Q(m.x), Q(m.y), Q(m.z), scale);
+                        row[2 * e + 1] = new Color32(Q(Vector3.Dot(t, A)), Q(Vector3.Dot(t, O)), Q(Vector3.Dot(t, U)), 0);
+                    }
+                    table.Add(row);
+                    rowOf[v] = (i == 0 ? 1 : -1) * table.Count;
+                }
+                int shared2 = 0;
+                for (int v = 0; v < rowOf.Length; v++)
+                    if (rowOf[v] == 0f && Shares(v) && rowOf[twins[v]] * (i == 0 ? 1 : -1) > 0f)
+                    {
+                        rowOf[v] = rowOf[twins[v]];
+                        flipOf[v] = true;
+                        shared2++;
+                    }
+                log.Add($"{parts[m0].name}/{parts[m0 + 1].name} soft body: {table.Count - first} rows for the skin that moves" +
+                        (mirrors ? $", and {shared2} more of it reading its twin's row mirrored" : ", the two sides too unlike to mirror"));
+            }
+            if (table.Count == 0) return null;
+            // A row is sixteen bits in the per-vertex texture.
+            if (table.Count > ushort.MaxValue)
+            {
+                log.Add($"soft body left out: {table.Count} skin vertices move, more than the {ushort.MaxValue} a row number holds");
+                return null;
+            }
+
+            const int Rows = 32;
+            int width = 2 * entries * Rows, height = (table.Count + Rows - 1) / Rows;
+            var texels = new Color32[width * height];
+            for (int r = 0; r < table.Count; r++)
+                for (int e = 0; e < 2 * entries; e++)
+                    texels[(r / Rows) * width + (r % Rows) * 2 * entries + e] = table[r][e];
+            bake.table = Saved(new Texture2D(width, height, TextureFormat.RGBA32, false, true), texels, folder, $"{name} soft.asset");
+
+            // Cells half the fade, so the two either side reach it.
+            const float Cell = 0.03f, Near = 0.05f, Fade = 0.06f;
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            Vector3Int Key(Vector3 x) => new Vector3Int(Mathf.FloorToInt(x.x / Cell), Mathf.FloorToInt(x.y / Cell), Mathf.FloorToInt(x.z / Cell));
+            for (int v = 0; v < body.at.Length; v++)
+            {
+                var k = Key(body.at[v]);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            foreach (var (smr, _, _) in shared)
+            {
+                var s = skins.First(x => x.smr == smr);
+                var rows = new Vector3[s.at.Length];
+                for (int v = 0; v < rows.Length; v++)
+                {
+                    if (s == body) { rows[v] = new Vector3(rowOf[v], 1f, flipOf[v] ? 1f : 0f); continue; }
+                    var k = Key(s.at[v]);
+                    int nearest = -1;
+                    float best = Fade * Fade;
+                    for (int x = -2; x <= 2; x++)
+                        for (int y = -2; y <= 2; y++)
+                            for (int z = -2; z <= 2; z++)
+                            {
+                                if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                                foreach (int b in list)
+                                {
+                                    float d = (body.at[b] - s.at[v]).sqrMagnitude;
+                                    if (d < best) { best = d; nearest = b; }
+                                }
+                            }
+                    if (nearest >= 0 && rowOf[nearest] != 0f)
+                        rows[v] = new Vector3(rowOf[nearest], Mathf.SmoothStep(0f, 1f, (Fade - Mathf.Sqrt(best)) / (Fade - Near)), flipOf[nearest] ? 1f : 0f);
+                }
+                // As wide as the shares, so the shader finds both at one place. Sixteen bits each:
+                // the row plus one, and the second pair's top bit, then the mirrored bit, over the
+                // share it takes.
+                int w = 1024, h = Mathf.Max(1, (rows.Length + w - 1) / w);
+                var data = new ushort[2 * w * h];
+                for (int v = 0; v < rows.Length; v++)
+                {
+                    data[2 * v] = (ushort) Mathf.Abs(rows[v].x);
+                    data[2 * v + 1] = (ushort) ((rows[v].x < 0f ? 32768 : 0) + (rows[v].z > 0f ? 16384 : 0) + Mathf.RoundToInt(Mathf.Clamp01(rows[v].y) * 16383f));
+                }
+                bake.rows[smr] = Saved(new Texture2D(w, h, TextureFormat.RG32, false, true), data, folder, $"{name} {smr.name} soft rows.asset");
+            }
+            return bake;
+        }
+
+        // Each vertex's twin across the avatar's middle: the nearest within cell of its mirror image,
+        // or -1; where have has one already, that.
+        static int[] Twins(Vector3[] at, System.Func<Vector3, Vector3> mirrored, float Cell, int[] have = null)
+        {
+            var grid = new Dictionary<Vector3Int, List<int>>();
+            for (int v = 0; v < at.Length; v++)
+            {
+                var k = Vector3Int.FloorToInt(at[v] / Cell);
+                if (!grid.TryGetValue(k, out var list)) grid[k] = list = new List<int>();
+                list.Add(v);
+            }
+            var twins = new int[at.Length];
+            for (int v = 0; v < at.Length; v++)
+            {
+                twins[v] = have != null ? have[v] : -1;
+                if (twins[v] >= 0) continue;
+                var p = mirrored(at[v]);
+                var k = Vector3Int.FloorToInt(p / Cell);
+                float best = Cell * Cell;
+                for (int x = -1; x <= 1; x++)
+                    for (int y = -1; y <= 1; y++)
+                        for (int z = -1; z <= 1; z++)
+                        {
+                            if (!grid.TryGetValue(k + new Vector3Int(x, y, z), out var list)) continue;
+                            foreach (int b in list)
+                            {
+                                float d = (at[b] - p).sqrMagnitude;
+                                if (d < best) { best = d; twins[v] = b; }
+                            }
+                        }
+            }
+            return twins;
+        }
+
+        // Numbers, not colours: linear, point-sampled, and flagged as the CCK's upload checks ask
+        // of an avatar texture, as PerVertex does.
+        static Texture2D Saved<T>(Texture2D tex, T[] data, string folder, string file) where T : struct
+        {
+            tex.filterMode = FilterMode.Point;
+            tex.wrapMode = TextureWrapMode.Clamp;
+            tex.SetPixelData(data, 0);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
+        }
+
+        // Four numbers per vertex as a texture the shader loads by vertex id.
+        static Texture2D PerVertex(Vector4[] values, string folder, string file)
+        {
+            int width = 1024, height = Mathf.Max(1, (values.Length + width - 1) / width);
+            var pixels = new Color32[width * height];
+            for (int v = 0; v < values.Length; v++) pixels[v] = Stored(values[v]);
+            // Linear and point-sampled: a share is a number, not a colour.
+            var tex = new Texture2D(width, height, TextureFormat.RGBA32, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            tex.SetPixels32(pixels);
+            tex.Apply(false);
+            tex = Asset(folder, tex, file);
+            // What the CCK's upload checks ask of an avatar texture. The asset keeps its
+            // pixels either way; readable only adds a CPU copy, and with no mips nothing streams.
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
+        }
+
+        // Per renderer, how much of each vertex the bones of each part's chain carry, from its own
+        // skin weights, the chain's root with them: a shunt moves the whole part, as a push on it
+        // does. Without the root, which the cloth holds still, a seat swung a tenth of its skin.
+        // By share instead, a layer bridging the gap between a pair, its share stepping from one
+        // part to the other across a centimetre or two, was pulled apart by the whole shunt. A
+        // part whose follow and rest ride one bone swings nothing, and is shunted by its share.
+        static Dictionary<SkinnedMeshRenderer, Texture2D> Swings(List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared,
+            List<Skin> skins, Skin body, List<Part> parts, string name, string folder, List<string> log)
+        {
+            var sets = parts.Select(p =>
+            {
+                if (p.mover == p.restOn) return null;
+                var chain = p.mover;
+                while (chain.parent != null && chain.parent != p.restOn) chain = chain.parent;
+                return new HashSet<Transform>(chain.GetComponentsInChildren<Transform>(true));
+            }).ToList();
+            var result = new Dictionary<SkinnedMeshRenderer, Texture2D>();
+            foreach (var (smr, _, shares) in shared)
+            {
+                var s = skins.First(x => x.smr == smr);
+                var swing = new Vector4[s.at.Length];
+                for (int v = 0; v < swing.Length; v++)
+                {
+                    var w = s.weights[v];
+                    int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                    float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    for (int i = 0; i < 4; i++)
+                    {
+                        if (i >= sets.Count || sets[i] == null) { swing[v][i] = shares[v][i]; continue; }
+                        float sum = 0f;
+                        for (int q = 0; q < 4; q++)
+                        {
+                            var bone = weight[q] > 0f ? s.bones[index[q]] : null;
+                            if (bone != null && sets[i].Contains(bone)) sum += weight[q];
+                        }
+                        swing[v][i] = Mathf.Clamp01(sum);
+                    }
+                }
+                result[smr] = PerVertex(swing, folder, $"{name} {smr.name} swings.asset");
+                if (s != body) continue;
+                // How much of each part's own skin swings, for the log: low, a shunt moves little.
+                for (int i = 0; i < parts.Count; i++)
+                {
+                    var core = Enumerable.Range(0, swing.Length).Where(v => shares[v][i] >= 0.5f).ToList();
+                    if (core.Count > 0) log.Add($"{parts[i].name} swings {core.Average(v => swing[v][i]):0.00} of its skin");
+                }
+            }
+            return result;
+        }
+
+        // A share as the texture holds it, so a slot is judged by what the shader will read.
+        static Color32 Stored(Vector4 s) =>
+            new Color32((byte)(s.x * 255f + 0.5f), (byte)(s.y * 255f + 0.5f), (byte)(s.z * 255f + 0.5f), (byte)(s.w * 255f + 0.5f));
+
+        // Whether any vertex of the slot carries a share worth drawing once stored. The dent
+        // returns at once on a zero share, so a slot with none draws the same on its own material,
+        // and a copy would only cost a shader compile and one more material for the providers to
+        // write. A slot past the last submesh draws the last one again.
+        internal static bool Moves(Mesh mesh, int slot, Vector4[] shares)
+        {
+            if (mesh == null || mesh.subMeshCount == 0) return false;
+            foreach (int v in mesh.GetIndices(Mathf.Min(slot, mesh.subMeshCount - 1)))
+            {
+                if (v >= shares.Length) continue;
+                var c = Stored(shares[v]);
+                if (c.r >= MinShare || c.g >= MinShare || c.b >= MinShare || c.a >= MinShare) return true;
+            }
+            return false;
+        }
+
+        // The least stored share that earns a copy, in steps of 1/255. Under it a layer follows
+        // less than 1.5% of the squash, too little to see, and the 4 cm blend handed one step to
+        // layers that only neared a part: run 429 copied a hood, a belt and a socket mesh for it.
+        internal const int MinShare = 4;
+
+        // An earlier build off again: each layer back on the material it was copied from, and
+        // with clips given, every swap pointed back the same way, or a toggle would put on a
+        // squash copy no provider writes any more. False when refused in Play mode.
+        public static bool Strip(Transform root, IList<AnimationClip> clips = null)
+        {
+            if (YapsNativeBuilder.Playing) return false;
+            // The jelly first, while its pairs' materials are still the squash's.
+            if (root.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith(YapsJelly.Worn + " "))) YapsJelly.Off(root);
+            var skipped = new SortedSet<string>();
+            foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                var mats = smr.sharedMaterials;
+                string path = clips != null ? AnimationUtility.CalculateTransformPath(smr.transform, root) : null;
+                bool any = false;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    if (clips != null)
+                        foreach (var keyed in Keyed(clips, path, i))
+                            if (SourceOf(keyed) != null) YapsSwapFollow.RepointInClips(clips, path, i, keyed, Original(keyed), skipped);
+                    var source = SourceOf(mats[i]);
+                    if (source == null) continue;
+                    mats[i] = Original(mats[i]);
+                    any = true;
+                }
+                if (any) smr.sharedMaterials = mats;
+            }
+            // Swaps whose copy was deleted by hand: the copy's mark went with it, the clip's own
+            // record did not.
+            if (clips != null) YapsSwapFollow.RestoreMissing(clips);
+            foreach (var t in root.GetComponentsInChildren<Transform>(true).Where(t => t.name == FollowName || t.name == RestName || t.name == BackName || t.name == ShaderHostName).ToList())
+                if (t != null) UnityEngine.Object.DestroyImmediate(t.gameObject);
+            if (root.gameObject.scene.IsValid()) EditorSceneManager.MarkSceneDirty(root.gameObject.scene);
+            return true;
+        }
+
+        // The asset to use in place of `asset`: the one already at its path when the last build
+        // made it, written over, so a rebuild neither numbers a duplicate of every copy nor
+        // strands what still points at the old ones, a prefab not applied since, say.
+        static T Asset<T>(string folder, T asset, string file) where T : UnityEngine.Object
+        {
+            YapsNativeBuilder.EnsureFolderPublic(folder);
+            string path = folder + "/" + file;
+            if (Reuse != null && Reuse.Remove(path) && AssetDatabase.LoadAssetAtPath<T>(path) is T old)
+            {
+                EditorUtility.CopySerialized(asset, old);
+                EditorUtility.SetDirty(old);
+                return old;
+            }
+            AssetDatabase.CreateAsset(asset, AssetDatabase.GenerateUniqueAssetPath(path));
+            return asset;
+        }
+
+        // Set while Build runs: paths of the squash's own assets on the avatar before it started.
+        // Only these are written over; a same-named avatar's in a shared folder never are.
+        static HashSet<string> Reuse;
+
+        // The squash's copies in the slots and in the clips that swap them, their shares and
+        // the slot skin.
+        static HashSet<string> Owned(Transform root, IList<AnimationClip> clips)
+        {
+            var mats = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).ToList();
+            if (clips != null)
+                foreach (var smr in root.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+                {
+                    string path = AnimationUtility.CalculateTransformPath(smr.transform, root);
+                    for (int slot = 0; slot < smr.sharedMaterials.Length; slot++) mats.AddRange(Keyed(clips, path, slot));
+                }
+            // By component: the helper was named "skin" before "skin [FPR]".
+            var skin = root.Find(ShaderHostName)?.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            var from = mats.Where(m => SourceOf(m) != null).Cast<UnityEngine.Object>()
+                .Concat(new UnityEngine.Object[] { skin?.sharedMesh, skin?.sharedMaterial }).Where(o => o != null).ToArray();
+            return new HashSet<string>(EditorUtility.CollectDependencies(from)
+                .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
+                .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset") || p.EndsWith(" soft.asset") || p.EndsWith(" soft rows.asset") || p.EndsWith(" jelly parts.asset")));
+        }
+
+        // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying
+        // the most of both parts, weights from every renderer. By bone name, the parts' own bones
+        // count; painted, every bone counts by how much of the region it carries.
+        static List<Part> Measure(List<Skin> skins, int k, List<Transform> bones, HashSet<Transform> humanoid, string[] names)
+        {
+            var carried = new[] { new Dictionary<Transform, float>(), new Dictionary<Transform, float>() };
+            List<Vector3>[] best = null;
+            int bestCount = 0;
+            foreach (var s in skins)
+            {
+                if (bones != null && s.owner.All(x => x < 2 * k || x > 2 * k + 1)) continue;
+                var points = new[] { new List<Vector3>(), new List<Vector3>() };
+                for (int v = 0; v < s.at.Length; v++)
+                {
+                    var w = s.weights[v];
+                    int[] index = { w.boneIndex0, w.boneIndex1, w.boneIndex2, w.boneIndex3 };
+                    float[] weight = { w.weight0, w.weight1, w.weight2, w.weight3 };
+                    for (int q = 0; q < 4; q++)
+                    {
+                        if (weight[q] <= 0f) continue;
+                        var bone = s.bones[index[q]];
+                        for (int side = 0; side < 2; side++)
+                        {
+                            float on = bones != null ? (s.owner[index[q]] == 2 * k + side ? weight[q] : 0f) : weight[q] * s.share[v][2 * k + side];
+                            if (on <= 0f || bone == null) continue;
+                            carried[side][bone] = (carried[side].TryGetValue(bone, out var t) ? t : 0f) + on;
+                        }
+                    }
+                    for (int side = 0; side < 2; side++) if (s.share[v][2 * k + side] >= 0.5f) points[side].Add(s.at[v]);
+                }
+                int count = points[0].Count + points[1].Count;
+                if (count > bestCount) { bestCount = count; best = points; }
+            }
+            if (best == null || best.Any(p => p.Count < 20)) return null;
+
+            int Depth(Transform t) { int d = 0; for (; t != null; t = t.parent) d++; return d; }
+            return Enumerable.Range(0, 2).Select(i =>
+            {
+                float total = carried[i].Values.Sum();
+                var p = new Part
+                {
+                    points = best[i],
+                    centre = best[i].Aggregate(Vector3.zero, (s, x) => s + x) / best[i].Count,
+                    carriers = carried[i].Select(kv => (kv.Key, kv.Value / total)).Where(x => x.Item2 >= 0.03f)
+                        .OrderBy(x => Depth(x.Key)).ToList(),
+                };
+                var top = p.carriers[0].bone;
+                if (bones != null)
+                {
+                    var root = bones[i];
+                    p.name = root.name;
+                    // On the bone the cloth moves most. The chain root is held still by the
+                    // cloth, so a follow on it never saw the pair close in game.
+                    p.mover = p.carriers.Where(c => c.bone != root).OrderByDescending(c => c.weight).Select(c => c.bone).FirstOrDefault() ?? top;
+                    p.restOn = root.parent != null ? root.parent : root;
+                    p.hangsFrom = root.position;
+                }
+                else
+                {
+                    p.name = names[i];
+                    // Bones of its own carrying a good part of it, below the skeleton: the most
+                    // weighted one hanging from another of them, since the cloth holds a chain's
+                    // root still, with the rest on whatever that chain hangs from. Otherwise the
+                    // region rides the bone carrying most of it, follow and rest together, so
+                    // only a press moves it.
+                    var loose = humanoid.Count == 0 ? new List<(Transform bone, float weight)>()
+                        : p.carriers.Where(c => !humanoid.Contains(c.bone)).OrderByDescending(c => c.weight).ToList();
+                    if (loose.Sum(c => c.weight) >= 0.25f)
+                    {
+                        var own = new HashSet<Transform>(loose.Select(c => c.bone));
+                        p.mover = loose.Select(c => c.bone).FirstOrDefault(b => b.parent != null && own.Contains(b.parent)) ?? loose[0].bone;
+                        var chain = p.mover;
+                        while (chain.parent != null && own.Contains(chain.parent)) chain = chain.parent;
+                        p.restOn = chain.parent != null ? chain.parent : chain;
+                        p.hangsFrom = chain.position;
+                    }
+                    else
+                    {
+                        // Follow and rest ride one bone, so it never swings: the hang goes unused.
+                        p.mover = p.restOn = p.carriers.OrderByDescending(c => c.weight).First().bone;
+                        p.hangsFrom = p.mover.position;
+                    }
+                }
+                p.volume = Mathf.Sqrt(Mathf.Max(Det(p.points, p.centre), 0f));
+                return p;
+            }).ToList();
+        }
+
+        static float Det(List<Vector3> points, Vector3 centre)
+        {
+            var c = new float[3, 3];
+            foreach (var x in points)
+            {
+                var d = x - centre;
+                for (int r = 0; r < 3; r++) for (int k = 0; k < 3; k++) c[r, k] += d[r] * d[k] / points.Count;
+            }
+            return c[0, 0] * (c[1, 1] * c[2, 2] - c[1, 2] * c[2, 1]) - c[0, 1] * (c[1, 0] * c[2, 2] - c[1, 2] * c[2, 0])
+                 + c[0, 2] * (c[1, 0] * c[2, 1] - c[1, 1] * c[2, 0]);
+        }
+
+        internal const int SurfaceSize = 32;
+
+        // How far a part's skin reaches from its centre toward each direction of an octahedral grid
+        // in its frame, in follow units, so the squash meets the partner's real shape and not the
+        // ellipsoid of its six reaches, which missed skin by up to 13 cm toward the partner. Built
+        // from every other vertex and judged on the rest against that ellipsoid; null unless it is
+        // clearly closer, which leaves a part of a few dozen vertices, or one a line from its
+        // centre crosses twice, on the ellipsoid. Measured on six avatars, 2026-10-26.
+        internal static float[] Surface(List<Vector3> points, Vector3 centre, Vector3 toward, Vector3 o, float[] reaches,
+            float unit, out float mapOff, out float ellipsoidOff)
+        {
+            var u = Vector3.Cross(toward, o);
+            var at = points.Select(x => x - centre).Where(x => x.sqrMagnitude > 1e-12f)
+                .Select(x => new Vector3(Vector3.Dot(x, toward), Vector3.Dot(x, u), Vector3.Dot(x, o))).ToList();
+            var fit = SurfaceMap(at.Where((_, i) => i % 2 == 0));
+            var test = at.Where((_, i) => i % 2 == 1).ToList();
+            mapOff = test.Count > 0 ? test.Average(q => Mathf.Abs(q.magnitude - SurfaceAt(fit, q))) : 0f;
+            ellipsoidOff = test.Count > 0 ? test.Average(q => Mathf.Abs(q.magnitude - Ellipsoid(reaches, q))) : 0f;
+            if (test.Count == 0 || mapOff > 0.75f * ellipsoidOff || ellipsoidOff - mapOff < 0.02f * reaches.Average()) return null;
+            var map = SurfaceMap(at);
+            for (int i = 0; i < map.Length; i++) map[i] /= unit;
+            return map;
+        }
+
+        // A direction in the frame (toward, across, out) as a place on the grid: octahedral, folded
+        // on the side into the body, where a part has no skin of its own, so its skin is one
+        // continuous diamond with no poles. 0 to 1 both ways.
+        internal static Vector2 SurfaceCell(Vector3 q)
+        {
+            q /= Mathf.Abs(q.x) + Mathf.Abs(q.y) + Mathf.Abs(q.z);
+            var e = new Vector2(q.x, q.y);
+            if (q.z < 0f) e = new Vector2((1f - Mathf.Abs(q.y)) * Mathf.Sign(q.x), (1f - Mathf.Abs(q.x)) * Mathf.Sign(q.y));
+            return e * 0.5f + Vector2.one * 0.5f;
+        }
+
+        // The outermost skin in each cell, empty cells filled from their neighbours ring by ring,
+        // then one texel of smoothing.
+        static float[] SurfaceMap(IEnumerable<Vector3> at)
+        {
+            const int n = SurfaceSize;
+            var map = new float[n * n];
+            var set = new bool[n * n];
+            foreach (var q in at)
+            {
+                var c = SurfaceCell(q);
+                int k = Mathf.Clamp((int) (c.y * n), 0, n - 1) * n + Mathf.Clamp((int) (c.x * n), 0, n - 1);
+                map[k] = Mathf.Max(map[k], q.magnitude);
+                set[k] = true;
+            }
+            if (!set.Any(x => x)) return map;
+            while (!set.All(x => x))
+            {
+                var next = (float[]) map.Clone();
+                var nextSet = (bool[]) set.Clone();
+                for (int j = 0; j < n; j++)
+                for (int i = 0; i < n; i++)
+                {
+                    if (set[j * n + i]) continue;
+                    float sum = 0f;
+                    int count = 0;
+                    for (int dj = -1; dj <= 1; dj++)
+                    for (int di = -1; di <= 1; di++)
+                    {
+                        int a = i + di, b = j + dj;
+                        if (a < 0 || b < 0 || a >= n || b >= n || !set[b * n + a]) continue;
+                        sum += map[b * n + a];
+                        count++;
+                    }
+                    if (count > 0) { next[j * n + i] = sum / count; nextSet[j * n + i] = true; }
+                }
+                map = next;
+                set = nextSet;
+            }
+            var smooth = new float[n * n];
+            for (int j = 0; j < n; j++)
+            for (int i = 0; i < n; i++)
+            {
+                float sum = 4f * map[j * n + i], weight = 4f;
+                for (int dj = -1; dj <= 1; dj++)
+                for (int di = -1; di <= 1; di++)
+                {
+                    int a = i + di, b = j + dj;
+                    if ((di == 0 && dj == 0) || a < 0 || b < 0 || a >= n || b >= n) continue;
+                    sum += map[b * n + a];
+                    weight += 1f;
+                }
+                smooth[j * n + i] = sum / weight;
+            }
+            return smooth;
+        }
+
+        // Bilinear between texel centres, as the shader reads it.
+        internal static float SurfaceAt(float[] map, Vector3 q)
+        {
+            const int n = SurfaceSize;
+            var f = SurfaceCell(q) * n - Vector2.one * 0.5f;
+            int i0 = Mathf.Clamp(Mathf.FloorToInt(f.x), 0, n - 1), j0 = Mathf.Clamp(Mathf.FloorToInt(f.y), 0, n - 1);
+            int i1 = Mathf.Min(i0 + 1, n - 1), j1 = Mathf.Min(j0 + 1, n - 1);
+            float s = Mathf.Clamp01(f.x - i0), t = Mathf.Clamp01(f.y - j0);
+            return Mathf.Lerp(Mathf.Lerp(map[j0 * n + i0], map[j0 * n + i1], s), Mathf.Lerp(map[j1 * n + i0], map[j1 * n + i1], s), t);
+        }
+
+        // The shader's YapsExtent at q's direction: per octant of the frame, the front reaches where
+        // a component is positive. Reaches toward, away, out, in, across, across back.
+        static float Ellipsoid(float[] r, Vector3 q)
+        {
+            var d = q.normalized;
+            float Term(float x, float pos, float neg) { float k = x >= 0f ? pos : neg; return x * x / (k * k); }
+            return 1f / Mathf.Sqrt(Mathf.Max(Term(d.x, r[0], r[1]) + Term(d.z, r[2], r[3]) + Term(d.y, r[4], r[5]), 1e-8f));
+        }
+
+        // Every part's grid stacked, part m in rows 32m to 32m + 31, zero for one on the ellipsoid.
+        // Halves, point-sampled: the shader reads its four texels itself, so no part bleeds into the
+        // next.
+        internal static Texture2D SurfaceTexture(List<float[]> surfaces, string folder, string file)
+        {
+            const int n = SurfaceSize;
+            var halves = new ushort[n * n * 4];
+            for (int m = 0; m < surfaces.Count && m < 4; m++)
+                if (surfaces[m] != null)
+                    for (int k = 0; k < n * n; k++) halves[m * n * n + k] = Mathf.FloatToHalf(surfaces[m][k]);
+            var tex = new Texture2D(n, n * 4, TextureFormat.RHalf, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            tex.SetPixelData(halves, 0);
+            tex.Apply(false);
+            if (folder == null) return tex;
+            tex = Asset(folder, tex, file);
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = true;
+            flags.ApplyModifiedPropertiesWithoutUndo();
+            return tex;
+        }
+
+        // The plane a part meets the body in, fitted to its skin half on it: the way out of the body
+        // through the part, square to the line to its partner, and how far the part's centre stands
+        // above it. What lies behind it is the body's and stays still while the part moves; the
+        // ring where its weights step off lies in it, and a part moved from anywhere else tore the
+        // fold where they step.
+        internal static (Vector3 normal, float above) Base(Vector3[] at, float[] share, Vector3 centre, Vector3 toward, Vector3 o,
+            float reach, float inward)
+        {
+            var ring = new List<Vector3>();
+            for (int v = 0; v < at.Length; v++)
+                if (share[v] >= 0.25f && share[v] <= 0.75f && (at[v] - centre).sqrMagnitude <= 16f * reach * reach) ring.Add(at[v]);
+            if (ring.Count < 20) return (o, inward);
+            var mid = ring.Aggregate(Vector3.zero, (sum, x) => sum + x) / ring.Count;
+            var c = new float[3, 3];
+            foreach (var x in ring)
+            {
+                var d = x - mid;
+                for (int r = 0; r < 3; r++) for (int k = 0; k < 3; k++) c[r, k] += d[r] * d[k] / ring.Count;
+            }
+            // The way the ring spreads least: the largest of the trace less the spread, by power
+            // iteration from out of the body.
+            float tr = c[0, 0] + c[1, 1] + c[2, 2];
+            var n = o;
+            for (int it = 0; it < 200; it++)
+                n = new Vector3(tr * n.x - (c[0, 0] * n.x + c[0, 1] * n.y + c[0, 2] * n.z),
+                    tr * n.y - (c[1, 0] * n.x + c[1, 1] * n.y + c[1, 2] * n.z),
+                    tr * n.z - (c[2, 0] * n.x + c[2, 1] * n.y + c[2, 2] * n.z)).normalized;
+            n = Vector3.ProjectOnPlane(n, toward);
+            if (n.sqrMagnitude < 1e-6f) return (o, inward);
+            n = n.normalized * Mathf.Sign(Vector3.Dot(n, o));
+            float above = Vector3.Dot(centre - mid, n);
+            return above > 0f ? (n, above) : (o, inward);
+        }
+
+
+        // The 98th percentile, so one stray vertex does not set it.
+        static float Reach(Part p, Vector3 way)
+        {
+            var along = p.points.Select(x => Vector3.Dot(x - p.centre, way)).OrderBy(x => x).ToList();
+            return Mathf.Max(along[(int)(0.98f * (along.Count - 1))], 1e-4f);
+        }
+
+        static Transform Child(Transform parent, string name)
+        {
+            var t = new GameObject(name).transform;
+            t.SetParent(parent, false);
+            return t;
+        }
+
+#if VRC_SDK_VRCSDK3
+        // The converter's opt-in. After YAPS has baked and pointed its swaps, so the copies are
+        // of what the avatar ends up wearing, and YAPS still finds its own materials on the mesh.
+        public static void Run(BridgeContext ctx)
+        {
+            // The YAPS passes before this one patch shaders too and cannot log it themselves.
+            YapsShaderPatcher.EndPass("up to squash", ctx.Report);
+            if (!ctx.Settings.squashSoftParts) return;
+            var times = new List<string>();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Lap(string step)
+            {
+                times.Add($"{step} {clock.ElapsedMilliseconds}");
+                clock.Restart();
+            }
+            try
+            {
+                var root = ctx.Target.transform;
+                string folder = ctx.OutputDir + "/YAPS/Squash";
+                // The folder is this avatar's alone, and the copy being built starts with none of
+                // the squash on it, so nothing in it is reused: emptied in one call, where numbering
+                // beside the last set left a whole set of materials and textures per reconvert.
+                AssetDatabase.DeleteAsset(folder);
+                Lap("Delete");
+                YapsLock.Animate(root, ctx.MergedController?.animationClips);
+                Lap("Animate");
+                string said = Add(root, folder, out bool built, ctx.Report);
+                Lap("Add");
+                if (!built)
+                {
+                    // The folder is this pass's alone, and what it holds now nothing reads.
+                    AssetDatabase.DeleteAsset(folder);
+                    ctx.Report.Warning(Category, "Squash not built", said);
+                    return;
+                }
+                ctx.Report.Converted(Category, "Soft parts squash against each other and against hands",
+                    said + ". Tune it on the YAPS Squash component on the converted avatar, and test it in the Avatar Tester");
+                if (ctx.MergedController != null) FollowSwaps(root, ctx.MergedController.animationClips, folder, ctx.Report);
+                Lap("FollowSwaps");
+                var (on, refused) = YapsJelly.On(root, folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly", ctx.Report);
+                if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue", string.Join(" ", on));
+                foreach (var why in refused) ctx.Report.Warning(Category, "A part is not on the jelly", why);
+                Lap("Jelly");
+            }
+            finally
+            {
+                // A pass that threw still writes what it made, or the scene saves them inline.
+                Flush();
+                Lap("Flush");
+                YapsShaderPatcher.EndPass("squash", ctx.Report);
+                Lap("EndPass");
+                Debug.Log("[AvatarBridge] Squash pass steps (ms): " + string.Join(", ", times));
+            }
+        }
+#endif
+    }
+}
+#endif

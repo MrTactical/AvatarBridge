@@ -15,7 +15,7 @@ namespace AvatarBridge
 {
     public static partial class AnimatorMerger
     {
-        static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
+        internal static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;
             // Zero chains still matters when style synthesis is on: an avatar whose ONLY
@@ -47,7 +47,8 @@ namespace AvatarBridge
             // shared-rider test.
             var activatedByClip = new Dictionary<AnimationClip, HashSet<EditorCurveBinding>>();
             var offSafe = new Dictionary<EditorCurveBinding, bool>();
-            var chainByTarget = new Dictionary<EditorCurveBinding, BridgeContext.ConvertedPhysicsChain>();
+            // Every chain a binding reaches: grouped strands share one cloth's enabled flag.
+            var chainByTarget = new Dictionary<EditorCurveBinding, List<BridgeContext.ConvertedPhysicsChain>>();
             var physicslessStyles = new HashSet<Transform>();
             // Chains left running when their style hides, because a mesh outside the toggled
             // object rides them. Named in the report so "this cloth never stops" is explained
@@ -190,8 +191,9 @@ namespace AvatarBridge
             void NotePhysicslessStyle(Transform container)
             {
                 // With no chain converted at all, "never had physics" cannot be told
-                // apart from "its PhysBones failed to convert", so say nothing.
-                if (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles)
+                // apart from "its PhysBones failed to convert", so say nothing. The Toolkit's card
+                // cannot see cloth placed by hand, so "nothing simulated" is not its to say.
+                if (ctx.Standalone || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles))
                 {
                     return;
                 }
@@ -299,7 +301,14 @@ namespace AvatarBridge
                         }
                         // Which chain a binding belongs to, so a later pass
                         // can ask what rides it.
-                        chainByTarget[target] = chain;
+                        if (!chainByTarget.TryGetValue(target, out var reached))
+                        {
+                            chainByTarget[target] = reached = new List<BridgeContext.ConvertedPhysicsChain>();
+                        }
+                        if (!reached.Contains(chain))
+                        {
+                            reached.Add(chain);
+                        }
                         bool alreadyDriven = false;
                         foreach (var have in existing)
                         {
@@ -332,7 +341,10 @@ namespace AvatarBridge
                                 offSafe[target] = false;
                                 continue;
                             }
-                            deactivationsMirrored++;
+                            if (additions == null || !additions.ContainsKey(target))
+                            {
+                                deactivationsMirrored++;
+                            }
                         }
                         else
                         {
@@ -556,7 +568,7 @@ namespace AvatarBridge
             // this state hides too. So the question is asked per state.
             bool HidesEveryRider(EditorCurveBinding target, AnimationClip clip)
             {
-                if (!chainByTarget.TryGetValue(target, out var chain)) return false;
+                if (!chainByTarget.TryGetValue(target, out var chains)) return false;
                 var hidden = new List<string>();
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
@@ -566,7 +578,7 @@ namespace AvatarBridge
                 }
                 if (hidden.Count == 0) return false;
 
-                foreach (var rider in RidersOf(chain))
+                foreach (var rider in chains.SelectMany(RidersOf))
                 {
                     string path = AnimationUtility.CalculateTransformPath(rider, root);
                     bool covered = false;
@@ -686,18 +698,18 @@ namespace AvatarBridge
             if (clipsTouched > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{curvesAdded} toggle curve(s) re-wired to generated physics in {clipsTouched} clip(s)",
+                    $"{BridgeElements.Count(curvesAdded, "toggle curve", "toggle curves")} re-wired to generated physics in {BridgeElements.Count(clipsTouched, "clip", "clips")}",
                     "Hair and outfit toggles now switch their physics too. " +
                     (deactivationsMirrored > 0
                         ? $"{deactivationsMirrored} switch it back off when the style hides."
                         : "No style here switches its physics back off.") +
-                    (offsAsserted > 0 ? $" {offsAsserted} resting state(s) now stop it explicitly." : ""));
+                    (offsAsserted > 0 ? $" {BridgeElements.Count(offsAsserted, "resting state", "resting states")} now stop it explicitly." : ""));
             }
 
             if (sharedChains.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{sharedChains.Count} chain(s) keep simulating while their style is hidden",
+                    $"{BridgeElements.Count(sharedChains.Count, "chain keeps simulating while its", "chains keep simulating while their")} style is hidden",
                     string.Join(", ", sharedChains) + ": another mesh shares their bones, so they keep running. " +
                     "Costs a little performance, shows nothing.");
             }
@@ -708,7 +720,7 @@ namespace AvatarBridge
                     .Select(entry => $"\"{entry.Key}\" (in {string.Join(", ", entry.Value)})")
                     .ToList();
                 ctx.Report.Warning(Category,
-                    $"{strandedToggles.Count} animation(s) switch a PhysBone that wasn't converted: " +
+                    $"{BridgeElements.Count(strandedToggles.Count, "animation switches", "animations switch")} a PhysBone that wasn't converted: " +
                     "those controls will do nothing",
                     string.Join("; ", lines) + ": the chain made no physics here. The PhysBones section says why " +
                     "for each; fix that and the toggle works.");

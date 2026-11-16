@@ -14,6 +14,13 @@ namespace AvatarBridge
 
         public enum Part { Plug, Socket }
 
+        // Said by both builders when a plug arrives with VRCFury's deform in its shader.
+        public const string SpsPrebuilt =
+            "VRCFury put its deform into this plug's shader before the conversion saw it: an avatar VRCFury " +
+            "already built, or a VRCFury version this tool could not ask. YAPS adds its own on top, and " +
+            "VRCFury's has no switch on the material, so the plug may bend twice. Convert the original avatar " +
+            "rather than a built copy, and check this plug in game.";
+
         // One carried value: where it came from, where it went, and what
         // was done to it on the way. Kept so the report can list them.
         public struct Carried
@@ -51,6 +58,13 @@ namespace AvatarBridge
                 && material.GetFloat("_TPS_PenetratorEnabled") > 0.5f)
             {
                 return Origin.TPS;
+            }
+            // Poiyomi 7.3 declares Raliv's orifice beside its penetrator, so a plug on it read as
+            // a socket. Its own toggle says which half is in use.
+            if (material.HasProperty("_PenetratorEnabled") && material.GetFloat("_PenetratorEnabled") > 0.5f
+                && material.HasProperty("_EntranceStiffness"))
+            {
+                return Origin.DPS;
             }
             if (material.HasProperty("_OrificeData") && material.HasProperty("_Shape1Depth"))
             {

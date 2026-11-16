@@ -36,7 +36,7 @@ namespace AvatarBridge
                 if (string.IsNullOrEmpty(AssetDatabase.GetAssetPath(controller))) continue;
                 Undo.RegisterCompleteObjectUndo(controller, "YAPS menu entry");
                 var c = controller;
-                entry.setting.SetupAnimator(ref c, entry.machineName, folder, fileName);
+                entry.setting.SetupAnimator(ref c, entry.machineName, folder, Unused(folder, fileName));
                 EditorUtility.SetDirty(controller);
                 into.Add(controller.name);
             }
@@ -78,6 +78,18 @@ namespace AvatarBridge
         // Not the Animator's own slot: the CCK puts a generated override
         // there, which can belong to another avatar's generated folder.
         public static List<AnimatorController> ControllersOf(CVRAvatar avatar) => YapsOwner.Targets(avatar);
+
+        // The CCK writes its clips to folder/Anim_<name>_..., replacing any file
+        // there. A second controller's write under the same name deleted the
+        // clips the first had just been given, and its states came out with
+        // no motion: the bicycle pose. So each write gets a name of its own.
+        static string Unused(string folder, string name)
+        {
+            string free = name;
+            for (int i = 1; Directory.Exists(folder) && Directory.GetFiles(folder, "Anim_" + free + "_*").Length > 0; i++)
+                free = name + i;
+            return free;
+        }
 
         static string Sanitise(string s)
         {

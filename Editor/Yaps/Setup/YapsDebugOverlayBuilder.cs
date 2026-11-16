@@ -1,9 +1,9 @@
 // The in-game readout for a plug that will not behave.
 //
-// Twelve cells painted by the readout's own shader, saying who resolved the
-// socket, whether the plug is bending, what the atlas saw and what state the
-// plug's own bake and frame are in, plus two markers saying whether anything
-// has moved its bones.
+// Fourteen cells painted by the readout's own shader, saying who resolved the
+// socket, whether the plug is bending, what the atlas saw, whether a portal
+// answered and what state the plug's own bake and frame are in, plus two
+// markers saying whether anything has moved its bones.
 //
 // The plug's own debug view answers in LENGTH and straightens the plug to
 // do it, so the bend and the reason for the bend can never be read at the
@@ -29,8 +29,8 @@
 // fooled that way. The plug's own material never draws any of them: they
 // sit past _YAPS_VertexCount, in a submesh it does not own.
 //
-// Built on every plug of an avatar, hidden, unless the plug's In-game
-// readout tick is off. One synced menu toggle shows them all, so a helper
+// Built, hidden, on each plug whose In-game readout tick is on; off by
+// default, as the CCK counts the slot on every built avatar. One synced menu toggle shows them all, so a helper
 // sees the plug as the wearer's own client resolves it. A plug on a prop
 // has no menu to show it, and gets none. Plugs sharing a mesh get one
 // submesh each, built together.
@@ -267,15 +267,16 @@ namespace AvatarBridge
 
                 report?.Converted(Category, plug.name,
                     "A readout was added to this plug, hidden until the avatar's \"" + MenuLabel + "\" " +
-                    "menu toggle shows it. Twelve cells in two rows, and two " +
+                    "menu toggle shows it. Fourteen cells in two rows, and two " +
                     "markers out on the plug itself. Top row, left to right: who resolved the " +
                     "socket, whether it is bending, how far away the socket is, what the screen " +
-                    "atlas read, whether the atlas is on the camera drawing this view, and whether " +
-                    "this plug asks for the atlas at all. Bottom row: whether the plug recovered " +
+                    "atlas read, whether the atlas is on the camera drawing this view, whether " +
+                    "this plug asks for the atlas at all, and whether the hole it ends in is a portal " +
+                    "it can come out of. Bottom row: whether the plug recovered " +
                     "its own frame, whether the readout's vertex is inside the bake, whether the " +
                     "bake read anything, whether it will take its own wearer's sockets, how many " +
-                    "sockets are in the chain, and whether a socket was refused by this plug's " +
-                    "tags. Grey or black is nothing, red is a fault, green is working. The two markers are the pair that " +
+                    "sockets are in the chain, whether a socket was refused by this plug's " +
+                    "tags, and a dark end cell. Grey or black is nothing, red is a fault, green is working. The two markers are the pair that " +
                     "answers a different question: the white one sits where the tip would be if " +
                     "nothing had moved the plug's BONES, the magenta one sits where the tip " +
                     "actually is. Together means the bones are where the bake left them and any " +
@@ -623,13 +624,19 @@ namespace AvatarBridge
             }
             var missing = new List<string>();
             YapsNativeBuilder.CopyYapsProperties(from, to, missing);
+            // The patch gives every shader the squash block, and no cell reads it.
+            // Nor the live tissue's values, which are the skin's, or the plug number,
+            // which only the atlas relay reads.
+            missing.RemoveAll(name => YapsSquash.Properties.Contains(name)
+                                      || name.StartsWith("_YAPS_Jelly", System.StringComparison.Ordinal)
+                                      || name == "_YAPS_PlugIndex");
             EditorUtility.SetDirty(to);
             if (missing.Count == 0)
             {
                 return;
             }
             report?.Warning(Category, label,
-                $"The readout could not carry {missing.Count} of the plug's setting(s): " +
+                $"The readout could not carry {missing.Count} of the plug's settings: " +
                 string.Join(", ", missing) + ". Cells that depend on them read as nothing rather " +
                 "than as their real value. The readout's shader needs the same property added.");
         }
@@ -730,7 +737,7 @@ namespace AvatarBridge
             layers.Add(new AnimatorControllerLayer { name = LayerName, defaultWeight = 1f, stateMachine = machine });
             controller.layers = layers.ToArray();
             EditorUtility.SetDirty(controller);
-            return $"readout toggle \"{MenuLabel}\" for {targets.Count} readout(s), off by default, synced (1 bit)";
+            return $"readout toggle \"{MenuLabel}\" for {BridgeElements.Count(targets.Count, "readout", "readouts")}, off by default, synced (1 bit)";
         }
 
         // A socket's readout, beside its atlas writer under the same parent,

@@ -46,7 +46,7 @@ namespace AvatarBridge
                 : null;
             if (head == null)
             {
-                ctx.Report.Approximated(Category, $"{copies.Count} always-visible head(s) left alone",
+                ctx.Report.Approximated(Category, $"{BridgeElements.Count(copies.Count, "always-visible head", "always-visible heads")} left alone",
                     "There is no humanoid Head bone to move their contents onto, so removing them " +
                     "would take whatever they carry with them.");
                 return;
@@ -91,14 +91,14 @@ namespace AvatarBridge
             repointed = Repoint(ctx, renames);
             _renames = renames;
 
-            ctx.Report.Converted(Category, $"{deleted} always-visible head(s) removed",
+            ctx.Report.Converted(Category, $"{BridgeElements.Count(deleted, "always-visible head", "always-visible heads")} removed",
                 (moved > 0
-                    ? $"{moved} object(s) moved onto the Head bone: " + string.Join(", ", names) +
+                    ? $"{BridgeElements.Count(moved, "object", "objects")} moved onto the Head bone: " + string.Join(", ", names) +
                       (moved > names.Count ? ", …" : "") + ". "
                     : "") +
                 "VRCFury's second head has no job here, and anything on it stayed off. It now sits on the " +
-                $"head bone, same place, with {repointed} animation curve(s) repointed" +
-                (references > 0 ? $" and {references} reference(s) to it, such as bone slots, moved to the head bone." : "."));
+                $"head bone, same place, with {BridgeElements.Count(repointed, "animation curve", "animation curves")} repointed" +
+                (references > 0 ? $" and {BridgeElements.Count(references, "reference", "references")} to it, such as bone slots, moved to the head bone." : "."));
         }
 
         // Bone slots, root bones, constraint sources and physics roots that named the copy itself
@@ -140,7 +140,7 @@ namespace AvatarBridge
             int repointed = Repoint(ctx, renames);
             if (repointed > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed} more curve(s) followed the removed head",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(repointed, "more curve", "more curves")} followed the removed head",
                     "They sat in the avatar's own animation files, so they were repointed on this " +
                     "conversion's copies, leaving the originals untouched.");
             }

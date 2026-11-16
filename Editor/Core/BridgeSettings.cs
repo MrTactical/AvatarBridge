@@ -38,6 +38,10 @@ namespace AvatarBridge
         // Outside the tool's own folder. Deleting Assets/AvatarBridge
         // to update must never erase conversions.
         public string outputFolder = "Assets/AvatarBridgeOutput";
+        // The scene copy becomes an instance of the prefab saved in the output folder, so later
+        // edits can be applied to it. Off by default: converting again overwrites that prefab,
+        // and an older copy still linked to it would change with it.
+        public bool linkConvertedPrefab = false;
 
         [Header("Animator layers to merge")]
         // Merged masked off the humanoid body; custom walk, stance and
@@ -66,18 +70,28 @@ namespace AvatarBridge
         // Name converted physics holders (MagicaCloth2 or DynamicBone) after their PhysBone
         // parameter so the GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
         public bool grabbyBonesSupport = true;
+        // Simulate PhysBones that would produce identical cloths with one
+        // multi-root cloth. A VRCPhysBone has one root, so a hairstyle built
+        // strand by strand is one component per strand; MagicaCloth2 takes
+        // any number of roots per component, and every component saved is a
+        // proxy mesh and a solver team. Only merges chains that match on
+        // settings, colliders, parent, kind, bone lengths and mesh thickness,
+        // and that nothing toggles on its own.
+        public bool groupIdenticalPhysBones = true;
         // Start each cloth from the MagicaCloth2 preset that fits the
         // chain. Structure comes from the PhysBone either way.
         public bool useMagicaPresets = true;
-        // After the preset loads, apply the PhysBone facts that mean
-        // the same thing in MagicaCloth2: no gravity, upward gravity,
-        // and immobile (world influence inverted).
+        // After the preset loads, apply what the PhysBone says about
+        // gravity (converted to where the chain settles), immobile (as
+        // inertia against the same frame) and wind (none), turn off the
+        // preset's own angle limit and depth inertia, and raise its five
+        // speed limits.
         public bool fitToPhysBone = true;
         // Derive damping and angle restoration from the PhysBone's
         // pull, spring and stiffness. Both solvers are position
         // integrators at fixed rates (60 Hz vs 90 Hz), so a real
         // conversion exists; PhysBoneSolverMap holds it. Replaces the
-        // preset's damping and restoration only.
+        // preset's damping, restoration and its velocity attenuation only.
         public bool derivePhysicsFromPhysBone = true;
         // Size each chain's particles from the mesh those bones move.
         // The source PhysBone radius is not used; in VRChat it only
@@ -97,8 +111,11 @@ namespace AvatarBridge
         // when a size slider is up. Shrinking shapes cost nothing.
         public bool sizePhysicsForLargest = true;
         // Honour the source's Angle/Hinge/Polar limit as a distance
-        // bound from rest. A distance bound removes motion rather than
-        // adding a restoring force, so it cannot start vibration.
+        // bound from rest, allowing for the limit at every joint. A
+        // distance bound removes motion rather than adding a restoring
+        // force, so it cannot start vibration. A soft body has no distance
+        // bounds in MagicaCloth2, so a breast or belly gets the limit as an
+        // angle limit; thighs and a butt get none.
         public bool boundSwingToSourceLimit = true;
         // Bound the particle to half the bone gap. Off since the
         // radius became a measurement; on a soft body this throws most
@@ -116,7 +133,9 @@ namespace AvatarBridge
         // Invents physics the author never made. A toggled style with
         // its own rig and mesh but no PhysBone gets a synthesized
         // MagicaCloth, preset by classification. Off because some
-        // rigged props are rigid on purpose. MagicaCloth2 only.
+        // rigged props are rigid on purpose. MagicaCloth2 only. The
+        // Toolkit's PhysBones card leaves it off: it cannot see cloth
+        // placed by hand.
         public bool addPhysicsToRiggedStyles = false;
 
         [Header("VRChat-only system stripping")]
@@ -127,12 +146,15 @@ namespace AvatarBridge
         public bool weighAvatar = true;
         // Read the animator, the menu and the components into one model and
         // report what the avatar can and cannot do: features nothing can
-        // reach, bindings two layers fight over, what lost its driver in the
-        // conversion. Reads only.
+        // reach, toggles a layer above always overrides, states that can never
+        // play, what lost its driver in the conversion. Reads only.
         public bool surveyAvatar = true;
         // CVR provides locomotion and emotes natively. GoGo's layers
         // fight them while burning sync budget.
         public bool stripGogoLoco = true;
+        // GoGo's own emotes, then its sit and lie poses, fill ChilloutVR's eight emote
+        // slots in place of the stock eight. Only while GoGo is removed.
+        public bool gogoEmotes = true;
         // SPS/OGB/TPS, PCS and Wholesome are VRChat-specific.
         // Non-functional in CVR, and expensive in sync bits.
         public bool stripSpsSystems = true;
@@ -149,8 +171,15 @@ namespace AvatarBridge
         // Needs keepHapticsContacts.
         public bool syncHapticsForOsc = false;
         // Keep each socket's depth parameter synced, so the author's own
-        // depth reactions play for the room. Two per socket, 32 bits each.
+        // depth reactions play for the room. 32 bits per depth parameter, usually one per socket.
         public bool syncSocketDepthForOthers = false;
+        // Breasts and butt squash against each other and against hands, in the body shader.
+        // Needs the YAPS add-on, not converted penetration. Off: the parts swing as before. Tuned
+        // afterwards on the avatar's YAPS Squash component. A humanoid's pairs go on the jelly
+        // instead, live tissue stepped on the GPU every frame, and their cloth and Dynamic Bones then
+        // collide at a millimetre: the tissue takes every touch. The solved presses and the stretch
+        // apply only to parts the tissue cannot take.
+        public bool squashSoftParts = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.
         public string extraStripKeywords = "";

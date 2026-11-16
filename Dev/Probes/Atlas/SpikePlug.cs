@@ -2,7 +2,7 @@
 //
 // Dev only, pruned from public builds.
 //
-//   Tools > YAPS > Screen atlas: plug and socket
+//   Tools > Avatar Bridge > Dev > Atlas > Screen atlas: plug and socket
 //
 // Spikes 1 to 3 proved the transport a piece at a time: a named GrabPass
 // survives a ChilloutVR upload, it carries a moving world position to about
@@ -38,7 +38,7 @@ using UnityEngine;
 
 public class SpikePlug : EditorWindow
 {
-    [MenuItem("Tools/YAPS/Screen atlas: plug and socket")]
+    [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Screen atlas: plug and socket")]
     static void Open() { GetWindow<SpikePlug>("Atlas plug"); }
 
     const string Root = "YAPS Atlas Plug Spike";

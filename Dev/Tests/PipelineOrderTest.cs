@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // nothing, which is exactly what the comment did.
     public static class PipelineOrderTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: pass ordering invariant")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Pass ordering invariant")]
         public static void Run()
         {
             int fail = 0;

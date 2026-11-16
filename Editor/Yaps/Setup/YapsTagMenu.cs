@@ -43,14 +43,14 @@ namespace AvatarBridge
                 int over = YapsTags.Dropped(plug.answers);
                 if (over > 0)
                 {
-                    notes.Add(YapsToggles.LabelFor(plug) + ": " + over + " tag(s) past the first "
+                    notes.Add(YapsToggles.MenuLabelFor(plug) + ": " + BridgeElements.Count(over, "tag", "tags") + " past the first "
                               + YapsTags.PlugSlots + " have no row, and the bake did not keep them either");
                 }
                 if (tags.Count < 2)
                 {
                     if (Remove(avatar, controller, parameter))
                     {
-                        notes.Add(YapsToggles.LabelFor(plug) + ": tag chooser removed, fewer than two tags");
+                        notes.Add(YapsToggles.MenuLabelFor(plug) + ": tag chooser removed, fewer than two tags");
                     }
                     continue;
                 }
@@ -59,10 +59,10 @@ namespace AvatarBridge
                 labels.AddRange(tags.Select(Pretty));
                 labels.Add("Anything");
 
-                EnsureEntry(avatar, parameter, YapsToggles.LabelFor(plug) + " answers", labels);
+                EnsureEntry(avatar, parameter, YapsToggles.MenuLabelFor(plug) + " answers", labels);
                 RemoveLayer(controller, parameter);
                 AddLayer(avatar, controller, plug, parameter, tags);
-                notes.Add(YapsToggles.LabelFor(plug) + ": tag chooser added (" + parameter + "), "
+                notes.Add(YapsToggles.MenuLabelFor(plug) + ": tag chooser added (" + parameter + "), "
                           + tags.Count + " tags, \"As built\" by default");
             }
 
@@ -131,11 +131,15 @@ namespace AvatarBridge
         // Keyed on the plug's path, not its label: a label follows the bone
         // and can change, and a renamed entry would leave the old one behind
         // driving a layer nothing removed.
-        static string Parameter(CVRAvatar avatar, YapsPlug plug)
+        // The second plug on a shared mesh keys on "#1" too, so each gets its own chooser.
+        internal static string Parameter(CVRAvatar avatar, YapsPlug plug)
         {
             string path = AnimationUtility.CalculateTransformPath(plug.Target.transform, avatar.transform);
+            if (LaneOf(plug) > 0) path += "#1";
             return KeyPrefix + (path.GetHashCode() & 0x7FFFFF).ToString("X6");
         }
+
+        static int LaneOf(YapsPlug plug) => YapsToggles.LaneOn(plug, plug.Target);
 
         static void EnsureEntry(CVRAvatar avatar, string parameter, string label, List<string> labels)
         {
@@ -247,8 +251,10 @@ namespace AvatarBridge
             var targets = YapsToggles.Targets(plug, avatar.transform);
             for (int i = 0; i < values.Count; i++)
             {
-                var clip = YapsToggles.Clip(targets, "_YAPS_TagInclude", values[i],
-                    dir + "/" + Sanitise(YapsToggles.LabelFor(plug)) + " answers " + i + ".anim");
+                // Plugs on one mesh share a menu label, so the second's clips are named apart.
+                bool second = LaneOf(plug) > 0;
+                var clip = YapsToggles.Clip(targets, second ? "_YAPS_TagInclude2" : "_YAPS_TagInclude", values[i],
+                    dir + "/" + Sanitise(YapsToggles.MenuLabelFor(plug)) + (second ? " second" : "") + " answers " + i + ".anim");
                 var state = machine.AddState("Answers " + i);
                 state.writeDefaultValues = false;
                 state.motion = clip;

@@ -14,6 +14,13 @@ namespace AvatarBridge
     // mode relies on them entirely.
     public static class AvatarFeatureDetect
     {
+        // ------------------------------------------------------- hand layers ----
+
+        // The gesture layers that own the hand pose. The merger numbers a second promoted one
+        // "LeftHand 2"; the tester reads the same names to find what can overwrite it.
+        static readonly Regex HandLayerName = new Regex(@"^(Left|Right)Hand( \d+)?$");
+        public static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
+
         // ------------------------------------------- face tracking parameters ----
 
         // The stripper's rule, so the tester and the kept-rig report see what a face tracking
@@ -649,13 +656,13 @@ namespace AvatarBridge
             if (left.Count > 0 && right.Count > 0)
             {
                 world = (Average(left) + Average(right)) / 2f;
-                detail = $"midway between {left.Count} left and {right.Count} right eye marker(s), " +
+                detail = $"midway between {left.Count} left and {BridgeElements.Count(right.Count, "right eye marker", "right eye markers")}, " +
                          $"e.g. \"{left[0].name}\" / \"{right[0].name}\"";
             }
             else
             {
                 world = Average(candidates);
-                detail = $"the average of {candidates.Count} eye marker(s) inside the body, " +
+                detail = $"the average of {BridgeElements.Count(candidates.Count, "eye marker", "eye markers")} inside the body, " +
                          $"e.g. \"{candidates[0].name}\"";
             }
 

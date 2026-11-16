@@ -1,4 +1,4 @@
-// Two fixture avatars for the corpus classes it never had, and the
+// Fixture avatars for the corpus classes it never had, and the
 // BHFBUNNY face look, in one headless pass.
 //
 // Fixture_DeformSocket: a socket with a dedicated blendshaped mesh, so
@@ -110,6 +110,93 @@ namespace AvatarBridge.Dev
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
+        // The FX pose fixture alone, for the same reason as the two above.
+        //
+        //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunFxPoseOnly
+        public static void RunFxPoseOnly()
+        {
+            int code = 0;
+            try
+            {
+                string source = FindScene(SourceScene);
+                if (source == null) throw new Exception($"no scene matching \"{SourceScene}\"");
+                string dir = Path.GetDirectoryName(source).Replace('\\', '/');
+                BuildOne(source, dir + "/Fixture_FxBodyPose.unity", AddFxBodyPose);
+                AssetDatabase.SaveAssets();
+            }
+            catch (Exception e)
+            {
+                _log.AppendLine("FAILED: " + e);
+                code = 1;
+            }
+            File.WriteAllText(Log, _log.ToString());
+            if (Application.isBatchMode) EditorApplication.Exit(code);
+        }
+
+        // The prop case: a plug and a ring-and-socket body as they stand before Make
+        // prop, in a scene with no avatar. The corpus makes each a prop and verifies it
+        // every run; built once here so the input holds still while the code moves.
+        //
+        //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunPropsOnly
+        public static void RunPropsOnly()
+        {
+            int code = 0;
+            try
+            {
+                string source = FindScene(SourceScene);
+                if (source == null) throw new Exception($"no scene matching \"{SourceScene}\"");
+                string dir = Path.GetDirectoryName(source).Replace('\\', '/');
+                string target = dir + "/Fixture_Props.unity";
+                var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
+                // Its own mesh, beside the scene: the test plug's default is
+                // overwritten by every test plug anyone spawns.
+                // Baked under a root of its own name: the bake folder follows the
+                // root, and a bare test plug's "YAPS Test Plug" folder is shared
+                // with the smoke test's plug. The fixture lost its material there.
+                var holder = new GameObject("Fixture Prop Plug");
+                var plug = YapsNativeBuilder.BuildTestPlug(holder.transform, select: false, meshPath: dir + "/Fixture_Props Plug Mesh.asset");
+                if (plug == null) throw new Exception("the test plug did not build: YAPS Simple Lit missing?");
+                plug.transform.SetParent(null, false);
+                UnityEngine.Object.DestroyImmediate(holder);
+                plug.name = "Fixture Prop Plug";
+                plug.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+                // The ring-and-socket prefab's layout: a body to grab, ring above,
+                // hole below, facing apart so one prop serves both approaches.
+                var body = new GameObject("Fixture Prop Sockets");
+                body.transform.position = new Vector3(0.5f, 0f, 0f);
+                var shape = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                shape.name = "Body";
+                shape.transform.SetParent(body.transform, false);
+                shape.transform.localScale = new Vector3(0.06f, 0.02f, 0.06f);
+                UnityEngine.Object.DestroyImmediate(shape.GetComponent<Collider>());
+                foreach (var (name, kind, y, tilt) in new[]
+                         {
+                             ("Ring", AvatarBridge.Yaps.YapsSocket.SocketKind.Ring, 0.03f, -90f),
+                             ("Hole", AvatarBridge.Yaps.YapsSocket.SocketKind.Hole, -0.03f, 90f),
+                         })
+                {
+                    var s = YapsSocketBuilder.BuildPreviewSocket(name, kind);
+                    s.transform.SetParent(body.transform, false);
+                    s.transform.localPosition = new Vector3(0f, y, 0f);
+                    s.transform.localRotation = Quaternion.Euler(tilt, 0f, 0f);
+                }
+
+                if (File.Exists(target)) AssetDatabase.DeleteAsset(target);
+                if (!EditorSceneManager.SaveScene(scene, target)) throw new Exception($"could not save {target}");
+                AssetDatabase.SaveAssets();
+                _log.AppendLine($"built {target}");
+            }
+            catch (Exception e)
+            {
+                _log.AppendLine("FAILED: " + e);
+                code = 1;
+            }
+            File.WriteAllText(Log, _log.ToString());
+            if (Application.isBatchMode) EditorApplication.Exit(code);
+        }
+
         static void BuildFixtures()
         {
             string source = FindScene(SourceScene);
@@ -120,6 +207,7 @@ namespace AvatarBridge.Dev
             BuildOne(source, dir + "/Fixture_HeadTransplant.unity", AddTransplantSocket);
             BuildOne(source, dir + "/Fixture_AsymmetricStrafe.unity", AddAsymmetricStrafe);
             BuildOne(source, dir + "/Fixture_TaggedPair.unity", AddTaggedPair);
+            BuildOne(source, dir + "/Fixture_FxBodyPose.unity", AddFxBodyPose);
             AssetDatabase.SaveAssets();
         }
 
@@ -495,6 +583,73 @@ namespace AvatarBridge.Dev
             EditorUtility.SetDirty(d);
             AssetDatabase.SaveAssets();
             _log.AppendLine($"asymmetric strafe: {placements.Length} clips, distinct per side");
+        }
+
+        // Two FX hand layers whose idle clip keys every body muscle and the root, as a gesture
+        // recorded with the whole rig does. VRChat's FX never applied those curves; unmasked in
+        // ChilloutVR they held the body in the pose and the root put it in the floor. The FX
+        // controller is a copy, so the source avatar's own is untouched.
+        static void AddFxBodyPose(VRCAvatarDescriptor d)
+        {
+            string dir = "Assets/FixtureAssets";
+            if (!AssetDatabase.IsValidFolder(dir)) AssetDatabase.CreateFolder("Assets", "FixtureAssets");
+            var layers = d.baseAnimationLayers;
+            int fx = Array.FindIndex(layers, l => l.type == VRCAvatarDescriptor.AnimLayerType.FX);
+            if (fx < 0 || layers[fx].animatorController == null) throw new Exception("no FX controller");
+            string path = dir + "/FixtureFxPose.controller";
+            AssetDatabase.DeleteAsset(path);
+            if (!AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(layers[fx].animatorController), path))
+                throw new Exception("could not copy the FX controller");
+            var controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+
+            string clipPath = dir + "/Fix_PoseIdle.anim";
+            AssetDatabase.DeleteAsset(clipPath);
+            var clip = new AnimationClip { name = "Fix_PoseIdle" };
+            // Body muscles bind by their display names; finger ones would not.
+            foreach (string muscle in HumanTrait.MuscleName.Where(m =>
+                         !System.Text.RegularExpressions.Regex.IsMatch(m, @"^(Left|Right) (Thumb|Index|Middle|Ring|Little) ")))
+            {
+                clip.SetCurve("", typeof(Animator), muscle, AnimationCurve.Constant(0f, 1f, 0.6f));
+            }
+            clip.SetCurve("", typeof(Animator), "RootT.y", AnimationCurve.Constant(0f, 1f, 0.1f));
+            clip.SetCurve("", typeof(Animator), "LeftHand.Index.1 Stretched", AnimationCurve.Constant(0f, 1f, -1f));
+            AssetDatabase.CreateAsset(clip, clipPath);
+
+            // The second brings its own mask with every part on, which the converter used to
+            // leave alone as authored.
+            string maskPath = dir + "/Fix_AllOn.mask";
+            AssetDatabase.DeleteAsset(maskPath);
+            var allOn = new AvatarMask();
+            for (int part = 0; part < (int)AvatarMaskBodyPart.LastBodyPart; part++)
+            {
+                allOn.SetHumanoidBodyPartActive((AvatarMaskBodyPart)part, true);
+            }
+            AssetDatabase.CreateAsset(allOn, maskPath);
+            foreach (var (name, mask) in new[] { ("Left Hand", (AvatarMask)null), ("Right Hand", allOn) })
+            {
+                var machine = new AnimatorStateMachine { name = name, hideFlags = HideFlags.HideInHierarchy };
+                AssetDatabase.AddObjectToAsset(machine, controller);
+                var idle = machine.AddState("Idle");
+                idle.motion = clip;
+                machine.defaultState = idle;
+                controller.AddLayer(new AnimatorControllerLayer
+                {
+                    name = name,
+                    stateMachine = machine,
+                    avatarMask = mask,
+                    defaultWeight = 1f,
+                    blendingMode = AnimatorLayerBlendingMode.Override,
+                });
+            }
+
+            layers[fx].animatorController = controller;
+            layers[fx].isDefault = false;
+            d.baseAnimationLayers = layers;
+            d.customizeAnimationLayers = true;
+            EditorUtility.SetDirty(controller);
+            EditorUtility.SetDirty(d);
+            AssetDatabase.SaveAssets();
+            _log.AppendLine($"fx body pose: {AnimationUtility.GetCurveBindings(clip).Length} curves on two FX layers");
         }
 
         // One clip per placement, each moving the root a different amount

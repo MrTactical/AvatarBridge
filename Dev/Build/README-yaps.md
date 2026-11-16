@@ -8,11 +8,23 @@ that open around them, and shapes that react as a plug goes in. It reads and is 
 systems already on the platform: Raliv DPS, Thry's TPS and VRCFury's SPS: so it works with the
 content that is already out there, not only with itself.
 
-- *Tools ▸ YAPS ▸ Setup* is where everything happens: it finds what an avatar already has, adds
+- *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup* is where everything happens: it finds what an avatar already has, adds
   holes, rings and plugs, and bakes them. Press **Build** after any change.
-- *Tools ▸ YAPS ▸ Create universal socket prefabs* writes drag-and-drop `YAPS Hole` and
+- *Tools ▸ Avatar Bridge ▸ YAPS ▸ Create universal socket prefabs* writes drag-and-drop `YAPS Hole` and
   `YAPS Ring` prefabs, and *Create a plug prop prefab* writes a spawnable plug you can upload as
   a prop on its own.
+- With AvatarBridge installed as well, its *Avatar Tester* gains **Squash** and **Plugs and
+  sockets** in its **Interaction lab** card: preview a socket, drop a test plug or socket, or press
+  the squash with a test hand, beside the avatar's motion in Play mode.
+- **Squash** (breasts and butt flattening against each other and denting under a hand; on a
+  humanoid avatar, as live tissue that anyone's hand dents, grips and slaps) is off
+  until you add it: the **Squash** card in *Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup*, **Set up squash**, or the opt-in
+  *Soft body shape: squash where parts press together* when converting with AvatarBridge.
+- For a body whose bones do not say which parts squash, paint them: **Paint a pair** or **Change these areas** in the
+  squash component's first step, **Which parts squash**, or *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*.
+- **Portals**: set a hole's **Portal exit** to another socket on the same avatar, and a plug that
+  goes in comes out there. Build both the plug's and the socket's avatars with 5.0; to an older
+  plug, and by marker light, it is an ordinary hole.
 
 **The ChilloutVR Toolkit** (*Tools ▸ Avatar Bridge ▸ ChilloutVR Toolkit*) is a set of utilities that work on any
 ChilloutVR avatar: merging animator controllers, tidying an avatar before upload, adding face
@@ -32,16 +44,26 @@ penetration is removed instead, which the report says at the time.
 
 ## Updating
 
-Import the newer package over the top; it replaces what it needs to. A plug or socket you have
-already baked keeps working, but **re-bake anything you want the newest fixes on**: a bake
-carries the shader and the data it was built with, and an uploaded prop carries its own copy.
+**Delete `Assets/AvatarBridge` first, then import the newer package.** Unity's importer adds and
+replaces files but never removes one, so a file an older version shipped and this one does not
+stays behind and keeps compiling. This package installs into that same folder, so if you also
+use AvatarBridge, import it again after deleting. Nothing a conversion or bake makes lives there:
+those go to `Assets/YAPS` and `Assets/AvatarBridgeOutput`. A chain preset you saved into its
+`Presets` folder does live there, so move it anywhere else in `Assets` first; it is found wherever
+it is.
 
-**One route between plugs and sockets needs both people on the same version.** A socket publishes
-itself into a small block of pixels on the screen, which carries a version number, and a plug
-refuses any other. Two avatars built by different versions fall back to the older marker lights
-instead: everything still bends, and what goes missing is the things the lights cannot carry,
-which is tags, one-way rings and a wearer's own sockets. If a plug behaves with one person and
-not another, compare versions before anything else.
+A plug or socket you have already baked keeps working, but **re-bake anything you want the newest
+fixes on**: a bake carries the shader and the data it was built with, and an uploaded prop carries
+its own copy.
+
+**One route between plugs and sockets needs both sides on the same atlas protocol.** A socket
+publishes itself into a small block of pixels on the screen, stamped with a protocol number, and a
+plug ignores any other number. What counts is the release each avatar or prop was baked with, not
+the one installed. So far: 4.5.0 and 4.5.1 use protocol 2, 4.6.0 to 4.6.2 use 7, and 4.6.4 onward
+use 9. Two avatars on different numbers fall back to the older marker lights instead: everything
+still bends, and what goes missing is what the lights cannot carry, which is tags, one-way rings,
+portals and a wearer's own sockets. Portals kept protocol 9 but need both avatars built with 5.0. If a plug behaves with one person and not another, compare which
+releases their avatars were baked with before anything else.
 
 ## Help
 

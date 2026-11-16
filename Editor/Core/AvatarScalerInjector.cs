@@ -131,10 +131,10 @@ namespace AvatarBridge
                           "at 250%.";
             if (collisions.Count > 0)
             {
-                note += $" NOTE: parameter name(s) already existed and were reused: {string.Join(", ", collisions)}.";
+                note += $" NOTE: {(collisions.Count == 1 ? "a parameter name already existed and was" : "parameter names already existed and were")} reused: {string.Join(", ", collisions)}.";
             }
             ctx.Report.Converted(Category,
-                $"Avatar scaler injected: {added} layer(s), \"{HeightMenu}\" slider {height * ScaleAtZero:0.##}–{height * ScaleAtZero * ScaleRange:0.##} m",
+                $"Avatar scaler injected: {BridgeElements.Count(added, "layer", "layers")}, \"{HeightMenu}\" slider {height * ScaleAtZero:0.##}–{height * ScaleAtZero * ScaleRange:0.##} m",
                 note);
         }
 

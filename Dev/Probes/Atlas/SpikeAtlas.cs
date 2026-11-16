@@ -2,7 +2,7 @@
 //
 // Dev only, in this project. Not part of AvatarBridge.
 //
-//   Tools > YAPS > Screen atlas spike
+//   Tools > Avatar Bridge > Dev > Atlas > Screen atlas spike
 //
 // Builds two quads: one stamps a known value into a fixed corner of the
 // screen, the other grabs the screen and samples that corner back. If the
@@ -20,7 +20,7 @@ using UnityEngine;
 
 public class SpikeAtlas : EditorWindow
 {
-    [MenuItem("Tools/YAPS/Screen atlas spike")]
+    [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Screen atlas spike")]
     static void Open() { GetWindow<SpikeAtlas>("Atlas spike"); }
 
     const string Root = "YAPS Atlas Spike";

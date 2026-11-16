@@ -24,7 +24,7 @@ namespace AvatarBridge.Regression
     // test that only checked the first.
     public static class HandPoseOverrideTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: hand pose override audit")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Hand pose override audit")]
         public static void Run()
         {
             int fail = 0;

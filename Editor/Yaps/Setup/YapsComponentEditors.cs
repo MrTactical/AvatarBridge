@@ -206,6 +206,36 @@ namespace AvatarBridge
         static double _searched = double.NegativeInfinity;
         static YapsSocket[] _sockets = new YapsSocket[0];
 
+        // Play Mode stands the preview down unless it is ticked to run there, and
+        // standing down in silence read as a feature that does not work.
+        public const string PausedLine = "The preview is paused in Play Mode. Tick Keep previewing in Play Mode on the socket to run it.";
+        public static bool Paused(YapsSocket socket) =>
+            socket != null && socket.preview && Application.isPlaying && !socket.previewInPlayMode;
+
+        // The preview is never saved, so a recompile dropped a running one while
+        // its button still read as on. The socket is kept across the reload, and
+        // into Play Mode only when it is ticked to run there.
+        const string KeptKey = "YAPS.PreviewSocket";
+
+        [InitializeOnLoadMethod]
+        static void KeepAcrossReloads()
+        {
+            AssemblyReloadEvents.beforeAssemblyReload += () =>
+            {
+                var on = Object.FindObjectsOfType<YapsSocket>(true).FirstOrDefault(s => s.preview);
+                SessionState.SetInt(KeptKey, on != null ? on.GetInstanceID() : 0);
+            };
+            int id = SessionState.GetInt(KeptKey, 0);
+            SessionState.EraseInt(KeptKey);
+            if (id == 0) return;
+            EditorApplication.delayCall += () =>
+            {
+                if (!(EditorUtility.InstanceIDToObject(id) is YapsSocket socket) || socket.preview) return;
+                if (EditorApplication.isPlayingOrWillChangePlaymode && !socket.previewInPlayMode) return;
+                Set(socket, true, spawnPlugIfNone: false);
+            };
+        }
+
         // A test plug in front of this socket, asked for outright.
         public static void DropTestPlug(YapsSocket socket)
         {
@@ -236,7 +266,7 @@ namespace AvatarBridge
             {
                 EditorUtility.DisplayDialog("YAPS preview",
                     "This plug has not been baked yet, so there is nothing to bend. Bake it from " +
-                    "Tools ▸ YAPS ▸ Setup, then preview.", "OK");
+                    "Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
             // WITH lights, like a real socket. It was built without them so a light
@@ -262,7 +292,43 @@ namespace AvatarBridge
             SceneView.RepaintAll();
         }
 
+        // One with no plug to place it by: beside the first baked plug, just past its tip, a
+        // little above the axis, entrance facing the base, so the plug bends in at once. Else in
+        // front of the scene camera. The window and the tester both drop it here, under the one
+        // name, so either can take it away.
+        public static void DropTestSocket(YapsSocket.SocketKind kind)
+        {
+            RemoveTestSocket();
+            var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
+            if (go == null) return;
+            if (FirstBakedPlugFrame(out var origin, out var forward, out var up, out float length))
+            {
+                go.transform.SetPositionAndRotation(origin + forward * (length * 0.85f) + up * (length * 0.35f),
+                    Quaternion.LookRotation(-forward, up));
+            }
+            else
+            {
+                var cam = SceneView.lastActiveSceneView != null ? SceneView.lastActiveSceneView.camera : null;
+                if (cam != null)
+                    go.transform.SetPositionAndRotation(cam.transform.position + cam.transform.forward * 0.6f,
+                        Quaternion.LookRotation(-cam.transform.forward));
+            }
+            Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
+            Selection.activeGameObject = go;
+            EditorGUIUtility.PingObject(go);
+            var socket = go.GetComponent<YapsSocket>();
+            if (socket != null) Set(socket, true, spawnPlugIfNone: false);
+        }
+
         public static bool TestSocketInScene => GameObject.Find(SocketName) != null;
+
+        // In Play mode only the plug prop prefab: a test plug built there writes a mesh, a
+        // material and a bake that outlive the session.
+        public static bool CanDropTestPlug =>
+            !Application.isPlaying || AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.PlugPropPrefabPath) != null;
+
+        public const string NoPlugPrefab =
+            "In Play mode the test plug comes from the plug prop prefab; create it under Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup ▸ Test it.";
 
         public static void RemoveTestSocket()
         {
@@ -296,6 +362,8 @@ namespace AvatarBridge
         {
             if (socket == null) return;
             socket.preview = on;
+            // Asked for in Play mode, so it runs there. A Play-mode edit, gone when Play ends.
+            if (on && Application.isPlaying) socket.previewInPlayMode = true;
             // A plug on the far side of the scene is no use to look at, so
             // the test one arrives unless a real plug is already close.
             if (on && spawnPlugIfNone && CountBakedPlugsNear(socket, NearEnough) == 0) Spawn(socket);
@@ -427,8 +495,15 @@ namespace AvatarBridge
                     Undo.RegisterCreatedObjectUndo(go, "YAPS preview plug");
                 }
             }
+            if (go == null && !CanDropTestPlug)
+            {
+                EditorUtility.DisplayDialog("YAPS preview",
+                    "In Play mode the test plug comes from the plug prop prefab, and this project has none. " +
+                    "Create it under Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup ▸ Test it, or drop the test plug before pressing Play.", "OK");
+                return;
+            }
             // Keep the socket selected; its inspector holds the stop button.
-            if (go == null) go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length);
+            if (go == null) go = YapsNativeBuilder.BuildTestPlug(null, select: false, length: length, name: PlugName);
             if (go == null) return;
             go.name = PlugName;
             var t = socket.transform;
@@ -711,7 +786,9 @@ namespace AvatarBridge
 
         void Built(string at, List<string> lines)
         {
-            foreach (var line in lines) Debug.Log("[YAPS] " + line);
+            // A failed step as an error, so the report pop-up offers itself.
+            foreach (var line in lines)
+                if (line.StartsWith("✗")) Debug.LogError("[YAPS] " + line); else Debug.Log("[YAPS] " + line);
             _saidAt = at;
             _saidTone = lines.Any(l => l.StartsWith("✗")) ? Tone.Bad : lines.Any(l => l.Contains("⚠")) ? Tone.Warn : Tone.Good;
             _said = lines.Count == 0
@@ -743,10 +820,12 @@ namespace AvatarBridge
             var avatarRoot = AvatarRootOf(socket.transform);
             bool hole = kindProp.enumValueIndex == (int) YapsSocket.SocketKind.Hole;
             bool built = IsBuilt(socket.transform);
+            var exitProp = so.FindProperty("portalExit");
+            bool portal = exitProp.objectReferenceValue != null;
 
-            _root.Add(BridgeElements.Banner((hole ? "Hole" : socket.oneWay ? "One-way ring" : "Ring") + " · " + YapsToggles.LabelFor(socket),
+            _root.Add(BridgeElements.Banner((portal ? "Portal entrance" : hole ? "Hole" : socket.oneWay ? "One-way ring" : "Ring") + " · " + YapsToggles.LabelFor(socket),
                 built ? "readable by DPS, TPS, SPS and YAPS plugs" : "not built: no plug can find it yet",
-                built ? "built" : "not built", BridgeTheme.Span.Cvr));
+                built ? "built" : "not built"));
 
             // The inset the bleeding root gave up, back under the banner. A plain container, not
             // Scroll(): a scroller inside the Inspector's own would trap the wheel.
@@ -775,7 +854,10 @@ namespace AvatarBridge
             // says which is missing, and holds the only Build this socket.
             var current = rendererProp.objectReferenceValue as SkinnedMeshRenderer;
             bool contactRoute = current != null && YapsNativeBuilder.ShapesByContact(socket);
-            string unbuilt = !built ? "Not built yet: no plug can find it."
+            var lostShader = YapsNativeBuilder.LostShader(socket);
+            string unbuilt = lostShader != null
+                ? $"Built, but \"{lostShader.name}\" no longer wears the YAPS shader, so its shapes do nothing. " + YapsNativeBuilder.LostShaderWhy
+                : !built ? "Not built yet: no plug can find it."
                 : current != null && shapesProp.arraySize > 0
                   && !(contactRoute ? YapsSocketReactions.Exists(socket) : FindSocketMaterial(socket) != null)
                     ? "Not built yet: its shapes do nothing in game."
@@ -796,7 +878,7 @@ namespace AvatarBridge
 
             // What it is.
             var what = new BridgeElements.Card("What it is");
-            what.Body.Add(BridgeElements.Choice("Kind",
+            var kindChoice = BridgeElements.Choice("Kind",
                 "A hole closes around the plug and stops it: a mouth, a pussy, an anus. " +
                 "A ring lets the plug pass straight through: a hand, thighs, a foot.",
                 new[] { "Hole", "Ring" }, kindProp.enumValueIndex, i =>
@@ -812,7 +894,11 @@ namespace AvatarBridge
                     YapsSocketBuilder.ApplyKind(socket);
                     Undo.CollapseUndoOperations(group);
                     RebuildLater();
-                }));
+                });
+            // The cut runs only where a path ends in a hole. A ring a script
+            // made an entrance stays free, so it can be set back.
+            kindChoice.SetEnabled(!portal || !hole);
+            what.Body.Add(kindChoice);
             if (!hole)
             {
                 // The kind rides the atlas writer's material, so the writer
@@ -828,6 +914,27 @@ namespace AvatarBridge
                 });
                 what.Body.Add(oneWay);
             }
+
+            var exitField = YapsInspectorStyle.Field(exitProp, type.GetField("portalExit"), "Portal exit");
+            exitField.TrackPropertyValue(exitProp, p =>
+            {
+                if (p.objectReferenceValue != null && kindProp.enumValueIndex != (int) YapsSocket.SocketKind.Hole)
+                {
+                    Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "YAPS portal");
+                    kindProp.enumValueIndex = (int) YapsSocket.SocketKind.Hole;
+                    so.ApplyModifiedProperties();
+                    YapsSocketBuilder.ApplyKind(socket);
+                }
+                // The whole build, not the writer alone: without the owner
+                // layer reaching it, the exit publishes for nobody in game.
+                if (built) Built("build", YapsNativeBuilder.BuildSocket(socket));
+                RebuildLater();
+            });
+            what.Body.Add(exitField);
+            string portalNote = YapsSocketBuilder.PortalNote(socket);
+            if (portalNote != null)
+                what.Body.Add(BridgeElements.Notice(portalNote.StartsWith("✓") ? Tone.Info : Tone.Warn,
+                    char.ToUpper(portalNote[2]) + portalNote.Substring(3)));
 
             what.Body.Add(YapsInspectorStyle.Field(so.FindProperty("tags"),
                 typeof(YapsSocket).GetField("tags"), "Tags"));
@@ -846,7 +953,7 @@ namespace AvatarBridge
             // draw made "None" impossible and dirtied a socket on selection.
             if (current != null && !renderers.Contains(current)) renderers.Insert(0, current);
             var rNames = new List<string> { "None: bend plugs, play no shape" };
-            rNames.AddRange(renderers.Select(r => $"{r.name} · {r.sharedMesh.blendShapeCount} shapes"));
+            rNames.AddRange(renderers.Select(r => r.sharedMesh != null ? $"{r.name} · {r.sharedMesh.blendShapeCount} shapes" : $"{r.name} · no mesh"));
             int rIndex = current != null ? renderers.IndexOf(current) : -1;
             opens.Body.Add(BridgeElements.Popup("Mesh", "The mesh whose shapes open as a plug goes in.",
                 rNames.ToArray(), rIndex + 1, index =>
@@ -869,7 +976,7 @@ namespace AvatarBridge
                     $"DPS plugs have no pointer and do not open it. Full depth is {reach:0.00} m in ({reachFrom})."));
             }
 
-            if (current != null)
+            if (current != null && current.sharedMesh != null)
             {
                 var mesh = current.sharedMesh;
                 var shapeNames = Enumerable.Range(0, mesh.blendShapeCount).Select(mesh.GetBlendShapeName).ToList();
@@ -1059,7 +1166,8 @@ namespace AvatarBridge
                     : null));
             // Pressed while it runs. The label stays the one the README quotes.
             var previewButton = BridgeElements.Btn("Preview", () => { YapsPreview.Set(socket, !socket.preview); RebuildLater(); },
-                socket.preview ? "Previewing. Click again to stop."
+                YapsPreview.Paused(socket) ? YapsPreview.PausedLine
+                : socket.preview ? "Previewing. Click again to stop."
                 : bakedPlugs > 0 ? "Bends the baked plugs near it toward this socket."
                 : "No baked plug is near, so this drops a test one in front of it.",
                 ButtonKind.Strong);
@@ -1067,8 +1175,8 @@ namespace AvatarBridge
             // Asked for outright, since guessing whether the avatar's own
             // plug is the one to watch gets it wrong on a body where
             // everything is within arm's reach of everything.
-            bool testPlug = YapsPreview.TestPlugInScene;
-            see.Body.Add(BridgeElements.ButtonRow(previewButton, BridgeElements.Btn(
+            bool testPlug = YapsPreview.TestPlugInScene, canDrop = testPlug || YapsPreview.CanDropTestPlug;
+            var dropButton = BridgeElements.Btn(
                 testPlug ? "Take the test plug away" : "Drop a test plug here",
                 () =>
                 {
@@ -1076,7 +1184,11 @@ namespace AvatarBridge
                     else { YapsPreview.Set(socket, true, spawnPlugIfNone: false); YapsPreview.DropTestPlug(socket); }
                     RebuildLater();
                 },
-                testPlug ? "Takes the test plug out of the scene." : "Drops a test plug in front of it, even with a baked one near.")));
+                testPlug ? "Takes the test plug out of the scene."
+                : canDrop ? "Drops a test plug in front of it, even with a baked one near." : YapsPreview.NoPlugPrefab);
+            dropButton.SetEnabled(canDrop);
+            see.Body.Add(BridgeElements.ButtonRow(previewButton, dropButton));
+            if (YapsPreview.Paused(socket)) see.Body.Add(BridgeElements.Hint(YapsPreview.PausedLine));
 
             // The plug mesh on most avatars only exists in Play Mode: it ships
             // switched off and a toggle brings it in. So the one state where you
@@ -1089,11 +1201,12 @@ namespace AvatarBridge
                     Undo.RecordObject(socket, "YAPS preview in play mode");
                     socket.previewInPlayMode = on;
                     EditorUtility.SetDirty(socket);
+                    RebuildLater();
                 }));
 
             // Applied at once on a built socket, menu included, like the kind.
             see.Body.Add(BridgeElements.Bind("In-game readout",
-                "Hidden until the avatar's YAPS readout menu toggle shows it. Once nothing on the avatar " +
+                "Off by default. Hidden until the avatar's YAPS readout menu toggle shows it. Once nothing on the avatar " +
                 "carries a readout, the menu toggle and its synced bit go too.",
                 socket.readout, on =>
                 {
@@ -1162,7 +1275,7 @@ namespace AvatarBridge
                     });
                     opensHow.Body.Add(mm);
                 }
-                opensHow.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open material", () => Selection.activeObject = bakedMat)));
+                opensHow.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Open material", () => BridgeElements.Reveal(bakedMat))));
                 body.Add(opensHow);
             }
 
@@ -1187,7 +1300,7 @@ namespace AvatarBridge
                 BridgeElements.Btn(built ? "Rebuild markers" : "Build markers", () =>
                 {
                     Undo.RegisterFullObjectHierarchyUndo(socket.gameObject, "Rebuild YAPS socket");
-                    YapsSocketBuilder.Build(socket);
+                    YapsNativeBuilder.RebuildMarkers(socket);
                     RebuildLater();
                 }),
                 BridgeElements.Btn("Open YAPS Setup", YapsSetupWindow.Open)));
@@ -1301,6 +1414,12 @@ namespace AvatarBridge
             {
                 var label = new GUIStyle(EditorStyles.whiteMiniLabel) { fontSize = 11 };
                 Handles.Label(c + u * (r * 1.4f), (hole ? "hole" : "ring") + (built ? "" : ", not built"), label);
+            }
+            // Where a plug that goes in comes out.
+            if (socket.portalExit != null && socket.portalExit != socket)
+            {
+                Handles.color = colour;
+                Handles.DrawDottedLine(c, socket.portalExit.transform.position, 5f);
             }
         }
     }
@@ -1428,7 +1547,7 @@ namespace AvatarBridge
             _root.Add(BridgeElements.Banner("Plug · " + YapsToggles.LabelFor(plug),
                 renderer == null ? "no renderer: pick the mesh that bends"
                 : isBaked ? $"baked · {len:0.###} m · {baked[0].name}" : "not baked yet: set it up, then Bake",
-                isBaked ? "baked" : "not baked", BridgeTheme.Span.Cvr));
+                isBaked ? "baked" : "not baked"));
 
             // The inset the bleeding root gave up, back under the banner. A plain container, not
             // Scroll(): a scroller inside the Inspector's own would trap the wheel.
@@ -1438,7 +1557,13 @@ namespace AvatarBridge
             body.Add(BridgeElements.Notice(Tone.Info,
                 YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.PlugSwitchNote,
                 action: BridgeElements.Btn("Open YAPS Setup", YapsSetupWindow.Open)));
-            if (!isBaked) body.Add(BridgeElements.Notice(Tone.Warn, "Not baked yet. Set up the mesh, then press Bake at the bottom."));
+            var lost = YapsNativeBuilder.LostShader(plug);
+            if (lost.Count > 0)
+                body.Add(BridgeElements.Notice(Tone.Bad,
+                    lost.Count == 1 ? $"Baked, but \"{lost[0].name}\" no longer wears the YAPS shader, so the plug does not bend."
+                        : $"Baked, but {lost.Count} of its materials no longer wear the YAPS shader, so the plug does not bend: {AvatarSurvey.Few(lost.Select(m => m.name))}.",
+                    YapsNativeBuilder.LostShaderWhy + " Re-bake is at the bottom."));
+            else if (!isBaked) body.Add(BridgeElements.Notice(Tone.Warn, "Not baked yet. Set up the mesh, then press Bake at the bottom."));
 
             // Every knob is tagged with its system, and the filter shows one
             // system. Above every card, since it reaches all of them.
@@ -1490,7 +1615,7 @@ namespace AvatarBridge
             // A slot on the mesh and, while anything carries one, a synced bit
             // and a menu row, so it can be left off.
             see.Body.Add(BridgeElements.Bound(serializedObject, nameof(YapsPlug.readout), "In-game readout",
-                "Hidden until the avatar's YAPS readout menu toggle shows it. Untick and re-bake to leave it off. " +
+                "Off by default. Tick and re-bake to debug a plug: hidden until the avatar's YAPS readout menu toggle shows it. " +
                 "Once nothing on the avatar carries a readout, the menu toggle and its synced bit go too."));
 
             // Fields in declaration order; a [Header] opens a section. The
@@ -1522,7 +1647,19 @@ namespace AvatarBridge
                     }
                 }
                 if (!Passes(from)) continue;
-                into.Add(YapsInspectorStyle.Field(it.Copy(), field, null, from));
+                var drawn = YapsInspectorStyle.Field(it.Copy(), field, null, from);
+                into.Add(drawn);
+                // Red, not the tooltip alone: the copy runs the whole deform
+                // even while hidden, so the cost is paid with nothing in reach.
+                if (it.name == nameof(YapsPlug.twoAtOnce))
+                {
+                    drawn.TrackPropertyValue(it.Copy(), p => RebuildLater());
+                    if (plug.twoAtOnce)
+                        into.Add(BridgeElements.Notice(Tone.Bad,
+                            "Performance: Two At Once about doubles this plug's cost on the graphics card, all the time " +
+                            "it is ticked, even with no second socket or portal in reach. Leave it off unless the plug " +
+                            "needs two sockets at once or a portal."));
+                }
             }
             FinishFold(fold);
             if (Passes("YAPS")) OwnSockets(plug, sockets.Body);
@@ -1530,7 +1667,7 @@ namespace AvatarBridge
             var bake = new BridgeElements.Card("Bake");
             bake.Body.Add(BridgeElements.Hint(isBaked
                 ? "Knobs write to the material and its YAPS panel writes back. Mesh, bone and measurement changes need a re-bake."
-                : "Set up the mesh, then Bake: it measures the mesh and patches its shader, or uses YAPS Simple Lit."));
+                : "Set up the mesh, then Bake: it measures the mesh and patches its shader, or uses YAPS Standard or YAPS Simple Lit."));
             bake.Body.Add(new BridgeElements.PrimaryButton(isBaked ? "Re-bake" : "Bake", () =>
             {
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
@@ -1540,7 +1677,7 @@ namespace AvatarBridge
                 _saidMore = o.Notes.Count > 0 ? string.Join("\n", o.Notes) : null;
                 _saidTone = o.Ok ? Tone.Good : Tone.Bad;
                 RebuildLater();
-            }, BridgeTheme.BridgeTo));
+            }));
             if (_said != null) bake.Body.Add(BridgeElements.Notice(_saidTone, _said, _saidMore));
             bake.Section("Remove");
             bake.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Remove this plug", () =>

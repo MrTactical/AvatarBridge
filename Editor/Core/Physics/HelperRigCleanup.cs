@@ -121,7 +121,7 @@ namespace AvatarBridge
 
             // Nothing simulates it, nothing reads from it, and no surviving
             // cloth borrows a collider out of it, so what remains is a bone
-            // update per transform per frame for no motion. On one corpus
+            // update per transform per frame for no motion. On one
             // avatar that was 110 of 468 transforms.
             //
             // Only the tops, computed from what moves no mesh: a rig called
@@ -160,7 +160,7 @@ namespace AvatarBridge
 
             if (kept > 0)
             {
-                ctx.Report.Approximated(Category, kept + " helper rig(s) left in place",
+                ctx.Report.Approximated(Category, BridgeElements.Count(kept, "helper rig", "helper rigs") + " left in place",
                     "A surviving cloth borrows their colliders, or they carry contacts still needed. They are inert.");
             }
             Report(ctx, dropped, removedBones, where);
@@ -266,6 +266,7 @@ namespace AvatarBridge
                 Gravity = from.Gravity,
                 Immobile = from.Immobile,
                 LimitTypeName = "None",
+                StandIn = true,
             };
 #if AVATARBRIDGE_MAGICA
             if (ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)
@@ -293,16 +294,16 @@ namespace AvatarBridge
             // what was found rather than describe one.
             if (dropped == 0)
             {
-                ctx.Report.Warning(Category, $"{ctx.HelperRigChains.Count} chain(s) moved no mesh; no cloth made",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(ctx.HelperRigChains.Count, "chain", "chains")} moved no mesh; no cloth made",
                     "None is weighted to a mesh, nothing rendered sits under them, and no constraint reads them, " +
                     "so a cloth there would move nothing. " +
-                    (bones > 0 ? $"Removed with them: {bones} transform(s)." : "Their bones are left in place."));
+                    (bones > 0 ? $"Removed with them: {BridgeElements.Count(bones, "transform", "transforms")}." : "Their bones are left in place."));
                 return;
             }
             ctx.Report.Warning(Category, $"A physics addon did not survive conversion ({ctx.HelperRigChains.Count} chains)",
                 "Helper bones feeding each other through constraints, with no mesh on them. Cloth simulates each " +
                 "chain alone and would deform the body, so none was converted. " +
-                $"Removed with it: {dropped} constraint(s), {bones} transform(s). {where}");
+                $"Removed with it: {BridgeElements.Count(dropped, "constraint", "constraints")}, {BridgeElements.Count(bones, "transform", "transforms")}. {where}");
         }
     }
 }

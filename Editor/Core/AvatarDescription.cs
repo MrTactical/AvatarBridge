@@ -241,7 +241,13 @@ namespace AvatarBridge
                 return 0;
             }
 
+            // A grouped cloth holds several converted chains; each counts.
             int magica = CountByTypeName(ctx.Target, "MagicaCloth2.MagicaCloth");
+            if (magica > 0 && ctx.ConvertedPhysicsChains != null)
+            {
+                var converted = ctx.ConvertedPhysicsChains.Where(c => c.Physics != null).ToList();
+                magica += converted.Count - converted.Select(c => c.Physics).Distinct().Count();
+            }
             if (magica > 0)
             {
                 physicsName = "MagicaCloth 2";
@@ -262,7 +268,9 @@ namespace AvatarBridge
             int found = 0;
             foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
             {
-                if (behaviour != null && behaviour.GetType().FullName == typeName)
+                // The live tissue's probe cloth is not a chain; name from YapsJelly.cs.
+                if (behaviour != null && behaviour.GetType().FullName == typeName
+                    && behaviour.gameObject.name != "Jelly Probes")
                 {
                     found++;
                 }

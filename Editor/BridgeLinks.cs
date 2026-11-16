@@ -38,9 +38,6 @@ namespace AvatarBridge
 
         public const string DiscordUserId = "846491891805847572";
 
-        public static bool HasDiscordLink =>
-            !string.IsNullOrEmpty(DiscordInvite) || !string.IsNullOrEmpty(DiscordUserId);
-
         public static void OpenDiscord()
         {
             if (!string.IsNullOrEmpty(DiscordInvite))
@@ -73,12 +70,16 @@ namespace AvatarBridge
         // with the environment blob saying which tool it came from.
         public const string YapsHelp = Repo + "#yaps-penetration-that-works-in-chilloutvr";
 
-        public static void OpenYapsBugReport()
+        public static void OpenYapsBugReport(string last = null)
         {
             string url = Repo + "/issues/new?template=bug_report.yml&environment=" +
-                         Uri.EscapeDataString("Tool:          YAPS (Tools ▸ YAPS ▸ Setup)\n" + BuildDiagnostics(null));
+                         Uri.EscapeDataString(YapsDiagnostics(last));
             Application.OpenURL(url);
         }
+
+        // What the YAPS window last did goes after the versions, since the tool writes no report.
+        public static string YapsDiagnostics(string last) =>
+            "Tool:          YAPS (Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup)\n" + BuildDiagnostics(null) + last;
 
         public static void CopyDiagnostics(BridgeReport report = null)
         {

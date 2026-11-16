@@ -1,0 +1,128 @@
+// The squash on an avatar: how it feels, what presses it, and optionally the regions painted
+// with the squash region tool in place of finding the parts by bone name. The toolkit and the
+// converter build from it and write the knobs to the materials. ChilloutVR strips it at upload.
+// No SDK dependency.
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace AvatarBridge.Yaps
+{
+    [AddComponentMenu("YAPS/YAPS Squash")]
+    [DisallowMultipleComponent]
+    public class YapsSquashSettings : MonoBehaviour
+    {
+        [Serializable]
+        public class Pair
+        {
+            public string name = "Pair";
+            // Per vertex of the body mesh, 0 to 255. A is the side toward the avatar's left
+            // (its -x), B the other; B empty for a part with one side alone, which only the jelly
+            // takes. Bytes, so a body's worth stays small in the scene file.
+            public byte[] a = new byte[0], b = new byte[0];
+        }
+
+        [Header("How it gives")]
+        [Range(0f, 2f), Tooltip("How hard every press lands: the partner, hands and plugs alike.")]
+        public float strength = 1f;
+        [Range(0.2f, 1f), Tooltip("How flat a part can be pressed, as a share of its depth. 1 never flattens.")]
+        public float flattest = 0.6f;
+        [Range(1f, 2.5f), Tooltip("How far a flattened part may widen to keep its volume.")]
+        public float widest = 1.5f;
+        [Range(0f, 1f), Tooltip("1 keeps the volume, so it widens as it flattens. Lower lets some of it go.")]
+        public float volumeKept = 1f;
+        [Range(0f, 1f), Tooltip("Lying back, how much its own weight flattens it into the body.")]
+        public float lyingBack = 0.25f;
+
+        [Header("The pair")]
+        [Tooltip("Off, what overlaps passes through. On, the part driven further keeps its round front and pushes the other aside by as much as it pushed in, the other taking a rounded hollow where they still meet; pushed alike from both sides, the two press flat against each other, swelling out round the contact.")]
+        public bool meet = true;
+        [Range(0f, 2f), Tooltip("How much of what the meeting pushes back swells out round the contact.")]
+        public float spill = 1f;
+
+        [Header("In motion")]
+        [Tooltip("As its physics swing it, a part stretches away from where it hangs and squashes back toward it, " +
+                 "keeping its volume. The swing is the physics' own, unchanged.")]
+        public bool stretchInMotion = true;
+
+        [Header("What presses it")]
+        [Range(0f, 2f), Tooltip("The wearer's own arms and hands. 0 leaves them out.")]
+        public float ownArms = 1f;
+        [Range(0f, 2f), Tooltip("Other players' hands, from the hand positions ChilloutVR gives every shader. On the live tissue, any value above 0 lets them press and 0 leaves them out.")]
+        public float othersHands = 1f;
+        [Range(0.02f, 0.1f), Tooltip("Another player's hand, as a ball of this radius in metres on a 1.6 m player, scaled to their height.")]
+        public float handSize = 0.05f;
+        [Range(0f, 2f), Tooltip("A plug in a socket between the pair, parting it.")]
+        public float plugs = 1f;
+        [Range(0f, 2f), Tooltip("Pressed by whatever the part's physics collide with, from the side it was pushed. " +
+                                "Off by default: every swing read as a press.")]
+        public float clothPush = 0f;
+
+        // The jelly's alone: the inspector shows them only on an avatar wearing it.
+        [Header("Live tissue")]
+        [Tooltip("Adds a Jelly twitch toggle to the menu: each flip kicks the jiggle once. " +
+                 "Anything in the animator can kick it too, by moving the Jelly Twitch object.")]
+        public bool twitch = false;
+        [Range(0.005f, 0.05f), Tooltip("How far a twitch kicks, in metres.")]
+        public float twitchSize = 0.02f;
+        [Tooltip("A fist stroking along the skin takes its grip with it, the skin dragging a little behind. " +
+                 "Off, a grip stays where the fist closed and lets go when pulled too far.")]
+        public bool gripSlides = false;
+        [Tooltip("Other players' MagicaCloth colliders press the skin too, felt by a net of probes over it, MagicaCloth installed. " +
+                 "Off by default: the net costs every viewer about 0.1 s more each time the avatar loads, and only viewers whose " +
+                 "Dynamic Bone interaction settings take in other players' colliders feel any. Hands press either way. Rebuild after changing it.")]
+        public bool otherColliders = false;
+        [Tooltip("With Other Colliders on, adds a Jelly probes (debug) toggle to the menu, for testing other players' MagicaCloth colliders in game: " +
+                 "a marker on each probe, white at rest, red where the tissue felt a collider push it in. " +
+                 "Moved but still white, the tissue never heard of it; never moved, the game gave the probes no collider.")]
+        public bool probeMarkers = false;
+
+        // Each part on the live tissue, by the name the build gives it: a preset filling eight knobs,
+        // each a share of how the build tunes that part, 1 as built. A part's first build guesses its
+        // preset from its name or the bone it rides. Drawn by the inspector's own card, live. New
+        // presets go after Custom: the enum is saved by its index.
+        public enum Preset { Breasts, Butt, Thighs, Belly, Custom, Firm }
+
+        [Serializable]
+        public class Feel
+        {
+            public string part = "";
+            public Preset preset = Preset.Custom;
+            public float firmness = 1f, settle = 1f, give = 1f, swing = 1f, springBack = 1f, taut = 1f, depth = 1f, slap = 1f;
+        }
+
+        [HideInInspector]
+        public List<Feel> feels = new List<Feel>();
+
+        // Drawn by the inspector's Parts card, not with the knobs: both need a rebuild.
+        [Tooltip("Bones picked by hand in place of the name search, two to a pair, one each side, " +
+                 "next to each other in the list: cheeks, thighs, anything that comes in two. The squash takes the first two pairs, the live tissue the first four. " +
+                 "Painted regions win over these.")]
+        public List<Transform> partBones = new List<Transform>();
+        [Tooltip("Materials the squash never touches. A layer left out stays still while the skin under it " +
+                 "squashes, so a press can show the skin through it.")]
+        public List<Material> leaveAlone = new List<Material>();
+
+        // The regions, painted in the inspector's first step. None: the parts come from the
+        // picked bones, or else the bone names.
+        [HideInInspector]
+        public SkinnedMeshRenderer body;
+
+        // Any number, a pair or one side each: the squash takes the first two pairs, the live tissue
+        // the first four parts.
+        [HideInInspector]
+        public List<Pair> pairs = new List<Pair>();
+
+        // What the weights were painted against. A mesh that changed since is refused rather
+        // than read with every weight on the wrong vertex.
+        [HideInInspector] public int vertexCount;
+        [HideInInspector] public int fingerprint;
+
+        // The regions the last build read, so the windows can say a stroke since needs a rebuild.
+        [HideInInspector] public int builtFrom;
+
+        // The pairs the last build's squash carries, in its order, for the live tissue to take
+        // over from it.
+        [HideInInspector] public List<string> dented = new List<string>();
+    }
+}

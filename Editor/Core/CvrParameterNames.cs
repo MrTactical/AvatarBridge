@@ -13,7 +13,7 @@ namespace AvatarBridge
     {
         // VRChat parameter -> ChilloutVR core parameter.
         // GestureLeftWeight/RightWeight stay unrenamed.
-        // A CVRParameterStream feeds them instead.
+        // The merger works them out from GestureLeft/Right instead.
         internal static readonly Dictionary<string, string> RenameMap = new Dictionary<string, string>
         {
             { "Viseme", "VisemeIdx" },
@@ -138,8 +138,7 @@ namespace AvatarBridge
         // so sync is the sole path to other clients.
         internal static readonly HashSet<string> StreamFed = new HashSet<string>
         {
-            "GestureLeftWeight", "GestureRightWeight", "MuteSelf", "VRMode",
-            "Upright", "TrackingType", "EyeHeightAsMeters"
+            "MuteSelf", "VRMode", "Upright", "TrackingType", "EyeHeightAsMeters"
             // The rest of the scale family is derived locally from
             // EyeHeightAsMeters by FeedScaleParameters. Cheaper than sync.
         };
@@ -156,6 +155,29 @@ namespace AvatarBridge
             return Core.Contains(mapped)
                    || StreamFed.Contains(bare)
                    || GestureMap.GestureWeightParameters.Contains(bare);
+        }
+
+        // Floats a clip in the controller writes. The client marks these read-only and never
+        // syncs them or spends bits on them, whatever their name, so counting one as synced
+        // reports a budget the avatar does not use.
+        internal static HashSet<string> CurveDriven(UnityEditor.Animations.AnimatorController controller)
+        {
+            var floats = new HashSet<string>(controller.parameters
+                .Where(p => p.type == UnityEngine.AnimatorControllerParameterType.Float)
+                .Select(p => p.name));
+            var driven = new HashSet<string>();
+            foreach (var clip in controller.animationClips.Where(c => c != null).Distinct())
+            {
+                foreach (var b in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    if (b.type == typeof(UnityEngine.Animator) && string.IsNullOrEmpty(b.path)
+                        && floats.Contains(b.propertyName))
+                    {
+                        driven.Add(b.propertyName);
+                    }
+                }
+            }
+            return driven;
         }
     }
 }

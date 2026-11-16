@@ -46,11 +46,48 @@ namespace AvatarBridge
             }
         }
 
+        // A curve reaches every slot of the renderer, so the second plug on a
+        // shared mesh (lane 1) fills the sixteen slots from the top and has
+        // scale and girth of its own. The shader reads the same way.
+        public static int ShapeSlot(int index, int lane) => lane > 0 ? (YapsBaker.MaxShapes - 1) ^ index : index;
+
+        static string ScaleName(int lane) => lane > 0 ? "_YAPS_BakeScale2" : "_YAPS_BakeScale";
+        static string GirthName(int lane) => lane > 0 ? "_YAPS_BakeGirth2" : "_YAPS_BakeGirth";
+
+        // A build from before lanes wrote the second plug's curve under the
+        // first plug's name, where it still drives the first. Only a curve
+        // equal to the one this plug writes now can be its own, and only where
+        // the first plug does not write that same curve there itself.
+        static bool PurgeOwnLegacy(AnimationClip clip, string rendererPath, string property, string component,
+            AnimationCurve now)
+        {
+            string bound = YapsToggles.Bound(property) + component;
+            bool purged = false;
+            foreach (var b in AnimationUtility.GetCurveBindings(clip)
+                         .Where(b => b.path == rendererPath && YapsToggles.Bare(b.propertyName) == bound).ToList())
+            {
+                var old = AnimationUtility.GetEditorCurve(clip, b);
+                if (old == null || old.length != now.length) continue;
+                bool same = true;
+                for (int i = 0; i < old.length && same; i++)
+                    same = Mathf.Approximately(old[i].time, now[i].time) && Mathf.Approximately(old[i].value, now[i].value);
+                if (!same) continue;
+                AnimationUtility.SetEditorCurve(clip, b, null);
+                purged = true;
+            }
+            return purged;
+        }
+
+        // Set when a lane-1 mirror took out its own pre-lane curve, so the
+        // other plug on the mesh wants mirroring again.
+        public static bool Purged;
+
         // Shape curves on the renderer become weight curves on its material.
         // Returns how many were written; `missed` names animated shapes that
         // move the plug but are not in the bake.
         public static int MirrorShapes(IEnumerable<AnimationClip> clips, string rendererPath, Renderer renderer,
-            IList<string> bakedShapes, ICollection<string> movingShapes, ISet<string> missed)
+            IList<string> bakedShapes, ICollection<string> movingShapes, ISet<string> missed, int lane = 0,
+            IList<string> firstShapes = null)
         {
             int written = 0;
             foreach (var clip in clips)
@@ -79,7 +116,11 @@ namespace AvatarBridge
                     // Blendshapes animate 0..100; the bake stores full
                     // shapes, so the material takes 0..1.
                     var scaled = Scaled(AnimationUtility.GetEditorCurve(clip, binding), 0.01f);
-                    SetOnSlots(clip, rendererPath, renderer, WeightPack(index), "." + "xyzw"[index & 3], scaled);
+                    // firstShapes null: nothing known of the first plug, so nothing is taken.
+                    if (lane > 0 && firstShapes != null && (index >= firstShapes.Count || firstShapes[index] != shape))
+                        Purged |= PurgeOwnLegacy(clip, rendererPath, WeightPack(index), "." + "xyzw"[index & 3], scaled);
+                    int slot = ShapeSlot(index, lane);
+                    SetOnSlots(clip, rendererPath, renderer, WeightPack(slot), "." + "xyzw"[slot & 3], scaled);
                     written++;
                 }
             }
@@ -114,7 +155,7 @@ namespace AvatarBridge
         // pose makes the two agree by construction.
         public static int MirrorBoneScale(IEnumerable<AnimationClip> clips,
             IDictionary<string, Transform> bones, string rendererPath, Renderer renderer,
-            Quaternion bakeRotation)
+            Quaternion bakeRotation, int lane = 0, bool purgeLegacy = false)
         {
             if (bones == null || bones.Count == 0)
             {
@@ -175,12 +216,16 @@ namespace AvatarBridge
                 bool any = false;
                 if (length != null)
                 {
-                    SetOnSlots(clip, rendererPath, renderer, "_YAPS_BakeScale", "", AsRatio(length, bone.localScale[along]));
+                    var ratio = AsRatio(length, bone.localScale[along]);
+                    if (lane > 0 && purgeLegacy) Purged |= PurgeOwnLegacy(clip, rendererPath, "_YAPS_BakeScale", "", ratio);
+                    SetOnSlots(clip, rendererPath, renderer, ScaleName(lane), "", ratio);
                     any = true;
                 }
                 if (girth != null)
                 {
-                    SetOnSlots(clip, rendererPath, renderer, "_YAPS_BakeGirth", "", AsRatio(girth, bone.localScale[girthAxis]));
+                    var ratio = AsRatio(girth, bone.localScale[girthAxis]);
+                    if (lane > 0 && purgeLegacy) Purged |= PurgeOwnLegacy(clip, rendererPath, "_YAPS_BakeGirth", "", ratio);
+                    SetOnSlots(clip, rendererPath, renderer, GirthName(lane), "", ratio);
                     any = true;
                 }
                 if (any)

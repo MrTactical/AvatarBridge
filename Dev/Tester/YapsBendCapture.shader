@@ -40,6 +40,11 @@ Shader "Hidden/YapsBendCapture"
             float4 _YapsProbeRoot;
             float4 _YapsProbeForward;
             float _YapsProbeLength;
+            // Two vertices' recovered roots, written at _YapsTwinAt: a seam's twins share a point
+            // and a normal, so a root that differs between them is what parts them in a bend.
+            float _YapsTwinA;
+            float _YapsTwinB;
+            float _YapsTwinAt;
 
             struct appdata
             {
@@ -54,9 +59,35 @@ Shader "Hidden/YapsBendCapture"
             {
                 float3 p = v.vertex.xyz, n = v.normal, t = v.tangent.xyz;
                 YapsDeform(p, n, t, v.id);
+                float3 deformed = p;
                 YapsSocketDeform(p, n, t, v.id);
                 if (_YapsCaptureOn > 0.5)
                     _YapsCapture[v.id] = float4(mul(unity_ObjectToWorld, float4(p, 1)).xyz, 1);
+                if (_YapsCaptureOn > 0.5 && _YapsTwinAt > 0.5 && (v.id == (uint) _YapsTwinA || v.id == (uint) _YapsTwinB))
+                {
+                    YapsVertex b = YapsReadBaked(v.id);
+                    YapsRoot r = YapsRecoverRoot(b, v.vertex.xyz, v.normal, v.tangent.xyz);
+                    uint at = (uint) _YapsTwinAt + (v.id == (uint) _YapsTwinA ? 0 : 16);
+                    _YapsCapture[at] = float4(r.position, r.recovered);
+                    _YapsCapture[at + 1] = float4(r.forward, r.worldLength);
+                    _YapsCapture[at + 2] = float4(r.up, 0);
+                    _YapsCapture[at + 3] = float4(b.normal, b.active);
+                    _YapsCapture[at + 4] = float4(b.tangent, 0);
+                    _YapsCapture[at + 5] = float4(v.tangent.xyz, v.tangent.w);
+                    // Where the plug's deform left it, where the socket deform after it did, and
+                    // the socket this vertex resolved from its own root.
+                    YapsSocket sk = YapsResolveSocket(r.position, r.forward, r.up, r.worldLength);
+                    _YapsCapture[at + 6] = float4(mul(unity_ObjectToWorld, float4(deformed, 1)).xyz, 0);
+                    _YapsCapture[at + 7] = float4(mul(unity_ObjectToWorld, float4(p, 1)).xyz, 0);
+                    _YapsCapture[at + 8] = float4(sk.position, sk.engaged);
+                    _YapsCapture[at + 9] = float4(sk.forward, sk.tier);
+                    // The chain this vertex read, as the single-vertex probe below writes it.
+                    YapsChain tc = YapsResolveChain(r.position, r.forward, r.worldLength, float3(1e9, 1e9, 1e9));
+                    _YapsCapture[at + 10] = float4(tc.count, tc.engaged, tc.headers, tc.hits);
+                    [unroll] for (int j = 0; j < YAPS_CHAIN_MAX; j++)
+                        _YapsCapture[at + 11 + j] = float4(tc.position[j], tc.kind[j]);
+                    _YapsCapture[at + 11 + YAPS_CHAIN_MAX] = float4(r.worldLength, 0, 0, 0);
+                }
                 if (_YapsCaptureOn > 0.5 && _YapsProbeAt > 0.5 && v.id == (uint) _YapsProbeVertex)
                 {
                     YapsChain c = YapsResolveChain(_YapsProbeRoot.xyz, _YapsProbeForward.xyz, _YapsProbeLength,

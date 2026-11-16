@@ -60,6 +60,10 @@ struct YapsChain
     // this plug is not ticked for. Kept apart from refusedD: the hip socket
     // is always the nearest own one and would crowd a tag refusal out.
     float  lightUnticked;
+    // The owner << 4 | number of the hole the path ends in,
+    // so the deform asks the margin only where it portals. 0 when the path
+    // ends in no hole, or in one whose owner or number is unknown.
+    int    portal;
 };
 
 struct YapsSocket
@@ -136,12 +140,23 @@ inline float3 YapsLightPosition(uint slot)
 
 // The protocol digit in a vertex light's second decimal, or -1 when the
 // range is too long to be protocol. One decode, so every reader agrees on
-// the digit. The black test stays with each caller: the plug and the socket
-// test colour differently, and which is right only shows in game.
+// the digit.
 inline int YapsLightDigit(uint slot)
 {
     float range = YapsLightRange(slot);
     return range >= 0.5 ? -1 : (int) round(fmod(range, 0.1) * 100.0);
+}
+
+// A protocol light is authored black, or 1/255 grey as some kits do, and
+// the intensity scales that grey: a plug's tip carries its length there. So
+// colour is judged against the light's own intensity. Grey reads 3e-4 of
+// it at any intensity, real light a tenth or more. A fixed bound took a
+// grey socket at 0.354 for real light (1.07e-4) and a grey tip 31.85 long
+// (0.0097) too. One test for every reader, plug and socket alike.
+inline bool YapsLightIsMarker(uint slot)
+{
+    float4 colour = unity_LightColor[slot];
+    return all(colour.rgb <= 0.005 * colour.a);
 }
 
 // Does this plug refuse a socket publishing this tag word? Only the atlas
@@ -153,12 +168,13 @@ inline bool YapsTagsRefuse(int socketWord)
     // makes a fold testable at all: an OR of patterns keeps each one whole.
     bool wanted = false;
     bool matched = false;
-    [unroll] for (int i = 0; i < 4; i++)
+    bool lane1 = _YAPS_PlugLane > 0.5;
+    [loop] for (int i = 0; i < 4; i++)
     {
         int deny = (int) round(_YAPS_TagExclude[i]);
         if (deny != 0 && (socketWord & deny) == deny) return true;
 
-        int want = (int) round(_YAPS_TagInclude[i]);
+        int want = (int) round(lane1 ? _YAPS_TagInclude2[i] : _YAPS_TagInclude[i]);
         if (want == 0) continue;
         wanted = true;
         if ((socketWord & want) == want) matched = true;
@@ -249,7 +265,7 @@ bool YapsOwnNumbered(int owner, int index)
 // bit per socket, chosen in the editor. Anything else: the body test.
 bool YapsSelfRefuses(float3 root, float3 at, int owner, int index)
 {
-    if (_YAPS_SelfTag < 0 || _YAPS_SelfAllow >= 0.5) return false;
+    if (_YAPS_SelfTag < 0 || YAPS_SELF_ALLOW >= 0.5) return false;
     if (YapsOwnNumbered(owner, index))
         return (((int) round(_YAPS_SelfSockets) >> (index - 1)) & 1) == 0;
     return YapsSameBodyOwned(root, at, owner);
@@ -324,9 +340,7 @@ int YapsClassifyLight(uint slot)
     int digit = YapsLightDigit(slot);
     if (digit < 0) return YAPS_LIGHT_NONE;
 
-    // A protocol light is authored black. Colour means real lighting.
-    float4 colour = unity_LightColor[slot];
-    if (any(colour.rgb > 0.0001) && colour.a > 0) return YAPS_LIGHT_NONE;
+    if (!YapsLightIsMarker(slot)) return YAPS_LIGHT_NONE;
 
     // YAPS first: the two digits legacy never claimed.
     if (digit == 7) return YAPS_LIGHT_ROOT;
@@ -368,7 +382,10 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
     int4 kinds = int4(YapsClassifyLight(0), YapsClassifyLight(1),
                       YapsClassifyLight(2), YapsClassifyLight(3));
 
-    [unroll]
+    // Looped, not unrolled, here, in the tag test and in the socket's depth read: the
+    // four-light scans unrolled were half or more of every plug's compile, and they index
+    // only arrays a loop can.
+    [loop]
     for (uint i = 0; i < 4; i++)
     {
         int kind = kinds[i];
@@ -388,7 +405,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
         // a hand apart, and the axis pointed sideways.
         forward = 0;
         float frontSq = 0.01;
-        [unroll]
+        [loop]
         for (uint j = 0; j < 4; j++)
         {
             if (kinds[j] != YAPS_LIGHT_FRONT) continue;
@@ -398,6 +415,117 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
             if (YapsLightOwn(plugOrigin, j)) continue;
             frontSq = offsetSq;
             forward = normalize(offset);
+        }
+    }
+    return found;
+}
+
+// --- the light relay, both ends ------------------------------------------
+//
+// See the protocol in yaps_atlas.cginc. The writer is YAPS/Atlas Relay.
+
+// The first two roots in the slots, slot order being Unity's ranking, each
+// paired with its nearest front within ten centimetres as above. Unpaired
+// fronts of an owned socket are not filtered: the relay cannot tell whose
+// they are, and a stranger's root with the wearer's front nearer than its
+// own is the only case that differs.
+int YapsRelayRoots(out float3 at[YAPS_RELAY_ROOTS], out float3 fwd[YAPS_RELAY_ROOTS],
+                   out int kind[YAPS_RELAY_ROOTS])
+{
+    int4 kinds = int4(YapsClassifyLight(0), YapsClassifyLight(1),
+                      YapsClassifyLight(2), YapsClassifyLight(3));
+    int count = 0;
+    [unroll] for (int k = 0; k < YAPS_RELAY_ROOTS; k++) { at[k] = 0; fwd[k] = 0; kind[k] = YAPS_LIGHT_NONE; }
+    [unroll] for (uint i = 0; i < 4; i++)
+    {
+        if (count >= YAPS_RELAY_ROOTS || !YapsIsRoot(kinds[i])) continue;
+        float3 p = YapsLightPosition(i);
+        float3 f = 0;
+        float frontSq = 0.01;
+        [unroll] for (uint j = 0; j < 4; j++)
+        {
+            if (kinds[j] != YAPS_LIGHT_FRONT) continue;
+            float3 offset = YapsLightPosition(j) - p;
+            float offsetSq = dot(offset, offset);
+            if (!(offsetSq > 1e-8 && offsetSq < frontSq)) continue;
+            frontSq = offsetSq;
+            f = normalize(offset);
+        }
+        at[count] = p;
+        fwd[count] = f;
+        kind[count] = kinds[i];
+        count++;
+    }
+    return count;
+}
+
+// The writer's pixel i of the entry.
+float4 YapsRelayPixel(int i, int owner, int n, float3 at[YAPS_RELAY_ROOTS],
+                      float3 fwd[YAPS_RELAY_ROOTS], int kind[YAPS_RELAY_ROOTS])
+{
+    if (i == 0) return float4(n / (float) YAPS_ATLAS_OWNERMAX, 0, 0, 0.5 + 0.5 * YapsRelayTag(owner, n));
+    if (i == 1) return YapsOwnerEncode(owner);
+    int k = (i - 2) / 3;
+    float3 s = at[k] / YAPS_RELAY_CELL;
+    int3 c = int3(floor(s)) & 0xFF;
+    int part = (i - 2) % 3;
+    return part == 0 ? float4(frac(s), kind[k] / (float) YAPS_ATLAS_OWNERMAX)
+         : part == 1 ? float4(fwd[k] * 0.5 + 0.5, dot(fwd[k], fwd[k]) > 0 ? 1 : 0)
+         : YapsOwnerEncode(c.x | (c.y << 8) | (c.z << 16));
+}
+
+// What the relay saw a frame ago, for the passes Unity hands no lights: the
+// nearest unowned root within reach, as YapsFindLightSocket picks it. Tag,
+// number and the whole owner must match, so a clash fails safe to straight.
+// A target too short for the strip loads zero, which is untagged.
+bool YapsFindRelaySocket(float3 plugOrigin, float reach,
+                         out float3 position, out float3 forward,
+                         out float holeHint)
+{
+    position = 0;
+    forward = 0;
+    holeHint = -1;
+    bool found = false;
+    int owner = YapsOwnerOf(_YAPS_Owner);
+    int n = (int) round(_YAPS_PlugIndex);
+    if (owner != 0 && n >= 1 && n <= YAPS_ATLAS_SOCKETMAX)
+    {
+        float tagWant = YapsRelayTag(owner, n);
+        int py = YapsAtlasRow(YapsRelayRow(owner, n, 0));
+        float4 p0 = YAPS_ATLAS_LOAD(0, py);
+        bool ok = YapsDirTagged(p0, tagWant);
+        if (!ok)
+        {
+            py = YapsAtlasRow(YapsRelayRow(owner, n, 1));
+            p0 = YAPS_ATLAS_LOAD(0, py);
+            ok = YapsDirTagged(p0, tagWant);
+        }
+        ok = ok && (int) round(p0.r * YAPS_ATLAS_OWNERMAX) == n
+                && YapsOwnerDecode(YAPS_ATLAS_LOAD(1, py)) == owner;
+
+        float bestSq = reach * reach;
+        int3 near = int3(floor(plugOrigin / YAPS_RELAY_CELL));
+        // Unrolled: ChilloutVR's Shader Filtering gives a [loop] after a heavy
+        // one a single pass, which would drop the second root.
+        [unroll]
+        for (int k = 0; k < YAPS_RELAY_ROOTS; k++)
+        {
+            float4 a = YAPS_ATLAS_LOAD(2 + 3 * k, py);
+            int kind = (int) round(a.a * YAPS_ATLAS_OWNERMAX);
+            if (!ok || !YapsIsRoot(kind)) continue;
+            int c = YapsOwnerDecode(YAPS_ATLAS_LOAD(4 + 3 * k, py));
+            int3 cell = near + ((((int3(c, c >> 8, c >> 16) - near) & 0xFF) ^ 0x80) - 0x80);
+            float3 at = (float3(cell) + a.rgb) * YAPS_RELAY_CELL;
+            float fromPlugSq = dot(at - plugOrigin, at - plugOrigin);
+            if (fromPlugSq >= bestSq) continue;
+            if (_YAPS_SelfTag >= 0 && YapsSameBodyOwned(plugOrigin, at, 0)) continue;
+            bestSq = fromPlugSq;
+            position = at;
+            found = true;
+            holeHint = kind == YAPS_LIGHT_HOLE ? 1 : (kind == YAPS_LIGHT_RING ? 0 : -1);
+            float4 f = YAPS_ATLAS_LOAD(3 + 3 * k, py);
+            float3 v = f.rgb * 2 - 1;
+            forward = f.a >= 0.5 && dot(v, v) >= 0.25 ? normalize(v) : 0;
         }
     }
     return found;
@@ -425,6 +553,7 @@ bool YapsFindLightSocket(float3 plugOrigin, float reach,
 #define YAPS_CH_MOVE(a, b) sockD[a] = sockD[b]; sockP[a] = sockP[b]; sockF[a] = sockF[b]; sockK[a] = sockK[b];
 #define YAPS_CH_PUT(a) sockD[a] = d; sockP[a] = at; sockF[a] = fwd; sockK[a] = kind;
 #define YAPS_CH_SAME(a) (sockD[a] < 1e8 && distance(sockP[a], at) < same)
+#define YAPS_CH_REFINE(a) if (sockD[a] < 1e8 && all(sockP[a] == refineAt)) { sockP[a] = refined; sockD[a] = distance(refined, root); }
 
 // Reads the neighbourhood of the shaft's MIDPOINT, not its root, so a
 // radius-1 read covers the whole plug. No extra taps. lightAt is the light
@@ -477,15 +606,30 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     float  sockD[YAPS_CHAIN_MAX] = { 1e9, 1e9, 1e9, 1e9 };
     float  sockK[YAPS_CHAIN_MAX] = { -1, -1, -1, -1 };
 
-    [loop] for (int scan = 0; scan < 2; scan++)
+    // FOUND BY THE COARSE READ ALONE. The fine block is centred on each vertex's
+    // own root, and float noise in that root can move it a cell, so a socket at
+    // its edge came from the coarse read for some vertices and the fine one for
+    // their neighbours: half a millimetre apart, and a bend opened the plug along
+    // its UV seams (the bend tester's 45° walk). The nearest such socket is read
+    // again from its own fine cell, by a third pass of the same loop, so precision
+    // follows the socket rather than the block. A second one keeps the coarse
+    // reading; a third pass costs far less compile time than a loop of its own.
+    float3 refineAt = (float3)0;
+    float refineD = 1e9;
+    float coarseSame = YapsAtlasCellSize(lvl) / 128.0;
+    float3 refined = (float3)0;
+    float refinedGap = 1e9;
+
+    [loop] for (int scan = 0; scan < 3; scan++)
     {
-        int lv = scan == 0 ? fine : lvl;
+        int lv = scan == 1 ? lvl : fine;
         if (scan == 1 && lv == fine) break;
+        if (scan == 2 && refineD > 1e8) break;
         float size = YapsAtlasCellSize(lv);
         // The coverage block round the base, not the middle: engagement is
         // measured from the base, so a block centred there needs the least
         // reach to hold every socket in it.
-        int3 mine = int3(floor((scan == 0 ? root + axis * (len * 0.5) : root) / size));
+        int3 mine = int3(floor((scan == 0 ? root + axis * (len * 0.5) : (scan == 1 ? root : refineAt)) / size));
         // A socket the fine read already holds comes back from the coarse one
         // within a step or two of the coarse encoding.
         float same = size / 128.0;
@@ -495,6 +639,8 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
         [loop] for (int dz = -YAPS_ATLAS_RADIUS; dz <= YAPS_ATLAS_RADIUS; dz++)
         {
             int3 c = mine + int3(dx, dy, dz);
+            // The third pass asks only the cells the coarse position could be in.
+            if (scan == 2 && any(abs(refineAt - (float3(c) + 0.5) * size) > size * 0.5 + coarseSame)) continue;
             float tagWant = YapsAtlasTag(c);
 
             int idx, idxB;
@@ -529,6 +675,14 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
                     chain.hits += 1;
 
                     float3 at = (float3(c) + got.rgb) * size;
+                    // The third pass wants the position alone: the coarse read
+                    // already judged this socket.
+                    if (scan == 2)
+                    {
+                        float gap = distance(at, refineAt);
+                        if (gap < min(refinedGap, coarseSame)) { refinedGap = gap; refined = at; }
+                        continue;
+                    }
                     float d = distance(at, root);
 
                     float4 f4 = YAPS_ATLAS_LOAD(px + YAPS_ATLAS_SLOTPX, cellY);
@@ -617,6 +771,14 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
 
                     if (scan == 1 && (YAPS_CH_SAME(0) || YAPS_CH_SAME(1) || YAPS_CH_SAME(2) || YAPS_CH_SAME(3)))
                         continue;
+                    if (scan == 1 && d < sockD[3] && d < refineD) { refineD = d; refineAt = at; }
+
+                    // A hole carries its owner and number in its kind's bits,
+                    // a float of 2 or more, so the sort moves the key with no
+                    // array of its own and no register held across the scan.
+                    // The key is 0 when either is unknown: no exit to ask for.
+                    if (kind > 0.5)
+                        kind = asfloat(0x40000000 + (owner != 0 && ownIndex > 0 ? owner << 4 | ownIndex : 0));
 
                     // Insertion sort, nearest first. THE ORDER IS THE PATH:
                     // socket one is the one the shaft meets first.
@@ -647,6 +809,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
             }
         }
     }
+    if (refinedGap < 1e8) { YAPS_CH_REFINE(0) YAPS_CH_REFINE(1) YAPS_CH_REFINE(2) YAPS_CH_REFINE(3) }
 
     // A HOLE ENDS THE PATH. Entries are nearest first, so the chain runs to
     // the first hole and stops: a ring is passed through, a hole is entered
@@ -658,13 +821,16 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
     // to unroll to keep every index constant.
     int count = 0;
     bool ended = false;
+    float lastK = 0;
     [unroll] for (int i2 = 0; i2 < YAPS_CHAIN_MAX; i2++)
     {
         bool live = sockK[i2] > -0.5 && !ended;
-        if (live) count++;
+        if (live) { count++; lastK = sockK[i2]; }
         ended = ended || (live && sockK[i2] > 0.5);
     }
     chain.count = count;
+    // Ended means the last live entry is a hole.
+    chain.portal = ended ? asint(lastK) - 0x40000000 : 0;
 
     float3 prev = root;
     [unroll] for (int i3 = 0; i3 < YAPS_CHAIN_MAX; i3++)
@@ -687,7 +853,7 @@ YapsChain YapsResolveChain(float3 root, float3 axis, float worldLength, float3 l
 
         chain.position[i3] = sockP[i3];
         chain.forward[i3] = sockF[i3];
-        chain.kind[i3] = sockK[i3];
+        chain.kind[i3] = min(sockK[i3], 1);
     }
 
     chain.engaged = 1 - smoothstep(len * YAPS_ATLAS_REACH, far, sockD[0]);
@@ -743,8 +909,16 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float3 lightPosition;
     float3 lightForward;
     float lightHoleHint;
-    if (!found && YapsFindLightSocket(plugOrigin, worldLength * 1.6,
-                                      lightPosition, lightForward, lightHoleHint))
+    bool lit = !found && YapsFindLightSocket(plugOrigin, worldLength * 1.6,
+                                             lightPosition, lightForward, lightHoleHint);
+    // Every other pass, the depth texture's caster above all, asks the
+    // relay. Where a shader does not say which pass it is, ForwardBase asks
+    // too, and finds what its own lights said a frame ago.
+#if !defined(UNITY_PASS_FORWARDBASE)
+    if (!found && !lit)
+        lit = YapsFindRelaySocket(plugOrigin, worldLength * 1.6, lightPosition, lightForward, lightHoleHint);
+#endif
+    if (lit)
     {
         socket.position = lightPosition;
         found = true;

@@ -16,7 +16,7 @@
 // any YapsSocket, so a plug on a socketless avatar bakes to -1, ownership is
 // never asked, nothing is ever rejected, and the test passes without running.
 //
-//   Tools/YAPS/Own-body test: build the rig
+//   Tools/Avatar Bridge/Dev/Atlas/Own-body test: build the rig
 #if CVR_CCK_EXISTS && UNITY_EDITOR && AVATARBRIDGE_YAPS
 using ABI.CCK.Components;
 using AvatarBridge.Yaps;
@@ -33,7 +33,7 @@ namespace AvatarBridge.Regression
         const int Sides = 16;
         const string Dir = "Assets/YapsSpike";
 
-        [MenuItem("Tools/YAPS/Own-body test: build the rig")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Own-body test: build the rig")]
         static void Rig()
         {
             var selected = Selection.activeGameObject;
@@ -118,7 +118,7 @@ namespace AvatarBridge.Regression
         // wrong. Ownership is decided by the nearest hip to the socket, so a
         // socket floating midway between two bodies belongs to whichever hip
         // wins by a millimetre and the answer is a coin toss.
-        [MenuItem("Tools/YAPS/Own-body test: add the other body")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Own-body test: add the other body")]
         static void OtherBody()
         {
             var selected = Selection.activeGameObject;

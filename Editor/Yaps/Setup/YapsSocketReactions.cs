@@ -62,7 +62,9 @@ namespace AvatarBridge
                                                 out string failure)
         {
             avatar = socket.GetComponentInParent<CVRAvatar>(true);
-            animator = socket.GetComponentInParent<Animator>(true);
+            // The avatar's own Animator, whose controllers the layer goes into: the nearest one
+            // up can be an accessory's, and clips pathed from there bind nothing.
+            animator = avatar != null ? avatar.GetComponent<Animator>() : null;
             failure = null;
             if (avatar == null || animator == null)
             {
@@ -216,7 +218,7 @@ namespace AvatarBridge
                 EditorUtility.SetDirty(socket);
             }
             AssetDatabase.SaveAssets();
-            return $"✓ {socket.name}: {clips.Count} depth animation(s) in layer \"{layerName}\", driven by the " +
+            return $"✓ {socket.name}: {BridgeElements.Count(clips.Count, "depth animation", "depth animations")} in layer \"{layerName}\", driven by the " +
                    $"synced parameter {parameter}, depth 1 at {ReachOf(socket):0.00} m in" + AlsoNote(also);
         }
 
@@ -229,9 +231,13 @@ namespace AvatarBridge
             {
                 // (current overrides, after autogeneration): two totals for
                 // the same avatar, not two halves. The CCK gates on the
-                // second, so this does too.
+                // second, so this does too, less the floats a clip drives: the
+                // CCK counts them and the client never syncs them.
                 var usage = avatar.GetParameterSyncUsage();
                 int used = usage.Item2;
+                if (avatar.avatarSettings?.baseController is AnimatorController based)
+                    used -= 32 * CvrParameterNames.CurveDriven(based)
+                        .Count(n => !n.StartsWith("#") && !CvrParameterNames.Core.Contains(n));
                 if (used >= 3200)
                     return $"; ⚠ THE AVATAR IS AT THE 3200-BIT SYNC CAP ({used}), so ChilloutVR will not register this " +
                            "parameter and only the wearer will see the shapes: free some bits and build again";
@@ -593,10 +599,10 @@ namespace AvatarBridge
             }
             AssetDatabase.SaveAssets();
 
-            string note = $"✓ {socket.name}: {stages.Count} shape(s) on \"{renderer.name}\" react to a plug's tip through a contact, " +
+            string note = $"✓ {socket.name}: {BridgeElements.Count(stages.Count, "shape", "shapes")} on \"{renderer.name}\" react to a plug's tip through a contact, " +
                           $"depth 1 at {ReachOf(socket):0.00} m in (layer \"{layerName}\", synced parameter {parameter}, 32 bits{SyncRoom(avatar)})" +
                           AlsoNote(also);
-            if (cleared > 0) note += $"; cleared {cleared} stale depth parameter(s) no layer read";
+            if (cleared > 0) note += $"; cleared {BridgeElements.Count(cleared, "stale depth parameter", "stale depth parameters")} no layer read";
             if (missing.Count > 0) note += $"; not on the mesh: {string.Join(", ", missing)}";
             return note;
         }

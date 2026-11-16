@@ -32,7 +32,7 @@ namespace AvatarBridge
     public static class YapsReapply
     {
         const string Prefix = "_YAPS_";
-        const string MenuPath = "Tools/YAPS/Re-apply YAPS to selected materials";
+        const string MenuPath = "Tools/Avatar Bridge/YAPS/Re-apply YAPS to selected materials";
 
         [MenuItem(MenuPath, true)]
         static bool Validate() => Selected().Count > 0;
@@ -41,6 +41,9 @@ namespace AvatarBridge
         static void Run()
         {
             var materials = Selected();
+            // Which properties the scenes' avatars animate, for a material worn unlocked.
+            YapsLock.Animate(null, Object.FindObjectsOfType<ABI.CCK.Components.CVRAvatar>(true)
+                .SelectMany(a => AvatarBridge.Yaps.YapsSwapFollow.RunnableClips(a.transform)));
             int patched = 0;
             var refusals = new List<string>();
 
@@ -53,7 +56,7 @@ namespace AvatarBridge
                     continue;
                 }
                 string folder = Path.GetDirectoryName(assetPath).Replace('\\', '/');
-                // A material inside a package is not the toolkit's to write beside.
+                // A material inside a package is read only, so it cannot be repointed.
                 // The asset path, not the folder: a material directly in Assets
                 // has the folder "Assets", which has no slash after it.
                 if (!assetPath.StartsWith("Assets/", System.StringComparison.OrdinalIgnoreCase))
@@ -66,15 +69,14 @@ namespace AvatarBridge
                 // property is one of the moments Unity may drop it.
                 var saved = Capture(material);
 
-                var shader = YapsShaderPatcher.Patch(material, folder, null,
-                    out string refusal, out _);
+                var shader = YapsShaderPatcher.Patch(material, null, out string refusal, out _);
                 if (shader == null)
                 {
                     refusals.Add($"{material.name}: {refusal}");
                     continue;
                 }
 
-                material.shader = shader;
+                YapsShaderPatcher.Wear(material, shader);
                 Restore(material, saved);
                 EditorUtility.SetDirty(material);
                 patched++;
@@ -92,7 +94,7 @@ namespace AvatarBridge
 
             AssetDatabase.SaveAssets();
 
-            string summary = $"[YAPS] Re-applied to {patched} of {materials.Count} material(s).";
+            string summary = $"[YAPS] Re-applied to {patched} of {BridgeElements.Count(materials.Count, "material", "materials")}.";
             if (refusals.Count > 0)
             {
                 summary += "\n" + string.Join("\n", refusals);

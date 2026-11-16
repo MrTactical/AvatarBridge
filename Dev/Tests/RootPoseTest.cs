@@ -19,7 +19,7 @@ namespace AvatarBridge.Regression
     // must lose its root curves, or it walks the wearer around with no input.
     public static class RootPoseTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: root pose kept on Action poses")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Root pose kept on Action poses")]
         public static void Run()
         {
             int fail = 0;

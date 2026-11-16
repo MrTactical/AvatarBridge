@@ -17,7 +17,7 @@
 // no hip of their own reads as somebody else and the ownership test never
 // fires, which is the failure that looks like a pass.
 //
-//   Tools/YAPS/Fake CVR player hips
+//   Tools/Avatar Bridge/Dev/Atlas/Fake CVR player hips
 #if CVR_CCK_EXISTS && UNITY_EDITOR
 using ABI.CCK.Components;
 using UnityEditor;
@@ -28,7 +28,7 @@ namespace AvatarBridge.Regression
     [InitializeOnLoad]
     public static class YapsFakePlayers
     {
-        const string MenuPath = "Tools/YAPS/Fake CVR player hips";
+        const string MenuPath = "Tools/Avatar Bridge/Dev/Atlas/Fake CVR player hips";
         const string Pref = "AvatarBridge.FakePlayers";
 
         // The array is bound at 255 because Unity locks a shader array's size

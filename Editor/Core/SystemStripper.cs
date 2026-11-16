@@ -54,10 +54,14 @@ namespace AvatarBridge
         static readonly string[] HapticsParamPrefixes = { "OGB", "pcs/", "WH_" };
         static readonly string[] HapticsPointerTypePrefixes = { "OGB", "PCS" };
 
+        // VF80 is SPS's own options under a fixed id, and VF80_ also prefixes the depth
+        // parameters, so only the two names go. Legacy switches lights the rebuilt
+        // socket no longer has; Stealth hides lights and contacts while the atlas
+        // still shows the socket, so "Invisible to others" would half work.
+        static readonly string[] SpsOptionParams = { "VF80_legacy", "VF80_stealth" };
+
         static readonly string[] OtherSpsParamPrefixes =
-        {
-            "VF77_", "VF23_", "VRCF_WSD"
-        };
+            new[] { "VF77_", "VF23_", "VRCF_WSD" }.Concat(SpsOptionParams).ToArray();
         // "wholesome" is the Wholesome SPS audio add-on. Do NOT match generic Fury helper
         // names like "FrameTime Counter" or "EITHER FIST" here: they also belong to the
         // face-gesture smoothing system, which must survive.
@@ -250,25 +254,8 @@ namespace AvatarBridge
 
             bool IsStrippedParam(string name) => MatchesAny(paramPrefixes, name);
 
-            // VRCFury tags every generated layer with its component id ("[VF77] ...").
-            // If a component's synced parameters are stripped, all its layers go too.
-            var strippedFuryIds = new HashSet<string>();
             var vrcParams = ctx.SourceDescriptor.expressionParameters;
-            if (vrcParams != null && vrcParams.parameters != null)
-            {
-                foreach (var p in vrcParams.parameters)
-                {
-                    if (string.IsNullOrEmpty(p.name) || !IsStrippedParam(p.name))
-                    {
-                        continue;
-                    }
-                    var match = System.Text.RegularExpressions.Regex.Match(p.name, @"^VF(\d+)_");
-                    if (match.Success)
-                    {
-                        strippedFuryIds.Add(match.Groups[1].Value);
-                    }
-                }
-            }
+            var strippedFuryIds = StrippedFuryIds(vrcParams?.parameters?.Select(p => p?.name), IsStrippedParam);
 
             RemoveLayers(ctx, master, vrcLayers, layerHints, strippedFuryIds, IsStrippedParam);
             PruneDirectBlendTrees(ctx, master, vrcLayers, IsStrippedParam);
@@ -276,6 +263,13 @@ namespace AvatarBridge
             {
                 // Scene objects are removed much earlier, by RemoveStrippedObjects.
                 RemoveOrphanedCvrComponents(ctx, IsStrippedParam);
+            }
+            if (KeepingPenetration(ctx) && vrcParams != null && vrcParams.parameters != null
+                && vrcParams.parameters.Any(p => p != null && SpsOptionParams.Contains(p.name)))
+            {
+                ctx.Report.Skipped(Category, "SPS's Legacy Compatibility and Stealth Mode",
+                    "Not carried. The converted sockets have no legacy lights to switch, and Stealth would hide " +
+                    "the lights and contacts while other plugs still find the socket.");
             }
             RemoveMenuEntries(ctx, IsStrippedParam);
 
@@ -289,6 +283,28 @@ namespace AvatarBridge
         }
 
         // ------------------------------------------------------------------ layers ----
+
+        // VRCFury tags every generated layer with its component id ("[VF77] ..."). If a
+        // component's synced parameters are stripped, all its layers go too. SPS's option rows
+        // go by exact name and must not take id 80 with them: the depth animations, auto mode,
+        // Init Behaviours and sometimes the shared FrameTime Counter carry it too.
+        internal static HashSet<string> StrippedFuryIds(IEnumerable<string> names, Func<string, bool> isStripped)
+        {
+            var ids = new HashSet<string>();
+            foreach (var name in names ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrEmpty(name) || !isStripped(name) || SpsOptionParams.Contains(name))
+                {
+                    continue;
+                }
+                var match = System.Text.RegularExpressions.Regex.Match(name, @"^VF(\d+)_");
+                if (match.Success)
+                {
+                    ids.Add(match.Groups[1].Value);
+                }
+            }
+            return ids;
+        }
 
         internal static void RemoveLayersForTest(BridgeContext ctx, AnimatorController master,
             List<AnimatorControllerLayer> vrcLayers)
@@ -362,14 +378,23 @@ namespace AvatarBridge
                     });
                 }
 
-                if (nameHit || referenceHit || locomotionHit)
+                // GoGo's flight layers condition mostly on the game's own parameters, so they
+                // never reach the share above, and their names have no GoGo hint. Their clips are
+                // GoGo's own go_ clips, which a creator's layer reading a Go/ value is not. The
+                // flight scale layer reads no Go/ value at all, so it has to play nothing else.
+                bool readsGo = refs.Any(r => isStripped(r) && r.TrimStart('#').StartsWith("Go/", StringComparison.OrdinalIgnoreCase));
+                bool gogoClipHit = !nameHit && !referenceHit && !locomotionHit && ctx.Settings.stripGogoLoco
+                    && PlaysGogoClips(layer.stateMachine, readsGo ? 0.6f : 1f);
+
+                if (nameHit || referenceHit || locomotionHit || gogoClipHit)
                 {
                     removedMachines.Add(layer.stateMachine);
                     vrcLayers.Remove(layer);
                     ctx.Report.Converted(Category, $"Removed animator layer \"{layer.name}\"",
                         nameHit ? "Matched a stripped system by name."
                         : referenceHit ? $"{strippedRefs}/{refs.Count} parameter references belong to a stripped system."
-                        : "A locomotion layer using GoGo parameters; left in, it would half-override ChilloutVR's.");
+                        : locomotionHit ? "A locomotion layer using GoGo parameters; left in, it would half-override ChilloutVR's."
+                        : "Plays GoGo's own clips; with GoGo gone nothing drives it.");
                 }
             }
 
@@ -448,7 +473,7 @@ namespace AvatarBridge
             }
             if (pruned > 0)
             {
-                ctx.Report.Converted(Category, $"Pruned {pruned} stripped branch(es)/tree(s) from shared blend trees",
+                ctx.Report.Converted(Category, $"Pruned {BridgeElements.Count(pruned, "stripped branch or tree", "stripped branches or trees")} from shared blend trees",
                     "Removes leftover VRCFury parameter math for the stripped systems.");
             }
 
@@ -564,6 +589,17 @@ namespace AvatarBridge
             }
             tree.children = kept.ToArray();
             return tree;
+        }
+
+        static bool PlaysGogoClips(AnimatorStateMachine root, float share)
+        {
+            var clips = new HashSet<AnimationClip>();
+            WalkMachines(root, machine =>
+            {
+                foreach (var child in machine.states) AnimatorMerger.CollectClips(child.state.motion, clips);
+            });
+            return clips.Count > 0
+                && clips.Count(c => c.name.StartsWith("go_", StringComparison.OrdinalIgnoreCase)) >= clips.Count * share;
         }
 
         static bool IsLayerInert(AnimatorControllerLayer layer)
@@ -682,6 +718,10 @@ namespace AvatarBridge
                 }
                 foreach (var child in m.stateMachines)
                 {
+                    // A sub-machine's way out is the parent's, and can be the only read of a parameter.
+                    if (child.stateMachine != null)
+                        foreach (var t in m.GetStateMachineTransitions(child.stateMachine))
+                            foreach (var c in t.conditions) AddRef(c.parameter);
                     Walk(child.stateMachine);
                 }
             }
@@ -785,7 +825,7 @@ namespace AvatarBridge
             }
 
             // Mirrors are not always there. When the compressor is
-            // detected at all, every declared parameter that is not its
+            // detected at all, every expression parameter that is not its
             // own artefact is treated as really synced. "Not synced" is
             // not trustworthy on a compressed avatar; de-syncing is
             // what the compressor does. Restoring sync costs 32 bits;
@@ -794,10 +834,19 @@ namespace AvatarBridge
             // the built-ins: the compressor never touched those, and
             // preserving one kept a frozen local synced and alive past
             // the prune after its layers were stripped.
+            //
+            // Only expression parameters: the compressor only ever de-synced
+            // those. Taking every animator parameter also took dozens of
+            // clip-driven floats, which can never sync, and the budget check
+            // counted them until it reported an avatar thousands of bits over.
             var furyOwn = new System.Text.RegularExpressions.Regex(@"^VF\d+_");
-            foreach (var p in master.parameters)
+            var expressions = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+            var curveDriven = CvrParameterNames.CurveDriven(master);
+            foreach (var p in expressions != null && expressions.parameters != null
+                         ? expressions.parameters : new VRC.SDK3.Avatars.ScriptableObjects.VRCExpressionParameters.Parameter[0])
             {
-                if (!string.IsNullOrEmpty(p.name) && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name)
+                if (p != null && !string.IsNullOrEmpty(p.name) && declared.Contains(p.name)
+                    && !furyOwn.IsMatch(p.name) && !IsCompressor(p.name) && !curveDriven.Contains(p.name)
                     && !CvrParameterNames.NeverFed(p.name) && !CvrParameterNames.IsGameDriven(p.name))
                 {
                     ctx.PreserveParameters.Add(p.name);
@@ -805,10 +854,10 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category,
-                $"Removed VRCFury's parameter compressor: {doomed.Count} layer(s), " +
-                $"{mirrors.Count} mirrored and {slotNames.Count} slot parameter(s)",
+                $"Removed VRCFury's parameter compressor: {BridgeElements.Count(doomed.Count, "layer", "layers")}, " +
+                $"{mirrors.Count} mirrored and {BridgeElements.Count(slotNames.Count, "slot parameter", "slot parameters")}",
                 $"It worked around VRChat's limit and stopped values reaching anyone here. " +
-                $"{mirrors.Values.Distinct().Count()} parameter(s) now sync directly.");
+                $"{BridgeElements.Count(mirrors.Values.Distinct().Count(), "parameter", "parameters")} now sync directly.");
         }
 
 #if !AVATARBRIDGE_YAPS
@@ -919,7 +968,7 @@ namespace AvatarBridge
                 Delete(ctx, transform.gameObject);
                 removed++;
             }
-            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {removed} object(s)",
+            ctx.Report.Converted(Category, $"Removed the avatar's VRChat face-tracking rig: {BridgeElements.Count(removed, "object", "objects")}",
                 $"{string.Join(", ", names)}{(doomed.Count > names.Count ? ", …" : "")}: the chosen face " +
                 "tracking mode provides its own, and two rigs driving the same blendshapes fight each other. " +
                 "Choose \"None\" if you want the original rig left in place.");
@@ -954,7 +1003,7 @@ namespace AvatarBridge
             }
             if (removed > 0)
             {
-                ctx.Report.Converted(Category, $"Deleted {removed} SPS/PCS scene object tree(s)");
+                ctx.Report.Converted(Category, $"Deleted {BridgeElements.Count(removed, "SPS/PCS scene object tree", "SPS/PCS scene object trees")}");
             }
         }
 
@@ -981,9 +1030,9 @@ namespace AvatarBridge
                         n.TrimStart('#').StartsWith(p, StringComparison.OrdinalIgnoreCase))));
             if (contacts == 0) return;
             ctx.Report.Converted(Category,
-                $"Removed {contacts} haptics contact(s): OGB, PCS and Wholesome",
+                $"Removed {BridgeElements.Count(contacts, "haptics contact", "haptics contacts")}: OGB, PCS and Wholesome",
                 "They spend the instance's 512 contact pairs. YAPS keeps its own two per plug. Tick \"Keep the " +
-                "OGB/PCS haptics contacts\" to drive a toy from them.");
+                "OGB / PCS haptics contacts\" to drive a toy from them.");
         }
 
         static void RemoveOrphanedCvrComponents(BridgeContext ctx, Func<string, bool> isStripped)
@@ -1033,7 +1082,7 @@ namespace AvatarBridge
             }
             if (removed > 0)
             {
-                ctx.Report.Converted(Category, $"Removed {removed} orphaned pointer/trigger/exclusion object(s)");
+                ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "orphaned pointer/trigger/exclusion object", "orphaned pointer/trigger/exclusion objects")}");
             }
         }
 
@@ -1075,7 +1124,7 @@ namespace AvatarBridge
             int removed = before - settings.Count;
             if (removed > 0)
             {
-                ctx.Report.Converted(Category, $"Removed {removed} Advanced Avatar Settings entr(ies)",
+                ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "Advanced Avatar Settings entry", "Advanced Avatar Settings entries")}",
                     "Their sync bits and menu slots are freed.");
             }
         }
@@ -1108,7 +1157,7 @@ namespace AvatarBridge
             if (removed > 0)
             {
                 master.parameters = kept;
-                ctx.Report.Converted(Category, $"Removed {removed} dead animator parameter(s)");
+                ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "dead animator parameter", "dead animator parameters")}");
             }
         }
     }

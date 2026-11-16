@@ -39,6 +39,9 @@ namespace AvatarBridge.Regression
 {
     public static class RegressionRunner
     {
+        // (scene path, converted root), once per conversion. See ConvertAndDigest.
+        public static event Action<string, GameObject> Converted;
+
         // Digests live beside the tool, not in the Unity project.
         // They must survive a reimport of Assets/AvatarBridge.
         // Set AVATARBRIDGE_REPO to the checkout path before running.
@@ -80,6 +83,8 @@ namespace AvatarBridge.Regression
                 {
                     suffix += "/DynamicBone";
                 }
+                // A different profile again, so never compared with the default one.
+                if (SoftMode) suffix += "/Soft";
                 return repo + suffix;
             }
         }
@@ -164,13 +169,13 @@ namespace AvatarBridge.Regression
             return set;
         }
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression: run quick set")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Regression: run quick set")]
         public static void RunQuick() => Run(QuickSet(), "quick");
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression: run all scenes")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Regression: run all scenes")]
         public static void RunAll() => Run(AllAvatarScenes(), "all");
 
-        [MenuItem("Tools/AvatarBridge Dev/Regression: accept current as baseline")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Corpus/Regression: accept current as baseline")]
         public static void AcceptCurrent()
         {
             if (!Directory.Exists(CurrentDir))
@@ -206,14 +211,12 @@ namespace AvatarBridge.Regression
 
         public static void RunAllBatch()
         {
-            int changed = Run(AllAvatarScenes(), "all");
-            EditorApplication.Exit(changed == 0 ? 0 : 1);
+            Exit(Run(AllAvatarScenes(), "all"));
         }
 
         public static void RunQuickBatch()
         {
-            int changed = Run(QuickSet(), "quick");
-            EditorApplication.Exit(changed == 0 ? 0 : 1);
+            Exit(Run(QuickSet(), "quick"));
         }
 
         public static void RunSubsetBatch()
@@ -237,9 +240,16 @@ namespace AvatarBridge.Regression
                 EditorApplication.Exit(2);
                 return;
             }
-            int changed = Run(scenes, $"subset({scenes.Length})");
-            EditorApplication.Exit(changed == 0 ? 0 : 1);
+            Exit(Run(scenes, $"subset({scenes.Length})"));
         }
+
+        // One process ran past about 70 conversions at 24 GB and died in the native allocator,
+        // and the same avatar converted fine in a fresh one. So run-corpus.sh can cap a process
+        // (AVATARBRIDGE_PER_PROCESS) and relaunch it with AVATARBRIDGE_RESUME=1, which keeps
+        // Current/ and reads back the digests already in it. 4 means "stopped early, more to do".
+        static bool yielded;
+
+        static void Exit(int changed) => EditorApplication.Exit(yielded ? 4 : changed == 0 ? 0 : 1);
 
         static string[] AllAvatarScenes()
         {
@@ -277,10 +287,14 @@ namespace AvatarBridge.Regression
                     "  bash Dev/Corpus/run-corpus.sh   (--quick, --subset FILE or --dynbone as needed)");
             }
 
+            bool resume = Environment.GetEnvironmentVariable("AVATARBRIDGE_RESUME") == "1";
+            int.TryParse(Environment.GetEnvironmentVariable("AVATARBRIDGE_PER_PROCESS"), out int perProcess);
+            yielded = false;
+
             // Start from empty. A digest left behind by a previous, differently-scoped run is
             // indistinguishable from one this run produced, and would be compared and reported
-            // as though it were current.
-            if (Directory.Exists(CurrentDir))
+            // as though it were current. A resume is the same run, so it keeps them.
+            if (!resume && Directory.Exists(CurrentDir))
             {
                 foreach (var stale in Directory.GetFiles(CurrentDir, "*.txt")) File.Delete(stale);
             }
@@ -289,22 +303,32 @@ namespace AvatarBridge.Regression
 
             // Which build produced this run, kept OUT of the compared digests (see BuildDigest).
             // Not a .txt, so neither the comparison nor Accept picks it up.
-            File.WriteAllText(CurrentDir + "/_run.info",
-                $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
-                $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+            if (resume)
+            {
+                File.AppendAllText(CurrentDir + "/_run.info", $"resumed: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+            }
+            else
+            {
+                File.WriteAllText(CurrentDir + "/_run.info",
+                    $"bridge: {BridgeDefines.Version}\nunity: {Application.unityVersion}\n" +
+                    $"started: {DateTime.Now:yyyy-MM-dd HH:mm}\n");
+            }
 
             // Up before the first avatar. A crash or a kill never reaches the end of this
             // method, so writing it only on cancel left those runs unmarked.
-            File.WriteAllText(PartialMarker,
-                $"Started {DateTime.Now:yyyy-MM-dd HH:mm} and never finished: cancelled, crashed or killed.\n" +
-                "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
+            if (!resume || !File.Exists(PartialMarker))
+            {
+                File.WriteAllText(PartialMarker,
+                    $"Started {DateTime.Now:yyyy-MM-dd HH:mm} and never finished: cancelled, crashed or killed.\n" +
+                    "AcceptCurrent refuses while this file exists. Re-run to clear it.\n");
+            }
 
             var changes = new List<string>();
             var missing = new List<string>();
             var noAvatar = new List<string>();
             var sweep = new SweepTally();
             var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            int ran = 0, failed = 0;
+            int ran = 0, failed = 0, converted = 0, reused = 0;
             bool cancelled = false;
             var started = DateTime.Now;
 
@@ -334,28 +358,44 @@ namespace AvatarBridge.Regression
                         }
                     }
 
+                    string file = DigestName(scenePath);
+                    string kept = Path.Combine(CurrentDir, file);
                     string digest;
-                    try
+                    if (resume && File.Exists(kept))
                     {
-                        digest = ConvertAndDigest(scenePath);
-                        if (digest == null) { noAvatar.Add(scenePath); continue; }   // no avatar in this scene
+                        digest = File.ReadAllText(kept);
+                        if (digest.Contains("\n[harness]\nEXCEPTION ")) failed++;
+                        reused++;
                     }
-                    catch (Exception e)
+                    else
                     {
-                        // A thrown conversion is a result worth diffing.
-                        // Starting and stopping throwing both regress.
-                        digest = $"scene: {scenePath}\n\n[harness]\nEXCEPTION {e.GetType().Name}: {e.Message}\n";
-                        failed++;
+                        if (perProcess > 0 && converted >= perProcess)
+                        {
+                            yielded = true;
+                            break;
+                        }
+                        converted++;
+                        try
+                        {
+                            digest = ConvertAndDigest(scenePath);
+                            if (digest == null) { noAvatar.Add(scenePath); continue; }   // no avatar in this scene
+                        }
+                        catch (Exception e)
+                        {
+                            // A thrown conversion is a result worth diffing.
+                            // Starting and stopping throwing both regress.
+                            digest = $"scene: {scenePath}\n\n[harness]\nEXCEPTION {e.GetType().Name}: {e.Message}\n";
+                            failed++;
+                        }
                     }
 
                     ran++;
-                    string file = DigestName(scenePath);
                     // Belt and braces on the naming rule below: if two scenes ever collide again
                     // the run must say so, not silently cover one of them.
                     if (!written.Add(file))
                         Debug.LogError($"[Regression] digest name collision on '{file}': " +
                                        $"'{scenePath}' has overwritten an earlier scene's digest.");
-                    File.WriteAllText(Path.Combine(CurrentDir, file), digest);
+                    File.WriteAllText(kept, digest);
 
                     string baseline = Path.Combine(BaselineDir, file);
                     if (!File.Exists(baseline)) { missing.Add(name); TallySweep(sweep, name, digest, null); continue; }
@@ -372,6 +412,14 @@ namespace AvatarBridge.Regression
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
                 if (!Application.isBatchMode) EditorUtility.ClearProgressBar();
+            }
+
+            if (yielded)
+            {
+                // No summary: the [Regression/...] line is what tells the launcher the run is over.
+                Debug.Log($"[Regression] stopping after {converted} conversion(s) in this process " +
+                          $"({ran} of {scenes.Count} scenes have digests); relaunch with AVATARBRIDGE_RESUME=1 to go on.");
+                return 0;
             }
 
             // An avatar that stops producing a digest is a change, not a silence. A descriptor
@@ -392,6 +440,7 @@ namespace AvatarBridge.Regression
 
             var sb = new StringBuilder();
             sb.AppendLine($"[Regression/{label}] {ran} avatar(s) in {(DateTime.Now - started).TotalSeconds:F0}s" +
+                          (reused > 0 ? $" ({reused} converted by earlier processes of this run)" : "") +
                           (failed > 0 ? $", {failed} threw" : ""));
             if (ran == 0)
                 sb.AppendLine("  NOTHING RAN: no scene yielded an avatar. This is not a pass.");
@@ -527,7 +576,7 @@ namespace AvatarBridge.Regression
                 descriptor = root.GetComponentInChildren<VRCAvatarDescriptor>(true);
                 if (descriptor != null) break;
             }
-            if (descriptor == null) return null;
+            if (descriptor == null) return PropDigest(scene, scenePath);
 
             // Re-activate the source and everything above it. A saved
             // scene can hold its source switched off from a previous
@@ -549,6 +598,10 @@ namespace AvatarBridge.Regression
             // Never Selection: a failed conversion leaves it on the source or a half-built
             // target, and the sweep would then digest that as the conversion.
             var target = report.ConvertedRoot;
+            // A probe riding the run reads the conversion here, before the sweep
+            // moves the scene. It writes its own output, never the digest.
+            try { Converted?.Invoke(scenePath, target); }
+            catch (Exception e) { Debug.LogException(e); }
 
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
@@ -564,8 +617,72 @@ namespace AvatarBridge.Regression
             AppendSettings(sb, settings);
             AppendReport(sb, report);
             AppendCvrSide(sb, target);
+            AppendPlugMaterials(sb, target);
             AppendSweep(sb, target);
             return Stable(sb.ToString());
+        }
+
+        // A scene with no avatar can still be a case. Each root named "Fixture Prop..."
+        // (FixtureBuilder.RunPropsOnly) is re-baked, made a prop and verified the way a
+        // user builds one, so the prop path diffs every run like a conversion. Named
+        // roots only: plenty of scenes hold a loose plug or socket nobody meant as a case.
+        static string PropDigest(Scene scene, string scenePath)
+        {
+            var roots = scene.GetRootGameObjects()
+                .Where(r => r.name.StartsWith("Fixture Prop", StringComparison.Ordinal))
+                .OrderBy(r => r.name, StringComparer.Ordinal)
+                .ToList();
+            if (roots.Count == 0) return null;
+
+            var sb = new StringBuilder();
+            sb.Append("scene: ").Append(scenePath).Append("\n\n");
+            foreach (var root in roots)
+            {
+                sb.Append("[prop ").Append(root.name).Append("]\n");
+                var plug = root.GetComponentInChildren<AvatarBridge.Yaps.YapsPlug>(true);
+                if (plug != null)
+                {
+                    var baked = YapsNativeBuilder.Bake(plug);
+                    sb.Append("  bake: ").Append(baked.Ok ? "ok " : "FAILED ").Append(Brief(baked.Message)).Append('\n');
+                }
+                var made = YapsPropBuilder.MakeProp(root);
+                sb.Append("  make: ").Append(made.Ok ? "ok " : "FAILED ").Append(Brief(made.Message)).Append('\n');
+                foreach (var note in made.Notes) sb.Append("    note: ").Append(Brief(note)).Append('\n');
+                var verified = YapsPropBuilder.Verify(root);
+                sb.Append("  verify: ").Append(verified.Ok ? "ok " : "FAILED ").Append(Brief(verified.Message)).Append('\n');
+
+                var pickup = root.GetComponent<CVRPickupObject>();
+                if (pickup != null)
+                    sb.Append("  pickup: ").Append(pickup.moveMode).Append(", reach ").Append(F(pickup.maximumGrabDistance))
+                      .Append(pickup.disallowTheft ? ", theft disallowed\n" : ", theft allowed\n");
+                var spawnable = root.GetComponent<CVRSpawnable>();
+                if (spawnable != null)
+                    sb.Append("  spawnable: height ").Append(F(spawnable.spawnHeight)).Append(", values [")
+                      .Append(string.Join(",", spawnable.syncValues.Select(v => v.name))).Append("]\n");
+                foreach (var c in root.GetComponents<Collider>())
+                    sb.Append("  collider: ").Append(ColliderOf(c)).Append('\n');
+                // Every component, not the CCK-only count an avatar gets: a prop is
+                // a handful of objects, and a lost light or renderer is the regression.
+                foreach (var c in root.GetComponentsInChildren<Component>(true).Where(c => c != null && !(c is Transform)))
+                {
+                    sb.Append("  ").Append(HierarchyPath(root, c)).Append(": ").Append(c.GetType().Name);
+                    if (c is Light l) sb.Append(" range ").Append(l.range.ToString("0.0000", CultureInfo.InvariantCulture));
+                    sb.Append('\n');
+                }
+                sb.Append('\n');
+            }
+            return Stable(sb.ToString());
+        }
+
+        static string ColliderOf(Collider c)
+        {
+            switch (c)
+            {
+                case BoxCollider b: return $"box {V3(b.center)} {V3(b.size)}";
+                case CapsuleCollider k: return $"capsule {V3(k.center)} r {F(k.radius)} h {F(k.height)} axis {k.direction}";
+                case SphereCollider s: return $"sphere {V3(s.center)} r {F(s.radius)}";
+                default: return c.GetType().Name;
+            }
         }
 
         // The sweep rides every corpus conversion: it drives each menu
@@ -789,6 +906,10 @@ namespace AvatarBridge.Regression
         static bool AdvisorMode =>
             Environment.GetEnvironmentVariable("AVATARBRIDGE_PROFILE") == "advisor";
 
+        // AVATARBRIDGE_SOFT=1 turns the soft parts on, the one pass too slow for a full run.
+        static bool SoftMode =>
+            Environment.GetEnvironmentVariable("AVATARBRIDGE_SOFT") == "1";
+
         sealed class AdvisorTrace
         {
             public List<string> Unticked = new List<string>();
@@ -896,6 +1017,7 @@ namespace AvatarBridge.Regression
             convertToePhysBones = false,
 
             stripGogoLoco = true,
+            gogoEmotes = true,
             stripSpsSystems = true,
             extraStripKeywords = "",
             stripDeadMaterialAnimation = true,
@@ -904,6 +1026,10 @@ namespace AvatarBridge.Regression
             createDefaultColliderPointers = true,
             sizeContactZonesForLargest = true,
             patchNonSpiShaders = true,     // BETA: writes patched shader copies
+            // Off for a user, and off here unless AVATARBRIDGE_SOFT=1. Every body shader copy
+            // carries the jelly and compiles for 20-60 s, so a full run with it on took about
+            // twelve hours. Measured on a subset into its own folder instead.
+            squashSoftParts = SoftMode,
 
             convertConstraints = true,
             convertHeadChop = true,
@@ -952,6 +1078,36 @@ namespace AvatarBridge.Regression
                 .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {Brief(e.Detail)}")
                 .OrderBy(s => s, StableSampleOrder.Instance);
             foreach (var line in notable) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
+        // What each baked plug material holds once the conversion is done. A reconvert
+        // once dropped every bake value (queue 38) and the digest showed only one missing
+        // menu row: the bake texture, vertex count and length were never written here.
+        static void AppendPlugMaterials(StringBuilder sb, GameObject target)
+        {
+            if (target == null) return;
+            string Num(Material m, string p) => m.HasProperty(p) ? F(m.GetFloat(p)) : "<none>";
+            var lines = new List<string>();
+            // The plugs' own meshes: a soft body's shader declares the plug's properties
+            // too, and every body slot would read as a plug with no bake.
+            var plugMeshes = target.GetComponentsInChildren<AvatarBridge.Yaps.YapsPlug>(true)
+                .Select(p => p.Target).Where(r => r != null).Distinct();
+            foreach (var r in plugMeshes)
+            {
+                var mats = r.sharedMaterials;
+                for (int i = 0; i < mats.Length; i++)
+                {
+                    var m = mats[i];
+                    if (m == null || !m.HasProperty("_YAPS_Bake")) continue;
+                    lines.Add("  " + HierarchyPath(target, r) + " [" + i + "]: bake " + (m.GetTexture("_YAPS_Bake") != null ? "yes" : "NONE")
+                        + ", vertices " + Num(m, "_YAPS_VertexCount") + ", length " + Num(m, "_YAPS_Length")
+                        + ", self " + Num(m, "_YAPS_SelfTag") + ", atlas " + Num(m, "_YAPS_UseAtlas"));
+                }
+            }
+            if (lines.Count == 0) return;
+            sb.Append("[plug materials]\n");
+            foreach (var line in lines.OrderBy(l => l, StringComparer.Ordinal)) sb.Append(line).Append('\n');
             sb.Append('\n');
         }
 

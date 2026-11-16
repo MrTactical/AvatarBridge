@@ -22,11 +22,12 @@ namespace AvatarBridge.Regression
         static readonly List<(string name, bool ok, string note)> Results = new List<(string, bool, string)>();
         const string ScratchDir = "Assets/AvatarBridgeOutput/SmokeTest";
 
-        [MenuItem("Tools/Avatar Bridge/DevTools/Smoke test every button")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Smoke test every button")]
         public static void Run()
         {
             Results.Clear();
             var created = new List<GameObject>();
+            var generated = GeneratedFiles.Snapshot();
             // A batch run inherits whatever scene was open last, and a corpus
             // avatar left sitting in it has baked plugs near everything: the
             // preview then finds one already close and spawns none, and the
@@ -46,9 +47,7 @@ namespace AvatarBridge.Regression
             {
                 foreach (var go in created) if (go != null) UnityEngine.Object.DestroyImmediate(go);
                 if (AssetDatabase.IsValidFolder(ScratchDir)) AssetDatabase.DeleteAsset(ScratchDir);
-                if (AssetDatabase.IsValidFolder("Assets/YAPS/Generated/Smoke Prop")) AssetDatabase.DeleteAsset("Assets/YAPS/Generated/Smoke Prop");
-                if (AssetDatabase.IsValidFolder("Assets/YAPS/Generated/Smoke Avatar")) AssetDatabase.DeleteAsset("Assets/YAPS/Generated/Smoke Avatar");
-                if (AssetDatabase.IsValidFolder("Assets/YAPS/Generated/Test Plug")) AssetDatabase.DeleteAsset("Assets/YAPS/Generated/Test Plug");
+                GeneratedFiles.DeleteNew(generated);
                 AssetDatabase.SaveAssets();
             }
             int fails = Results.Count(r => !r.ok);
@@ -236,6 +235,16 @@ namespace AvatarBridge.Regression
                 // On the ROOT: CVRPickupObject cannot see a child's collider.
                 Check(plugRoot.GetComponent<Collider>() != null, "a collider on the root to grab");
             });
+            // A socket prop's grab box is sized from its renderers, and the atlas
+            // writers' meshes are bounded at a kilometre so they never cull.
+            Step("YAPS > Create a ring-and-socket prop prefab", () =>
+            {
+                YapsSocketBuilder.CreateSocketPropPrefab();
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(YapsSocketBuilder.SocketPropPrefabPath);
+                var box = prefab != null ? prefab.GetComponent<BoxCollider>() : null;
+                Check(box != null, "a box to grab");
+                Check(box != null && box.size.magnitude < 1f, $"sized to the body, not the atlas ({(box != null ? box.size.ToString() : "none")})");
+            });
             Step("YAPS > Verify prop", () =>
             {
                 var o = YapsPropBuilder.Verify(plugRoot);
@@ -274,6 +283,36 @@ namespace AvatarBridge.Regression
                 Check(o.Ok, o.Message);
                 Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "skinned slot baked");
                 Check(YapsNativeBuilder.GuessRootBone(smr, 1) == shaft.transform, "root bone guessed from the mesh");
+            });
+            // The bake climbs from an empty to the bone above it, and the slot
+            // pick has to climb with it, or it finds no weight and takes slot 0.
+            Step("YAPS > A plug rooted on an empty under its bone", () =>
+            {
+                var shaft = new GameObject("Shaft B"); shaft.transform.SetParent(hips.transform, false);
+                var tip = new GameObject("Shaft B Tip"); tip.transform.SetParent(shaft.transform, false);
+                tip.transform.localPosition = new Vector3(0, 0, 0.15f);
+                var empty = new GameObject("Shaft B Root"); empty.transform.SetParent(shaft.transform, false);
+                var smrGo = new GameObject("Body B"); smrGo.transform.SetParent(avatar.transform, false);
+                try
+                {
+                    var smr = smrGo.AddComponent<SkinnedMeshRenderer>();
+                    smr.sharedMesh = SkinnedShaft(new[] { hips.transform, shaft.transform, tip.transform });
+                    smr.bones = new[] { hips.transform, shaft.transform, tip.transform };
+                    smr.rootBone = hips.transform;
+                    smr.sharedMaterials = new[] { new Material(Shader.Find(YapsNativeBuilder.SimpleLitName)), new Material(Shader.Find(YapsNativeBuilder.SimpleLitName)) };
+                    var plug = empty.AddComponent<YapsPlug>();
+                    plug.renderer = smr; plug.rootBone = empty.transform;
+                    var o = YapsNativeBuilder.Bake(plug);
+                    Check(o.Ok, o.Message);
+                    Check(smr.sharedMaterials[1].HasProperty("_YAPS_Bake"), "the shaft's slot baked");
+                    Check(!smr.sharedMaterials[0].HasProperty("_YAPS_Bake"), "the body's slot left alone");
+                }
+                finally
+                {
+                    // Gone again, so the steps below meet the avatar they expect.
+                    UnityEngine.Object.DestroyImmediate(smrGo);
+                    UnityEngine.Object.DestroyImmediate(shaft);
+                }
             });
             // A converted plug's author's Self rules ride on its material, and
             // the conversion adopts a component onto it, as here: the rules
@@ -488,9 +527,9 @@ namespace AvatarBridge.Regression
             foreach (var (name, menu) in new[]
             {
                 ("Window > VRChat to ChilloutVR Converter", "Tools/Avatar Bridge/VRChat to ChilloutVR Converter"),
-                ("Window > CCK Animator Tester", "Tools/Avatar Bridge/CCK Animator Tester"),
+                ("Window > Avatar Tester", "Tools/Avatar Bridge/Avatar Tester"),
                 ("Window > ChilloutVR Toolkit", "Tools/Avatar Bridge/ChilloutVR Toolkit"),
-                ("Window > YAPS Setup", "Tools/YAPS/Setup"),
+                ("Window > YAPS Setup", "Tools/Avatar Bridge/YAPS/Setup"),
             })
             {
                 Step(name, () =>
@@ -510,7 +549,20 @@ namespace AvatarBridge.Regression
 
             // The tester's controls write animator parameters and need Play mode;
             // that half is a manual check. Its window building is covered above.
-            Results.Add(("CCK Animator Tester > drive gestures/visemes/menu", true, "MANUAL: needs Play mode with a CVR avatar"));
+            Results.Add(("Avatar Tester > drive gestures/visemes/menu", true, "MANUAL: needs Play mode with a CVR avatar"));
+
+            // The add-on reaches the tester by name, so a rename there drops its sections with
+            // nothing failing to compile.
+            Step("Avatar Tester > add-on sections registered", () =>
+            {
+                var names = TesterSections.Names.ToList();
+#if AVATARBRIDGE_YAPS
+                Check(names.Contains("Squash") && names.Contains("Plugs and sockets"),
+                    "squash and plug sections registered, got: " + string.Join(", ", names));
+#else
+                Check(names.Count == 0, "no sections without the add-on, got: " + string.Join(", ", names));
+#endif
+            });
         }
 
         // A tiny skinned shaft: eight vertices in two submeshes, one weighted

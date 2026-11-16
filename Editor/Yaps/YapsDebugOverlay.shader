@@ -18,7 +18,7 @@
 // where the anchor is, and the bake says where it was: the same recovery
 // the deform runs, on the same numbers.
 //
-// Twelve cells in two rows. The top row is the resolve, the bottom row is
+// Fourteen cells in two rows. The top row is the resolve, the bottom row is
 // the plug's own body. Each is a colour, never a fraction:
 //   top 1  who resolved it      grey nobody, cyan preview, amber light, green atlas
 //   top 2  bending              red not engaged, amber engaged but switched off, green bending
@@ -26,12 +26,16 @@
 //   top 4  what the atlas read  black nothing, red not ours, amber thrown out, green socket
 //   top 5  atlas on this camera black too small, red wrong screen, amber empty, green live
 //   top 6  atlas asked for      red off for this plug, green on
+//   top 7  portal               dark no hole at the end, amber hole with no key,
+//                               grey no exit published, green exit found,
+//                               red exit found and the plug cannot come out of it
 //   bot 1  frame recovery       grey taken from the object, red refused, green recovered
 //   bot 2  anchor vertex        red outside the bake, green inside it
 //   bot 3  bake read            black no bake, red the row read nothing, green data
 //   bot 4  own body allowed     amber refusing its wearer's sockets, green allowing
 //   bot 5  chain links          dark one socket, otherwise a bar of the chain
 //   bot 6  refused by tags      dark nothing refused, amber refused, red refused and nearer
+//   bot 7  always dark, kept so the rows stay the same width
 //
 // AND TWO MARKERS, which is the part no cell can do. A shader sees one
 // vertex at a time, and every measurement it can make from one vertex is
@@ -71,6 +75,14 @@ Shader "YAPS/Debug Overlay"
         _YAPS_Overrun ("YAPS allow overrun", Range(0,1)) = 1
         _YAPS_BakeScale ("YAPS bake scale", Float) = 1
         _YAPS_BakeGirth ("YAPS bake girth", Float) = 1
+        [HideInInspector] _YAPS_PlugLane ("YAPS plug lane", Float) = 0
+        _YAPS_BakeScale2 ("YAPS bake scale, second plug", Float) = 1
+        _YAPS_BakeGirth2 ("YAPS bake girth, second plug", Float) = 1
+        _YAPS_Enabled2 ("YAPS enabled, second plug", Range(0,1)) = 1
+        _YAPS_SelfAllow2 ("YAPS own body allowed, second plug", Range(0,1)) = 0
+        _YAPS_BakeSkinScale ("YAPS bake skin scale", Float) = 0
+        _YAPS_PortalSpan ("YAPS portal band (-1 too coarse)", Float) = 0
+        _YAPS_CopyStart ("YAPS second copy's first vertex", Float) = 0
         _YAPS_FrameFromVertex ("YAPS frame from vertex", Range(0,1)) = 0
         _YAPS_SocketPos ("YAPS socket position", Vector) = (0,0,0,0)
         _YAPS_SocketForward ("YAPS socket forward", Vector) = (0,0,0,0)
@@ -111,6 +123,7 @@ Shader "YAPS/Debug Overlay"
         _YAPS_SmoothStart ("YAPS ease into bend", Range(0,0.5)) = 0
         _YAPS_MinimumSocketDistance ("YAPS minimum socket distance", Range(0,1)) = 0
         _YAPS_TagInclude ("YAPS only sockets tagged", Vector) = (0,0,0,0)
+        _YAPS_TagInclude2 ("YAPS only sockets tagged, second plug", Vector) = (0,0,0,0)
         _YAPS_TagExclude ("YAPS never sockets tagged", Vector) = (0,0,0,0)
         _YAPS_ShapeCount ("YAPS shape count", Float) = 0
         _YAPS_ShapeWeights ("YAPS shape weights 0-3", Vector) = (0,0,0,0)
@@ -190,7 +203,7 @@ Shader "YAPS/Debug Overlay"
                 // it is a frame rate bug.
                 float4 read : TEXCOORD1;   // tier, engaged, gap fraction, headers
                 float4 read2 : TEXCOORD2;  // hits, atlas-on-this-camera step, frame recovery, refused distance
-                float4 read3 : TEXCOORD3;  // chain links, which quad, bake read, unused
+                float4 read3 : TEXCOORD3;  // chain links, which quad, bake read, portal
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -216,7 +229,9 @@ Shader "YAPS/Debug Overlay"
                 // skinned like the anchor, so they arrive where the anchor
                 // arrives; the bake holds where the anchor was.
                 YapsVertex baked = YapsReadBaked((uint) max(_YAPS_AnchorVertex, 0));
-                float bakeRead = length(baked.normal) > 0.001 ? 1.0 : 0.0;
+                // The raw base normal: YapsReadBaked normalises with a fallback, so its
+                // normal is never zero even when nothing was read.
+                float bakeRead = length(YapsReadFloat3(1 + (uint) max(_YAPS_AnchorVertex, 0) * 10 + 3)) > 0.001 ? 1.0 : 0.0;
                 YapsRoot root = YapsRecoverRoot(baked, v.vertex.xyz, v.normal, v.tangent.xyz);
                 // 0 the object's own axes, 1 the recovery refused, 2 recovered.
                 // A plain-mesh plug is 0 by design and is not a fault; 1 is,
@@ -235,6 +250,7 @@ Shader "YAPS/Debug Overlay"
                 float gap = 1.0;
                 float target = 0.0;
                 float refused = 0.0;
+                float portal = 0.0;
                 if (quad < 0.5)
                 {
                     socket = YapsResolveSocket(rootWorld, rootForward, rootUp, worldLength);
@@ -263,11 +279,29 @@ Shader "YAPS/Debug Overlay"
                     float taken = socket.tier < 0.5 ? 1e9 : length(socket.position - rootWorld);
                     refused = (refusedD > 1e8 || refusedD <= 0.0)
                         ? 0.0 : (refusedD < taken ? 2.0 : 1.0);
+
+                    // The deform's own question, asked of the hole the path
+                    // ends in. Literal indices: a dynamic one spills the array.
+                    // 0 no hole, 1 a hole with no owner or number, 2 keyed
+                    // and no exit in the margin, 3 an exit found.
+                    int links = socket.chain.count;
+                    float lastKind = links > 3 ? socket.chain.kind[3]
+                                   : (links > 2 ? socket.chain.kind[2]
+                                   : (links > 1 ? socket.chain.kind[1]
+                                   : (links > 0 ? socket.chain.kind[0] : 0.0)));
+                    if (lastKind > 0.5)
+                    {
+                        portal = 1.0;
+                        float3 exitAt = rootWorld;
+                        float3 exitFwd = rootForward;
+                        if (socket.chain.portal != 0)
+                            portal = YapsPortalExit(socket.chain.portal, exitAt, exitFwd) ? 3.0 : 2.0;
+                    }
                 }
 
                 o.read = float4(socket.tier, socket.engaged, gap, socket.atlasHeaders);
                 o.read2 = float4(socket.atlasHits, target, recovered, refused);
-                o.read3 = float4(socket.chain.count, quad, bakeRead, 0);
+                o.read3 = float4(socket.chain.count, quad, bakeRead, portal);
 
                 // A VIEW-SPACE BILLBOARD off the recovered root, so it
                 // faces every eye, every mirror and the portrait camera
@@ -287,7 +321,7 @@ Shader "YAPS/Debug Overlay"
                     centreView.y += _YAPS_OverlayLift;
                 }
                 float2 span = quad < 0.5
-                    ? float2(_YAPS_OverlaySize * 6.0, _YAPS_OverlaySize * 2.0)
+                    ? float2(_YAPS_OverlaySize * 7.0, _YAPS_OverlaySize * 2.0)
                     : float2(_YAPS_OverlaySize * 0.45, _YAPS_OverlaySize * 0.45);
                 float2 off = (v.uv.xy - 0.5) * span;
                 o.pos = mul(UNITY_MATRIX_P, float4(centreView + float3(off, 0), 1));
@@ -329,14 +363,14 @@ Shader "YAPS/Debug Overlay"
                     return fixed4(edge > 0.38 ? fixed3(0, 0, 0) : m, 1);
                 }
 
-                float cellF = i.uv.x * 6.0;
+                float cellF = i.uv.x * 7.0;
                 int column = (int) floor(cellF);
                 float withinX = frac(cellF);
                 float rowF = i.uv.y * 2.0;
                 int row = (int) floor(rowF);
                 float withinY = frac(rowF);
 
-                // A dark gutter, so twelve cells read as twelve and not as
+                // A dark gutter, so fourteen cells read as fourteen and not as
                 // one gradient. Without it two neighbouring greens merge.
                 if (withinX < 0.06 || withinX > 0.94 || withinY < 0.10 || withinY > 0.90)
                 {
@@ -346,7 +380,8 @@ Shader "YAPS/Debug Overlay"
                 // The top row keeps the six it always had, in the order it
                 // always had them. The bottom row is the new half; moving the
                 // old six would make every screenshot ever taken of this wrong.
-                int cell = row == 1 ? column : column + 6;
+                // The seventh column came later still, so it numbers after both.
+                int cell = column == 6 ? (row == 1 ? 12 : 13) : (row == 1 ? column : column + 6);
 
                 float tier = i.read.x;
                 float engaged = i.read.y;
@@ -358,6 +393,7 @@ Shader "YAPS/Debug Overlay"
                 float refused = i.read2.w;
                 float links = i.read3.x;
                 float bakeRead = i.read3.z;
+                float portal = i.read3.w;
 
                 fixed3 c = YAPS_NONE;
 
@@ -378,7 +414,7 @@ Shader "YAPS/Debug Overlay"
                     // socket while its toggle holds it off, which from the
                     // outside looks exactly like nobody resolving it.
                     c = engaged < 0.5 ? YAPS_BAD
-                      : (_YAPS_Enabled < 0.5 ? YAPS_HALF : YAPS_GOOD);
+                      : (YAPS_ENABLED < 0.5 ? YAPS_HALF : YAPS_GOOD);
                 }
                 else if (cell == 2)
                 {
@@ -436,7 +472,7 @@ Shader "YAPS/Debug Overlay"
                     // finds nothing. A plug that refuses its wearer's own
                     // sockets, looking at one, reads exactly like a plug with
                     // no socket in reach. Amber is refusing, green is allowing.
-                    c = _YAPS_SelfAllow > 0.5 ? YAPS_GOOD : YAPS_HALF;
+                    c = YAPS_SELF_ALLOW > 0.5 ? YAPS_GOOD : YAPS_HALF;
                 }
                 else if (cell == 10)
                 {
@@ -444,6 +480,21 @@ Shader "YAPS/Debug Overlay"
                     // answered on its own, which is every other transport.
                     c = links < 0.5 ? YAPS_DEAD
                       : (withinX < saturate(links / 4.0) ? YAPS_GOOD : YAPS_DEAD);
+                }
+                else if (cell == 12)
+                {
+                    // Grey is every ordinary hole, so it is not a fault. Red
+                    // is an exit that is there and a plug that cannot come
+                    // out of it: too coarse, no second copy to draw it, or
+                    // baked before portals.
+                    c = portal < 0.5 ? YAPS_DEAD
+                      : (portal < 1.5 ? YAPS_HALF
+                      : (portal < 2.5 ? YAPS_NONE
+                      : (_YAPS_PortalSpan > 0 && _YAPS_CopyStart > 0 ? YAPS_GOOD : YAPS_BAD)));
+                }
+                else if (cell == 13)
+                {
+                    c = YAPS_DEAD;
                 }
                 else
                 {

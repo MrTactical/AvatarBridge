@@ -6,10 +6,12 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Dynamics.PhysBone.Components;
-using MagicaCloth2;
 
 namespace AvatarBridge
 {
+    // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
+    using MagicaCloth2;
+
     // Writes a VRCPhysBone chain as a MagicaCloth2 BoneCloth.
     // Structure transfers directly: root bones, colliders, exclusions,
     // enabled state. Physics values default to MagicaCloth2's own or a
@@ -27,6 +29,13 @@ namespace AvatarBridge
             // the holder after the PhysBone's parameter makes those line up with the FX
             // logic the avatar already has (e.g. "CPB_L" -> "CPB_L_IsGrabbed").
             string holderName = "MagicaCloth_" + data.Root.name;
+            // A merged group is named for the parent it shares, because
+            // "MagicaCloth_Hair strand 1" reads as one strand's cloth while
+            // holding twenty-six of them.
+            if (data.MergedRoots.Count > 0 && data.Root.parent != null)
+            {
+                holderName = "MagicaCloth_" + data.Root.parent.name;
+            }
             if (ctx.Settings.grabbyBonesSupport && !string.IsNullOrEmpty(data.Parameter))
             {
                 holderName = GrabbyBonesSupport.RegisterAndName(ctx, data.Parameter);
@@ -55,7 +64,7 @@ namespace AvatarBridge
                 cloth.enabled = data.ComponentEnabled;
                 if (!data.ComponentEnabled)
                 {
-                    ctx.Report.Approximated(Category, data.Root.name,
+                    ctx.Report.Approximated(Category, data.Label,
                         "Source PhysBone component was disabled; cloth created disabled. Component " +
                         "toggles are re-wired by the animator pass.");
                 }
@@ -63,7 +72,7 @@ namespace AvatarBridge
             else if (!data.InitiallyActive)
             {
                 cloth.enabled = false;
-                ctx.Report.Approximated(Category, data.Root.name, data.Synthesized
+                ctx.Report.Approximated(Category, data.Label, data.Synthesized
                     ? "Style was inactive, so the cloth starts off; its toggle switches it on."
                     : "Source PhysBone was off, so the cloth starts off; toggles that enabled it switch it on.");
             }
@@ -74,6 +83,20 @@ namespace AvatarBridge
                 Physics = cloth,
                 Root = data.Root
             });
+            // One entry per source PhysBone even when they share a cloth: the
+            // animator pass finds a toggle's chain by the source it was on,
+            // and a merged chain that registered only its first source would
+            // leave the rest of the group looking unconverted.
+            for (int i = 0; i < data.MergedRoots.Count; i++)
+            {
+                ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
+                {
+                    Source = data.MergedSources[i],
+                    Host = holder,
+                    Physics = cloth,
+                    Root = data.MergedRoots[i]
+                });
+            }
             var sdata = cloth.SerializeData;
 
             // Optional preset per chain kind. No arithmetic; one
@@ -89,7 +112,7 @@ namespace AvatarBridge
             {
                 if (!MagicaPresetLibrary.TryApply(sdata, cls, out preset, out customPreset, out string presetError))
                 {
-                    ctx.Report.Approximated(Category, data.Root.name,
+                    ctx.Report.Approximated(Category, data.Label,
                         $"No preset applied for chain class \"{cls.Name}\": {presetError}. Using " +
                         "MagicaCloth2's defaults instead.");
                     preset = null;
@@ -116,30 +139,25 @@ namespace AvatarBridge
                 sdata.animationPoseRatio = 1f;
             }
 
-            // Multi Child Type "Ignore" pins a branching root; only the
-            // branches simulate. rootRotation 0 reproduces the pin.
-            // Otherwise 1.0 ("child-based"): PhysBone rotates the root
-            // to follow its children, and 0.5 would leave every chain
-            // one joint stiffer at the base. Presets never carry
-            // rootRotation, so this survives either apply order.
-            if (data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore")
-            {
-                sdata.rootRotation = 0f;
-            }
-            else
-            {
-                sdata.rootRotation = 1f;
-            }
+            // Multi Child Type "Ignore" leaves a branching root unsimulated in VRChat, its
+            // children fixed at their rest offsets beside it, and each branch simulates from its
+            // own first bone. So the cloth is rooted at those children, not at the branching bone:
+            // rooted there with rootRotation 0, the children swung about it like a hinge at the
+            // waistband or hairline that VRChat does not have. rootRotation 1 everywhere: PhysBone
+            // turns a root to follow its children, and 0.5 would leave every chain one joint
+            // stiffer at the base. Presets never carry rootRotation, so this survives either order.
+            // Not for a soft body, whose root is held by a spring rather than pinned.
+            bool ignoreBranching = !softBody && IgnoresBranching(data);
+            sdata.rootRotation = 1f;
 
-            ctx.Report.Converted(Category, data.Root.name,
-                data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore"
-                    ? "Root held still (rotation 0), as Multi Child Type Ignore does."
-                    : "Root turns with the chain (rotation 1), as in VRChat. Lower Root Rotation if the base moves too much.");
+            ctx.Report.Converted(Category, data.Label, ignoreBranching
+                ? "Rooted at each branch's first bone, the branching bone itself left to the animation, as Multi Child Type Ignore does."
+                : "Root turns with the chain (rotation 1), as in VRChat. Lower Root Rotation if the base moves too much.");
 
             if (data.HumanoidExclusions.Count > 0)
             {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.HumanoidExclusions.Count} humanoid-mapped bone(s) excluded from simulation: " +
+                ctx.Report.Approximated(Category, data.Label,
+                    $"{BridgeElements.Count(data.HumanoidExclusions.Count, "humanoid-mapped bone", "humanoid-mapped bones")} excluded from simulation: " +
                     $"{string.Join(", ", data.HumanoidExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.HumanoidExclusions.Count > 4 ? ", …" : "")}. The animator and IK own them; their " +
                     "other children still simulate.");
@@ -147,20 +165,39 @@ namespace AvatarBridge
 
             if (data.ToeExclusions.Count > 0)
             {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.ToeExclusions.Count} toe branch(es) excluded from simulation: " +
+                ctx.Report.Approximated(Category, data.Label,
+                    $"{BridgeElements.Count(data.ToeExclusions.Count, "toe branch", "toe branches")} excluded from simulation: " +
                     $"{string.Join(", ", data.ToeExclusions.Take(4).Select(t => t.name))}" +
                     $"{(data.ToeExclusions.Count > 4 ? ", …" : "")} and below. Turn on \"Convert toe PhysBones\" " +
                     "if they are deliberate.");
             }
 
-            if (data.Ignores.Count == 0)
+            // ponytail: reported, not rooted around. Rooting below a nested chain pins the bones
+            // this chain moves beside it; measure that against two cloths on one bone before choosing.
+            if (data.NestedExclusions.Count > 0)
             {
-                sdata.rootBones.Add(data.Root);
+                ctx.Report.Approximated(Category, data.Label,
+                    $"Also moves {BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")}: " +
+                    $"{string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below. VRChat leaves those to their own PhysBone " +
+                    "(Ignore Other PhysBones), but MagicaCloth2 leaves a bone out only by rooting below it, which would " +
+                    "pin bones this chain moves.");
+            }
+
+            bool keptOut = false;
+            if (data.Ignores.Count == 0 && !ignoreBranching)
+            {
+                // Chains folded in by the grouping pass are roots in the same
+                // component, not bones in one chain: MagicaCloth2 simulates
+                // each independently, exactly as a component each would have.
+                foreach (var root in data.AllRoots)
+                {
+                    sdata.rootBones.Add(root);
+                }
             }
             else
             {
-                WriteRootsExcluding(ctx, sdata, data);
+                keptOut = WriteRootsExcluding(ctx, sdata, data, ignoreBranching);   // with no ignores, that roots each child, of every merged root too
             }
 
             // Endpoint Position appends a virtual bone to every leaf.
@@ -173,15 +210,20 @@ namespace AvatarBridge
                 int tips = SynthesizeEndpointBones(sdata, data);
                 if (tips > 0)
                 {
-                    ctx.Report.Approximated(Category, data.Root.name,
+                    ctx.Report.Approximated(Category, data.Label,
                         $"Endpoint Position ({data.EndpointPosition.x:0.###}, {data.EndpointPosition.y:0.###}, " +
-                        $"{data.EndpointPosition.z:0.###}) realised as {tips} \"_End\" bone(s), so the tip can move.");
+                        $"{data.EndpointPosition.z:0.###}) realised as {BridgeElements.Count(tips, "\"_End\" bone", "\"_End\" bones")}, so the tip can move.");
                 }
             }
+            // Once the tips exist, so they are listed as moving.
+            if (keptOut) MagicaClothKeepOut.KeepOut(cloth, data.Ignores);
 
             if (data.Colliders.Count > 0)
             {
-                sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Point;
+                // Edge, not Point: VRChat collides the whole bone, a capsule from joint to joint, so
+                // with points a collider slips between two particles that VRChat's capsule would hit.
+                // MagicaCloth2 keeps a soft body on points whatever this says.
+                sdata.colliderCollisionConstraint.mode = ColliderCollisionConstraint.Mode.Edge;
                 foreach (var pbCollider in data.Colliders)
                 {
                     var collider = GetOrCreateCollider(ctx, pbCollider, colliderCache);
@@ -203,16 +245,17 @@ namespace AvatarBridge
                 {
                     float before = sdata.radius.value;
                     sdata.radius.value = measured;   // direct, so any depth curve on it survives
-                    ctx.Report.Converted(Category, data.Root.name,
+                    ctx.Report.Converted(Category, data.Label,
                         $"Particle radius {before:0.###} → {measured:0.###}, measured from the mesh these " +
-                        $"bones move ({samples} vertex sample(s))." +
+                        $"bones move ({BridgeElements.Count(samples, "vertex sample", "vertex samples")})." +
                         (grownForReach ? " Measured with its sliders at full." : ""));
                 }
                 else
                 {
-                    ctx.Report.Skipped(Category, data.Root.name,
-                        "Particle radius left at the preset's value: no mesh vertices are weighted to " +
-                        "these bones (or the mesh could not be read), so there was nothing to measure. " +
+                    ctx.Report.Skipped(Category, data.Label,
+                        "Particle radius left at the preset's value: too little of the mesh is weighted to " +
+                        $"these bones (fewer than {MinMeshSamples} vertices carry {MinBoneWeight * 100f:0}% or more on one of them), " +
+                        "or the mesh could not be read, so there was nothing to measure. " +
                         "Set it on the cloth by hand if this chain collides at the wrong size.");
                 }
             }
@@ -220,12 +263,12 @@ namespace AvatarBridge
             // Particle radius bound. A safety rail, not a conversion.
             // A particle wider than the bone gap overlaps its neighbour
             // and the solver shoves them apart.
-            float spacing = MeasureBoneSpacing(data.Root);
+            float spacing = MeasureGroupSpacing(data);
             if (ctx.Settings.capParticleRadius && spacing > 0f && sdata.radius.value > spacing * 0.5f)
             {
                 float was = sdata.radius.value;
                 sdata.radius.value = spacing * 0.5f;   // assign directly, keeping any depth curve
-                ctx.Report.Approximated(Category, data.Root.name,
+                ctx.Report.Approximated(Category, data.Label,
                     $"Particle radius {was:0.###} reduced to {sdata.radius.value:0.###}: anything wider than " +
                     "the gap between bones makes neighbouring particles overlap and shove each other apart.");
             }
@@ -234,7 +277,7 @@ namespace AvatarBridge
             {
                 // No source PhysBone; nothing to derive, fit or limit
                 // from. The preset stands as authored.
-                ctx.Report.Converted(Category, data.Root.name,
+                ctx.Report.Converted(Category, data.Label,
                     $"SYNTHESIZED BoneCloth{(preset != null ? $" on the \"{chainClass}\" preset" : "")}: " +
                     "this toggled rig had NO physics in the source (no PhysBone; rigid in VRChat too). " +
                     "Created because \"Add physics to toggled rigs that have none\" is on. There was " +
@@ -245,7 +288,7 @@ namespace AvatarBridge
 
             if (ctx.Settings.derivePhysicsFromPhysBone)
             {
-                DerivePhysics(ctx, data, sdata);
+                DerivePhysics(ctx, data, sdata, softBody);
             }
 
             if (softBody)
@@ -258,7 +301,14 @@ namespace AvatarBridge
                 FitToPhysBone(ctx, data, sdata, softBody);
             }
 
-            if (ctx.Settings.boundSwingToSourceLimit)
+            if (ctx.Settings.boundSwingToSourceLimit && softBody)
+            {
+                // MagicaCloth2 turns distance bounds off for a soft body, so the limit goes on as an
+                // angle limit, as the stand-in's does. Without one a soft body swung unbounded on a
+                // walk: a belly to 160 degrees where its PhysBone stopped at 36.
+                if (!data.StandIn) ApplySoftBodyLimit(ctx, data, sdata, chainClass);
+            }
+            else if (ctx.Settings.boundSwingToSourceLimit)
             {
                 ApplyMotionLeash(ctx, data, sdata);
             }
@@ -310,8 +360,10 @@ namespace AvatarBridge
                     Walk(child);
                 }
                 // A tip written by an earlier cloth on the same root is a
-                // leaf too; stacked PhysBones must not grow X_End_End.
-                if (leaf && !node.name.EndsWith("_End", StringComparison.Ordinal))
+                // leaf too; stacked PhysBones must not grow X_End_End. Only
+                // this writer's own name: an authored "Tail_End" is a bone.
+                bool ownTip = node.parent != null && node.name == node.parent.name + "_End";
+                if (leaf && !ownTip)
                 {
                     var tip = new GameObject(node.name + "_End");
                     tip.transform.SetParent(node, false);
@@ -330,7 +382,9 @@ namespace AvatarBridge
             return added;
         }
 
-        static void WriteRootsExcluding(BridgeContext ctx, ClothSerializeData sdata, PhysBoneChainData data)
+        // True when it rooted where the PhysBone is and the ignored bones are to be kept out by
+        // attribute, once the hierarchy under the roots is final.
+        static bool WriteRootsExcluding(BridgeContext ctx, ClothSerializeData sdata, PhysBoneChainData data, bool ignoreBranching)
         {
             var ignored = new HashSet<Transform>(data.Ignores.Where(t => t != null));
 
@@ -402,7 +456,10 @@ namespace AvatarBridge
                 return added;
             }
 
-            Collect(data.Root);
+            foreach (var root in data.AllRoots)
+            {
+                Collect(root);
+            }
 
             // A promoted root only moves through its descendants;
             // MagicaCloth2 pins roots, and a pinned leaf is a statue.
@@ -431,13 +488,13 @@ namespace AvatarBridge
             // Excluding a bone roots below it, so ignores near the tips
             // can price out the chain. Losing over half of it means the
             // whole-root fallback, over-simulated but intact.
-            int wholeChain = MovableDescendants(data.Root);
+            int wholeChain = data.AllRoots.Sum(r => MovableDescendants(r));
             int kept = sdata.rootBones.Where(r => !deadRoots.Contains(r))
                                       .Sum(r => 1 + MovableDescendants(r));
             bool costsTooMuch = wholeChain > 0 && kept * 2 < wholeChain
                                 && data.HumanoidExclusions.Count == 0;
 
-            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch)
+            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch && unhonouredBranches.Count == 0)
             {
                 // At least one branch still moves: keep those, drop the statues.
                 foreach (var dead in deadRoots)
@@ -445,18 +502,35 @@ namespace AvatarBridge
                     sdata.rootBones.Remove(dead);
                 }
                 var names = sdata.rootBones.Select(b => b.name).Take(6).ToList();
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"{data.Ignores.Count} Ignore Transform(s) honoured by rooting the cloth at " +
-                    $"{sdata.rootBones.Count} branch(es) instead: {string.Join(", ", names)}" +
+                // With no Ignore Transforms this is Multi Child Type Ignore alone, VRChat's default,
+                // which the per-branch row already says: "0 honoured" read as a fault on most skirts.
+                string honoured = data.Ignores.Count == 0 ? "" :
+                    $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} honoured by rooting the cloth at " +
+                    $"{BridgeElements.Count(sdata.rootBones.Count, "branch", "branches")} instead: {string.Join(", ", names)}" +
                     $"{(sdata.rootBones.Count > names.Count ? ", …" : "")}. Each branch bends from its second " +
-                    "joint, so it may feel stiff at the base." +
-                    (deadRoots.Count > 0 ? $" {deadRoots.Count} childless branch(es) dropped." : "") +
-                    (unhonouredBranches.Count > 0
-                        ? $" {unhonouredBranches.Count} branch(es) simulate their excluded bones, or nothing of " +
-                          $"them would move: {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}" +
-                          $"{(unhonouredBranches.Count > 4 ? ", …" : "")}."
-                        : ""));
-                return;
+                    "joint, so it may feel stiff at the base.";
+                string dropped = deadRoots.Count > 0 ? $"{BridgeElements.Count(deadRoots.Count, "childless branch", "childless branches")} dropped." : "";
+                if (honoured.Length > 0 || dropped.Length > 0)
+                    ctx.Report.Approximated(Category, data.Label, honoured + (honoured.Length > 0 && dropped.Length > 0 ? " " : "") + dropped);
+                return false;
+            }
+
+            // Rooting around the ignores would give one up, simulate too little of the chain or
+            // leave nothing to move. Rooted where the PhysBone is, as VRChat roots it, the ignored
+            // bones kept out by attribute instead: the whole chain moves, they ride their bones.
+            // Not under Multi Child Type Ignore, whose branching root the cloth must not turn.
+            if (wholeChain > 0 && !ignoreBranching)
+            {
+                sdata.rootBones.Clear();
+                foreach (var root in data.AllRoots)
+                {
+                    sdata.rootBones.Add(root);
+                }
+                ctx.Report.Converted(Category, data.Label,
+                    $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} kept out of the simulation as in VRChat: " +
+                    $"the cloth starts at \"{data.Root.name}\" and they ride their bones" +
+                    (unhonouredBranches.Count > 0 ? $", {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}{(unhonouredBranches.Count > 4 ? ", …" : "")} moving with the rest." : "."));
+                return true;
             }
 
             // Nothing movable survives the decomposition. Honouring the
@@ -468,22 +542,26 @@ namespace AvatarBridge
                 // Simulating a humanoid-mapped bone fights the animator and IK for the transform
                 // every frame; a dead chain is the safer of two wrong answers. The pinned roots
                 // stay so the cloth remains valid and inspectable.
-                ctx.Report.Warning(Category, data.Root.name,
-                    $"This cloth CANNOT move: honouring the {data.Ignores.Count} excluded transform(s) " +
-                    $"(including {data.HumanoidExclusions.Count} humanoid bone(s)) leaves nothing to move. Kept " +
+                ctx.Report.Warning(Category, data.Label,
+                    $"This cloth CANNOT move: honouring the {BridgeElements.Count(data.Ignores.Count, "excluded transform", "excluded transforms")} " +
+                    $"(including {BridgeElements.Count(data.HumanoidExclusions.Count, "humanoid bone", "humanoid bones")}) leaves nothing to move. Kept " +
                     "for inspection; delete it or fix the source PhysBone.");
-                return;
+                return false;
             }
 
             sdata.rootBones.Clear();
-            sdata.rootBones.Add(data.Root);
-            ctx.Report.Warning(Category, data.Root.name,
-                $"{data.Ignores.Count} Ignore Transform(s) NOT honoured: MagicaCloth2 can only exclude " +
+            foreach (var root in data.AllRoots)
+            {
+                sdata.rootBones.Add(root);
+            }
+            ctx.Report.Warning(Category, data.Label,
+                $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} NOT honoured: MagicaCloth2 can only exclude " +
                 "a bone by rooting below it, and " +
                 (costsTooMuch
-                    ? $"that would simulate only {kept} of {wholeChain} bone(s). "
+                    ? $"that would simulate only {kept} of {BridgeElements.Count(wholeChain, "bone", "bones")}. "
                     : "that would leave nothing to move. ") +
                 $"The whole tree simulates from \"{data.Root.name}\", so those bones jiggle where VRChat held them.");
+            return false;
         }
 
         static void ReportSourceSettings(BridgeContext ctx, PhysBoneChainData data, string preset,
@@ -510,113 +588,138 @@ namespace AvatarBridge
                 : "Those numbers were not transferred: the cloth uses the baseline above. Turn on \"Derive " +
                   "physics from the PhysBone\" to convert pull, spring and stiffness, or tune the cloth by hand.";
 
-            ctx.Report.Converted(Category, data.Root.name,
-                $"BoneCloth on {baseline}, {data.Colliders.Count} collider(s). Source PhysBone was pull " +
+            ctx.Report.Converted(Category, data.Label,
+                $"BoneCloth on {baseline}, {BridgeElements.Count(data.Colliders.Count, "collider", "colliders")}. Source PhysBone was pull " +
                 $"{data.Pull:0.##}, spring {data.Spring:0.##}, stiffness {data.Stiffness:0.##}, gravity " +
                 $"{data.Gravity:0.##}, immobile {data.Immobile:0.##}, radius {data.Radius:0.###}. {fate}");
 
-            if (data.MaxStretch > 0f || data.MaxSquish > 0f)
+            if (data.MaxStretch > 0f)
             {
-                ctx.Report.Skipped(Category, data.Root.name,
-                    $"Stretch & Squish (max stretch {data.MaxStretch:0.##}, max squish {data.MaxSquish:0.##}) is " +
-                    "not converted: MagicaCloth2's BoneCloth keeps each bone at its rest length, so a chain " +
-                    "swings but never lengthens or compresses.");
+                ctx.Report.Skipped(Category, data.Label,
+                    $"Max Stretch {data.MaxStretch:0.##} is not converted: MagicaCloth2 lets no chain stretch more " +
+                    "than 3% of its length, however it is set.");
             }
 
             if (data.IsAnimated)
             {
                 // The report entry for the animationPoseRatio decision
                 // taken above. The source flag answers it; nothing to ask.
-                ctx.Report.Converted(Category, data.Root.name,
+                ctx.Report.Converted(Category, data.Label,
                     "'Is Animated' was on, so the cloth follows the animated pose (Animation Pose Ratio 1).");
             }
 
             if (data.RootHasMultipleChildren && !string.IsNullOrEmpty(data.MultiChildTypeName))
             {
-                ctx.Report.Approximated(Category, data.Root.name, data.MultiChildTypeName == "Ignore"
-                    ? "Multi Child Type 'Ignore': Root Rotation 0, so the root stays still as in VRChat."
-                    : $"Multi Child Type '{data.MultiChildTypeName}' has no equivalent: branches simulate apart.");
+                bool softBody = chainClass != null && SoftBodyClasses.Contains(chainClass);
+                ctx.Report.Approximated(Category, data.Label, data.MultiChildTypeName == "Ignore"
+                    ? softBody
+                        ? "Multi Child Type 'Ignore': a soft body stays rooted at the branching bone, held by its spring, rather than split per branch as VRChat does."
+                        : "Multi Child Type 'Ignore': each branch simulates from its own first bone, as in VRChat."
+                    : data.MultiChildTypeName == "Average"
+                        ? "Multi Child Type 'Average': the root turns toward the average of its branches, as in VRChat, but " +
+                          "MagicaCloth2 cannot carry the other branches rigidly with it."
+                        : $"Multi Child Type '{data.MultiChildTypeName}' has no equivalent: the root turns toward the average of its branches.");
             }
 
             if (!string.IsNullOrEmpty(data.Parameter))
             {
-                ctx.Report.Approximated(Category, data.Root.name, ctx.Settings.grabbyBonesSupport
+                ctx.Report.Approximated(Category, data.Label, ctx.Settings.grabbyBonesSupport
                     ? $"PhysBone parameter \"{data.Parameter}\": _IsGrabbed and _Angle work via the GrabbyBones " +
                       "mod (cloth object named to match). _Stretch/_Squish/_IsPosed have no equivalent."
                     : $"PhysBone parameter \"{data.Parameter}\" (_IsGrabbed/_Angle/_Stretch) has no CVR equivalent.");
             }
         }
 
-        static void DerivePhysics(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        static void DerivePhysics(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata, bool softBody)
         {
             bool advanced = data.IsAdvancedIntegration;
 
-            // The preset's own numbers, read before overwrite, kept as
-            // a floor. Faithful to a loose PhysBone means mush in
-            // MagicaCloth2; the presets are the floor of a usable
-            // spring. Derivation may firm a preset, never soften below
-            // it. Each end floors on its own.
+            // The preset's damping, read before overwrite, kept as a floor. Restoration has
+            // none on a hanging chain: a floor at the preset's root value made loose hair about
+            // nine times stiffer than its PhysBone, measured in Play mode as half the swing. A
+            // soft body keeps the preset's root restoration as its floor at both ends: its
+            // PhysBone's pull is low because the PhysBone holds it in other ways, and with the
+            // floor gone the copies swung 100 to 180 degrees on a walk where the originals swung
+            // 8; following the preset's taper instead still left them swinging 50.
             float dampFloor = sdata.damping.value;
-            float restFloor = sdata.angleRestorationConstraint.stiffness.value;
+            float restPreset = sdata.angleRestorationConstraint.stiffness.value;
+            float restFloor = softBody ? restPreset : 0f;
 
-            // Evaluate both ends of the chain. PhysBone multiplies each base value by its curve
-            // at the bone's depth, so root and tip can want quite different things.
-            float pullRoot = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0f);
-            float pullTip = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 1f);
-            float springRoot = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 0f);
-            float springTip = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, 1f);
-            float stiffRoot = data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 0f);
-            float stiffTip = data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, 1f);
-
-            float dampRoot = PhysBoneSolverMap.Damping(pullRoot, springRoot, stiffRoot, advanced);
-            float dampTip = PhysBoneSolverMap.Damping(pullTip, springTip, stiffTip, advanced);
-            float dampDerived = Mathf.Max(dampRoot, dampTip);
-            dampRoot = Mathf.Max(dampRoot, dampFloor);
-            dampTip = Mathf.Max(dampTip, dampFloor);
-            PhysBoneSolverMap.MapCurve(dampRoot, dampTip,
-                out float dampValue, out float dampStart, out float dampEnd, out bool dampCurve);
-            sdata.damping.SetValue(dampValue, dampStart, dampEnd, dampCurve);
-
-            float restRoot = PhysBoneSolverMap.RestorationStiffness(
-                pullRoot, springRoot, stiffRoot, advanced, out bool satRoot);
-            float restTip = PhysBoneSolverMap.RestorationStiffness(
-                pullTip, springTip, stiffTip, advanced, out bool satTip);
-            float restDerived = Mathf.Max(restRoot, restTip);
-            restRoot = Mathf.Max(restRoot, restFloor);
-            restTip = Mathf.Max(restTip, restFloor);
-            PhysBoneSolverMap.MapCurve(restRoot, restTip,
-                out float restValue, out float restStart, out float restEnd, out bool restCurve);
-
+            // PhysBone multiplies each base value by its curve at the bone's depth, so root and tip
+            // can want quite different things, and so can the middle: the two ends alone drew a
+            // chain loose in the middle as held all along. Sampled at the 16 depths MagicaCloth2
+            // samples its own curves at.
+            var damp = new float[16];
+            var rest = new float[16];
+            float dampDerived = 0f, attenuation = 0f;
+            bool saturated = false;
+            for (int i = 0; i < damp.Length; i++)
+            {
+                float t = i / (damp.Length - 1f);
+                float pull = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, t);
+                float spring = data.Spring * PhysBoneSolverMap.SafeEvaluate(data.SpringCurve, t);
+                float stiff = PhysBoneSolverMap.AsVersion11(
+                    data.Stiffness * PhysBoneSolverMap.SafeEvaluate(data.StiffnessCurve, t), data.IsVersion10);
+                float d = PhysBoneSolverMap.Damping(pull, spring, stiff, advanced);
+                dampDerived = Mathf.Max(dampDerived, d);
+                damp[i] = Mathf.Max(d, dampFloor);
+                rest[i] = Mathf.Max(restFloor,
+                    PhysBoneSolverMap.RestorationStiffness(pull, spring, stiff, advanced, out bool sat));
+                saturated |= sat;
+                attenuation += PhysBoneSolverMap.RestorationAttenuation(pull, spring, stiff, advanced, damp[i], rest[i]) / damp.Length;
+            }
+            float dampValue = SetAlongChain(sdata.damping, damp);
+            float restValue = SetAlongChain(sdata.angleRestorationConstraint.stiffness, rest);
             sdata.angleRestorationConstraint.useAngleRestoration = restValue > 0.0001f;
-            sdata.angleRestorationConstraint.stiffness.SetValue(restValue, restStart, restEnd, restCurve);
+            // One value per cloth. A stand-in keeps the preset's: it follows the add-on, not this PhysBone.
+            float attenPreset = sdata.angleRestorationConstraint.velocityAttenuation;
+            if (!data.StandIn) sdata.angleRestorationConstraint.velocityAttenuation = attenuation;
 
             bool dampFloored = dampValue > dampDerived + 0.0001f;
-            bool restFloored = restValue > restDerived + 0.0001f;
-            ctx.Report.Approximated(Category, data.Root.name,
+            ctx.Report.Approximated(Category, data.Label,
                 $"Physics derived from the PhysBone ({(advanced ? "Advanced" : "Simplified")} integration): " +
-                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}, from 60 Hz to 90 Hz. " +
-                $"Preset baseline: damping {dampFloor:0.###}, restoration {restFloor:0.###}." +
-                (dampFloored || restFloored
-                    ? " Held at the baseline, below which a chain turns to mush" +
-                      (dampFloored ? $" (damping would have been {dampDerived:0.###})" : "") +
-                      (restFloored ? $" (restoration would have been {restDerived:0.###})" : "") + "."
-                    : ""));
+                $"damping {dampValue:0.###}, angle restoration {restValue:0.###}, " +
+                $"its velocity attenuation {sdata.angleRestorationConstraint.velocityAttenuation:0.##}, from 60 Hz to 90 Hz " +
+                $"(the preset had damping {dampFloor:0.###}, restoration {restPreset:0.###}, " +
+                $"attenuation {attenPreset:0.##})." +
+                (dampFloored ? $" Damping held at the preset's; derived it would have been {dampDerived:0.###}." : ""));
 
-            if (satRoot || satTip)
+            if (saturated)
             {
-                ctx.Report.Approximated(Category, data.Root.name,
+                ctx.Report.Approximated(Category, data.Label,
                     $"Pull {data.Pull:0.##} is stiffer than MagicaCloth2 can express: its restoration tops " +
                     "out above a pull of about 0.6. Both settle within a frame at that point, so this should " +
                     "not be visible, but the chain will not get any stiffer than it now is.");
             }
 
-            if (!advanced && data.Stiffness > 0.01f)
+        }
+
+        // A straight line from root to tip is all most chains need, and keeps them as they were.
+        static float SetAlongChain(CurveSerializeData target, float[] at)
+        {
+            int last = at.Length - 1;
+            PhysBoneSolverMap.MapCurve(at[0], at[last], out float value, out float start, out float end, out bool curve);
+            float peak = Mathf.Clamp01(at.Max());
+            bool straight = true;
+            for (int i = 1; i < last && straight; i++)
             {
-                ctx.Report.Approximated(Category, data.Root.name,
-                    $"Stiffness {data.Stiffness:0.##} was ignored, because VRChat ignores it too: " +
-                    "PhysBone's Simplified integration never reads stiffness. Switching the source PhysBone " +
-                    "to Advanced would make it mean something in both.");
+                float line = Mathf.Lerp(Mathf.Clamp01(at[0]), Mathf.Clamp01(at[last]), i / (float)last);
+                straight = Mathf.Abs(Mathf.Clamp01(at[i]) - line) <= 0.01f * peak;
             }
+            if (straight || peak <= 0.0001f)
+            {
+                target.SetValue(value, start, end, curve);
+                return value;
+            }
+            var shape = new AnimationCurve();
+            for (int i = 0; i <= last; i++) shape.AddKey(new Keyframe(i / (float)last, Mathf.Clamp01(at[i]) / peak));
+            for (int k = 0; k < shape.length; k++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(shape, k, AnimationUtility.TangentMode.Linear);
+                AnimationUtility.SetKeyRightTangentMode(shape, k, AnimationUtility.TangentMode.Linear);
+            }
+            target.SetValue(peak, shape);
+            return peak;
         }
 
         static void FitToPhysBone(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata,
@@ -629,7 +732,7 @@ namespace AvatarBridge
             if (sdata.wind.influence > 0f)
             {
                 sdata.wind.influence = 0f;
-                ctx.Report.Approximated(Category, data.Root.name,
+                ctx.Report.Approximated(Category, data.Label,
                     "Wind influence 0: VRChat has no wind, so the chain was tuned without it.");
             }
 
@@ -642,6 +745,19 @@ namespace AvatarBridge
             RaiseSpeedLimit(sdata.inertiaConstraint, "localMovementSpeedLimit", 5f, ctx, data, "local movement");
             RaiseSpeedLimit(sdata.inertiaConstraint, "rotationSpeedLimit", 720f, ctx, data, "world rotation");
             RaiseSpeedLimit(sdata.inertiaConstraint, "localRotationSpeedLimit", 720f, ctx, data, "local rotation");
+            RaiseSpeedLimit(sdata.inertiaConstraint, "particleSpeedLimit", 4f, ctx, data, "particle");
+
+            // The source's own angle limit is the leash's job. A preset's MagicaCloth2 angle
+            // limit bounds chains whose source had none, and it is the constraint that set
+            // converted chains vibrating before 3.7.0. A soft-body stand-in's limit is not the
+            // preset's: ConfigureSoftBody sets it before this runs, to hold the bending to the
+            // add-on's. Any other stand-in's is.
+            if (sdata.angleLimitConstraint.useAngleLimit && !(data.StandIn && softBody))
+            {
+                sdata.angleLimitConstraint.useAngleLimit = false;
+                ctx.Report.Approximated(Category, data.Label,
+                    "The preset's own angle limit turned off: the source's limit, if it had one, is the swing bound.");
+            }
 
             if (Mathf.Approximately(data.Gravity, 0f))
             {
@@ -651,51 +767,119 @@ namespace AvatarBridge
                 if (!Mathf.Approximately(sdata.gravity, 0f))
                 {
                     sdata.gravity = 0f;
-                    ctx.Report.Approximated(Category, data.Root.name,
+                    ctx.Report.Approximated(Category, data.Label,
                         "Gravity set to 0: the source PhysBone had none, so this chain was never " +
                         "meant to hang under its own weight.");
                 }
             }
-            else if (data.Gravity < 0f)
+            else if (!softBody)
             {
-                sdata.gravityDirection = new Unity.Mathematics.float3(0f, 1f, 0f);
-                ctx.Report.Approximated(Category, data.Root.name,
-                    "Gravity direction flipped to point up: the source PhysBone used negative gravity.");
+                float was = sdata.gravity;
+                sdata.gravity = ConvertedGravity(data, sdata, out float angle);
+                TrySetMember(sdata, "gravityFalloff", Mathf.Clamp01(data.GravityFalloff));
+                if (data.Gravity < 0f)
+                {
+                    sdata.gravityDirection = new Unity.Mathematics.float3(0f, 1f, 0f);
+                }
+                ctx.Report.Approximated(Category, data.Label,
+                    $"Gravity {sdata.gravity:0.##} (the preset had {was:0.##}), from the PhysBone's {data.Gravity:0.##} " +
+                    $"(version {(data.IsVersion10 ? "1.0" : "1.1")}): held out level, the chain settles about {angle:0}° " +
+                    $"{(data.Gravity < 0f ? "up" : "down")} in VRChat, and this is the pull that holds it there against " +
+                    $"this chain's restoration. Falloff {GetFloat(sdata, "gravityFalloff"):0.##} carried as it is.");
             }
 
             // immobile -> inertia influence, the same question with the
             // polarity flipped. Both values move together: split, they ask
             // the chain to hold still and swing at once. Never on a soft
             // body, which cannot be flung anyway.
+            // Bone length. A PhysBone bone keeps its length unless Max Squish lets a collider or a
+            // grab shorten it, and pull brings it back. MagicaCloth2 holds length through distance
+            // stiffness, which also resists some bending, so making every chain rigid swung them
+            // measurably less than their PhysBones (Play-mode A/B, 2026-10-06) and was undone. Only
+            // a squishing source changes it: softened by its squish, never below 0.2, which would
+            // leave a bone held by the tether alone, never firmer than the preset, and the tether's
+            // shrink limit opened to match. Soft bodies keep MagicaCloth2's own fixed values.
+            if (!softBody && data.MaxSquish > 0f)
+            {
+                float squish = Mathf.Clamp01(data.MaxSquish);
+                float was = sdata.distanceConstraint.stiffness.value;
+                float stiffness = Mathf.Min(was, Mathf.Max(0.2f, 1f - squish));
+                sdata.distanceConstraint.stiffness.SetValue(stiffness);
+                if (squish > sdata.tetherConstraint.distanceCompression)
+                {
+                    sdata.tetherConstraint.distanceCompression = squish;
+                }
+                ctx.Report.Approximated(Category, data.Label,
+                    $"Bones hold their length at stiffness {stiffness:0.##} (the preset had {was:0.##}), so a collider " +
+                    $"can shorten them, for the source's Max Squish {squish:0.##}.");
+            }
+
+            // Depth inertia holds the bones near the root still while the avatar moves; several
+            // presets ship 0.7 to 1.0 of it, and VRChat has nothing like it.
+            float depth = GetFloat(sdata.inertiaConstraint, "depthInertia");
+            if (!softBody && depth > 0f && TrySetMember(sdata.inertiaConstraint, "depthInertia", 0f))
+            {
+                ctx.Report.Approximated(Category, data.Label,
+                    $"The preset's depth inertia ({depth:0.##}) turned off: VRChat has nothing like it.");
+            }
+
+            // VRChat applies immobile once per step, against one frame: the chain's parent for All
+            // Motion, the world for World. MagicaCloth2's world, local and anchor inertia multiply,
+            // so setting all three to 1 - immobile froze an immobile chain (measured in Play mode:
+            // 0.1° of swing where the PhysBone had 7°). Each type gets the one control that matches
+            // it, and the others stay at 1, MagicaCloth2's full response.
             if (data.Immobile > 0.01f && !softBody)
             {
                 float influence = Mathf.Clamp01(1f - data.Immobile);
-                bool world = TrySetMember(sdata.inertiaConstraint, "worldInertia", influence);
-                bool local = TrySetMember(sdata.inertiaConstraint, "localInertia", influence);
-                if (world || local)
-                {
-                    ctx.Report.Approximated(Category, data.Root.name,
-                        $"World and local influence both set to {influence:0.##}: the source PhysBone was " +
-                        $"{data.Immobile:0.##} immobile, and MagicaCloth2 measures the same thing the " +
-                        "other way round. Both are set because they are the same question at two " +
-                        "granularities, not a local/networked split.");
-                }
-
-                // All Motion cancels motion relative to the chain's parent, a head
-                // turn included. MagicaCloth2's anchor does the same: anchorRatio is
-                // 1 - anchorInertia, so all three take 1 - immobile. All Motion only;
-                // a World PhysBone keeps reacting to its parent.
+                TrySetMember(sdata.inertiaConstraint, "localInertia", 1f);
+                bool anchored = false;
                 if (data.ImmobileTypeName == "AllMotion" && data.Root != null && data.Root.parent != null)
                 {
                     var anchor = data.Root.parent;
                     if (TrySetReference(sdata.inertiaConstraint, "anchor", anchor))
                     {
-                        TrySetMember(sdata.inertiaConstraint, "anchorInertia", influence);
-                        ctx.Report.Approximated(Category, data.Root.name,
-                            $"Inertia anchored to \"{anchor.name}\" at {influence:0.##}, for Immobile Type \"All Motion\".");
+                        anchored = TrySetMember(sdata.inertiaConstraint, "anchorInertia", influence);
+                        TrySetMember(sdata.inertiaConstraint, "worldInertia", 1f);
+                        ctx.Report.Approximated(Category, data.Label,
+                            $"Inertia anchored to \"{anchor.name}\" at {influence:0.##}: the source PhysBone was " +
+                            $"{data.Immobile:0.##} immobile against its parent (\"All Motion\").");
                     }
                 }
+                if (!anchored && TrySetMember(sdata.inertiaConstraint, "worldInertia", influence))
+                {
+                    ctx.Report.Approximated(Category, data.Label,
+                        $"World inertia {influence:0.##}: the source PhysBone was {data.Immobile:0.##} immobile " +
+                        "against the world, and MagicaCloth2 measures the same thing the other way round.");
+                }
             }
+        }
+
+        static void ApplySoftBodyLimit(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata, string chainClass)
+        {
+            if (data.LimitTypeName == "None" || string.IsNullOrEmpty(data.LimitTypeName))
+            {
+                return;
+            }
+            // Thighs and a butt are left without: against their PhysBones the angle limit made a
+            // thigh swing further on a walk (34 degrees off against 9) and hang 20 degrees off lying
+            // down, where without it they hang exactly. Breasts came much nearer with it.
+            if (chainClass == "Thigh" || chainClass == "Butt")
+            {
+                ctx.Report.Approximated(Category, data.Label,
+                    $"Source {data.LimitTypeName} limit not converted: MagicaCloth2 turns distance bounds off for a soft " +
+                    "body, and an angle limit made a thigh or butt swing further than its PhysBone, so its spring holds it near rest instead.");
+                return;
+            }
+            float limitAngle = data.LimitTypeName == "Polar" ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
+            if (limitAngle <= 0f)
+            {
+                return;
+            }
+            sdata.angleLimitConstraint.useAngleLimit = true;
+            sdata.angleLimitConstraint.limitAngle.SetValue(Mathf.Min(limitAngle, 180f));
+            ctx.Report.Converted(Category, data.Label,
+                $"Swing capped at the source's {limitAngle:0}° {data.LimitTypeName} limit, as an angle limit: " +
+                "MagicaCloth2 turns distance bounds off for a soft body.");
         }
 
         static void ApplyMotionLeash(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
@@ -704,38 +888,35 @@ namespace AvatarBridge
             {
                 return;   // the author set no limit, so there is nothing to honour
             }
-            float limitAngle = Mathf.Max(data.MaxAngleX, data.MaxAngleZ);
+            // VRChat reads only X for Angle and Hinge, whose Z still holds its default
+            // 45; Polar clamps both axes.
+            float limitAngle = data.LimitTypeName == "Polar" ? Mathf.Max(data.MaxAngleX, data.MaxAngleZ) : data.MaxAngleX;
             if (limitAngle <= 0f)
             {
                 return;
             }
-            float length = MeasureChainLength(data.Root);
-            if (length <= 0f)
+            var segments = SimulatedPath(data);
+            if (segments.Sum() <= 0f)
             {
                 return;   // single bone with no reach; a leash would only pin it
             }
-
-            float chord = 2f * length * Mathf.Sin(Mathf.Min(limitAngle, 180f) * 0.5f * Mathf.Deg2Rad);
-            if (chord <= 0f)
+            var curve = LeashCurve(segments, Mathf.Min(limitAngle, 180f), out float reach);
+            if (reach <= 0f)
             {
                 return;
             }
 
-            // The curve makes this exact. A bone's chord grows linearly
-            // with distance along the chain, and MagicaCloth2 evaluates
-            // the curve linearly over depth, so a straight 0-to-1 curve
-            // gives every bone its own allowance.
             bool applied = TrySetMember(sdata.motionConstraint, "useMaxDistance", true)
-                           && TrySetCurveValue(sdata.motionConstraint, "maxDistance", chord, 0f, 1f);
+                           && TrySetCurve(sdata.motionConstraint, "maxDistance", reach, curve);
             if (applied)
             {
-                ctx.Report.Converted(Category, data.Root.name,
-                    $"Swing bounded to {chord:0.###} from rest, converted from the source's {limitAngle:0}° " +
-                    $"{data.LimitTypeName} limit over a {length:0.###} chain, as a distance bound that cannot vibrate.");
+                ctx.Report.Converted(Category, data.Label,
+                    $"Swing bounded to {reach:0.###} at the tip, converted from the source's {limitAngle:0}° " +
+                    $"{data.LimitTypeName} limit at every joint, as a distance bound that cannot vibrate.");
             }
             else
             {
-                ctx.Report.Skipped(Category, data.Root.name,
+                ctx.Report.Skipped(Category, data.Label,
                     $"Source {data.LimitTypeName} limit ({limitAngle:0}°) could not be applied as a movement " +
                     "bound on this MagicaCloth2 version: the chain will swing further here than in VRChat.");
             }
@@ -757,28 +938,189 @@ namespace AvatarBridge
             }
             valueField.SetValue(holder, floor);
             field.SetValue(inertia, holder);   // struct-safe: write the modified copy back
-            ctx.Report.Approximated(Category, data.Root.name,
+            ctx.Report.Approximated(Category, data.Label,
                 $"{label} speed limit raised {current:0.##} → {floor:0.##}, MagicaCloth2's default: the preset's " +
                 "sat below walking pace.");
         }
 
-        static float MeasureChainLength(Transform root)
+        // MagicaCloth2's gravity is an acceleration that angle restoration holds off: a segment
+        // settles where a step's pull, G dt² cos θ, equals what restoration takes back, ρ θ L.
+        // So G is solved for the angle the chain settles at in VRChat. MagicaCloth2 also carries
+        // a chain's weight down to its root, which VRChat does not; the load factor for that,
+        // 3.4 times the cube root of the segment count, was fitted in Play mode against the
+        // original PhysBones on five avatars of both versions. A chain with no restoration had
+        // no pull in VRChat either, so gravity never reached it there.
+        static float ConvertedGravity(PhysBoneChainData data, ClothSerializeData sdata, out float angleDeg)
         {
-            if (root == null)
+            var segments = SimulatedPath(data);
+            int count = Mathf.Max(1, segments.Count);
+            float pull = data.Pull * PhysBoneSolverMap.SafeEvaluate(data.PullCurve, 0.5f);
+            float theta = PhysBoneHangAngle(count, Mathf.Clamp(Mathf.Abs(data.Gravity), 0f, 0.99f), pull,
+                data.IsVersion10, Mathf.Clamp01(data.GravityFalloff));
+            angleDeg = theta * Mathf.Rad2Deg;
+            var restoration = sdata.angleRestorationConstraint;
+            float inspector = restoration.useAngleRestoration ? restoration.stiffness.Evaluate(0.5f) : 0f;
+            float perStep = 1f - Mathf.Pow(1f - Mathf.Clamp01(inspector * PhysBoneSolverMap.RestorationScale),
+                PhysBoneSolverMap.RestorationIterations);
+            float length = segments.Count > 0 ? segments.Average() : data.Root.TransformVector(data.EndpointPosition).magnitude;
+            float load = 3.4f * Mathf.Pow(count, 1f / 3f);
+            const float dt = 1f / PhysBoneSolverMap.MagicaHz;
+            return Mathf.Clamp(perStep * theta * length / (dt * dt * Mathf.Max(Mathf.Cos(theta), 0.05f) * load), 0f, 20f);
+        }
+
+        // Where a straight chain held out level settles in VRChat, measured root to tip. Each bone
+        // balances against its already-bent parent: in 1.1 its rest leans toward down by the
+        // gravity fraction (SolveChain lerps the pose toward down), in 1.0 gravity is a force that
+        // pull holds off. Falloff weakens a bone's gravity as the bone itself turns toward down.
+        static float PhysBoneHangAngle(int bones, float gravity, float pull, bool version10, float falloff)
+        {
+            float phi = 0f, x = 0f, y = 0f;
+            for (int i = 0; i < bones; i++)
             {
-                return 0f;
-            }
-            float longest = 0f;
-            for (int i = 0; i < root.childCount; i++)
-            {
-                var child = root.GetChild(i);
-                float branch = Vector3.Distance(root.position, child.position) + MeasureChainLength(child);
-                if (branch > longest)
+                float lo = phi, hi = Mathf.PI / 2f;
+                for (int k = 0; k < 30; k++)
                 {
-                    longest = branch;
+                    float mid = (lo + hi) * 0.5f;
+                    float g = gravity * ((1f - falloff) + falloff * (1f - Mathf.Sin(mid)));
+                    float want = version10
+                        ? phi + Mathf.Atan(g * Mathf.Cos(mid) / Mathf.Max(pull, 0.01f))
+                        : Mathf.Atan2((1f - g) * Mathf.Sin(phi) + g, (1f - g) * Mathf.Cos(phi));
+                    if (want > mid)
+                    {
+                        lo = mid;
+                    }
+                    else
+                    {
+                        hi = mid;
+                    }
+                }
+                phi = (lo + hi) * 0.5f;
+                x += Mathf.Cos(phi);
+                y += Mathf.Sin(phi);
+            }
+            return Mathf.Atan2(y, x);
+        }
+
+        static bool IgnoresBranching(PhysBoneChainData data) =>
+            data.RootHasMultipleChildren && data.MultiChildTypeName == "Ignore";
+
+        // The segments VRChat actually bends: from the root, or, when Multi Child Type Ignore
+        // leaves a branching root still, from the longest branch's first bone.
+        static List<float> SimulatedPath(PhysBoneChainData data)
+        {
+            // The longest strand of a merged group stands for all of it: the swing bound must
+            // reach the farthest tip, and gravity is solved for the longest hang.
+            List<float> longest = null;
+            foreach (var root in data.AllRoots)
+            {
+                var path = SimulatedPathFrom(root, data);
+                if (longest == null || path.Sum() > longest.Sum())
+                {
+                    longest = path;
                 }
             }
             return longest;
+        }
+
+        internal static List<float> SimulatedPathFrom(Transform root, PhysBoneChainData data)
+        {
+            if (!IgnoresBranching(data))
+            {
+                return LongestPath(root, data.Ignores);
+            }
+            var best = new List<float>();
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                if (data.Ignores.Contains(child))
+                {
+                    continue;
+                }
+                var path = LongestPath(child, data.Ignores);
+                if (path.Sum() > best.Sum())
+                {
+                    best = path;
+                }
+            }
+            return best;
+        }
+
+        // Segment lengths along the longest branch below root, ignored bones left out.
+        static List<float> LongestPath(Transform root, List<Transform> ignores)
+        {
+            var best = new List<float>();
+            if (root == null)
+            {
+                return best;
+            }
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var child = root.GetChild(i);
+                if (ignores.Contains(child))
+                {
+                    continue;
+                }
+                var branch = LongestPath(child, ignores);
+                branch.Insert(0, Vector3.Distance(root.position, child.position));
+                if (branch.Sum() > best.Sum())
+                {
+                    best = branch;
+                }
+            }
+            return best;
+        }
+
+        // VRChat limits every joint against its parent, so the reach a limit allows grows
+        // faster than linearly down a chain: each joint adds its own bend. A point's bound is
+        // the farthest it gets with every joint above it bent the same way, at any bend up to
+        // the limit. MagicaCloth2 squares depth before it reads this curve (MotionConstraint,
+        // "depth = depth * depth"), so the curve is written against depth squared; a straight
+        // curve there pinned the base and middle of every limited chain.
+        static AnimationCurve LeashCurve(List<float> segments, float limitDeg, out float reach)
+        {
+            int n = segments.Count;
+            float total = segments.Sum();
+            var atJoint = new float[n + 1];
+            for (int step = 1; step <= 8; step++)
+            {
+                float bend = limitDeg * step / 8f * Mathf.Deg2Rad;
+                var bent = Vector2.zero;
+                float along = 0f;
+                for (int i = 0; i < n; i++)
+                {
+                    bent += segments[i] * new Vector2(Mathf.Cos((i + 1) * bend), Mathf.Sin((i + 1) * bend));
+                    along += segments[i];
+                    atJoint[i + 1] = Mathf.Max(atJoint[i + 1], Vector2.Distance(bent, new Vector2(along, 0f)));
+                }
+            }
+            reach = atJoint.Max();
+            var curve = new AnimationCurve();
+            if (reach <= 0f)
+            {
+                return curve;
+            }
+            for (int k = 0; k <= 16; k++)
+            {
+                float x = k / 16f;
+                float s = Mathf.Sqrt(x) * total, start = 0f, r = atJoint[n];
+                for (int i = 0; i < n; i++)
+                {
+                    if (s <= start + segments[i] || i == n - 1)
+                    {
+                        float u = segments[i] > 0f ? Mathf.Clamp01((s - start) / segments[i]) : 1f;
+                        r = Mathf.Lerp(atJoint[i], atJoint[i + 1], u);
+                        break;
+                    }
+                    start += segments[i];
+                }
+                curve.AddKey(new Keyframe(x, r / reach));
+            }
+            for (int k = 0; k < curve.length; k++)
+            {
+                AnimationUtility.SetKeyLeftTangentMode(curve, k, AnimationUtility.TangentMode.Linear);
+                AnimationUtility.SetKeyRightTangentMode(curve, k, AnimationUtility.TangentMode.Linear);
+            }
+            return curve;
         }
 
         static ColliderComponent GetOrCreateCollider(BridgeContext ctx, VRCPhysBoneCollider pbCollider,
@@ -808,7 +1150,22 @@ namespace AvatarBridge
 
             ColliderComponent collider;
             string fitted = null;
-            if (shape.Contains("Capsule"))
+            // ChilloutVR gives each hand its own MagicaCloth2 capsule, the one that pushes other
+            // people's cloth, but only when the hand carries no capsule of its own; one on a finger
+            // also gets filtered out as not being a hand. So a hand or finger collider becomes a
+            // sphere, at the capsule's middle, as wide as its radius and a little of its length.
+            bool onHand = OnHand(ctx, parent);
+            if (shape.Contains("Capsule") && onHand)
+            {
+                var sphere = go.AddComponent<MagicaSphereCollider>();
+                float half = Mathf.Max(pbCollider.height * 0.5f, pbCollider.radius);
+                float radius = Mathf.Lerp(pbCollider.radius, half, 0.5f);
+                sphere.SetSize(radius);
+                collider = sphere;
+                fitted = $"made a sphere of radius {radius:0.###}: a capsule on a hand would stop ChilloutVR adding " +
+                         "the hand capsule that pushes other people's cloth";
+            }
+            else if (shape.Contains("Capsule"))
             {
                 var capsule = go.AddComponent<MagicaCapsuleCollider>();
                 capsule.direction = MagicaCapsuleCollider.Direction.Y; // PB capsules extend along local Y
@@ -869,13 +1226,31 @@ namespace AvatarBridge
             return collider;
         }
 
+        static bool OnHand(BridgeContext ctx, Transform t)
+        {
+            var animator = ctx.TargetAnimator;
+            if (animator == null || !animator.isHuman || t == null)
+            {
+                return false;
+            }
+            foreach (var bone in new[] { HumanBodyBones.LeftHand, HumanBodyBones.RightHand })
+            {
+                var hand = animator.GetBoneTransform(bone);
+                if (hand != null && (t == hand || t.IsChildOf(hand)))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         const int MeshSampleTarget = 200000;
 
         const int MinMeshSamples = 12;
 
         const float MinBoneWeight = 0.2f;
 
-        static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
+        internal static float MeasureMesh(BridgeContext ctx, PhysBoneChainData data, out int sampled,
             out HashSet<Transform> meshBones, out bool grown)
         {
             grown = false;
@@ -898,7 +1273,13 @@ namespace AvatarBridge
             sampled = 0;
             meshBones = new HashSet<Transform>();
             var chain = new HashSet<Transform>();
-            CollectChainBones(data.Root, data.Ignores, chain);
+            // Every root in the group: the radius covers the mesh the whole
+            // component moves, and one strand's vertices are a thin sample
+            // of a hairstyle's.
+            foreach (var root in data.AllRoots)
+            {
+                CollectChainBones(root, data.Ignores, chain);
+            }
             if (chain.Count == 0)
             {
                 return 0f;
@@ -1259,7 +1640,12 @@ namespace AvatarBridge
             }
         }
 
-        static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
+        const float StandInRestoration = 1f;
+        const float StandInWorldInertia = 0.4f;
+        const float StandInSpringPower = 0.03f;
+        const float StandInLimitAngle = 10f;
+
+        internal static readonly HashSet<string> SoftBodyClasses = new HashSet<string>
         {
             "Breast", "Butt", "Belly", "Thigh",
         };
@@ -1277,10 +1663,20 @@ namespace AvatarBridge
             {
                 presetPower = existing;
             }
-            float power = Mathf.Max(presetPower, SoftBodySpringPower);
+            // The floor applies to a dropped-in preset too: it shares the shipped file's name, so the
+            // two cannot be told apart, and letting the shipped Breast preset's 0.01 through made
+            // soft bodies six times floppier.
+            // A stand-in gives under a hand by sliding, as the add-on did, so its spring is softer.
+            float power = data.StandIn ? StandInSpringPower : Mathf.Max(presetPower, SoftBodySpringPower);
             spring &= TrySetMember(sdata.springConstraint, "springPower", power);
 
             var collisionBones = ChooseCollisionBones(ctx, data, out float collisionRadius);
+            // A stand-in collides at its root as well, which slides: a push then moves the whole
+            // body, as the add-on did, instead of turning it about a fixed root.
+            if (data.StandIn && collisionBones.Count > 0 && !collisionBones.Contains(data.Root))
+            {
+                collisionBones.Insert(0, data.Root);
+            }
             bool collision = false, sized = false;
             if (collisionBones.Count > 0)
             {
@@ -1306,19 +1702,58 @@ namespace AvatarBridge
                     sized = true;
                 }
             }
+            // A Bone Spring lets its root slide, which a PhysBone never does: the preset's 5 cm moved
+            // a breast's root by a third of its length on a walk, dragging straps and jewellery
+            // weighted to it off the body, and a cap at a quarter of its size still left a tenth.
+            // At 0 the jiggle stays in the tip, and the swing matched the original as well or
+            // better (Play-mode A/B, 2026-10-07).
+            // A stand-in for an add-on is the opposite case: marshmallow PB moves the bone itself,
+            // about its own length under a squeeze, and bends it 6 to 8 degrees where this cloth
+            // bent 38. So its root keeps the preset's slide and its bending is held near rest.
+            bool inertia = false;
+            bool pinned = !data.StandIn && GetFloat(sdata.springConstraint, "limitDistance") is float range && range > 0f
+                && TrySetMember(sdata.springConstraint, "limitDistance", 0f);
+            if (data.StandIn)
+            {
+                // As far as the body is long: the add-on moved the bone about its own length.
+                float reach = SimulatedPath(data).Sum();
+                if (reach > 0f && GetFloat(sdata.springConstraint, "limitDistance") is float preset && reach > preset)
+                {
+                    TrySetMember(sdata.springConstraint, "limitDistance", reach);
+                }
+                sdata.angleRestorationConstraint.useAngleRestoration = true;
+                sdata.angleRestorationConstraint.stiffness.SetValue(StandInRestoration);
+                // The add-on's position chain ignores the avatar's own movement (immobile 1); only
+                // its lag chain feels it. At full world inertia the stand-in swung three to five
+                // times as far on walks, jumps and shakes; 0.4 came closest over seven moves
+                // (Play-mode A/B, 2026-10-12). More damping made it worse: it slows the return too.
+                inertia = TrySetMember(sdata.inertiaConstraint, "worldInertia", StandInWorldInertia);
+                // Pressed or squeezed, the add-on bent 6 to 10 degrees where this bent 12 to 14. A
+                // softer spring and a 10 degree cap brought press to 8.5, squeeze to 12, and shake
+                // and lying to within a degree; a 6 degree cap or a spring of 0.015 lost the swing.
+                sdata.angleLimitConstraint.useAngleLimit = true;
+                sdata.angleLimitConstraint.limitAngle.SetValue(StandInLimitAngle);
+            }
+
             string collisionBone = collisionBones.Count > 0
                 ? string.Join("\", \"", collisionBones.Select(b => b.name))
                 : null;
 
-            ctx.Report.Converted(Category, data.Root.name,
+            ctx.Report.Converted(Category, data.Label,
                 $"Built as a SOFT BODY (\"{chainClass}\"), held near rest by a spring" +
                 (spring ? $" (power {power:0.###})" : " (spring settings unavailable on this MagicaCloth2 version)") +
                 (collision
                     ? $", and only \"{collisionBone}\" ({collisionBones.Count} of {data.Root.childCount} " +
-                      "branch(es)) is offered for collision" +
+                      "branches) is offered for collision" +
                       (sized ? $", sized {collisionRadius:0.###} from the mesh" : "")
                     : ", though its collision bone could not be set on this MagicaCloth2 version") +
-                ". Inertia stays at the preset's value.");
+                (pinned ? ". Its root stays put, as a PhysBone's does, so straps weighted to it stay on" : "") +
+                (data.StandIn ? ". It stands in for an add-on that slid the bone rather than swinging it, so its root " +
+                    $"may slide, its spring is softer and its bending is held near rest and capped at {StandInLimitAngle:0}°, " +
+                    "which reads as squish rather than swing" : "") +
+                (inertia
+                    ? $". World inertia {StandInWorldInertia:0.##}: the add-on kept most of the avatar's own movement out of the bone"
+                    : ". Inertia stays at the preset's value."));
         }
 
         static List<Transform> ChooseCollisionBones(BridgeContext ctx, PhysBoneChainData data, out float radius)
@@ -1340,6 +1775,8 @@ namespace AvatarBridge
             {
                 return chosen;   // nothing measurable; better no collision bone than a guessed one
             }
+
+            var volumeRadii = new List<float>();
 
             // One per branch, not one per chain. A single root often
             // carries a mirrored pair, and one bone for the whole mesh
@@ -1424,10 +1861,51 @@ namespace AvatarBridge
                 if (best != null && !chosen.Contains(best))
                 {
                     chosen.Add(best);
+                    // How far the mesh it carries reaches from that pivot: the size of the volume,
+                    // which is what a soft body collides as. The chain measurement above takes the
+                    // narrowest cross-section, half a panel's thickness, and on a breast whose
+                    // bones carry the front skin that came out a crescent 2 mm thick.
+                    var reach = new List<float>();
+                    foreach (var bone in branch)
+                    {
+                        if (vertices.TryGetValue(bone, out var points))
+                        {
+                            foreach (var p in points)
+                            {
+                                reach.Add(Vector3.Distance(p, best.position));
+                            }
+                        }
+                    }
+                    if (reach.Count >= MinMeshSamples)
+                    {
+                        reach.Sort();
+                        volumeRadii.Add(reach[reach.Count / 2]);
+                    }
                 }
             }
 
+            if (volumeRadii.Count > 0)
+            {
+                volumeRadii.Sort();
+                radius = volumeRadii[0];
+            }
             return chosen;
+        }
+
+        // The tightest spacing in a merged group: the radius is one number for the
+        // whole cloth, and the cap exists so no strand's neighbouring particles overlap.
+        static float MeasureGroupSpacing(PhysBoneChainData data)
+        {
+            float tightest = 0f;
+            foreach (var root in data.AllRoots)
+            {
+                float spacing = MeasureBoneSpacing(root);
+                if (spacing > 0f && (tightest <= 0f || spacing < tightest))
+                {
+                    tightest = spacing;
+                }
+            }
+            return tightest;
         }
 
         static float MeasureBoneSpacing(Transform root)
@@ -1473,6 +1951,10 @@ namespace AvatarBridge
             }
         }
 
+        // Read by name: fields MagicaCloth2 added in later versions must not break the build on older ones.
+        static float GetFloat(object target, string fieldName) =>
+            target?.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance)?.GetValue(target) is float f ? f : 0f;
+
         static bool TrySetMember(object target, string fieldName, object value)
         {
             if (target == null)
@@ -1511,7 +1993,46 @@ namespace AvatarBridge
             return true;
         }
 
+        static bool TrySetCurve(object target, string fieldName, float value, AnimationCurve curve)
+        {
+            var field = target?.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
+            if (field == null || !(field.GetValue(target) is CurveSerializeData curveData))
+            {
+                return false;
+            }
+            curveData.SetValue(value, curve);
+            return true;
+        }
+
         static string PathOf(Transform t) => t != null ? t.name : "(null)";
+
+        // MagicaCloth2 scales gravity by a cloth's scale now over its scale when it started, and
+        // takes that start from initData when it validates, else from wherever the cloth stands
+        // when it starts. ChilloutVR applies a saved avatar size before the cloths start, so a
+        // cloth without initData kept gravity in metres: long hair on a 0.2 avatar lay at 72
+        // degrees against 43. Its editor writes initData only when it draws a cloth's gizmo or
+        // inspector; this writes it the same way for every cloth, once the hierarchy is final.
+        // A record that no longer validates is ignored with a warning and the cloth builds as before.
+        public static void PinStartScale(BridgeContext ctx)
+        {
+            int pinned = 0;
+            var refused = new List<string>();
+            foreach (var cloth in ctx.Target.GetComponentsInChildren<MagicaCloth>(true))
+            {
+                if (MagicaClothKeepOut.Pin(cloth)) pinned++;
+                else refused.Add(cloth.name);
+            }
+            if (pinned > 0)
+            {
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(pinned, "cloth keeps its", "cloths keep their")} weight at any avatar size",
+                    "Each records the size it was converted at, so a size ChilloutVR applies before the cloth starts scales its gravity with it.");
+            }
+            if (refused.Count > 0)
+            {
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(refused.Count, "cloth", "cloths")} could not record their size",
+                    string.Join(", ", refused) + ": these hang heavier on a small avatar and stiffer on a large one.");
+            }
+        }
     }
 }
 #endif

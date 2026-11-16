@@ -28,6 +28,10 @@ namespace AvatarBridge
 
             var senders = ctx.Target.GetComponentsInChildren<VRCContactSender>(true);
             var receivers = ctx.Target.GetComponentsInChildren<VRCContactReceiver>(true);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Grow.Reset();
+            Host.Reset();
+            Rest.Reset();
 
             var listenedTags = new HashSet<string>();
             foreach (var receiver in receivers)
@@ -47,19 +51,27 @@ namespace AvatarBridge
                 ConvertReceiver(ctx, receiver);
             }
 
+            long converted = clock.ElapsedMilliseconds;
             ReportUnreachableTags(ctx, listenedTags);
 
             if (ctx.Settings.createDefaultColliderPointers && listenedTags.Count > 0)
             {
                 CreateDefaultColliderPointers(ctx, listenedTags);
             }
+            Debug.Log($"[AvatarBridge] Contacts steps (ms): {senders.Length + receivers.Length} contacts in {converted} " +
+                $"(zones grown {Grow.ElapsedMilliseconds}, hosts {Host.ElapsedMilliseconds}, rest states {Rest.ElapsedMilliseconds}), " +
+                $"after {clock.ElapsedMilliseconds - converted}");
 
             if (senders.Length > 0 || receivers.Length > 0)
             {
-                ctx.Report.Converted(Category, $"{senders.Length} sender(s), {receivers.Length} receiver(s) converted");
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(senders.Length, "sender", "senders")}, {BridgeElements.Count(receivers.Length, "receiver", "receivers")} converted");
             }
 
         }
+
+        // Log only: one avatar spent 191 s here and nothing said where.
+        static readonly System.Diagnostics.Stopwatch Grow = new System.Diagnostics.Stopwatch(),
+            Host = new System.Diagnostics.Stopwatch(), Rest = new System.Diagnostics.Stopwatch();
 
         static void ConvertSender(BridgeContext ctx, VRCContactSender sender)
         {
@@ -75,9 +87,15 @@ namespace AvatarBridge
                     sender.shapeType, sender.radius, sender.position, sender.height, sender.rotation);
                 var pointer = contactObject.AddComponent<CVRPointer>();
                 pointer.type = tag;
+                Grow.Start();
                 GrowZoneForSliders(ctx, contactObject, PathOf(ctx, sender.transform));
+                Grow.Stop();
+                Host.Start();
                 RecordHost(ctx, sender, isSender: true, contactObject);
+                Host.Stop();
+                Rest.Start();
                 MatchRestState(ctx, sender, contactObject);
+                Rest.Stop();
             }
             ctx.Report.Converted(Category, PathOf(ctx, sender.transform),
                 $"Sender -> CVRPointer ({string.Join(", ", sender.collisionTags)})");
@@ -96,7 +114,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Approximated(Category,
-                $"{custom.Count} contact tag(s) only this avatar can trigger",
+                $"{BridgeElements.Count(custom.Count, "contact tag", "contact tags")} only this avatar can trigger",
                 $"\"{string.Join("\", \"", custom.Take(8))}\"" + (custom.Count > 8 ? ", …" : "") +
                 ". A contact fires when something sends a matching tag, and these aren't body parts " +
                 ": nothing any other player carries sends them. Between two copies of this avatar " +
@@ -192,9 +210,15 @@ namespace AvatarBridge
 
             var contactObject = CreateContactObject(AnchorOf(receiver), "CVRTrigger_" + receiver.parameter,
                 receiver.shapeType, receiver.radius, receiver.position, receiver.height, receiver.rotation);
+            Grow.Start();
             GrowZoneForSliders(ctx, contactObject, PathOf(ctx, receiver.transform));
+            Grow.Stop();
+            Host.Start();
             RecordHost(ctx, receiver, isSender: false, contactObject);
+            Host.Stop();
+            Rest.Start();
             MatchRestState(ctx, receiver, contactObject);
+            Rest.Stop();
 
             var trigger = contactObject.AddComponent<CVRAdvancedAvatarSettingsTrigger>();
             trigger.useAdvancedTrigger = true;
@@ -410,7 +434,7 @@ namespace AvatarBridge
 
             if (held.Count == 0) return;
             ctx.Report.Approximated(Category,
-                $"{held.Count} contact(s) now hold their control on instead of tapping it",
+                $"{BridgeElements.Count(held.Count, "contact now holds its", "contacts now hold their")} control on instead of tapping it",
                 string.Join("; ", held) + ". On while touched, off when it leaves. The menu switch still latches.");
         }
 
@@ -527,13 +551,13 @@ namespace AvatarBridge
 
             if (repointed > 0 || mirrored > 0)
             {
-                ctx.Report.Converted(Category, $"{repointed + mirrored} contact animation(s) rewired",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(repointed + mirrored, "contact animation", "contact animations")} rewired",
                     "They now toggle or move the converted contact." +
                     (mirrored > 0 ? $" {mirrored} switched its parent object and now reach it too." : ""));
             }
             if (dropped.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{dropped.Count} contact-animating curve(s) could not be carried",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(dropped.Count, "contact-animating curve", "contact-animating curves")} could not be carried",
                     string.Join("; ", dropped.Take(6)) + (dropped.Count > 6 ? ", …" : "") +
                     ": no equivalent on the converted contact, or it was not converted. Removed.");
             }
@@ -875,9 +899,9 @@ namespace AvatarBridge
             if (balanced > 0 || stripped > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Contact zone ownership settled across {layersTouched} layer(s)",
-                    $"{stripped} curve(s) that only asserted a zone's resting state were removed and " +
-                    $"{balanced} restore(s) written in, so zones are neither stuck off after load nor held on over " +
+                    $"Contact zone ownership settled across {BridgeElements.Count(layersTouched, "layer", "layers")}",
+                    $"{BridgeElements.Count(stripped, "curve that only asserted a zone's resting state was", "curves that only asserted a zone's resting state were")} removed and " +
+                    $"{BridgeElements.Count(balanced, "restore", "restores")} written in, so zones are neither stuck off after load nor held on over " +
                     "their toggle.");
             }
         }
@@ -1117,7 +1141,7 @@ namespace AvatarBridge
         // Two zones for one parameter on one bone would share an animation path, and every curve
         // reaches only the first. Compared by name, not Transform.Find: a parameter name's '/'
         // reads to Find as a path.
-        static string UniqueChildName(Transform parent, string name)
+        internal static string UniqueChildName(Transform parent, string name)
         {
             var taken = new HashSet<string>(System.StringComparer.Ordinal);
             foreach (Transform child in parent)
@@ -1135,16 +1159,18 @@ namespace AvatarBridge
         // A new host is live from load, so a contact that shipped switched off came out always
         // on. The host takes the off state the hierarchy does not already give it: a disabled
         // component, or an inactive object the host is not under (a rootTransform elsewhere).
-        // Animated switching reaches it through the repoint passes.
+        // Animated switching reaches it through the repoint passes, a native toggle through
+        // ToggleNativizer.WithContactHosts, which wakes the host with its object unless the
+        // component itself was off.
         static void MatchRestState(BridgeContext ctx, VRC.Dynamics.ContactBase contact, GameObject host)
         {
             bool live = contact.enabled;
-            // Native toggles switch objects without a clip, and no repoint pass can carry those
-            // onto a host outside the object, so there it stays live as before.
-            bool nativeToggles = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
+            if (!live)
+            {
+                ctx.DisabledHosts.Add(BridgeContext.RelativePath(ctx.Target.transform, host.transform));
+            }
             // Judged inside the avatar only: one converted in place may itself be off in the scene.
-            for (var t = contact.transform; live && !nativeToggles && t != null && t != ctx.Target.transform;
-                 t = t.parent)
+            for (var t = contact.transform; live && t != null && t != ctx.Target.transform; t = t.parent)
             {
                 live = t.gameObject.activeSelf || host.transform.IsChildOf(t);
             }
@@ -1178,7 +1204,7 @@ namespace AvatarBridge
             if (created > 0)
             {
                 ctx.Report.Converted(Category, "Built-in VRChat colliders",
-                    $"{created} CVRPointer(s) created for tags the avatar's receivers listen to.");
+                    $"{BridgeElements.Count(created, "CVRPointer", "CVRPointers")} created for tags the avatar's receivers listen to.");
             }
         }
 

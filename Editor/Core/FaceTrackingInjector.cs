@@ -160,6 +160,7 @@ namespace AvatarBridge
                 }
                 rewritten = cache.Count(kv => kv.Key != kv.Value);
             }
+            int released = faceMesh != null ? ReleaseFaceWhenOff(injectedLayers, faceMesh, faceMeshPath) : 0;
 
             master.layers = layers.ToArray();
 
@@ -167,10 +168,112 @@ namespace AvatarBridge
             AddTrackingToggles(ctx);
 
             ctx.Report.Converted(Category,
-                $"Injected \"Unity Animator Blendtrees (DSR)\" face tracking: {injectedLayers.Count} layer(s), {addedParams} parameter(s)",
-                $"DragonSkyRunner's rig, rebuilt onto this avatar ({rewritten} clip(s) rebound). Added \"Eye Tracking\" " +
+                $"Injected \"Unity Animator Blendtrees (DSR)\" face tracking: {BridgeElements.Count(injectedLayers.Count, "layer", "layers")}, {BridgeElements.Count(addedParams, "parameter", "parameters")}",
+                $"DragonSkyRunner's rig, rebuilt onto this avatar ({BridgeElements.Count(rewritten, "clip", "clips")} rebound). Added \"Eye Tracking\" " +
                 "and \"Face Tracking\" menu toggles. Eye gaze magnitude may want tuning per the package readme; " +
                 "verify the eye RotationConstraints in play mode.");
+            if (released > 0)
+            {
+                ctx.Report.Converted(Category, "The face lets go when tracking turns off",
+                    $"{BridgeElements.Count(released, "off state puts", "off states put")} the face back to its own rest shapes " +
+                    "for one frame, then animate nothing, so the avatar's expressions still work. ChilloutVR " +
+                    "puts nothing back by itself, so the last tracked expression stayed.");
+            }
+        }
+
+        // ChilloutVR writes nothing back when a state stops animating a property, so the rig's empty
+        // off states left the face in its last tracked expression. Each one plays the face mesh's own
+        // rest values for one frame, then hands over to an empty state that leaves the same way.
+        // Held instead, those values would cover every expression that shares a shape, since the
+        // rig's layers sit above the avatar's own.
+        static int ReleaseFaceWhenOff(List<AnimatorControllerLayer> layers, SkinnedMeshRenderer faceMesh, string faceMeshPath)
+        {
+            var mesh = faceMesh.sharedMesh;
+            if (mesh == null)
+            {
+                return 0;
+            }
+            int released = 0;
+            foreach (var layer in layers)
+            {
+                var machine = layer.stateMachine;
+                // An Any State transition would pull the hand-over state straight back out.
+                if (machine == null || machine.anyStateTransitions.Length > 0)
+                {
+                    continue;
+                }
+                var shapes = new SortedSet<string>();
+                void Collect(Motion m)
+                {
+                    if (m is BlendTree tree)
+                    {
+                        foreach (var child in tree.children) Collect(child.motion);
+                    }
+                    else if (m is AnimationClip clip)
+                    {
+                        foreach (var b in AnimationUtility.GetCurveBindings(clip))
+                        {
+                            if (b.path == faceMeshPath && b.propertyName.StartsWith(ShapePrefix))
+                            {
+                                shapes.Add(b.propertyName.Substring(ShapePrefix.Length));
+                            }
+                        }
+                    }
+                }
+                WalkMachine(machine, Collect);
+                if (shapes.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (var child in machine.states)
+                {
+                    var off = child.state;
+                    if (off.motion != null)
+                    {
+                        continue;
+                    }
+                    var rest = new AnimationClip { name = off.name + " rest" };
+                    foreach (string shape in shapes)
+                    {
+                        int index = mesh.GetBlendShapeIndex(shape);
+                        rest.SetCurve(faceMeshPath, typeof(SkinnedMeshRenderer), ShapePrefix + shape,
+                            AnimationCurve.Constant(0f, 1f / 60f, index >= 0 ? faceMesh.GetBlendShapeWeight(index) : 0f));
+                    }
+                    var hold = machine.AddState(off.name + " (released)", child.position + new Vector3(0f, 60f, 0f));
+                    hold.writeDefaultValues = off.writeDefaultValues;
+                    foreach (var t in off.transitions)
+                    {
+                        hold.AddTransition(new AnimatorStateTransition
+                        {
+                            name = t.name,
+                            conditions = t.conditions.ToArray(),
+                            destinationState = t.destinationState,
+                            destinationStateMachine = t.destinationStateMachine,
+                            isExit = t.isExit,
+                            solo = t.solo,
+                            mute = t.mute,
+                            duration = t.duration,
+                            offset = t.offset,
+                            exitTime = t.exitTime,
+                            hasExitTime = t.hasExitTime,
+                            hasFixedDuration = t.hasFixedDuration,
+                            interruptionSource = t.interruptionSource,
+                            orderedInterruption = t.orderedInterruption,
+                            canTransitionToSelf = t.canTransitionToSelf,
+                            hideFlags = HideFlags.HideInHierarchy
+                        });
+                    }
+                    var release = off.AddTransition(hold);
+                    release.hasExitTime = true;
+                    release.exitTime = 1f;
+                    release.hasFixedDuration = true;
+                    release.duration = 0f;
+                    off.motion = rest;
+                    released++;
+                }
+            }
+            return released;
         }
 
         static void AddTrackingToggles(BridgeContext ctx)
@@ -247,9 +350,9 @@ namespace AvatarBridge
             if (redirected + collapsed + expanded > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Reconciled {redirected + collapsed + expanded} FT blendshape(s) to \"{meshName}\"",
+                    $"Reconciled {BridgeElements.Count(redirected + collapsed + expanded, "FT blendshape", "FT blendshapes")} to \"{meshName}\"",
                     $"Mapped the rig's Unified-Expressions shapes onto what the mesh actually has: " +
-                    $"{redirected} name remap(s) (ARKit / casing), {collapsed} split→combined (scaled to avoid " +
+                    $"{BridgeElements.Count(redirected, "name remap", "name remaps")} (ARKit / casing), {collapsed} split→combined (scaled to avoid " +
                     $"over-driving), {expanded} combined→split. Combined/split is an approximation; asymmetric " +
                     "expressions on combined-only meshes land at partial strength.");
             }
@@ -258,7 +361,7 @@ namespace AvatarBridge
                 string list = string.Join(", ", unmapped.Take(12));
                 if (unmapped.Count > 12) list += $", +{unmapped.Count - 12} more";
                 ctx.Report.Approximated(Category,
-                    $"{unmapped.Count} FT shape(s) have no equivalent on \"{meshName}\"",
+                    $"{BridgeElements.Count(unmapped.Count, "FT shape has", "FT shapes have")} no equivalent on \"{meshName}\"",
                     $"These won't move: the mesh has neither the shape nor a combined/split match: {list}.");
             }
         }

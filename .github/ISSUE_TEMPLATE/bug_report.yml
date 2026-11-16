@@ -83,7 +83,7 @@ body:
 
         A clean Unity log tells us nothing about an in-game failure; the CVR client log is where those live.
       options:
-        - label: I attached `ConversionReport.md` (found in `Assets/AvatarBridge/Output/<avatar name>/`)
+        - label: I attached `ConversionReport.md` (found in `Assets/AvatarBridgeOutput/<avatar name>/`, or the output folder you set)
         - label: I attached the relevant log for the stage I picked above
         - label: I re-ran the conversion on the **latest** AvatarBridge release before reporting
 

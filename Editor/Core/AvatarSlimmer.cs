@@ -49,7 +49,7 @@ namespace AvatarBridge
             // Renderers no clip can switch on. The component goes, the
             // object stays: bones, contacts and constraints parented under
             // it are the usual casualty of removing the object itself.
-            public readonly List<string> Strip = new List<string>();
+            public readonly List<Renderer> Strip = new List<Renderer>();
             public long StripBytes;
             public FreeWins.Plan Wins;
             public long Bytes => Textures.Sum(t => t.Bytes);
@@ -67,7 +67,8 @@ namespace AvatarBridge
 
             // Built on first need: it loads every material in the project,
             // and only a texture worth changing asks. Usually none is.
-            Dictionary<Texture, string> elsewhere = null;
+            Dictionary<string, List<string>> users = null;
+            HashSet<Material> mine = null;
 
             foreach (var t in weight.Textures)
             {
@@ -109,7 +110,7 @@ namespace AvatarBridge
                     // At four bits a pixel or fewer no format below is
                     // smaller, so decoding the file could not change the answer.
                     && bits > 4f
-                    && Content(path, out bool greyscale, out bool opaque))
+                    && TimedContent(path, out bool greyscale, out bool opaque))
                 {
                     // BC4 holds one linear channel. Unity refuses it on an
                     // sRGB texture, so only data maps qualify however grey
@@ -148,15 +149,20 @@ namespace AvatarBridge
 
                 // The importer setting is global to the texture.
                 // A texture others use is left alone.
-                if (elsewhere == null)
+                if (users == null)
                 {
-                    var mine = OwnMaterials(avatar);
+                    mine = OwnMaterials(avatar);
                     if (alsoMine != null) mine.UnionWith(MaterialsOn(alsoMine));
-                    elsewhere = MaterialsUsingTexturesOutside(mine);
+                    Users.Start();
+                    users = MaterialsByDependency();
+                    Users.Stop();
                 }
-                if (elsewhere.TryGetValue(t.Texture, out string user))
+                Outside.Start();
+                string user = MaterialOutsideUsing(t.Texture, users, mine);
+                Outside.Stop();
+                if (user != null)
                 {
-                    plan.Shared[t.Name] = user;
+                    plan.Shared[AvatarWeight.KeyOf(t.Texture, t.Name)] = user;
                     continue;
                 }
 
@@ -169,11 +175,11 @@ namespace AvatarBridge
             }
 
             // Off in the scene with nothing able to switch it on. Checked
-            // across the corpus against a walk of every clip, override
+            // across many avatars against a walk of every clip, override
             // controllers included, before it was ever allowed to act.
             if (stripDead)
             {
-                plan.Strip.AddRange(weight.Dead);
+                plan.Strip.AddRange(weight.DeadRenderers);
                 plan.StripBytes = weight.DeadBytes;
             }
 
@@ -198,7 +204,15 @@ namespace AvatarBridge
 #endif
             // No survey: it feeds only the dead-renderer test and the
             // animator tidy, and this call does neither.
-            var plan = Find(ctx.CvrAvatar, null, AvatarWeight.Measure(ctx.CvrAvatar), alsoMine, true, false);
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            Decode.Reset(); Users.Reset(); Outside.Reset();
+            var weight = AvatarWeight.Measure(ctx.CvrAvatar);
+            long measured = clock.ElapsedMilliseconds;
+            var plan = Find(ctx.CvrAvatar, null, weight, alsoMine, true, false);
+            long found = clock.ElapsedMilliseconds;
+            Debug.Log($"[AvatarBridge] Texture sizes steps (ms): {weight.Textures.Count} textures measured in {measured}, " +
+                $"planned in {found - measured} (decoded {Decode.ElapsedMilliseconds}, project materials {Users.ElapsedMilliseconds}, " +
+                $"outside users {Outside.ElapsedMilliseconds}), {plan.Textures.Count} to change");
             // Before the early return: a shared texture is refused even when
             // nothing else needs shrinking, and the weight card must not
             // advise shrinking it.
@@ -275,7 +289,7 @@ namespace AvatarBridge
             {
                 WriteUndo(outputDir, undo);
                 report.BytesReclaimed += bytes;
-                report.Converted(Category, $"{changed.Count} texture(s) changed, {Mb(bytes)} off the graphics card",
+                report.Converted(Category, $"{BridgeElements.Count(changed.Count, "texture", "textures")} changed, {Mb(bytes)} off the graphics card",
                     string.Join("; ", changed.Take(8).Select(Describe)) +
                     (changed.Count > 8 ? $"; and {changed.Count - 8} more" : "") +
                     ". Import settings only; \"Put the textures back\" undoes it." +
@@ -286,7 +300,7 @@ namespace AvatarBridge
 
             foreach (var left in plan.Shared)
             {
-                report.Approximated(Category, $"\"{left.Key}\" left alone",
+                report.Approximated(Category, $"\"{AvatarWeight.Shown(left.Key)}\" left alone",
                     $"{left.Value} uses it too, and the size lives on the texture rather than on the " +
                     "avatar, so shrinking it here would shrink it there.");
             }
@@ -345,7 +359,7 @@ namespace AvatarBridge
             }
 
             File.Delete(path);
-            report.Converted(Category, $"{done} texture(s) put back", "Their import sizes are what they were.");
+            report.Converted(Category, $"{BridgeElements.Count(done, "texture", "textures")} put back", "Their import sizes are what they were.");
         }
 
         static string UndoPath(string outputDir) =>
@@ -387,12 +401,11 @@ namespace AvatarBridge
             if (plan.Strip.Count == 0) return 0;
 
             var gone = new List<string>();
-            foreach (string path in plan.Strip)
+            foreach (var renderer in plan.Strip)
             {
-                var found = BridgeContext.FindByAnimationPath(avatar.transform, path);
-                if (found == null) continue;
-                var renderer = found.GetComponent<Renderer>();
                 if (renderer == null) continue;
+                var found = renderer.transform;
+                string path = AnimationUtility.CalculateTransformPath(found, avatar.transform);
 
                 // A MeshRenderer draws what the filter beside it holds, and
                 // the filter alone draws nothing once the renderer is gone.
@@ -404,7 +417,7 @@ namespace AvatarBridge
 
             if (gone.Count == 0) return 0;
 
-            report.Converted(Category, $"{gone.Count} hidden renderer(s) stripped, {Mb(plan.StripBytes)} off the card",
+            report.Converted(Category, $"{BridgeElements.Count(gone.Count, "hidden renderer", "hidden renderers")} stripped, {Mb(plan.StripBytes)} off the card",
                 string.Join("; ", gone.Take(6)) + (gone.Count > 6 ? $"; and {gone.Count - 6} more" : "") +
                 ". No clip could switch them on. The objects stay; Ctrl+Z puts the renderers back.");
             return gone.Count;
@@ -468,13 +481,73 @@ namespace AvatarBridge
         // Read through LoadImage rather than GetPixels: a shipped texture is
         // not readable, and this needs no reimport to find out. PNG and JPG
         // only, which is nearly all of them; anything else is left alone.
+        static readonly System.Diagnostics.Stopwatch Decode = new System.Diagnostics.Stopwatch(),
+            Users = new System.Diagnostics.Stopwatch(), Outside = new System.Diagnostics.Stopwatch();
+
+        // Verdicts kept in Library by the database's hash of the file and its import settings: a
+        // reconvert decoded every texture again, 22 s on one avatar. Only decoded verdicts are kept,
+        // so a file that failed to read is tried again. Rename the file when Content changes.
+        static Dictionary<string, int> verdicts;
+        static readonly string VerdictFile = Path.Combine("Library", "AvatarBridge", "TextureContent-1.txt");
+
+        static bool TimedContent(string path, out bool greyscale, out bool opaque)
+        {
+            var hash = AssetDatabase.GetAssetDependencyHash(path);
+            string key = hash.isValid ? hash.ToString() : null;
+            if (key != null && Verdicts().TryGetValue(key, out int known))
+            {
+                greyscale = (known & 1) != 0;
+                opaque = (known & 2) != 0;
+                return true;
+            }
+            Decode.Start();
+            try
+            {
+                if (!Content(path, out greyscale, out opaque)) return false;
+                if (key != null)
+                {
+                    int verdict = (greyscale ? 1 : 0) | (opaque ? 2 : 0);
+                    verdicts[key] = verdict;
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(VerdictFile));
+                        File.AppendAllText(VerdictFile, $"{key} {verdict}\n");
+                    }
+                    catch (IOException) { }
+                    catch (UnauthorizedAccessException) { }
+                }
+                return true;
+            }
+            finally { Decode.Stop(); }
+        }
+
+        // ponytail: one line per texture version, never pruned; trim when the file grows past a few MB.
+        static Dictionary<string, int> Verdicts()
+        {
+            if (verdicts != null) return verdicts;
+            verdicts = new Dictionary<string, int>(StringComparer.Ordinal);
+            try
+            {
+                foreach (string line in File.ReadAllLines(VerdictFile))
+                {
+                    int space = line.IndexOf(' ');
+                    if (space > 0 && int.TryParse(line.Substring(space + 1), out int verdict))
+                        verdicts[line.Substring(0, space)] = verdict;
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return verdicts;
+        }
+
         static bool Content(string path, out bool greyscale, out bool opaque)
         {
             greyscale = opaque = false;
             string extension = Path.GetExtension(path).ToLowerInvariant();
             if (extension != ".png" && extension != ".jpg" && extension != ".jpeg") return false;
 
-            var probe = new Texture2D(2, 2);
+            // No mip chain: with one, LoadImage builds and uploads every level to read the first.
+            var probe = new Texture2D(2, 2, TextureFormat.RGBA32, false);
             try
             {
                 if (!probe.LoadImage(File.ReadAllBytes(path))) return false;
@@ -550,24 +623,79 @@ namespace AvatarBridge
             return mine;
         }
 
-        // Textures reachable from materials this avatar does not use.
-        // One pass over the project. Unapplied materials still count.
-        static Dictionary<Texture, string> MaterialsUsingTexturesOutside(HashSet<Material> mine)
+        // Every material in the project, by each asset it depends on. No material is loaded:
+        // reading a material's textures builds its property sheet, which logs every fault in
+        // it (a cubemap in a 2D slot, a missing third-party drawer) to the console, and a
+        // project holds thousands that have nothing to do with this avatar. Direct
+        // dependencies only: a recursive list walks every shader's includes, 18 s against
+        // 3.5 s over 4600 materials, where loading them all took 150 s. Unapplied materials
+        // still count.
+        static Dictionary<string, List<string>> MaterialsByDependency()
         {
-            var outside = new Dictionary<Texture, string>();
+            var users = new Dictionary<string, List<string>>();
+            var pathOf = new Dictionary<string, string>();
             foreach (string guid in AssetDatabase.FindAssets("t:Material"))
             {
                 string assetPath = AssetDatabase.GUIDToAssetPath(guid);
-                var material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
-                if (material == null || mine.Contains(material)) continue;
-                // The first one found is enough to name. Listing every
-                // material using a common texture is a wall, not an answer.
-                foreach (var tex in AvatarWeight.TexturesOf(material))
+                // Itself added: a font or a controller can hold a material and its texture in
+                // one file, and the list does not name the file.
+                foreach (string dependency in new HashSet<string>(DependenciesOf(assetPath, pathOf)) { assetPath })
                 {
-                    if (!outside.ContainsKey(tex)) outside[tex] = assetPath;
+                    if (!users.TryGetValue(dependency, out var list)) users[dependency] = list = new List<string>();
+                    list.Add(assetPath);
                 }
             }
-            return outside;
+            return users;
+        }
+
+        // A text material names every asset it holds by GUID, so its own file is a superset of
+        // what the database lists. Read as text: over one project the database took from 4 to
+        // 46 s, the files about 3 s.
+        static IEnumerable<string> DependenciesOf(string assetPath, Dictionary<string, string> pathOf)
+        {
+            string text = null;
+            if (assetPath.EndsWith(".mat", StringComparison.OrdinalIgnoreCase))
+            {
+                try { text = File.ReadAllText(assetPath); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            if (text == null || !text.StartsWith("%YAML", StringComparison.Ordinal))
+            {
+                return AssetDatabase.GetDependencies(assetPath, false);
+            }
+            var found = new List<string>();
+            for (int at = text.IndexOf("guid: ", StringComparison.Ordinal); at >= 0 && at + 38 <= text.Length;
+                 at = text.IndexOf("guid: ", at + 38, StringComparison.Ordinal))
+            {
+                string guid = text.Substring(at + 6, 32);
+                if (!pathOf.TryGetValue(guid, out string path)) pathOf[guid] = path = AssetDatabase.GUIDToAssetPath(guid);
+                if (!string.IsNullOrEmpty(path)) found.Add(path);
+            }
+            return found;
+        }
+
+        // The first material this avatar does not use that renders the texture, or null. The
+        // dependency list is a superset (it keeps slots from shaders a material used to have),
+        // so each candidate is read for what it really renders. The first one found is enough
+        // to name. Listing every material using a common texture is a wall, not an answer.
+        static string MaterialOutsideUsing(Texture texture, Dictionary<string, List<string>> users, HashSet<Material> mine)
+        {
+            string path = AssetDatabase.GetAssetPath(texture);
+            if (string.IsNullOrEmpty(path) || !users.TryGetValue(path, out var candidates)) return null;
+            // A variant depends on its parent, not on the textures it inherits through it.
+            var seen = new HashSet<string>();
+            var queue = new Queue<string>(candidates);
+            while (queue.Count > 0)
+            {
+                string assetPath = queue.Dequeue();
+                if (!seen.Add(assetPath)) continue;
+                if (users.TryGetValue(assetPath, out var variants)) foreach (string v in variants) queue.Enqueue(v);
+                var material = AssetDatabase.LoadAssetAtPath<Material>(assetPath);
+                if (material == null || mine.Contains(material)) continue;
+                if (AvatarWeight.TexturesOf(material).Contains(texture)) return assetPath;
+            }
+            return null;
         }
 
         static string Mb(long bytes) => (bytes / 1048576f).ToString("0.0") + " MB";

@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
     // silently drop one and the report would under-count.
     public static class StableSampleOrderTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: stable report sample order")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Stable report sample order")]
         public static void Run()
         {
             int fail = 0;

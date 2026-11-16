@@ -48,8 +48,23 @@ namespace AvatarBridge
             public float Weight;
             public string Mask;
             public int States;
+            // Every state's, reachable or not: the weight and the slimmer read these.
             public readonly SortedSet<string> Bindings = new SortedSet<string>(System.StringComparer.Ordinal);
             public readonly SortedSet<string> Reads = new SortedSet<string>(System.StringComparer.Ordinal);
+            public AnimatorLayerBlendingMode Mode;
+            public AvatarMask MaskAsset;
+            public bool HasTransitions;
+            // The states the layer can get into, and the ones nothing leads to.
+            public readonly List<StateWrites> Reached = new List<StateWrites>();
+            public readonly List<StateWrites> Parked = new List<StateWrites>();
+            public readonly HashSet<string> Objects = new HashSet<string>(System.StringComparer.Ordinal);
+        }
+
+        public class StateWrites
+        {
+            public AnimatorState State;
+            public bool Tree;
+            public readonly HashSet<string> Writes = new HashSet<string>(System.StringComparer.Ordinal);
         }
 
         public class Control
@@ -94,6 +109,8 @@ namespace AvatarBridge
             public readonly List<PropCandidate> Props = new List<PropCandidate>();
             public readonly Dictionary<string, int> Rejected = new Dictionary<string, int>();
             public readonly List<Finding> Findings = new List<Finding>();
+            // What the merger renamed, by the new name; null when it did not run.
+            public Dictionary<string, string> RenamedFrom;
             public Param this[string name] => Parameters.FirstOrDefault(p => p.Name == name);
         }
 
@@ -115,6 +132,28 @@ namespace AvatarBridge
                 }
             }
 
+            ReadParameters(controller, model);
+            ReadLayers(controller, model);
+            ReadControls(avatar, model);
+            ReadComponents(avatar, model);
+            MarkGameDriven(model);
+            FindProps(avatar, model);
+            Judge(model);
+            return model;
+        }
+
+        // The layer rules alone, on a controller with no avatar around it.
+        internal static Model ReadForTest(AnimatorController controller)
+        {
+            var model = new Model { Avatar = controller.name, Controller = controller };
+            ReadParameters(controller, model);
+            ReadLayers(controller, model);
+            Judge(model);
+            return model;
+        }
+
+        static void ReadParameters(AnimatorController controller, Model model)
+        {
             foreach (var p in controller.parameters)
             {
                 model.Parameters.Add(new Param
@@ -130,14 +169,6 @@ namespace AvatarBridge
                              && p.type != AnimatorControllerParameterType.Trigger,
                 });
             }
-
-            ReadLayers(controller, model);
-            ReadControls(avatar, model);
-            ReadComponents(avatar, model);
-            MarkGameDriven(model);
-            FindProps(avatar, model);
-            Judge(model);
-            return model;
         }
 
         // The controller ChilloutVR uploads: the overrides, else the base,
@@ -157,6 +188,8 @@ namespace AvatarBridge
 
         static void ReadLayers(AnimatorController controller, Model model)
         {
+            var declared = new Dictionary<string, AnimatorControllerParameter>(System.StringComparer.Ordinal);
+            foreach (var p in controller.parameters) declared[p.name] = p;
             for (int i = 0; i < controller.layers.Length; i++)
             {
                 var l = controller.layers[i];
@@ -164,10 +197,22 @@ namespace AvatarBridge
                 {
                     Index = i,
                     Name = l.name,
-                    Weight = l.defaultWeight,
+                    // The first layer always runs at full strength, whatever it says.
+                    Weight = i == 0 ? 1f : l.defaultWeight,
                     Mask = l.avatarMask != null ? l.avatarMask.name : "",
+                    Mode = l.blendingMode,
+                    MaskAsset = l.avatarMask,
                 };
-                if (l.stateMachine != null) WalkMachine(l.stateMachine, layer, model);
+                if (l.stateMachine != null)
+                {
+                    var states = new List<StateWrites>();
+                    WalkMachine(l.stateMachine, layer, model, states);
+                    var reachable = Reachable(l.stateMachine, declared);
+                    foreach (var st in states)
+                    {
+                        (reachable == null || reachable.Contains(st.State) ? layer.Reached : layer.Parked).Add(st);
+                    }
+                }
                 model.Layers.Add(layer);
 
                 foreach (string name in layer.Reads)
@@ -180,13 +225,17 @@ namespace AvatarBridge
             }
         }
 
-        static void WalkMachine(AnimatorStateMachine machine, Layer layer, Model model)
+        static void WalkMachine(AnimatorStateMachine machine, Layer layer, Model model, List<StateWrites> states)
         {
+            if (machine.entryTransitions.Length > 0 || machine.anyStateTransitions.Length > 0) layer.HasTransitions = true;
             foreach (var child in machine.states)
             {
                 layer.States++;
                 var st = child.state;
                 if (st == null) continue;
+                if (st.transitions.Length > 0) layer.HasTransitions = true;
+                var writes = new StateWrites { State = st, Tree = Played(st.motion, model) is BlendTree };
+                states.Add(writes);
 
                 // A state can read a parameter without any transition doing so.
                 if (st.speedParameterActive) layer.Reads.Add(st.speedParameter);
@@ -194,7 +243,7 @@ namespace AvatarBridge
                 if (st.mirrorParameterActive) layer.Reads.Add(st.mirrorParameter);
                 if (st.timeParameterActive) layer.Reads.Add(st.timeParameter);
 
-                CollectMotion(st.motion, layer, model);
+                CollectMotion(st.motion, layer, model, writes.Writes);
                 foreach (var t in st.transitions) CollectConditions(t, layer);
                 foreach (var b in st.behaviours) ReadDriver(b, layer, model);
             }
@@ -204,9 +253,43 @@ namespace AvatarBridge
             foreach (var t in machine.entryTransitions) CollectConditions(t, layer);
             foreach (var sub in machine.stateMachines)
             {
-                if (sub.stateMachine != null) WalkMachine(sub.stateMachine, layer, model);
+                if (sub.stateMachine != null) WalkMachine(sub.stateMachine, layer, model, states);
             }
         }
+
+        // ponytail: a layer with sub-machines counts every state as reachable; follow
+        // their routing if a real avatar needs it. Every gap here can only make the
+        // checks below go quiet, never raise a false alarm.
+        static HashSet<AnimatorState> Reachable(AnimatorStateMachine root, Dictionary<string, AnimatorControllerParameter> declared)
+        {
+            if (root.stateMachines.Length > 0) return null;
+            var seen = new HashSet<AnimatorState>();
+            var queue = new Queue<AnimatorState>();
+            void Reach(AnimatorState state)
+            {
+                if (state != null && seen.Add(state)) queue.Enqueue(state);
+            }
+            Reach(root.defaultState);
+            foreach (var t in root.entryTransitions)
+            {
+                if (BridgeDiagnostics.CanEverFire(t, declared)) Reach(t.destinationState);
+            }
+            foreach (var t in root.anyStateTransitions)
+            {
+                if (BridgeDiagnostics.CanEverFire(t, declared)) Reach(t.destinationState);
+            }
+            while (queue.Count > 0)
+            {
+                foreach (var t in queue.Dequeue().transitions)
+                {
+                    if (BridgeDiagnostics.CanEverFire(t, declared)) Reach(t.destinationState);
+                }
+            }
+            return seen;
+        }
+
+        static Motion Played(Motion motion, Model model) =>
+            motion is AnimationClip original && model.Overrides.TryGetValue(original, out var swapped) ? swapped : motion;
 
         static void CollectConditions(AnimatorTransitionBase t, Layer layer)
         {
@@ -217,10 +300,10 @@ namespace AvatarBridge
             }
         }
 
-        static void CollectMotion(Motion motion, Layer layer, Model model)
+        static void CollectMotion(Motion motion, Layer layer, Model model, HashSet<string> writes)
         {
             if (motion == null) return;
-            if (motion is AnimationClip original && model.Overrides.TryGetValue(original, out var swapped)) motion = swapped;
+            motion = Played(motion, model);
             if (motion is BlendTree tree)
             {
                 if (!string.IsNullOrEmpty(tree.blendParameter)) layer.Reads.Add(tree.blendParameter);
@@ -228,7 +311,7 @@ namespace AvatarBridge
                 foreach (var child in tree.children)
                 {
                     if (!string.IsNullOrEmpty(child.directBlendParameter)) layer.Reads.Add(child.directBlendParameter);
-                    CollectMotion(child.motion, layer, model);
+                    CollectMotion(child.motion, layer, model, writes);
                 }
                 return;
             }
@@ -236,6 +319,7 @@ namespace AvatarBridge
             foreach (var b in AnimationUtility.GetCurveBindings(clip))
             {
                 layer.Bindings.Add($"{b.path}::{b.propertyName}");
+                writes.Add($"{b.path}::{b.propertyName}");
                 // A curve on the Animator itself writes the parameter of that
                 // name: the usual way to smooth a toggle.
                 if (b.type != typeof(Animator) || !string.IsNullOrEmpty(b.path)) continue;
@@ -247,6 +331,8 @@ namespace AvatarBridge
             foreach (var b in AnimationUtility.GetObjectReferenceCurveBindings(clip))
             {
                 layer.Bindings.Add($"{b.path}::{b.propertyName}");
+                writes.Add($"{b.path}::{b.propertyName}");
+                layer.Objects.Add($"{b.path}::{b.propertyName}");
             }
         }
 
@@ -586,14 +672,14 @@ namespace AvatarBridge
                     // Not an unwired feature: something used to write this and
                     // the conversion removed the thing that did.
                     Add(model, "stopped working when converted", p.Name,
-                        $"{was}, so nothing writes it here. It drives {p.DrivesBindings} binding(s) " +
+                        $"{was}, so nothing writes it here. It drives {BridgeElements.Count(p.DrivesBindings, "binding", "bindings")} " +
                         $"and now sits at {p.Default}.");
                 }
                 else if (p.Writers.Count == 0 && p.DrivesBindings > 0)
                 {
                     // The author built the behaviour and never wired a way in.
                     Add(model, "unreachable feature", p.Name,
-                        $"{p.Readers.Count} layer(s) act on it and it drives {p.DrivesBindings} binding(s), " +
+                        $"{BridgeElements.Count(p.Readers.Count, "layer acts", "layers act")} on it and it drives {BridgeElements.Count(p.DrivesBindings, "binding", "bindings")}, " +
                         $"but nothing can change it: no menu control, no contact, no driver. Stuck at {p.Default}.");
                 }
                 else if (p.Writers.Count == 0)
@@ -625,27 +711,131 @@ namespace AvatarBridge
                 Add(model, "empty layer", l.Name, "no states, so it can never do anything");
             }
 
-            // One binding, two layers: the higher index wins, quietly.
-            var owners = new Dictionary<string, List<string>>();
-            foreach (var l in model.Layers)
+            // A state with no motion and Write Defaults off drops the whole body
+            // into the bicycle pose, every muscle at zero, while it plays. Seen on
+            // a toggle whose clips went missing; the same avatar stood fine on
+            // empty states with Write Defaults on.
+            foreach (var l in model.Layers.Where(l => l.Weight > 0f))
             {
-                foreach (string b in l.Bindings)
+                foreach (var st in l.Reached.Where(s => s.State.motion == null))
                 {
-                    if (!owners.TryGetValue(b, out var list)) owners[b] = list = new List<string>();
-                    list.Add(l.Name);
+                    if (st.State.writeDefaultValues)
+                        Add(model, "state with no motion", $"{l.Name}: {st.State.name}",
+                            "it plays nothing. Write Defaults is on, which left the body alone where this was " +
+                            "seen, but a motion that never arrived usually means a missing clip or a skipped build step");
+                    else
+                        Add(model, "state that bicycles the body", $"{l.Name}: {st.State.name}",
+                            "it has no motion and Write Defaults off, so while it plays Unity drops the whole body " +
+                            "into the bicycle pose. Give it the clip it should play, usually a toggle's clip that went missing");
                 }
             }
-            foreach (var pair in owners.Where(p => p.Value.Count > 1))
+
+            JudgeLayers(model);
+        }
+
+        // Which layer shows, from the states each one can actually get into. A layer
+        // at weight 0 writes nothing. ChilloutVR holds the last value written, so a
+        // property nobody writes this frame is never "restored".
+        static void JudgeLayers(Model model)
+        {
+            var live = model.Layers.Where(l => l.Weight > 0f).ToList();
+            var covered = live.ToDictionary(l => l, Covered);
+            // An empty path is the Animator itself: humanoid muscles, root motion,
+            // animated parameters. Locomotion, an additive idle and an action layer
+            // all writing the body is the design, not a clash.
+            bool OnBody(string b) => b.StartsWith("::", System.StringComparison.Ordinal);
+
+            var writers = new Dictionary<string, List<Layer>>(System.StringComparer.Ordinal);
+            foreach (var l in live)
             {
-                // An empty path is the Animator itself: humanoid muscles, root
-                // motion, animated parameters. Locomotion, an additive idle and
-                // an action layer all writing the body is the design, not a
-                // clash, and reporting it buries the clashes that matter.
-                if (pair.Key.StartsWith("::", System.StringComparison.Ordinal)) continue;
-                Add(model, "contested binding", pair.Key,
-                    $"written by {pair.Value.Count} layers ({string.Join(", ", pair.Value)}); the last one wins");
+                foreach (string b in l.Reached.SelectMany(st => st.Writes).Distinct())
+                {
+                    if (OnBody(b)) continue;
+                    if (!writers.TryGetValue(b, out var list)) writers[b] = list = new List<Layer>();
+                    list.Add(l);
+                }
+            }
+
+            foreach (var l in live)
+            {
+                var hiddenBy = new Dictionary<Layer, List<string>>();
+                foreach (string b in l.Reached.SelectMany(st => st.Writes).Distinct().Where(b => !OnBody(b)))
+                {
+                    var above = live.FirstOrDefault(w => w.Index > l.Index && covered[w].Contains(b));
+                    if (above == null) continue;
+                    if (!hiddenBy.TryGetValue(above, out var list)) hiddenBy[above] = list = new List<string>();
+                    list.Add(b);
+                }
+                foreach (var pair in hiddenBy)
+                {
+                    var controls = model.Controls.Where(c => Names(c.Machine).Any(l.Reads.Contains)).ToList();
+                    var shown = pair.Value.OrderBy(b => b, System.StringComparer.Ordinal).ToList();
+                    Add(model, "hidden by a layer above", controls.Count == 1 ? controls[0].Name : l.Name,
+                        $"\"{pair.Key.Name}\" sets {BridgeElements.Count(shown.Count, "thing", "things")} \"{l.Name}\" animates " +
+                        $"({string.Join(", ", shown.Take(3).Select(Readable))}{(shown.Count > 3 ? ", ..." : "")}) in every state " +
+                        $"it can be in, at full strength, so \"{l.Name}\" never shows them");
+                }
+            }
+
+            foreach (var pair in writers.Where(p => p.Value.Count > 1))
+            {
+                var top = pair.Value[pair.Value.Count - 1];
+                Add(model, "contested binding", Readable(pair.Key),
+                    string.Join(", ", pair.Value.Select(l => $"\"{l.Name}\" {l.Weight * 100f:0}%" +
+                        (l.Mode == AnimatorLayerBlendingMode.Additive ? " additive" : "") + $" ({Coverage(l, pair.Key)})")) +
+                    (covered[top].Contains(pair.Key) ? $"; \"{top.Name}\" always wins" : "; which shows depends on the states they are in"));
+            }
+
+            var everShown = new HashSet<string>(live.SelectMany(l => l.Reached).SelectMany(st => st.Writes), System.StringComparer.Ordinal);
+            foreach (var l in model.Layers.Where(l => l.HasTransitions))
+            {
+                foreach (var st in l.Parked)
+                {
+                    var lost = st.Writes.Where(b => !OnBody(b) && !everShown.Contains(b)).OrderBy(b => b, System.StringComparer.Ordinal).ToList();
+                    Add(model, lost.Count > 0 ? "state that can never play" : "state nothing leads to", $"\"{l.Name}\" state \"{st.State.name}\"",
+                        "nothing leads to it, or every way in has conditions that contradict each other" +
+                        (lost.Count > 0 ? $", so what it animates ({string.Join(", ", lost.Take(3).Select(Readable))}{(lost.Count > 3 ? ", ..." : "")}) never shows" : ""));
+                }
             }
         }
+
+        // What a layer always wins: an Override at full strength, writing it in every
+        // state it can be in, through a mask that lets it pass.
+        static HashSet<string> Covered(Layer w)
+        {
+            var none = new HashSet<string>(System.StringComparer.Ordinal);
+            if (w.Mode != AnimatorLayerBlendingMode.Override || w.Weight < 0.999f || w.Reached.Count == 0
+                || w.Reached.Any(st => st.Tree))
+            {
+                return none;
+            }
+            var all = new HashSet<string>(w.Reached[0].Writes, System.StringComparer.Ordinal);
+            foreach (var st in w.Reached.Skip(1)) all.IntersectWith(st.Writes);
+            var mask = w.MaskAsset;
+            if (mask == null) return all;
+            // A masked layer applies only one object-reference curve, and which one
+            // is unmeasured, so it is never said to win one.
+            all.ExceptWith(w.Objects);
+            if (mask.transformCount == 0) return all;
+            var open = new HashSet<string>(System.StringComparer.Ordinal);
+            for (int i = 0; i < mask.transformCount; i++)
+            {
+                if (mask.GetTransformActive(i)) open.Add(mask.GetTransformPath(i));
+            }
+            all.RemoveWhere(b => !open.Contains(b.Substring(0, b.IndexOf("::", System.StringComparison.Ordinal))));
+            return all;
+        }
+
+        static string Coverage(Layer l, string b)
+        {
+            var by = l.Reached.Where(st => st.Writes.Contains(b)).ToList();
+            if (by.All(st => st.Tree)) return "blend tree";
+            if (by.Count == l.Reached.Count) return "every state";
+            return $"{by.Count} of {l.Reached.Count}: " + string.Join(", ", by.Take(3).Select(st => $"'{st.State.name}'")) +
+                   (by.Count > 3 ? ", ..." : "");
+        }
+
+        static string Readable(string binding) => binding.Replace("::", ".");
 
         // A parameter this tool deliberately cut the writer from. The name
         // survives because a layer still reads it beside parameters that are
@@ -730,7 +920,7 @@ namespace AvatarBridge
         // writes, what a PhysBone used to write. Normal, and not findings.
         static readonly System.Text.RegularExpressions.Regex Scaffolding =
             new System.Text.RegularExpressions.Regex(
-                @"^#?(Go/|AB_Ready_|YAPS\d|VF\d+_|VF_\d+_)|_(IsGrabbed|Stretch|Squish|Angle|IsPosed)$",
+                @"^#?(Go/|AB_Ready_|YAPS\d|VF\d+_|VF_\d+_)|^#AvatarScaler/|_(IsGrabbed|Stretch|Squish|Angle|IsPosed)$",
                 System.Text.RegularExpressions.RegexOptions.Compiled);
 
         static bool Internal(string name) =>
@@ -744,6 +934,8 @@ namespace AvatarBridge
         {
             "unreachable feature", "control that does nothing", "control with no parameter",
             "stopped working when converted", "unused parameter", "empty layer",
+            "hidden by a layer above", "state that can never play",
+            "state that bicycles the body", "state with no motion",
         };
 
         static bool WorthTelling(Finding f) => Actionable.Contains(f.Kind) && !Internal(f.Subject);
@@ -755,25 +947,33 @@ namespace AvatarBridge
             switch (kind)
             {
                 case "unreachable feature":
-                    return $"{count} feature(s) nothing can switch on";
+                    return $"{BridgeElements.Count(count, "feature", "features")} nothing can switch on";
                 case "stopped working when converted":
-                    return $"{count} parameter(s) lost whatever used to drive them";
+                    return $"{BridgeElements.Count(count, "parameter lost whatever used to drive it", "parameters lost whatever used to drive them")}";
                 case "neutralised by a setting":
-                    return $"{count} parameter(s) frozen on purpose by a conversion setting";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} frozen on purpose by a conversion setting";
                 case "contested binding":
-                    return $"{count} thing(s) more than one layer animates, where the higher layer quietly wins";
+                    return $"{BridgeElements.Count(count, "thing", "things")} more than one layer animates";
+                case "hidden by a layer above":
+                    return $"{BridgeElements.Count(count, "layer", "layers")} a layer above always hides";
+                case "state that can never play":
+                    return $"{BridgeElements.Count(count, "animator state", "animator states")} that can never play";
                 case "control that does nothing":
-                    return $"{count} menu control(s) nothing reads";
+                    return $"{BridgeElements.Count(count, "menu control", "menu controls")} nothing reads";
                 case "control with no parameter":
-                    return $"{count} menu control(s) naming a parameter the controller does not have";
+                    return $"{BridgeElements.Count(count, "menu control", "menu controls")} naming a parameter the controller does not have";
                 case "unused parameter":
-                    return $"{count} parameter(s) nothing reads or writes";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} nothing reads or writes";
                 case "frozen parameter":
-                    return $"{count} parameter(s) read but never written";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} read but never written";
                 case "write-only parameter":
-                    return $"{count} parameter(s) written and never read";
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} written and never read";
                 case "empty layer":
-                    return $"{count} layer(s) with no states";
+                    return $"{BridgeElements.Count(count, "layer", "layers")} with no states";
+                case "state that bicycles the body":
+                    return $"{BridgeElements.Count(count, "animator state", "animator states")} that put the body in the bicycle pose";
+                case "state with no motion":
+                    return $"{BridgeElements.Count(count, "animator state", "animator states")} with no motion";
                 default:
                     return $"{count} × {kind}";
             }
@@ -783,8 +983,10 @@ namespace AvatarBridge
         // in: something nobody can reach beats something merely untidy.
         static readonly string[] Order =
         {
+            "state that bicycles the body",
             "unreachable feature", "stopped working when converted", "control that does nothing",
-            "control with no parameter", "contested binding", "neutralised by a setting",
+            "control with no parameter", "hidden by a layer above", "state that can never play",
+            "state with no motion", "contested binding", "neutralised by a setting",
             "unused parameter", "frozen parameter", "write-only parameter", "empty layer",
         };
 
@@ -816,15 +1018,15 @@ namespace AvatarBridge
             int quiet = model.Findings.Count - worth.Count;
             if (quiet > 0)
             {
-                sb.Append("- ").Append(quiet).Append(" more finding(s) about names nobody chose: GoGo Loco's ")
-                  .Append("parameters, this tool's own scaffolding, what ChilloutVR writes and nothing reads, ")
-                  .Append("the grab and stretch parameters a PhysBone used to write. Listed in full below.\n");
+                sb.Append("- ").Append(BridgeElements.Count(quiet, "more finding", "more findings")).Append(" that need no action: ")
+                  .Append("names nobody chose, such as GoGo Loco's parameters and this tool's own scaffolding, things two ")
+                  .Append("layers share, and states nothing leads to. Listed in full below.\n");
             }
 
             if (model.Props.Count > 0)
             {
-                sb.Append("- **").Append(model.Props.Count)
-                  .Append(" object(s) could come off as props**: ")
+                sb.Append("- **").Append(BridgeElements.Count(model.Props.Count, "object", "objects"))
+                  .Append(" could come off as props**: ")
                   .Append(string.Join(", ", model.Props.Select(p => $"\"{p.Control}\"")))
                   .Append(". Each rides one bone chain, is switched by one control, and carries its own " +
                           "mesh and textures, so ChilloutVR could hold it as a prop instead of the avatar " +
@@ -850,7 +1052,9 @@ namespace AvatarBridge
 
             foreach (var group in worth.GroupBy(f => f.Kind).OrderBy(g => Rank(g.Key)))
             {
-                bool loud = group.Key == "unreachable feature"
+                bool loud = group.Key == "state that bicycles the body"
+                            || group.Key == "unreachable feature"
+                            || group.Key == "hidden by a layer above"
                             || group.Key == "stopped working when converted"
                             || group.Key == "control that does nothing"
                             || group.Key == "control with no parameter";
@@ -864,17 +1068,15 @@ namespace AvatarBridge
             foreach (var p in model.Props.OrderByDescending(p => p.TextureBytes))
             {
                 report.Add(ReportStatus.Approximated, "Survey", $"\"{p.Control}\" could come off as a prop",
-                    $"{p.Path} rides {p.Bone}, {p.Triangles} tris, {p.Materials} material(s), " +
+                    $"{p.Path} rides {p.Bone}, {p.Triangles} tris, {BridgeElements.Count(p.Materials, "material", "materials")}, " +
                     $"{(p.TextureBytes / 1048576f):0.0} MB of textures nothing else uses.");
             }
 
             if (quiet > 0)
             {
-                report.Add(ReportStatus.Converted, "Survey", $"{quiet} more finding(s) not worth your time",
-                    "Names nobody chose and nothing anybody can act on: GoGo Loco's own parameters, the " +
-                    "scaffolding this tool generates, the ones ChilloutVR writes and no layer reads, the grab " +
-                    "and stretch parameters a PhysBone used to write. They are all in the report file if you " +
-                    "ever want them.");
+                report.Add(ReportStatus.Converted, "Survey", $"{BridgeElements.Count(quiet, "more finding", "more findings")} that need no action",
+                    "Names nobody chose, such as GoGo Loco's own parameters and the scaffolding this tool " +
+                    "generates, things two layers share, and states nothing leads to.");
             }
         }
 
@@ -906,11 +1108,23 @@ namespace AvatarBridge
                       .Append(" : on ").Append(p.Bone)
                       .Append(", switched by \"").Append(p.Control).Append("\", ")
                       .Append(p.Triangles).Append(" tris, ")
-                      .Append(p.Materials).Append(" material(s), ")
+                      .Append(BridgeElements.Count(p.Materials, "material", "materials")).Append(", ")
                       .Append((p.TextureBytes / 1048576f).ToString("0.0")).Append(" MB of textures nothing else uses\n");
                 }
                 sb.Append('\n');
             }
+
+            sb.Append("## parameters (").Append(model.Parameters.Count).Append(")\n");
+            foreach (var p in model.Parameters.OrderBy(p => p.Name, System.StringComparer.Ordinal))
+            {
+                sb.Append("  ").Append(p.Name).Append(" : ").Append(p.Type).Append(p.Synced ? ", synced" : ", local")
+                  .Append(", default ").Append(p.Default);
+                if (model.RenamedFrom != null && model.RenamedFrom.TryGetValue(p.Name, out string was)) sb.Append(" · was ").Append(was);
+                if (p.Writers.Count > 0) sb.Append(" · written by ").Append(Few(p.Writers));
+                if (p.Readers.Count > 0) sb.Append(" · read by ").Append(Few(p.Readers));
+                sb.Append('\n');
+            }
+            sb.Append('\n');
 
             foreach (var group in model.Findings.GroupBy(f => f.Kind).OrderByDescending(g => g.Count()))
             {
@@ -923,6 +1137,12 @@ namespace AvatarBridge
                 sb.Append('\n');
             }
             return sb.ToString();
+        }
+
+        internal static string Few(IEnumerable<string> names)
+        {
+            var list = names.ToList();
+            return string.Join(", ", list.Take(4)) + (list.Count > 4 ? $", and {list.Count - 4} more" : "");
         }
     }
 }

@@ -31,9 +31,20 @@ namespace AvatarBridge
         static readonly List<(Renderer renderer, int slot, YapsBaker.Result result, Material[] known)>
             PendingVariants = new List<(Renderer, int, YapsBaker.Result, Material[])>();
 
+        // Plug materials already warned about VRCFury's deform, once each per conversion.
+        static readonly HashSet<Material> PrebuiltSps = new HashSet<Material>();
+
+        // DPS or TPS, upgraded once the avatar is finished. Beside SPS the upgrade takes only
+        // what the SPS route left.
+        static bool LegacyPending;
+        static bool SpsConverted;
+
         public static void Run(BridgeContext ctx)
         {
             PendingVariants.Clear();
+            PrebuiltSps.Clear();
+            LegacyPending = false;
+            SpsConverted = false;
             if (!ctx.Settings.convertYapsSystems)
             {
                 return;
@@ -41,13 +52,17 @@ namespace AvatarBridge
 
             var plugRoots = Named(ctx, "BakedSpsPlug");
             var socketRoots = Named(ctx, "BakedSpsSocket");
+            // Always: an avatar can carry SPS and leftover DPS or TPS parts, and those were
+            // left as they were whenever SPS was found.
+            LegacyPending = true;
             if (plugRoots.Count == 0 && socketRoots.Count == 0)
             {
-                ReportLegacyContent(ctx);
                 return;
             }
+            SpsConverted = true;
 
             RemoveAtlasJunk(ctx);
+            YapsLock.Animate(ctx.Target.transform, ctx.MergedController?.animationClips);
             // Sockets on this avatar: its own plugs check ownership first.
             float selfFlag = socketRoots.Count > 0 ? 1f : -1f;
 
@@ -76,7 +91,7 @@ namespace AvatarBridge
             if (untraced.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{untraced.Count} plug(s) take the default tag and overrun settings",
+                    $"{BridgeElements.Count(untraced.Count, "plug takes", "plugs take")} the default tag and overrun settings",
                     "The SPS plug each was baked from could not be found, so its own settings are unknown. Each " +
                     "answers any socket and may pass through one, which is what an SPS plug does unless its " +
                     "author changed it: " + string.Join(", ", untraced));
@@ -95,6 +110,18 @@ namespace AvatarBridge
                     // without it. Converted plugs always read it.
                     material.SetFloat("_YAPS_UseAtlas", 1f);
                 }
+            }
+            // Two plugs on one mesh each get animated values of their own, once
+            // every plug on it is patched and before anything copies its packs.
+            var shared = ctx.YapsPlugs.Select(p => p.Renderer)
+                .Concat(ctx.YapsPlugs.SelectMany(p => p.Extras.Select(e => e.Renderer))).Where(r => r != null).Distinct();
+            foreach (var renderer in shared)
+            {
+                int dropped = YapsBaker.ShareRenderer(renderer);
+                if (dropped > 0)
+                    ctx.Report.Warning(Category, $"\"{renderer.name}\": {BridgeElements.Count(dropped, "shape", "shapes")} of its second plug left out",
+                        $"Two plugs on one mesh share {YapsBaker.MaxShapes} shape slots, and the first took the rest. " +
+                        "The second's later shapes do not bend it.");
             }
             // The readouts, after every plug is measured and its values are
             // final: a plug measured over another's readout takes it for part
@@ -150,7 +177,7 @@ namespace AvatarBridge
             if (socketRoots.Count > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Kept the depth reactions on {socketRoots.Count} socket(s)",
+                    $"Kept the depth reactions on {BridgeElements.Count(socketRoots.Count, "socket", "sockets")}",
                     "Pointed at each rebuilt socket's depth trigger. Local, so only you see them, unless " +
                     "\"Show the avatar's OWN depth animations to other players\" is on (32 bits a socket).");
             }
@@ -196,8 +223,23 @@ namespace AvatarBridge
             // the bake wants the one underneath, and no readout slot to patch.
             YapsDebugOverlayBuilder.Restore(plugRoot.GetComponent<YapsPlug>());
             YapsDebugOverlayBuilder.Restore(renderer);
-            float size = YapsBaker.LargestSize(YapsCurveMirror.ClipsOf(ctx.MergedController),
-                SizeBones(ctx, ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot)));
+            var sizeBones = SizeBones(ctx, ChainRootOf(renderer as SkinnedMeshRenderer, chainLevel, plugRoot));
+            var rest = YapsRestPose.Apply(ctx.Target.transform, ctx.MergedController, sizeBones);
+            if (rest == null)
+            {
+                ctx.Report.Warning(Category, $"The plug at {where} was baked at the size the scene shows",
+                    "The size its slider starts at could not be read. If this plug has a size slider, check it at rest in game.");
+            }
+            else if (rest.Count > 0)
+            {
+                ctx.Report.Converted(Category, $"The plug at {where} was baked at the size its slider starts at",
+                    $"{string.Join(", ", rest)}. The scene held it at another size; in game it loads at this one, " +
+                    "so the bake and the length other sockets read now match it.");
+            }
+            float size = YapsBaker.LargestSize(YapsCurveMirror.ClipsOf(ctx.MergedController), sizeBones);
+            // A plain mesh moves onto a bounds copy in the bake; Remove needs the original.
+            var filter = renderer.GetComponent<MeshFilter>();
+            var unbounded = filter != null ? filter.sharedMesh : null;
             var result = YapsBaker.Bake(renderer, plugRoot, ctx.OutputDir + "/YAPS", ctx.Report,
                 out string bakeFailure, sizeScale: size);
             if (result == null)
@@ -310,10 +352,13 @@ namespace AvatarBridge
             // The same markers the toolkit builds for a native plug, on the measured
             // frame: DPS tracker light, TPS and SPS pointers. Fury's own rig goes
             // first, or its tracker doubles the fresh one and its pointers win the
-            // announce's dedupe.
+            // announce's dedupe. The toy mod length as the plug's own switch says,
+            // on unless a plug already there turned it off.
             YapsSocketRebuilder.StripPlugRig(plugRoot);
+            var had = plugRoot.GetComponent<YapsPlug>();
             YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
-                result.Length * toMetres, result.Radius * toMetres, tipLight: true, pointers: true);
+                result.Length * toMetres, result.Radius * toMetres, tipLight: true, pointers: true,
+                toyLengthDir: had == null || had.toyModLength ? ctx.OutputDir + "/YAPS" : null);
 
             // The authoring component, read back off the patched material,
             // so a re-bake writes the same thing. No slot named: a named slot
@@ -340,6 +385,7 @@ namespace AvatarBridge
                 // head, so a toolkit re-bake reaches the same slots and meshes on
                 // the same frame, and the own-socket ticks and Remove reach them too.
                 adopted.converted = true;
+                if (filter != null && filter.sharedMesh != unbounded) adopted.boundsFrom = unbounded;
                 void Record(Renderer on, int slot)
                 {
                     if (adopted.bakedSlots.Any(b => b != null && b.slot == slot && b.renderer == on)) return;
@@ -369,7 +415,7 @@ namespace AvatarBridge
                 (extras.Count > 0
                     ? $" Also {string.Join(", ", extras.Select(e => $"\"{e.Renderer.name}\""))}, on the same frame."
                     : "") +
-                (skippedShadowPasses > 0 ? $" {skippedShadowPasses} shadow pass(es) cannot be patched and stay straight." : ""));
+                (skippedShadowPasses > 0 ? $" {BridgeElements.Count(skippedShadowPasses, "shadow pass cannot be patched and stays", "shadow passes cannot be patched and stay")} straight." : ""));
         }
 
         // One material slot of the plug's renderer: patch its shader,
@@ -388,9 +434,9 @@ namespace AvatarBridge
             }
 
             // What the material already is. The old deform must not run beside
-            // YAPS: TPS and SPS keep their shader with theirs switched off, DPS
-            // moves to Simple Lit because Raliv's has no switch. Same rule the
-            // toolkit applies to a native plug.
+            // YAPS: TPS, SPS and Poiyomi's DPS keep their shader with theirs switched
+            // off, Raliv's DPS moves to Simple Lit because it has no switch. Same rule
+            // the toolkit applies to a native plug.
             var source = materials[slot];
             // A slot another plug on the same shaft already patched in this
             // conversion is patched again from what it replaced. Patching the
@@ -402,10 +448,17 @@ namespace AvatarBridge
                 source = prior.from;
             }
             var legacy = YapsLegacyMap.Detect(source, out _);
+            // The bake is asked not to patch plug shaders, so this is a built copy or a VRCFury
+            // that could not be asked. With a switch, SwitchOffLegacyDeform below turns it off.
+            if (legacy == YapsLegacyMap.Origin.SPS && !source.HasProperty("_SPS_Enabled") && PrebuiltSps.Add(source))
+            {
+                ctx.Report.Warning(Category, $"\"{source.name}\" already carries VRCFury's own deform", YapsLegacyMap.SpsPrebuilt);
+            }
             var patchSource = source;
             Shader shader = null;
             string refusal = null;
-            if (legacy == YapsLegacyMap.Origin.DPS)
+            bool simpleLit = legacy == YapsLegacyMap.Origin.DPS && !YapsNativeBuilder.HasDpsSwitch(source);
+            if (simpleLit)
             {
                 var plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
                 if (plain == null)
@@ -414,8 +467,8 @@ namespace AvatarBridge
                 }
                 else
                 {
-                    shader = YapsShaderPatcher.Patch(plain, ctx.OutputDir + "/YAPS", ctx.Report,
-                        out refusal, out skippedShadowPasses);
+                    shader = YapsShaderPatcher.Patch(plain, ctx.Report,
+                        out refusal, out skippedShadowPasses, roles: YapsShaderPatcher.Roles.Plug);
                     if (shader != null)
                     {
                         patchSource = plain;
@@ -428,17 +481,18 @@ namespace AvatarBridge
             }
             else
             {
-                shader = YapsShaderPatcher.Patch(source, ctx.OutputDir + "/YAPS",
-                    ctx.Report, out refusal, out skippedShadowPasses, allowSps: legacy == YapsLegacyMap.Origin.SPS);
+                shader = YapsShaderPatcher.Patch(source, ctx.Report, out refusal, out skippedShadowPasses,
+                    allowSps: legacy == YapsLegacyMap.Origin.SPS, roles: YapsShaderPatcher.Roles.Plug);
             }
 
             // A shader that will not take the deform is not the end of it:
-            // Simple Lit will, with the look carried over. The toolkit has
-            // always done this; the converter used to give up instead. DPS
-            // has already tried Simple Lit, and the same patch refuses again.
-            if (shader == null && legacy != YapsLegacyMap.Origin.DPS)
+            // YAPS Standard or Simple Lit will, with the look carried over. The toolkit has
+            // always done this; the converter used to give up instead. Raliv's
+            // DPS has already tried Simple Lit, and the same patch refuses again.
+            if (shader == null && !simpleLit)
             {
-                shader = PatchOnSimpleLit(ctx, source, ref refusal, out var plain, out skippedShadowPasses);
+                shader = PatchOnFallback(ctx, source, ref refusal, out var plain, out skippedShadowPasses,
+                    YapsShaderPatcher.Roles.Plug);
                 if (shader != null)
                 {
                     patchSource = plain;
@@ -472,7 +526,7 @@ namespace AvatarBridge
             {
                 var system = legacy;
                 ctx.Report.Converted(Category,
-                    $"Carried {carried.Count} {system} setting(s) onto the YAPS plug",
+                    $"Carried {carried.Count} {system} {(carried.Count == 1 ? "setting" : "settings")} onto the YAPS plug",
                     string.Join(", ", carried.ConvertAll(c => $"{c.From} → {c.To}")) +
                     (unmapped.Count > 0
                         ? $". No YAPS counterpart for: {string.Join(", ", unmapped)}"
@@ -494,6 +548,8 @@ namespace AvatarBridge
             if (plugObject != null && YapsBakePrep.AuthoredAnswers.TryGetValue(plugObject, out var answers))
             {
                 patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(answers));
+                // Where the second plug on a shared mesh reads them.
+                patched.SetVector("_YAPS_TagInclude2", YapsTags.Patterns(answers));
             }
             if (plugObject != null && YapsBakePrep.AuthoredRefuses.TryGetValue(plugObject, out var refuses))
             {
@@ -515,30 +571,36 @@ namespace AvatarBridge
             return patched;
         }
 
-        // YAPS Simple Lit for a material whose own shader will not take the
-        // deform, with the look carried over: the toolkit's rule for a plug
-        // and for a socket that is its own mesh. Null when Simple Lit refuses
-        // too, and refusal then says so.
-        static Shader PatchOnSimpleLit(BridgeContext ctx, Material source, ref string refusal,
-            out Material plain, out int skippedShadowPasses)
+        // A shader the patcher takes, for a material whose own will not, with the look carried
+        // over: the toolkit's rule for a plug and for a socket that is its own mesh. Null when that
+        // one refuses too, and refusal then says so.
+        static Shader PatchOnFallback(BridgeContext ctx, Material source, ref string refusal,
+            out Material plain, out int skippedShadowPasses, YapsShaderPatcher.Roles roles)
         {
             skippedShadowPasses = 0;
-            plain = YapsNativeBuilder.OnSimpleLit(source, out string why);
+            plain = YapsNativeBuilder.OnFallback(source, out string why);
             if (plain == null)
             {
                 refusal += "; and " + why;
                 return null;
             }
-            var shader = YapsShaderPatcher.Patch(plain, ctx.OutputDir + "/YAPS", ctx.Report,
-                out string plainRefusal, out skippedShadowPasses);
+            string host = plain.shader.name.Replace('/', ' ');
+            var shader = YapsShaderPatcher.Patch(plain, ctx.Report,
+                out string plainRefusal, out skippedShadowPasses, roles: roles);
             if (shader == null)
             {
-                refusal += "; and YAPS Simple Lit refused too: " + plainRefusal;
+                refusal += $"; and {host} refused too: " + plainRefusal;
                 return null;
             }
-            ctx.Report.Approximated(Category, $"\"{source.name}\" wears YAPS Simple Lit now",
-                $"Its shader could not take the deform ({refusal}). Colour, albedo, normal, metallic and " +
-                "smoothness carried over.");
+            // Unity's own source draws as Standard did, so only Simple Lit is an approximation.
+            if (plain.shader.name == YapsNativeBuilder.StandardName)
+                ctx.Report.Converted(Category, $"\"{source.name}\" wears YAPS Standard now",
+                    "Unity's Standard has no source to patch. YAPS Standard is the same shader from Unity's " +
+                    "published source, every setting carried over.");
+            else
+                ctx.Report.Approximated(Category, $"\"{source.name}\" wears YAPS Simple Lit now",
+                    $"Its shader could not take the deform ({refusal}). Colour, albedo, normal, metallic and " +
+                    "smoothness carried over.");
             return shader;
         }
 
@@ -582,7 +644,7 @@ namespace AvatarBridge
             if (unmatched.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{unmatched.Count} socket(s) carry only the shared tag",
+                    $"{BridgeElements.Count(unmatched.Count, "socket carries", "sockets carry")} only the shared tag",
                     "The SPS socket each was baked from could not be found, so its own tags are unknown. The " +
                     "shared tag is what an SPS socket has unless its author turned it off, so a plug that " +
                     "answered anything still answers these: " + string.Join(", ", unmatched));
@@ -599,12 +661,12 @@ namespace AvatarBridge
             if (over > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{over} tag(s) past the first {YapsTags.PlugSlots} on a list were not carried",
+                    $"{BridgeElements.Count(over, "tag", "tags")} past the first {YapsTags.PlugSlots} on a list were not carried",
                     $"Only {YapsTags.PlugSlots} fit per list; sockets past that are treated as unlisted. Shorten "
                     + "the list, or share one word across those sockets.");
             }
             ctx.Report.Converted(Category,
-                $"Carried the tags on {tagged} socket(s) and {plugs} plug rule list(s)",
+                $"Carried the tags on {BridgeElements.Count(tagged, "socket", "sockets")} and {BridgeElements.Count(plugs, "plug rule list", "plug rule lists")}",
                 "Words as written: " + (words.Count == 0 ? "none on the sockets here" : string.Join(", ", words))
                 + ". Tags match by fingerprint, so two names can rarely read as one.");
         }
@@ -852,7 +914,8 @@ namespace AvatarBridge
                 }
                 ctx.Report.Converted(Category, $"The plug at {where} got a material slot of its own",
                     $"It shared \"{renderer.name}\" slot {slot} with a plug on another shaft, and one material " +
-                    $"holds one plug's bend. Its triangles moved to slot {added} on a copy of the mesh, so both bend.");
+                    $"holds one plug's bend. Its triangles moved to slot {added} on a copy of the mesh, so both bend, " +
+                    "each with its own size animation and tag chooser.");
                 result.Add(added);
                 split.Add(added);
             }
@@ -890,7 +953,7 @@ namespace AvatarBridge
             }
             if (wired > 0)
             {
-                ctx.Report.Converted(Category, $"{wired} socket menu toggle(s) wired to their sockets",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(wired, "socket menu toggle", "socket menu toggles")} wired to their sockets",
                     "VRCFury's socket toggles drove its deleted atlas, so the menu looked right and " +
                     "did nothing. Each is now wired to its whole socket, lights, pointers and depth " +
                     "trigger together, so \"one socket at a time\" is the wearer's choice again.");
@@ -898,7 +961,7 @@ namespace AvatarBridge
             if (unwired.Count > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{unwired.Count} socket(s) have no menu toggle and stay on",
+                    $"{BridgeElements.Count(unwired.Count, "socket has no menu toggle and stays", "sockets have no menu toggle and stay")} on",
                     string.Join(", ", unwired) + ". No menu entry matched them, so they are " +
                     "always active. The marker light budget still caps how many carry lights.");
             }
@@ -1109,13 +1172,14 @@ namespace AvatarBridge
                         continue;
                     }
                     var patchSource = materials[slot];
-                    var patched = YapsShaderPatcher.Patch(patchSource, ctx.OutputDir + "/YAPS",
-                        ctx.Report, out string refusal, out _);
-                    // The mesh is the socket's own, so Simple Lit repaints only the
+                    var patched = YapsShaderPatcher.Patch(patchSource, ctx.Report, out string refusal, out _,
+                        roles: YapsShaderPatcher.Roles.Socket);
+                    // The mesh is the socket's own, so the fallback repaints only the
                     // socket, as the toolkit does. A body never reaches here.
                     if (patched == null)
                     {
-                        patched = PatchOnSimpleLit(ctx, materials[slot], ref refusal, out var plain, out _);
+                        patched = PatchOnFallback(ctx, materials[slot], ref refusal, out var plain, out _,
+                            YapsShaderPatcher.Roles.Socket);
                         patchSource = plain;
                     }
                     if (patched == null)
@@ -1173,20 +1237,20 @@ namespace AvatarBridge
             if (deformed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{deformed} socket(s) can now deform around a plug",
+                    $"{BridgeElements.Count(deformed, "socket", "sockets")} can now deform around a plug",
                     "Blendshapes staged by depth in the socket's shader, so DPS plugs open them too. " +
                     (alreadyAnimated > 0 ? $"{alreadyAnimated} keep their contact as well." : ""));
             }
             if (onBody > 0)
             {
                 ctx.Report.Approximated(Category,
-                    $"{onBody} socket(s) keep their reactions on the animator",
+                    $"{BridgeElements.Count(onBody, "socket keeps its", "sockets keep their")} reactions on the animator",
                     "Their mesh is the body, so they keep their contact-driven shapes, made local.");
             }
             if (noShapes > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{noShapes} socket(s) have no blendshapes to deform",
+                    $"{BridgeElements.Count(noShapes, "socket has", "sockets have")} no blendshapes to deform",
                     "Nothing was changed for these. A socket deform reshapes the author's own " +
                     "blendshapes, so a socket built without any has nothing to open with; its " +
                     "contacts and marker lights work exactly as before.");
@@ -1194,7 +1258,7 @@ namespace AvatarBridge
             if (failures.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{failures.Count} socket(s) could not be given a deform",
+                    $"{BridgeElements.Count(failures.Count, "socket", "sockets")} could not be given a deform",
                     "Everything else about them is untouched and they still work as sockets: " +
                     "they simply will not reshape around a plug. " + string.Join("; ", failures));
             }
@@ -1258,47 +1322,27 @@ namespace AvatarBridge
             return false;
         }
 
-        static void ReportLegacyContent(BridgeContext ctx)
+        // DPS and TPS through the YAPS window's own Build, on the avatar as it ships, so a
+        // reconvert keeps what pressing the button made. The converter used to leave them as
+        // they were, and every reconvert threw the window's upgrade away.
+        public static void UpgradeLegacy(BridgeContext ctx)
         {
-            // A protocol light first, then its digit: an ordinary point light
-            // of range 0.25 or 1.03 has a digit too.
-            int lights = ctx.Target.GetComponentsInChildren<Light>(true)
-                .Count(l => YapsScanner.IsProtocolLight(l)
-                            && YapsScanner.LightDigit(l) >= 1 && YapsScanner.LightDigit(l) <= 6);
-
-            var pointers = ctx.Target.GetComponentsInChildren<CVRPointer>(true)
-                .Where(p => p != null && !string.IsNullOrEmpty(p.type))
-                .Select(p => p.type)
-                .ToList();
-            int sockets = pointers.Count(t => t.StartsWith("TPS_Orf", StringComparison.OrdinalIgnoreCase)
-                                           || t.StartsWith("SPSLL_Socket", StringComparison.OrdinalIgnoreCase));
-            int plugs = pointers.Count(t => t.StartsWith("TPS_Pen", StringComparison.OrdinalIgnoreCase)
-                                         || t.StartsWith("SPSLL_Pen", StringComparison.OrdinalIgnoreCase));
-
-            if (lights == 0 && sockets == 0 && plugs == 0)
+            if (!LegacyPending) return;
+            LegacyPending = false;
+            var scan = YapsScanner.Scan(ctx.Target);
+            var legacy = scan.Plugs.Concat(scan.Sockets).Where(f => !f.IsYapsAlready).ToList();
+            if (legacy.Count == 0) return;
+            // Beside SPS, only what it left. Build rebuilds every plug and socket, which would
+            // rename the SPS sockets and remake reactions they keep exactly as authored.
+            var only = SpsConverted ? legacy.Where(f => f.Root != null).Select(f => f.Root).ToList() : null;
+            var lines = YapsNativeBuilder.BuildAvatar(ctx.Target, out string headline, only);
+            var bad = lines.Where(l => l.StartsWith("✗") || l.Contains("⚠")).ToList();
+            var good = lines.Except(bad).Select(l => l.TrimStart('✓', ' ')).ToList();
+            ctx.Report.Converted(Category, "Upgraded this avatar's older penetration setup to YAPS",
+                headline + (good.Count > 0 ? " " + string.Join("; ", good) : ""));
+            foreach (var line in bad)
             {
-                return;   // nothing penetration-shaped on this avatar at all
-            }
-
-            string found = string.Join(", ", new[]
-            {
-                lights > 0 ? $"{lights} marker light(s)" : null,
-                sockets > 0 ? $"{sockets} socket contact(s)" : null,
-                plugs > 0 ? $"{plugs} plug contact(s)" : null,
-            }.Where(s => s != null));
-
-            if (plugs > 0)
-            {
-                ctx.Report.Warning(Category,
-                    "This avatar's penetrator could not be converted, but its sockets work",
-                    $"Found {found}, and no SPS setup to build a plug from, so it will not bend. Set it up with " +
-                    "SPS and convert again.");
-            }
-            else
-            {
-                ctx.Report.Converted(Category,
-                    "Kept this avatar's existing penetration sockets",
-                    $"Found {found} from DPS or TPS. Their lights and contacts come through as they were.");
+                ctx.Report.Warning(Category, "Part of the YAPS upgrade did not finish", line.TrimStart('✗', '⚠', ' '));
             }
         }
 
@@ -1309,7 +1353,7 @@ namespace AvatarBridge
         {
             var dead = YapsToggles.DeadBindings(ctx.Target, ctx.MergedController);
             if (dead.Count == 0) return;
-            ctx.Report.Warning(Category, $"{dead.Count} penetration animation curve(s) change nothing",
+            ctx.Report.Warning(Category, $"{BridgeElements.Count(dead.Count, "penetration animation curve changes", "penetration animation curves change")} nothing",
                 "Unity cannot attach them to anything on the avatar, so the menu rows or size changes they " +
                 "belong to do nothing in game. Please report this with the conversion report. " +
                 string.Join("; ", dead.Take(10)) + (dead.Count > 10 ? $"; and {dead.Count - 10} more" : ""));
@@ -1355,7 +1399,7 @@ namespace AvatarBridge
             if (removed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Removed {removed} animation curve(s) that drove the screen atlas",
+                    $"Removed {BridgeElements.Count(removed, "animation curve", "animation curves")} that drove the screen atlas",
                     "The socket toggles also wrote each socket's identity, tags and shape into the " +
                     "atlas marker's material, so VRChat's shader could read them back off the " +
                     "screen. The marker is gone and those writes went to nothing.");
@@ -1511,13 +1555,13 @@ namespace AvatarBridge
             if (repointed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Pointed {repointed} material swap(s) at the baked material",
+                    $"Pointed {BridgeElements.Count(repointed, "material swap", "material swaps")} at the baked material",
                     "Otherwise they would swap the unbaked material back in and the plug would straighten.");
             }
             if (variantKeys > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Baked {ctx.YapsVariantSwaps.Count} alternate material(s) the animator swaps in",
+                    $"Baked {BridgeElements.Count(ctx.YapsVariantSwaps.Count, "alternate material", "alternate materials")} the animator swaps in",
                     "So the plug still bends while an alternate skin is on.");
             }
         }
@@ -1590,7 +1634,7 @@ namespace AvatarBridge
             if (changed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"Auto socket mode switches only for a clearly nearer socket ({changed} transition(s))",
+                    $"Auto socket mode switches only for a clearly nearer socket ({BridgeElements.Count(changed, "transition", "transitions")})",
                     $"A socket must be about {AutoModeMargin * 100:0} cm nearer to take over, so close sockets " +
                     "no longer flicker.");
             }
@@ -1618,39 +1662,45 @@ namespace AvatarBridge
 
                 // Every mesh of the plug, or a resized plug tears where one
                 // mesh's deform took the new size and the other's did not.
-                void Mirror(Renderer renderer, List<string> shapes, List<string> moving)
+                // The lane and shape count this plug's material on that mesh was given.
+                void Mirror(Renderer renderer, Material mine, List<string> shapes, List<string> moving)
                 {
                     string path = ctx.PathInTarget(renderer.transform);
+                    int lane = YapsBaker.LaneOf(mine);
+                    if (lane > 0 && mine != null)
+                        shapes = shapes.Take(Mathf.RoundToInt(mine.GetFloat("_YAPS_ShapeCount"))).ToList();
                     if (shapes.Count > 0)
                     {
-                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer, shapes, moving, missed);
+                        written += YapsCurveMirror.MirrorShapes(clips, path, renderer, shapes, moving, missed, lane);
                     }
                     if (bones.Count > 0)
                     {
-                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer, plug.Rotation);
+                        scaled += YapsCurveMirror.MirrorBoneScale(clips, bones, path, renderer, plug.Rotation, lane);
                     }
                 }
-                Mirror(plug.Renderer, plug.Shapes, plug.MovingShapes);
+                Mirror(plug.Renderer, plug.Material, plug.Shapes, plug.MovingShapes);
                 foreach (var mesh in plug.Extras)
                 {
-                    Mirror(mesh.Renderer, mesh.Shapes, mesh.MovingShapes);
+                    var slots = mesh.Renderer != null ? mesh.Renderer.sharedMaterials : new Material[0];
+                    var mine = mesh.Slots.Where(i => i >= 0 && i < slots.Length).Select(i => slots[i]).FirstOrDefault(m => m != null);
+                    Mirror(mesh.Renderer, mine, mesh.Shapes, mesh.MovingShapes);
                 }
             }
 
             if (written > 0)
             {
-                ctx.Report.Converted(Category, $"Mirrored {written} blendshape curve(s) onto the plug",
+                ctx.Report.Converted(Category, $"Mirrored {BridgeElements.Count(written, "blendshape curve", "blendshape curves")} onto the plug",
                     "So the deform follows the plug's shapes, such as a size slider.");
             }
             if (scaled > 0)
             {
-                ctx.Report.Converted(Category, $"Mirrored {scaled} bone scale curve(s) onto the plug",
+                ctx.Report.Converted(Category, $"Mirrored {BridgeElements.Count(scaled, "bone scale curve", "bone scale curves")} onto the plug",
                     "So a size or hyper toggle that scales the bone scales the bend too.");
             }
             if (missed.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{missed.Count} animated plug blendshape(s) are not in the bake",
+                    $"{BridgeElements.Count(missed.Count, "animated plug blendshape is", "animated plug blendshapes are")} not in the bake",
                     $"{string.Join(", ", missed.Take(8))}{(missed.Count > 8 ? ", …" : "")}: past the " +
                     $"{YapsBaker.MaxShapes} that move it most. The bend is slightly off while they are raised.");
             }
@@ -1677,7 +1727,7 @@ namespace AvatarBridge
                     removed++;
                 }
             }
-            ctx.Report.Converted(Category, $"Removed {removed} screen-atlas object(s)",
+            ctx.Report.Converted(Category, $"Removed {BridgeElements.Count(removed, "screen-atlas object", "screen-atlas objects")}",
                 "VRChat's version, which nothing here reads; left in, they draw into the view.");
         }
 

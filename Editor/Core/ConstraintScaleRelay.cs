@@ -198,13 +198,13 @@ namespace AvatarBridge
             if (constraintsFixed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{constraintsFixed} constraint(s) re-anchored so props follow the size slider " +
-                    $"({relaysMade} relay object(s))", note);
+                    $"{BridgeElements.Count(constraintsFixed, "constraint", "constraints")} re-anchored so props follow the size slider " +
+                    $"({BridgeElements.Count(relaysMade, "relay object", "relay objects")})", note);
             }
             else
             {
                 ctx.Report.Approximated(Category,
-                    $"{leftAlone} constraint(s) with an offset will drift when you resize", note);
+                    $"{BridgeElements.Count(leftAlone, "constraint", "constraints")} with an offset will drift when you resize", note);
             }
         }
 

@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     // gesture on "> 1.9 and < 2.1" and leaving on its complement.
     public static class StuckStateDetectorTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: stuck-state detector")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Stuck-state detector")]
         public static void Run()
         {
             int failures = 0;

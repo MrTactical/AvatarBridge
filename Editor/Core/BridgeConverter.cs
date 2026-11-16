@@ -14,6 +14,9 @@ namespace AvatarBridge
     {
         public static BridgeReport Convert(VRCAvatarDescriptor descriptor, BridgeSettings settings)
         {
+            // A copy for this run: the window passes the object it saves to EditorPrefs, which are per
+            // user, so a choice settled below reached every project.
+            settings = JsonUtility.FromJson<BridgeSettings>(JsonUtility.ToJson(settings));
             // Converting to YAPS implies stripping what it replaces. The
             // window says so; a caller with the pair the other way round
             // (older saved settings, a script) gets the same answer.
@@ -77,6 +80,10 @@ namespace AvatarBridge
                 // Always. CVR deletes them on load, the CCK complains,
                 // and a lingering VRC descriptor reads as unconverted.
                 MiscConverter.DeleteVrcComponents(ctx);
+#if AVATARBRIDGE_YAPS
+                // On the finished avatar, as the YAPS window sees it when its Build is pressed.
+                YapsConverter.UpgradeLegacy(ctx);
+#endif
 
                 // Deactivate the original whenever the work happened on
                 // a separate object (clone or baked copy).
@@ -92,9 +99,12 @@ namespace AvatarBridge
                 DetachCrashingController(ctx);
                 WarnFastPlayMode(ctx);
                 ReportSyncUsage(ctx);
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 SaveConvertedPrefab(ctx);
+                long saved = clock.ElapsedMilliseconds;
                 // Last, so it validates and describes the avatar as it will actually ship.
                 BridgeFinish.Run(ctx, "ConversionReport.md", "Report");
+                Debug.Log($"[AvatarBridge] After the passes (ms): save {saved}, report {clock.ElapsedMilliseconds - saved}");
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
                 // The window resolves report subjects against this to offer "Show". Selection
@@ -160,6 +170,8 @@ namespace AvatarBridge
                     // BEFORE the descriptor: the descriptor pass places Voice Position, and the
                     // jaw bone is what it places it on. Unmapping a bogus jaw afterwards would
                     // leave the voice already sitting in the avatar's hair.
+                    // Skeleton first: the jaw rebuild reads the rig this one leaves.
+                    Pass("Humanoid rig skeleton", RigSkeletonSync.Run),
                     Pass("Humanoid rig", JawUnmapper.Run),
                     Pass("Avatar descriptor", DescriptorConverter.Run),
                     Pass("Face tracking", FaceTrackingConverter.Run),
@@ -261,6 +273,9 @@ namespace AvatarBridge
                     // as the clips still spell it.
                     Pass("Point material swaps at the baked material",
                          YapsConverter.RepointSwappedMaterials, PassTraits.EditsClips),
+                    // After the bake's swaps point at the bake: the squash copies what the
+                    // avatar ends up wearing and points those swaps on again.
+                    Pass("Squash soft parts", YapsSquash.Run, PassTraits.EditsClips),
                     // DEAD LAST among the passes that touch a clip. It
                     // renames objects and rewrites every path naming them,
                     // so anything running after it that wrote a path would
@@ -277,6 +292,10 @@ namespace AvatarBridge
                     // Same reason: the CCK builds a native toggle's clips from
                     // the path written at the merge, and objects have moved since.
                     Pass("Refresh native toggle paths", ToggleNativizer.RefreshTargetPaths),
+#if AVATARBRIDGE_MAGICA
+                    // Once the hierarchy is final: it records each cloth's transforms as they stand.
+                    Pass("Pin cloth start scale", MagicaClothWriter.PinStartScale),
+#endif
                     // Judge the saved file's references only now, after
                     // the self-container fixed what it was going to.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
@@ -297,12 +316,17 @@ namespace AvatarBridge
             {
                 string safe = string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()));
                 string path = $"{ctx.OutputDir}/{safe}.prefab";
-                var prefab = PrefabUtility.SaveAsPrefabAsset(ctx.Target, path, out bool success);
+                bool linked = ctx.Settings.linkConvertedPrefab, success;
+                var prefab = linked
+                    ? PrefabUtility.SaveAsPrefabAssetAndConnect(ctx.Target, path, InteractionMode.AutomatedAction, out success)
+                    : PrefabUtility.SaveAsPrefabAsset(ctx.Target, path, out success);
                 if (success && prefab != null)
                 {
                     ctx.Report.Converted("Conversion", "Converted avatar saved as a prefab",
                         $"{path}: a crash or an unsaved scene can no longer lose the conversion; " +
-                        "drag the prefab back into the scene to continue where you left off.");
+                        (linked
+                            ? "the copy in the scene is linked to it, so edits made from here can be applied to the prefab."
+                            : "drag the prefab back into the scene to continue where you left off."));
                 }
                 else
                 {
@@ -371,14 +395,15 @@ namespace AvatarBridge
                 int used = usage.Item2; // base controller + menu entries = actual sync
                 string cckNote = "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
                     "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.";
-                // Not an Error: the CCK rounds bools up to whole bytes and the client checks the
-                // budget before each parameter, so a few bits over can still all sync. The
-                // diagnostics entry counts the client's way and names any that won't.
+                // Not an Error: the CCK rounds bools up to whole bytes, counts floats a clip drives,
+                // which the client never syncs, and the client checks the budget before each
+                // parameter. The diagnostics entry counts the client's way and names any that won't.
                 if (used > 3200)
                 {
                     ctx.Report.Warning("Sync", $"{used} of 3200 sync bits used, over the limit",
-                        "Parameters past the limit work for you and never reach anyone else. The sync budget " +
-                        "entry in Diagnostics names them, if any. " + cckNote);
+                        "Parameters past the limit work for you and never reach anyone else. This count includes " +
+                        "floats an animation drives, which never sync and cost nothing in game, so the sync budget " +
+                        "entry in Diagnostics is the real count and names any that won't sync. " + cckNote);
                 }
                 else
                 {
@@ -421,7 +446,7 @@ namespace AvatarBridge
             if (missingPrefabs.Count > 0)
             {
                 ctx.Report.Warning("Avatar",
-                    $"{missingPrefabs.Count} missing prefab(s) in the avatar's hierarchy",
+                    $"{BridgeElements.Count(missingPrefabs.Count, "missing prefab", "missing prefabs")} in the avatar's hierarchy",
                     $"{string.Join("; ", missingPrefabs)}: empty shells. Import their package and convert " +
                     "again if they matter.");
             }
@@ -430,7 +455,7 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Avatar",
-                $"{missing} missing script(s) on the avatar, a package it was built with is not installed",
+                $"{BridgeElements.Count(missing, "missing script", "missing scripts")} on the avatar, a package it was built with is not installed",
                 $"On: {string.Join(", ", examples)}{(missing > examples.Count ? ", …" : "")}. If this " +
                 "avatar uses VRCFury or Modular Avatar, install them before converting, or what they build " +
                 "is silently missing.");

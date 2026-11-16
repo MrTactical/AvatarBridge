@@ -18,19 +18,19 @@ namespace AvatarBridge
     // client writes, coerced by declared type like the client.
     public partial class CckAnimatorTester : EditorWindow
     {
-        // The physics card lives in its own file, each solver it reads behind
-        // that solver's own define.
+        // The Interaction lab card lives in its own file, each solver it reads
+        // behind that solver's own define.
         partial void EnablePhysics();
         partial void DisablePhysics();
         partial void PhysicsPlayModeChanged(PlayModeStateChange change);
         partial void PhysicsSelectionChanged();
         partial void AddPhysicsCard(VisualElement scroll, CVRAvatar avatar, bool live);
 
-        [MenuItem("Tools/Avatar Bridge/CCK Animator Tester")]
+        [MenuItem("Tools/Avatar Bridge/Avatar Tester", false, 981)]
         static void Open()
         {
             var window = GetWindow<CckAnimatorTester>();
-            window.titleContent = new GUIContent("CCK Animator Tester");
+            window.titleContent = new GUIContent("Avatar Tester");
             window.minSize = new Vector2(360, 420);
         }
 
@@ -110,6 +110,8 @@ namespace AvatarBridge
 
         void OnEnable()
         {
+            // A window restored from a saved layout keeps the title it was saved with.
+            titleContent = new GUIContent("Avatar Tester");
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             Selection.selectionChanged += OnSelectionChanged;
             // The menu card mirrors the Animator's current controller.
@@ -153,8 +155,15 @@ namespace AvatarBridge
         void OnPlayModeChanged(PlayModeStateChange change)
         {
             PhysicsPlayModeChanged(change);
-            Rebuild();
+            if (change == PlayModeStateChange.ExitingEditMode) CaptureTwinRest();
+            // Later, so whatever else stops on the same change has stopped before the cards read it.
+            RebuildLater();
         }
+
+        void RebuildLater() => EditorApplication.delayCall += () =>
+        {
+            if (this != null) Rebuild();
+        };
 
         // A click inside the same avatar resolves to it again, and a rebuild
         // would reset the face it is holding and rescan every blend tree.
@@ -197,6 +206,7 @@ namespace AvatarBridge
                 var animator = avatar != null ? avatar.GetComponentInChildren<Animator>(true) : null;
                 var controller = animator != null ? animator.runtimeAnimatorController : null;
                 hash = hash * 31 + (controller != null ? controller.GetInstanceID() : 0);
+                hash = hash * 31 + TesterSections.Fingerprint(avatar != null ? avatar.gameObject : null);
                 foreach (var name in ControllerParameterList(avatar))
                 {
                     hash = hash * 31 + name.GetHashCode();
@@ -247,7 +257,7 @@ namespace AvatarBridge
             }
             var selected = Selection.activeGameObject;
             var fromSelection = selected != null ? selected.GetComponentInParent<CVRAvatar>() : null;
-            if (fromSelection != null)
+            if (fromSelection != null && !IsTwin(fromSelection))
             {
                 return fromSelection;
             }
@@ -257,6 +267,7 @@ namespace AvatarBridge
             int bestScore = -1;
             foreach (var candidate in FindObjectsOfType<CVRAvatar>(true))
             {
+                if (IsTwin(candidate)) continue;
                 var animator = candidate.GetComponentInChildren<Animator>(true);
                 bool usable = animator != null && animator.runtimeAnimatorController != null;
                 bool active = candidate.gameObject.activeInHierarchy;
@@ -415,34 +426,14 @@ namespace AvatarBridge
         void Build()
         {
             var root = rootVisualElement;
-            root.Add(BridgeElements.Banner("CCK Animator Tester",
-                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version,
-                BridgeTheme.Span.Cvr));
+            root.Add(BridgeElements.Banner("Avatar Tester",
+                "drive a ChilloutVR avatar the way the game does", "v" + BridgeDefines.Version));
 
             var avatar = ResolveAvatar();
             bool live = Application.isPlaying && avatar != null;
             // Read for each control's starting value, so a rebuild in Play mode shows what the
             // animator holds instead of snapping every control back to zero.
             var quiet = live ? avatar.GetComponentInChildren<Animator>(true) : null;
-
-            // Outside the scroll, so the reason the window is idle is always on screen.
-            BridgeElements.NoticeBox state = null;
-            if (avatar == null)
-            {
-                state = BridgeElements.Notice(Tone.Info,
-                    "No ChilloutVR avatar found. Select one in the scene, or drop it in the Avatar card.");
-            }
-            else if (!Application.isPlaying)
-            {
-                state = BridgeElements.Notice(Tone.Info, $"Found \"{avatar.name}\". Enter Play mode to drive it.",
-                    action: BridgeElements.Btn("Enter Play mode", EditorApplication.EnterPlaymode,
-                        "Animators only evaluate in Play mode.", ButtonKind.Strong));
-            }
-            if (state != null)
-            {
-                state.AddToClassList("ab-pinned");
-                root.Add(state);
-            }
 
             var scroll = BridgeElements.Scroll();
             root.Add(scroll);
@@ -461,12 +452,7 @@ namespace AvatarBridge
 
             scroll.Add(BuildRemoteCard(live));
 
-            scroll.Add(BridgeElements.Footer(
-                BridgeElements.ExternalLink("Guide", BridgeLinks.Repo + "#highlights",
-                    "What the tester does, in the README"),
-                // A link that builds its url from this install, so it cannot be a plain ExternalLink.
-                BridgeElements.TextLink("Report an issue ↗", () => BridgeLinks.OpenBugReport(),
-                    "Opens a GitHub issue with your Unity and package versions filled in")));
+            scroll.Add(BridgeElements.Footer(BridgeLinks.Repo + "#highlights"));
 
             // Pinned below the scroll view, not inside it. The point is watching layers react
             // while a control is driven, so the readout must stay on screen. Its own rows scroll
@@ -476,8 +462,8 @@ namespace AvatarBridge
 
         VisualElement BuildAvatarCard(CVRAvatar avatar, bool live)
         {
-            var card = new BridgeElements.Card("Avatar", expanded: true).Remember("Tester.Avatar");
-            card.Body.Add(BridgeElements.ObjectPicker<CVRAvatar>("CVR avatar", _override, picked =>
+            var card = new BridgeElements.Card("Pick your avatar").Step(1, 1);
+            card.Body.Add(BridgeElements.ObjectPicker<CVRAvatar>("Avatar", _override, picked =>
             {
                 _override = picked;
                 Rebuild();
@@ -498,6 +484,18 @@ namespace AvatarBridge
             else if (avatar != null)
             {
                 card.Body.Add(BridgeElements.Hint($"Using \"{avatar.name}\" from the scene. Drop one here to pin it."));
+            }
+            // Why the window is idle, in the card that picks what it drives.
+            if (avatar == null)
+            {
+                card.Body.Add(BridgeElements.Notice(Tone.Info,
+                    "No ChilloutVR avatar found. Select one in the scene, or drop it above."));
+            }
+            else if (!Application.isPlaying)
+            {
+                card.Body.Add(BridgeElements.Notice(Tone.Info, $"Found \"{avatar.name}\". Enter Play mode to drive it.",
+                    action: BridgeElements.Btn("Enter Play mode", EditorApplication.EnterPlaymode,
+                        "Animators only evaluate in Play mode.", ButtonKind.Strong)));
             }
             var resting = BridgeElements.Btn("Resting defaults", RestingDefaults,
                 "Back to what the game reports standing still");
@@ -704,6 +702,7 @@ namespace AvatarBridge
             card.Body.Add(BridgeElements.Hint(
                 "Puts every \"#\" local parameter at its default, as other players' clients hold it.",
                 "A layer that then cycles or changes state does so for everyone but you."));
+            var twinNote = BridgeElements.Hint(TwinNote());
             var snap = BridgeElements.Btn("Snap \"#\" locals to their defaults", () =>
             {
                 var a = LiveAnimator();
@@ -732,7 +731,17 @@ namespace AvatarBridge
                 }
             }, "How remote clients hold them");
             snap.SetEnabled(live);
-            card.Body.Add(BridgeElements.ButtonRow(snap));
+            Button twin = null;
+            twin = BridgeElements.Btn(_twin != null ? "Remove the copy" : "Show a copy as others see it", () =>
+            {
+                if (_twin != null) DropTwin();
+                else if (LiveAnimator() is Animator a) ShowTwin(a);
+                twin.text = _twin != null ? "Remove the copy" : "Show a copy as others see it";
+                twinNote.text = TwinNote();
+            }, "A second copy beside yours that hears only what ChilloutVR sends to other players");
+            twin.SetEnabled(live);
+            card.Body.Add(BridgeElements.ButtonRow(snap, twin));
+            card.Body.Add(twinNote);
             return card;
         }
 
@@ -891,16 +900,15 @@ namespace AvatarBridge
             int handTop = -1;
             for (int i = 0; i < asset.layers.Length; i++)
             {
-                if (IsHandLayer(asset.layers[i].name))
+                if (AvatarFeatureDetect.IsHandLayer(asset.layers[i].name))
                 {
                     handTop = i;
                 }
             }
 
-            card.Body.Add(BridgeElements.Chips(
-                BridgeElements.Chip("hand layer", Tone.Info, tooltip: "A layer that owns the hand pose"),
-                BridgeElements.Chip("⚠ conflict", Tone.Bad,
-                    tooltip: "Above the hand-pose layer, with a mask that lets it write finger muscles")));
+            // The legend goes in after the rows are counted: a red "conflict" chip on an avatar
+            // with none read as an error to fix.
+            int legendAt = card.Body.childCount;
 
             var header = new VisualElement();
             header.AddToClassList("ab-table-head");
@@ -931,7 +939,7 @@ namespace AvatarBridge
             for (int i = 0; i < animator.layerCount && i < asset.layers.Length; i++)
             {
                 var layer = asset.layers[i];
-                bool hand = IsHandLayer(layer.name);
+                bool hand = AvatarFeatureDetect.IsHandLayer(layer.name);
                 bool conflicts = i > handTop && handTop >= 0 && PermitsFingers(layer.avatarMask) && !hand;
                 if (conflicts)
                 {
@@ -972,6 +980,13 @@ namespace AvatarBridge
                 list.Add(row);
                 rows.Add((weight, playing));
             }
+
+            var legend = new List<VisualElement>();
+            if (handTop >= 0) legend.Add(BridgeElements.Chip("hand layer", Tone.Info, tooltip: "A layer that owns the hand pose"));
+            if (conflictCount > 0)
+                legend.Add(BridgeElements.Chip("⚠ conflict", Tone.Bad,
+                    tooltip: "Above the hand-pose layer, with a mask that lets it write finger muscles"));
+            if (legend.Count > 0) card.Body.Insert(legendAt, BridgeElements.Chips(legend.ToArray()));
 
             card.SetSummary(conflictCount > 0
                 ? $"live · {rows.Count} layers · {conflictCount} may overwrite gestures"
@@ -1033,11 +1048,6 @@ namespace AvatarBridge
 
             return card;
         }
-
-        // The merger numbers a second promoted hand layer "LeftHand 2".
-        static readonly System.Text.RegularExpressions.Regex HandLayerName =
-            new System.Text.RegularExpressions.Regex(@"^(Left|Right)Hand( \d+)?$");
-        static bool IsHandLayer(string name) => name != null && HandLayerName.IsMatch(name);
 
         static bool PermitsFingers(AvatarMask mask)
         {

@@ -71,11 +71,13 @@ namespace AvatarBridge
                     }
                     // A sibling already wearing the new name would make two
                     // objects share a path, and a shared path is a curve
-                    // that drives whichever Unity finds first.
+                    // that drives whichever Unity finds first. A sibling
+                    // already queued for the same name counts too.
                     if (transform.parent != null
-                        && Enumerable.Range(0, transform.parent.childCount)
-                            .Select(i => transform.parent.GetChild(i))
-                            .Any(c => c != transform && c.name == to))
+                        && (Enumerable.Range(0, transform.parent.childCount)
+                                .Select(i => transform.parent.GetChild(i))
+                                .Any(c => c != transform && c.name == to)
+                            || doomed.Any(d => d.Target.parent == transform.parent && d.To == to)))
                     {
                         ctx.Report.Warning(Category,
                             $"Left \"{from}\" named as it was",
@@ -117,13 +119,18 @@ namespace AvatarBridge
                 }
             }
 
+            // Settled now, so each path's answer is fixed: clips share a few
+            // thousand paths across every binding, and each answer is a scan
+            // of every key.
+            var memo = new Dictionary<string, string>();
+
             // Paths already dead before anything moves. An earlier pass
             // removed their object on purpose, so they are not this
             // pass's failure and not its warning.
             var deadBefore = new HashSet<string>();
             foreach (string path in AnimatedPaths(ctx))
             {
-                if (Remap(path, remap, longestFirst, out string moved)
+                if (Remap(path, remap, longestFirst, memo, out string moved)
                     && BridgeContext.FindByAnimationPath(ctx.Target.transform, path) == null)
                 {
                     deadBefore.Add(moved);
@@ -135,8 +142,8 @@ namespace AvatarBridge
                 target.name = to;
             }
 
-            int rewritten = RewriteClips(ctx, remap, longestFirst);
-            RewriteMasks(ctx, remap, longestFirst);
+            int rewritten = RewriteClips(ctx, remap, longestFirst, memo);
+            RewriteMasks(ctx, remap, longestFirst, memo);
             var unresolved = Unresolved(ctx, deadBefore);
 
             if (unresolved.Count > 0)
@@ -147,7 +154,7 @@ namespace AvatarBridge
                 // were counted and thrown away.
                 var sample = unresolved.Take(12).ToList();
                 ctx.Report.Warning(Category,
-                    $"{unresolved.Count} animation path(s) no longer point at anything",
+                    $"{BridgeElements.Count(unresolved.Count, "animation path no longer points", "animation paths no longer point")} at anything",
                     "Some rewritten paths name nothing on this avatar, so what they drove won't move. " +
                     "Please report it at the AvatarBridge repo; it is a bug in the rename. The first few:\n  " +
                     string.Join("\n  ", sample) +
@@ -155,8 +162,8 @@ namespace AvatarBridge
             }
 
             ctx.Report.Converted(Category,
-                $"Renamed {doomed.Count} object(s) to YAPS",
-                $"Named for what drives them now, with {rewritten} animation path(s) rewritten. Contact " +
+                $"Renamed {BridgeElements.Count(doomed.Count, "object", "objects")} to YAPS",
+                $"Named for what drives them now, with {BridgeElements.Count(rewritten, "animation path", "animation paths")} rewritten. Contact " +
                 "tags and marker light ranges are unchanged, so DPS, TPS and SPS plugs still find them.");
         }
 
@@ -172,39 +179,58 @@ namespace AvatarBridge
         // By PREFIX. Renaming a socket also moves every light, pointer and
         // trigger hanging beneath it, and those are addressed by their own
         // longer paths.
-        static int RewriteClips(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst)
+        static int RewriteClips(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst,
+            Dictionary<string, string> memo)
         {
+            // A clip at a time, removals first: each single-curve set resyncs the whole
+            // clip, and one avatar's 3197 bindings cost 75 s that way.
             int count = 0;
             foreach (var clip in Clips(ctx))
             {
+                var from = new List<EditorCurveBinding>();
+                var to = new List<EditorCurveBinding>();
+                var curves = new List<AnimationCurve>();
                 foreach (var binding in AnimationUtility.GetCurveBindings(clip))
                 {
-                    if (!Remap(binding.path, remap, longestFirst, out string path))
+                    if (!Remap(binding.path, remap, longestFirst, memo, out string path))
                     {
                         continue;
                     }
-                    var curve = AnimationUtility.GetEditorCurve(clip, binding);
-                    AnimationUtility.SetEditorCurve(clip, binding, null);
+                    curves.Add(AnimationUtility.GetEditorCurve(clip, binding));
+                    from.Add(binding);
                     var moved = binding;
                     moved.path = path;
-                    AnimationUtility.SetEditorCurve(clip, moved, curve);
-                    count++;
+                    to.Add(moved);
+                }
+                if (from.Count > 0)
+                {
+                    AnimationUtility.SetEditorCurves(clip, from.ToArray(), new AnimationCurve[from.Count]);
+                    AnimationUtility.SetEditorCurves(clip, to.ToArray(), curves.ToArray());
+                    count += from.Count;
                 }
 
                 // Material swaps and the like. A separate list, and losing
                 // these is how a wardrobe half-applies.
+                from.Clear();
+                to.Clear();
+                var keys = new List<ObjectReferenceKeyframe[]>();
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
-                    if (!Remap(binding.path, remap, longestFirst, out string path))
+                    if (!Remap(binding.path, remap, longestFirst, memo, out string path))
                     {
                         continue;
                     }
-                    var keys = AnimationUtility.GetObjectReferenceCurve(clip, binding);
-                    AnimationUtility.SetObjectReferenceCurve(clip, binding, null);
+                    keys.Add(AnimationUtility.GetObjectReferenceCurve(clip, binding));
+                    from.Add(binding);
                     var moved = binding;
                     moved.path = path;
-                    AnimationUtility.SetObjectReferenceCurve(clip, moved, keys);
-                    count++;
+                    to.Add(moved);
+                }
+                if (from.Count > 0)
+                {
+                    AnimationUtility.SetObjectReferenceCurves(clip, from.ToArray(), new ObjectReferenceKeyframe[from.Count][]);
+                    AnimationUtility.SetObjectReferenceCurves(clip, to.ToArray(), keys.ToArray());
+                    count += from.Count;
                 }
             }
             return count;
@@ -213,7 +239,8 @@ namespace AvatarBridge
         // A layer mask that lists transforms lets the layer move only the
         // ones listed, by path. A listed path that no longer matches drops
         // that object's position and scale curves without a word.
-        static void RewriteMasks(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst)
+        static void RewriteMasks(BridgeContext ctx, Dictionary<string, string> remap, string[] longestFirst,
+            Dictionary<string, string> memo)
         {
             var seen = new HashSet<AvatarMask>();
             string controllerPath = AssetDatabase.GetAssetPath(ctx.MergedController);
@@ -234,17 +261,23 @@ namespace AvatarBridge
                 {
                     continue;
                 }
+                // Through the serialized list, applied once: each SetTransformPath call cost
+                // a whole-mask update, and one avatar's masks took a minute that way.
+                var serialized = new SerializedObject(mask);
+                var elements = serialized.FindProperty("m_Elements");
                 bool touched = false;
-                for (int i = 0; i < mask.transformCount; i++)
+                for (int i = 0; i < elements.arraySize; i++)
                 {
-                    if (Remap(mask.GetTransformPath(i), remap, longestFirst, out string path))
+                    var element = elements.GetArrayElementAtIndex(i).FindPropertyRelative("m_Path");
+                    if (Remap(element.stringValue, remap, longestFirst, memo, out string path))
                     {
-                        mask.SetTransformPath(i, path);
+                        element.stringValue = path;
                         touched = true;
                     }
                 }
                 if (touched)
                 {
+                    serialized.ApplyModifiedPropertiesWithoutUndo();
                     EditorUtility.SetDirty(mask);
                 }
             }
@@ -275,6 +308,23 @@ namespace AvatarBridge
                 }
             }
             return false;
+        }
+
+        // Null in the memo: no match.
+        static bool Remap(string path, Dictionary<string, string> remap, string[] longestFirst,
+            Dictionary<string, string> memo, out string moved)
+        {
+            if (string.IsNullOrEmpty(path))
+            {
+                moved = null;
+                return false;
+            }
+            if (!memo.TryGetValue(path, out moved))
+            {
+                Remap(path, remap, longestFirst, out moved);
+                memo[path] = moved;
+            }
+            return moved != null;
         }
 
         static HashSet<string> AnimatedPaths(BridgeContext ctx)

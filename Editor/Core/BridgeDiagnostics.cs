@@ -68,14 +68,14 @@ namespace AvatarBridge
             string list = string.Join("\n  ", names);
             if (synced)
             {
-                ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s) kept synced for OSC toys",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(names.Count, "OGB haptics parameter", "OGB haptics parameters")} kept synced for OSC toys",
                     "OSCGoesBrrr's automatic plug and socket detection reads these by name and needs no " +
                     "setup. Launch ChilloutVR with --osc-query-prefix=VRChat-Client so it finds the game. " +
                     $"They cost 32 sync bits each; the sync budget entry has the total.\n  {list}");
             }
             else
             {
-                ctx.Report.Converted(Category, $"{names.Count} OGB haptics parameter(s), local and free",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(names.Count, "OGB haptics parameter", "OGB haptics parameters")}, local and free",
                     "In OGB, add an avatar-parameter link per name below. Launch ChilloutVR with " +
                     "--osc-query-prefix=VRChat-Client and turn OSC on. \"Keep OGB haptics synced\" makes detection " +
                     $"automatic, at 32 bits each.\n  {list}");
@@ -93,7 +93,7 @@ namespace AvatarBridge
             var undeclared = usage.Keys.Where(k => !string.IsNullOrEmpty(k) && !declared.Contains(k)).ToList();
             if (undeclared.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{undeclared.Count} parameter(s) used but never declared",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(undeclared.Count, "parameter", "parameters")} used but never declared",
                     $"{Join(undeclared)}: transitions and drivers reference these, but the animator has no " +
                     "such parameter. ChilloutVR drops those transitions, so whatever they gate never happens.");
             }
@@ -126,14 +126,18 @@ namespace AvatarBridge
                 .ToList();
             if (inert.Count > 0)
             {
-                ctx.Report.Approximated(Category, $"{inert.Count} parameter(s) declared but never read",
+                ctx.Report.Approximated(Category, $"{BridgeElements.Count(inert.Count, "parameter", "parameters")} declared but never read",
                     $"{Join(inert)}: nothing in the animator conditions on, blends with, drives or animates " +
                     "these. Usually a leftover from a layer that wasn't converted or was stripped.");
             }
 
             CheckSyncBudget(ctx, master);
             CheckComponentWhitelist(ctx);
+            var stereoClock = System.Diagnostics.Stopwatch.StartNew();
             CheckStereoShaders(ctx);
+            // Log only, never the report: the whole conversion's stereo work.
+            Debug.Log($"[AvatarBridge] Stereo shader times (ms): {ShaderSpiPatcher.TimingSummary()}, " +
+                      $"report check {stereoClock.ElapsedMilliseconds}");
 
             // A cloth with nothing to simulate.
             int emptyCloths = 0;
@@ -157,7 +161,7 @@ namespace AvatarBridge
             }
             if (emptyCloths > 0)
             {
-                ctx.Report.Warning(Category, $"{emptyCloths} cloth component(s) have no root bones",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(emptyCloths, "cloth component has", "cloth components have")} no root bones",
                     "They will simulate nothing. Usually means the source PhysBone's root was removed by a " +
                     "strip pass after the cloth was created.");
             }
@@ -166,7 +170,7 @@ namespace AvatarBridge
             var dupLayers = master.layers.GroupBy(l => l.name).Where(g => g.Count() > 1).Select(g => g.Key).ToList();
             if (dupLayers.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{dupLayers.Count} duplicate layer name(s)",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(dupLayers.Count, "duplicate layer name", "duplicate layer names")}",
                     $"{Join(dupLayers)}: duplicated names make the animator ambiguous to read and to debug.");
             }
 
@@ -182,7 +186,7 @@ namespace AvatarBridge
             {
                 return;
             }
-            var types = master.parameters.ToDictionary(p => p.name, p => p.type);
+            var types = master.parameters.GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First().type);
             var mismatched = new List<string>();
 
             foreach (var entry in settings)
@@ -206,7 +210,7 @@ namespace AvatarBridge
             }
             if (mismatched.Count > 0)
             {
-                ctx.Report.Warning(Category, $"{mismatched.Count} menu entr(ies) disagree with their parameter's type",
+                ctx.Report.Warning(Category, $"{BridgeElements.Count(mismatched.Count, "menu entry disagrees with its", "menu entries disagree with their")} parameter's type",
                     $"{Join(mismatched)}: ChilloutVR writes menu values using the entry's own type, so a " +
                     "mismatch writes nothing and the control does nothing in game.");
             }
@@ -225,19 +229,33 @@ namespace AvatarBridge
                           $"fit to PhysBone: `{s.fitToPhysBone}` · cap radius: `{s.capParticleRadius}` · " +
                           $"bound swing: `{s.boundSwingToSourceLimit}` · mesh radius: `{s.fitRadiusToMesh}` · " +
                           $"auto colliders: `{s.autoAssignNearbyColliders}`");
-            sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · strip SPS: `{s.stripSpsSystems}` · " +
+            sb.AppendLine($"- strip GoGo: `{s.stripGogoLoco}` · GoGo emotes: `{s.gogoEmotes}` · strip SPS: `{s.stripSpsSystems}` · " +
                           $"convert YAPS: `{s.convertYapsSystems}` · " +
                           $"face tracking: `{s.faceTrackingMode}` · scaler: `{s.addAvatarScaler}`");
             sb.AppendLine();
 
             sb.AppendLine("### Animator layers");
             sb.AppendLine();
-            sb.AppendLine("| # | layer | states | weight |");
-            sb.AppendLine("|---|---|---|---|");
+            // Null means the merger did not run, and then this order is not its doing.
+            if (ctx.RenamedFrom != null)
+            {
+                sb.AppendLine("A higher layer wins over a lower one for whatever both animate. The order:");
+                sb.AppendLine();
+                sb.AppendLine("1. ChilloutVR's own layers: locomotion and emotes, then the hand layers unless your gesture layer takes their place.");
+                sb.AppendLine("2. Your VRChat controllers, in descriptor order, each keeping its own layer order and named `[FX]`, `[Gesture]` and so on.");
+                sb.AppendLine("3. Toggles split out of a shared layer.");
+                sb.AppendLine("4. A toggle lifted out of a blend tree, directly above the layer it came from.");
+                sb.AppendLine("5. Layers the converter adds, such as height scaling and face tracking.");
+                sb.AppendLine("6. If you press the CCK's Create Controller, its layer for each menu entry that switches objects itself goes above all of these and wins.");
+                sb.AppendLine();
+            }
+            sb.AppendLine("| # | layer | states | weight | blend | mask |");
+            sb.AppendLine("|---|---|---|---|---|---|");
             for (int i = 0; i < master.layers.Length; i++)
             {
                 var l = master.layers[i];
-                sb.AppendLine($"| {i} | `{l.name}` | {CountStates(l.stateMachine)} | {l.defaultWeight:0.##} |");
+                sb.AppendLine($"| {i} | `{l.name}` | {CountStates(l.stateMachine)} | {l.defaultWeight:0.##} | {l.blendingMode} | " +
+                              $"{(l.avatarMask != null ? $"`{l.avatarMask.name}`" : "none")} |");
             }
             sb.AppendLine();
 
@@ -332,7 +350,7 @@ namespace AvatarBridge
             }
             sb.AppendLine("### Face mesh");
             sb.AppendLine();
-            sb.AppendLine($"- `{face.name}`: {face.sharedMesh.blendShapeCount} blendshape(s)");
+            sb.AppendLine($"- `{face.name}`: {BridgeElements.Count(face.sharedMesh.blendShapeCount, "blendshape", "blendshapes")}");
             var blink = new List<string>();
             for (int i = 0; i < face.sharedMesh.blendShapeCount; i++)
             {
@@ -500,10 +518,7 @@ namespace AvatarBridge
                 {
                     return c.mode == AnimatorConditionMode.IfNot;
                 }
-                // Swimming and AFK join the core set here: the client writes both, which is the
-                // only property that matters for this check, even though it does not mark them
-                // core (they still cost sync bits, which is why ClientCoreParameters omits them).
-                if (ClientCoreParameters.Contains(bare) || bare == "Swimming" || bare == "AFK")
+                if (ClientCoreParameters.Contains(bare))
                 {
                     return false;   // client-driven and live; unknowable here, so never a loop
                 }
@@ -703,11 +718,11 @@ namespace AvatarBridge
             if (looping.Count > 0)
             {
                 ctx.Report.Warning(Category,
-                    $"{looping.Count} layer(s) may thrash on OTHER players' screens right after the " +
+                    $"{BridgeElements.Count(looping.Count, "layer", "layers")} may thrash on OTHER players' screens right after the " +
                     "avatar loads",
                     string.Join("; ", looping) + ": at default parameter values they never settle. You won't see " +
-                    "it yourself. Give those parameters defaults that park them, or the loop an exit time. The CCK " +
-                    "Animator Tester's Remote view reproduces it.");
+                    "it yourself. Give those parameters defaults that park them, or the loop an exit time. The " +
+                    "Avatar Tester's Remote view reproduces it.");
             }
         }
 
@@ -724,7 +739,7 @@ namespace AvatarBridge
             }
         }
 
-        static int CountStates(AnimatorStateMachine machine)
+        internal static int CountStates(AnimatorStateMachine machine)
         {
             int n = 0;
             Walk(machine, m => n += m.states.Length);
@@ -832,13 +847,13 @@ namespace AvatarBridge
                 return;
             }
             ctx.Report.Warning("Animator",
-                $"{stuck.Count} state(s) can be entered but never left",
+                $"{BridgeElements.Count(stuck.Count, "state", "states")} can be entered but never left",
                 string.Join("; ", stuck.Take(8)) + (stuck.Count > 8 ? ", …" : "") +
                 ": no way out can fire, so what they switch on stays on. Check each exit's conditions against " +
                 "the entry's.");
         }
 
-        static bool CanEverFire(AnimatorStateTransition transition,
+        internal static bool CanEverFire(AnimatorTransitionBase transition,
             Dictionary<string, AnimatorControllerParameter> declared)
         {
             var conditions = transition.conditions;
@@ -935,7 +950,7 @@ namespace AvatarBridge
             }
             if (yaps > 0)
             {
-                ctx.Report.Converted(Category, $"{yaps} YAPS authoring component(s) kept for editing",
+                ctx.Report.Converted(Category, $"{BridgeElements.Count(yaps, "YAPS authoring component", "YAPS authoring components")} kept for editing",
                     "YapsSocket and YapsPlug hold what the YAPS tool needs to retune a socket or plug " +
                     "later. They do nothing in game and ChilloutVR removes them at upload; everything " +
                     "they describe is already built beside them.");
@@ -945,7 +960,7 @@ namespace AvatarBridge
                 return;
             }
             var listed = doomed.OrderByDescending(p => p.Value).ThenBy(p => p.Key, StringComparer.Ordinal).Select(p => $"{p.Key} ×{p.Value}");
-            ctx.Report.Error(Category, $"{doomed.Values.Sum()} component(s) ChilloutVR will delete on load",
+            ctx.Report.Error(Category, $"{BridgeElements.Count(doomed.Values.Sum(), "component", "components")} ChilloutVR will delete on load",
                 $"{Join(listed)}: not on ChilloutVR's avatar whitelist, so silently gone once loaded.");
 
             // The grounders deserve their own note. They are the FinalIK components most likely to
@@ -965,13 +980,20 @@ namespace AvatarBridge
 
         internal static void CheckStereoShaders(BridgeContext ctx)
         {
+            // By path for this call only, to read each file once. The verdicts
+            // themselves are kept by content in ShaderSpiPatcher, so a shader the
+            // patch pass or an earlier avatar judged is not planned again, and a
+            // copy patched since is judged on its final text.
             var missingCache = new Dictionary<string, List<string>>();
             var offenders = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 
             // The materials a toggle swaps in as well as the ones worn at rest, as the advisor
             // and the patcher both reach them.
             var materials = ctx.Target.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
-                .Concat(SwappedMaterials(ctx.MergedController));
+                .Concat(SwappedMaterials(ctx.MergedController)).ToList();
+            // Planned side by side first; the loop then finds every verdict made.
+            ShaderSpiPatcher.Prejudge(materials.Where(m => m != null && m.shader != null && !IsKnownStereoShader(m.shader.name))
+                .Select(m => m.shader));
             foreach (var material in materials)
             {
                 var shader = material != null ? material.shader : null;
@@ -1005,7 +1027,7 @@ namespace AvatarBridge
                 return;
             }
             var listed = offenders.Select(kv => $"{kv.Key} ({Join(kv.Value, 4)})");
-            ctx.Report.Warning(Category, $"{offenders.Count} shader(s) may not render correctly in VR",
+            ctx.Report.Warning(Category, $"{BridgeElements.Count(offenders.Count, "shader", "shaders")} may not render correctly in VR",
                 // Short on purpose. The hand-edit lives in the README;
                 // the report says what breaks and what to press.
                 $"{Join(listed, 6)}: these draw into one eye only here, though they looked fine in VRChat. " +
@@ -1047,56 +1069,88 @@ namespace AvatarBridge
             }
         }
 
-        // ChilloutVR's own sync budget, from AvatarAnimatorManager.CreateParameterDefinition.
+        // ChilloutVR's own sync budget, from AvatarAnimatorManager.FitsAasBudget (the Game Server 2 client).
         const int AasBitBudget = 3200;
 
-        static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
+        internal static readonly HashSet<string> ClientCoreParameters = new HashSet<string>
         {
             "MovementX", "MovementY", "Grounded", "Crouching", "Prone", "Flying", "Sitting",
             "GestureRight", "GestureLeft", "Toggle", "Emote", "CancelEmote", "IsLocal",
             "GestureLeftIdx", "GestureRightIdx", "DistanceTo", "VisemeIdx", "VisemeLoudness",
-            "IsFriend", "VelocityX", "VelocityY", "VelocityZ"
+            "IsFriend", "VelocityX", "VelocityY", "VelocityZ", "Swimming", "AFK"
         };
 
-        static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
-        {
-            int used = 0;
-            int floats = 0, ints = 0, bools = 0;
-            var dropped = new List<string>();
+        // Every parameter that spends sync bits, in the order the client spends
+        // them, and whether it still fit. The Avatar Tester's remote copy reads
+        // the same walk, so the two cannot disagree about what reaches others.
+        internal static IEnumerable<(AnimatorControllerParameter param, bool fits)> BudgetOrder(AnimatorController master)
+            => BudgetWalk(master).Select(x => (x.param, x.fits));
 
+        internal static int BudgetBits(AnimatorController master) => BudgetWalk(master).Sum(x => x.bits);
+
+        static IEnumerable<(AnimatorControllerParameter param, bool fits, int bits)> BudgetWalk(AnimatorController master)
+        {
+            int used = 0, bools = 0;
+            // The client skips clip-driven floats before it spends a bit, so they never use any.
+            var curveDriven = CvrParameterNames.CurveDriven(master);
             foreach (var param in master.parameters)
             {
+                // IsAnimatorEnabled is core to the client too; kept out of ClientCoreParameters
+                // because only remote copies are fed it, so the wearer's default still holds.
                 if (param.name.StartsWith("#")
                     || param.type == AnimatorControllerParameterType.Trigger
-                    || ClientCoreParameters.Contains(param.name))
+                    || ClientCoreParameters.Contains(param.name)
+                    || param.name == "IsAnimatorEnabled"
+                    || curveDriven.Contains(param.name))
                 {
                     continue;
                 }
-                if (used >= AasBitBudget)
+                bool isBool = param.type == AnimatorControllerParameterType.Bool;
+                // Bools pack eight to a byte: the first of every eight pays for it.
+                int bits = isBool ? (bools % 8 == 0 ? 8 : 0) : 32;
+                // One that does not fit is skipped, and a smaller one after it still can.
+                bool fits = used + bits <= AasBitBudget;
+                if (fits)
+                {
+                    used += bits;
+                    if (isBool) bools++;
+                }
+                yield return (param, fits, fits ? bits : 0);
+            }
+        }
+
+        static void CheckSyncBudget(BridgeContext ctx, AnimatorController master)
+        {
+            int used = BudgetBits(master);
+            int floats = 0, ints = 0, bools = 0;
+            var dropped = new List<string>();
+            foreach (var (param, fits) in BudgetOrder(master))
+            {
+                if (!fits)
                 {
                     dropped.Add(param.name);
                     continue;
                 }
                 switch (param.type)
                 {
-                    case AnimatorControllerParameterType.Float: floats++; used += 32; break;
-                    case AnimatorControllerParameterType.Int: ints++; used += 32; break;
-                    case AnimatorControllerParameterType.Bool: bools++; used += 1; break;
+                    case AnimatorControllerParameterType.Float: floats++; break;
+                    case AnimatorControllerParameterType.Int: ints++; break;
+                    case AnimatorControllerParameterType.Bool: bools++; break;
                 }
             }
-
             if (dropped.Count > 0)
             {
-                ctx.Report.Error(Category, $"{dropped.Count} parameter(s) past ChilloutVR's sync limit",
+                ctx.Report.Error(Category, $"{BridgeElements.Count(dropped.Count, "parameter", "parameters")} past ChilloutVR's sync limit",
                     $"{Join(dropped)}: the avatar needs more than ChilloutVR's {AasBitBudget} sync bits " +
-                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools at 1). These came last, so " +
-                    "they work for the wearer and never reach anyone else, with no warning " +
-                    "in game. Prefix the ones others needn't see with \"#\", or make on/off floats bools (1 bit, not 32).");
+                    $"({floats} floats and {ints} ints at 32 bits each, {bools} bools packed eight to a byte). The game " +
+                    "skips each one that no longer fits, so these work for the wearer and never reach anyone else, " +
+                    "with no warning in game. Prefix the ones others needn't see with \"#\", or make on/off floats " +
+                    "bools (eight bools cost a quarter of one float).");
             }
             else if (used > AasBitBudget * 3 / 4)
             {
                 ctx.Report.Warning(Category, $"Sync budget {used}/{AasBitBudget} bits used",
-                    $"{floats} floats and {ints} ints at 32 bits each, {bools} bools at 1. Parameters added " +
+                    $"{floats} floats and {ints} ints at 32 bits each, {bools} bools packed eight to a byte. Parameters added " +
                     "beyond the limit stop replicating silently, so there is not much headroom left.");
             }
         }

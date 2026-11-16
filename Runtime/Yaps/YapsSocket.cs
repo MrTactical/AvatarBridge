@@ -107,9 +107,9 @@ namespace AvatarBridge.Yaps
         public string builtAnimations;
 
         // Whether a build gives this socket an in-game readout. Drawn in
-        // the inspector's See it work card.
+        // the inspector's See it work card. Off unless asked for, as the plug's.
         [HideInInspector]
-        public bool readout = true;
+        public bool readout;
 
         // Editor state, never saved: while on, every YAPS plug in the scene
         // bends toward this socket. Only one socket previews at a time.
@@ -120,6 +120,17 @@ namespace AvatarBridge.Yaps
         // the component two different layouts.
         [Tooltip("For a plug that only appears in Play Mode, or to see the bend on a posed avatar.")]
         public bool previewInPlayMode;
+
+        // Outside the #if for the same reason.
+        [Tooltip("A plug with Two At Once that goes into this hole comes out of the exit. Screen atlas " +
+                 "only: to any other plug, by marker light, and to plugs built before 5.0, this is an ordinary hole.")]
+        public YapsSocket portalExit;
+
+        // The exit's writer the last build made. It lives under the exit, so
+        // without this a rebuild aimed elsewhere, or Remove, would leave it
+        // publishing for an entrance that no longer leads there.
+        [HideInInspector]
+        public GameObject builtExit;
 
 #if UNITY_EDITOR
         // Editor preview: writes the socket into every YAPS plug in the scene.

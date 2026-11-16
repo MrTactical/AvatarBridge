@@ -46,10 +46,14 @@ giving retention `0.99*spring` and restoring `(1 - 0.99*spring) * pull`.
 MagicaCloth2 is position-based Verlet with the velocity re-derived from the position delta
 (`velocity = (nextPos - velocityOldPos) / dt`), and applies its two coefficients as:
 
-    velocity *= saturate(1 - damping * simulationPower.z)               // once per step
+    velocity *= saturate(1 - damping * 0.2 * simulationPower.z)         // once per step
     rotate toward rest by saturate(stiffness * 0.2 * simulationPower.w) // 3x per step
 
-Two multipliers hide in that second line and both have to be undone. The `* 0.2f` is in
+The damping line's `* 0.2` is in `ClothSerializeDataFunction` ("20%"), so the inspector damping
+is the per-step loss divided by 0.2. It went unnoticed until 2026-10-06, when driving original
+PhysBones and their conversions through the same motion in Play mode showed every converted chain
+overshooting; until then each chain had a fifth of its damping. Two multipliers hide in the second
+line and both have to be undone. The `* 0.2f` is in
 `AngleConstraint.Convert`; the inspector's restoration is scaled to a fifth of its face
 value before the solver sees it. And the constraint runs inside
 `for (k = 0; k < Define.System.AngleLimitIteration; k++)` with that constant equal to 3,
@@ -82,6 +86,46 @@ Damping is the exception and genuinely does differ: MagicaCloth2 ships 0.05 wher
 default PhysBone works out near 0.66. That one is a real difference in intent. VRChat's
 default chain is nearly dead and creators raise spring to 0.6+ for hair, which lands back
 in MagicaCloth2's territory.
+
+## The bounce: restoration's velocity attenuation
+
+MagicaCloth2 re-derives velocity from the position delta, but `AngleConstraint` moves the
+velocity reference along with each restoring move, by `velocityAttenuation` (default 0.8):
+
+    velocityPosArray[p] += restoringMove * velocityAttenuation
+
+so only `1 - attenuation` of each restoring move carries on into the next step. A PhysBone keeps
+all of it: term B lands in `zero`, and `zero` is the next step's `prevVelocity`.
+
+On one bone with offset y from rest and velocity v, both steps are linear maps on (y, v):
+
+    PhysBone, 60 Hz:      trace 1 - q + r,               determinant r
+    MagicaCloth2, 90 Hz:  trace 1 - k + c - c(1 - a)k,   determinant c(1 - k)
+
+with r and q the retention and restoring fraction above, c = 1 - 0.2 * damping, k the
+restoration's per-step fraction after its three iterations, and a the attenuation. Rebasing
+raises each eigenvalue to the power 60/90.
+
+Damping saturates. c goes no lower than 0.8, a retention of 0.72 at 60 Hz, where a default
+PhysBone retains 0.16 and hair at spring 0.6 about 0.48, so derived damping is 1 for nearly every
+chain and the determinant, how fast motion dies overall, is out of reach. The attenuation moves
+the trace alone, so `PhysBoneSolverMap.RestorationAttenuation` uses it to put MagicaCloth2's slower
+eigenvalue where the PhysBone's rebased one is; for a ringing chain, whose eigenvalues are complex,
+it matches the ringing frequency instead. It is averaged over the 16 depths, since a cloth has one.
+
+On the single-bone step response that lands within 0.008 of the best attenuation found by brute
+force, across pull 0.05 to 0.8 and spring 0 to 0.95, where a preset's fixed value was up to 0.08
+out on a loose chain. The best values run from about 0.95 for a dead chain to 0.15-0.3 for a
+springy one; the presets carried 0.35 to 0.8 by class. `PhysBoneBounceTest` checks the writer
+against it.
+
+In Play mode against the original PhysBones on five avatars (2026-10-26), hair and the other
+non-soft chains: peak swing error 24.4 to 21.6 degrees (605 chains nearer, 321 further), overshoot
+error 0.125 to 0.103 (404 nearer, 109 further), settling time error 0.26 to 0.31 s (263 nearer,
+278 further), and a few chains now ring past the window where their PhysBones stop. Soft bodies
+came out about even. Even at attenuation 0 the copies overshoot less than the originals, so the
+rest of that gap is elsewhere in the cloth. A stand-in for a slide-type add-on keeps its preset's
+value: it is calibrated against the add-on, not its PhysBone.
 
 ## PhysBone to DynamicBone
 
@@ -130,3 +174,36 @@ compensate; one factor too many, because local-to-world already put that scale
 back. The gravity term works out to (g * scale - g), which is zero only at scale 1:
 at 0.376 it is -0.62g, upward. m_Force is added after the cancellation and only ever
 multiplied by scale, so it is correct at every size.
+
+## Gravity
+
+The two solvers disagree about what gravity is, so no single factor converts it.
+
+- PhysBone 1.1 leans each bone's pose toward straight down, `lerp(pose, down, gravity)`, and pull
+  springs the bone toward that leaned pose. A bone held out level settles at
+  `atan(g / (1 - g))` from its already-bent parent, whatever its pull.
+- PhysBone 1.0 adds gravity as a force, `down * gravity * length`, that pull holds off: a bone
+  settles where `tan(angle) = g cos(angle) / pull`.
+- Both weaken a bone's gravity by `lerp(1 - falloff, 1, 1 - dot(rest down, down))` as it turns.
+- MagicaCloth2 applies an acceleration that angle restoration holds off. A segment settles where a
+  step's pull, `G dt^2 cos(theta)`, equals what restoration takes back, `rho theta L`, and the
+  chain's weight is carried down to its root.
+
+So the writer works out where the chain settles in VRChat, bone by bone (`PhysBoneHangAngle`),
+and solves the MagicaCloth2 equation for G at that angle, divided by a load factor of
+`3.4 * segments^(1/3)`. The load factor is empirical: fitted in Play mode against original
+PhysBones on five avatars, 114 chains with gravity across both versions, by sweeping G and taking
+the value that matched each chain's hang. With it, the median hang error lying down went from
+about 15 degrees to 2. The version matters as much as the number: most of a 1.0 avatar's chains
+hang several times further than the same gravity on 1.1.
+
+## PhysBone 1.0 stiffness
+
+Version 1.0's Advanced branch adds `stiffness * prevVector` to the step and then puts the bone back
+to its length; 1.1 subtracts the step's own displacement. Writing w for the begin-point offset and d
+for the shared step, 1.0's candidate is (1+s)V + w + d, which points the same way as
+V + (w+d)/(1+s), and 1.1's is V + (1-s')(w+d). So a 1.0 chain with stiffness s moves exactly like a
+1.1 chain with s' = s/(1+s), through collisions, limits and grabs too, since everything after the
+branch is shared. Checked by transcribing both branches into a script: across 2000 random states the
+largest endpoint gap was 2.4e-15 bone lengths. `PhysBoneSolverMap.AsVersion11` applies it before
+the 1.1 derivation. Simplified integration reads stiffness in neither version.

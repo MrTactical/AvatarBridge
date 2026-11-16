@@ -43,6 +43,16 @@ namespace AvatarBridge
         {
             var o = new Outcome();
             if (root == null) { o.Message = "nothing selected"; return o; }
+            if (YapsNativeBuilder.Playing) { o.Message = YapsNativeBuilder.NotInPlayMode; return o; }
+            // An avatar's plugs and sockets ride the avatar; a spawnable on it or inside it
+            // never uploads as a prop and only leaves a collider on the body.
+            var avatar = root.GetComponentInParent<CVRAvatar>(true);
+            if (avatar != null)
+            {
+                o.Message = $"\"{root.name}\" is {(avatar.gameObject == root ? "an avatar" : $"part of the avatar \"{avatar.name}\"")}, " +
+                            "so it cannot be a prop. Select the top object of a plug or socket that stands on its own.";
+                return o;
+            }
             var plug = root.GetComponentInChildren<YapsPlug>(true);
             var socket = root.GetComponentInChildren<YapsSocket>(true);
             if (plug == null && socket == null)
@@ -174,7 +184,7 @@ namespace AvatarBridge
             o.Ok = broken == 0;
             o.Message = broken == 0
                 ? (repaired > 0 ? $"Prop verified; {repaired} repaired." : "Prop verified.")
-                : $"Prop has {broken} problem(s).";
+                : $"Prop has {BridgeElements.Count(broken, "problem", "problems")}.";
             return o;
         }
 
@@ -211,7 +221,10 @@ namespace AvatarBridge
                 capsule.center = root.transform.InverseTransformPoint(frame.position + frame.forward * (length * 0.5f));
                 return;
             }
-            var renderers = root.GetComponentsInChildren<Renderer>(true);
+            // Not the atlas meshes: counted in, every socket prop's grab box
+            // came out a kilometre wide.
+            var renderers = root.GetComponentsInChildren<Renderer>(true)
+                .Where(r => !YapsMarks.IsAtlasMaterial(r.sharedMaterial)).ToArray();
             if (renderers.Length == 0) { o.Notes.Add("No renderer to size a collider from; add one by hand so the prop can be grabbed."); return; }
             var bounds = renderers[0].bounds;
             foreach (var r in renderers) bounds.Encapsulate(r.bounds);
@@ -219,9 +232,9 @@ namespace AvatarBridge
             box.isTrigger = true;
             box.center = root.transform.InverseTransformPoint(bounds.center);
             box.size = Vector3.Scale(bounds.size, new Vector3(
-                1f / Mathf.Max(root.transform.lossyScale.x, 1e-4f),
-                1f / Mathf.Max(root.transform.lossyScale.y, 1e-4f),
-                1f / Mathf.Max(root.transform.lossyScale.z, 1e-4f)));
+                1f / Mathf.Max(Mathf.Abs(root.transform.lossyScale.x), 1e-4f),
+                1f / Mathf.Max(Mathf.Abs(root.transform.lossyScale.y), 1e-4f),
+                1f / Mathf.Max(Mathf.Abs(root.transform.lossyScale.z), 1e-4f)));
         }
 
         static void RemoveChannel(GameObject root)

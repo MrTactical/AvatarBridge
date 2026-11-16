@@ -17,7 +17,7 @@ namespace AvatarBridge.Regression
     // unset cases.
     public static class ContactAnchorTest
     {
-        [MenuItem("Tools/AvatarBridge Dev/Test: contact anchoring")]
+        [MenuItem("Tools/Avatar Bridge/Dev/Tests/Contact anchoring")]
         public static void Run()
         {
             int fail = 0;

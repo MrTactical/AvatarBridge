@@ -32,6 +32,9 @@ namespace AvatarBridge
             public float Length;        // plug-local, along +Z
             public float Radius;        // plug-local, the widest shaft vertex off the axis
             public bool FromSkinnedMesh;
+            // A skinned shaft's normal length at bake, the skin's own scale then, which the
+            // shader holds the live normal against. 0 on a plain mesh.
+            public float SkinScale;
             // The mesh this bake describes. Apply names the generated material
             // after the pair: a bake is indexed by mesh-global vertex id, so two
             // meshes can never share one.
@@ -62,7 +65,29 @@ namespace AvatarBridge
             // be measured in world space, where the avatar turning round
             // moves every number.
             public int TipVertex = -1;
+            // The portal's band, _YAPS_PortalSpan: 0 for a socket, -1 for a
+            // mesh too coarse to cut.
+            public float PortalSpan;
+            // The bake's floats as written, only when asked for: the second
+            // copy extends them, and the saved texture is no longer readable.
+            public float[] Pixels;
         }
+
+        // Past this a band is a fifth of the plug: so much of it collapses
+        // inside each body that the cut reads as the plug shrinking.
+        public const float PortalSpanLimit = 0.2f;
+
+        // A quarter more than the widest triangle, so none spans the cut.
+        const float PortalSpanMargin = 1.25f;
+
+        public const string CoarseNote = "This plug's triangles are too long along its shaft for a portal to cut " +
+            "it, so it stops at a portal entrance as at any hole. Add loops along the shaft and bake again.";
+
+        // A second mesh cuts at the first one's band or not at all, so one
+        // coarser than the first stops while the rest of the plug goes through.
+        public const string CoarseExtraNote = "This mesh is baked into the plug, and its triangles are longer along " +
+            "the shaft than the plug's main mesh's, so the rest of the plug goes through a portal and this mesh " +
+            "stops at the entrance. Add loops along its shaft and bake again.";
 
         // wantedShapes: a socket names its stages; a plug takes the shapes
         // that move it most. objectFrame: a socket's shader adds the shape
@@ -72,7 +97,7 @@ namespace AvatarBridge
         public static Result Bake(Renderer renderer, Transform plugRoot, string outputDir,
             BridgeReport report, out string failure, IList<string> wantedShapes = null,
             bool objectFrame = false, bool flipAxis = false, Result shareFrameWith = null,
-            float sizeScale = 1f)
+            float sizeScale = 1f, bool keepPixels = false)
         {
             failure = null;
             if (renderer == null || plugRoot == null)
@@ -177,7 +202,12 @@ namespace AvatarBridge
             }
             else
             {
-                MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis,
+                // The avatar's up where the mesh is measured: world for a skinned mesh,
+                // the renderer's own space for a plain one.
+                var avatar = renderer.GetComponentInParent<Animator>(true);
+                Vector3 avatarUp = (avatar != null ? avatar.transform : renderer.transform.root).up;
+                if (staticMesh) avatarUp = renderer.transform.InverseTransformDirection(avatarUp);
+                MeasureFrame(worldPositions, activeWeights, rootPos, rootRot, flipAxis, avatarUp,
                     out origin, out rotation, out axisDrift, out originDrift);
             }
             var toPlug = staticMesh || objectFrame ? Matrix4x4.identity
@@ -194,6 +224,7 @@ namespace AvatarBridge
             var tangents = new Vector3[count];
             float length = 0f, radius = 0f;
             int active = 0;
+            var skinScales = new List<float>();
 
             // The readout's anchor. A vertex blended across bones recovers a
             // blended frame, so prefer one wholly on a single bone and take
@@ -219,6 +250,7 @@ namespace AvatarBridge
                     if (positions[i].z >= 0f && activeWeights[i] > 0.5f)
                     {
                         radius = Mathf.Max(radius, positions[i].x * positions[i].x + positions[i].y * positions[i].y);
+                        if (!staticMesh && !objectFrame) skinScales.Add(worldNormals[i].magnitude);
                     }
 
                     // Behind the base is not the shaft; the shader reads it inactive.
@@ -267,10 +299,27 @@ namespace AvatarBridge
                 return null;
             }
 
+            // A socket's material never deforms, so only a plug wants a band.
+            float portalSpan = objectFrame ? 0f : PortalSpanOf(mesh, positions, activeWeights, length);
+            if (portalSpan > PortalSpanLimit) portalSpan = -1f;
+            // A second mesh takes the first one's band, or it would come out
+            // of the exit shifted against it by twice the difference.
+            if (shared) portalSpan = portalSpan >= 0f && portalSpan <= shareFrameWith.PortalSpan ? shareFrameWith.PortalSpan : -1f;
+            if (portalSpan < 0f)
+                report?.Approximated(Category, $"\"{renderer.name}\" stops at a portal entrance",
+                    shared && shareFrameWith.PortalSpan >= 0f ? CoarseExtraNote : CoarseNote);
+
             // The mesh reaching the vertex shader has blendshapes applied and
             // the bake is the rest pose; the deltas let the shader rebuild it.
             var shapes = CaptureShapes(mesh, skin, toPlug, activeWeights, placements, out var shapeNames,
                 out var movingShapes, wantedShapes);
+
+            // A skinned socket's opening is its shapes' offsets at the size baked here, added
+            // to a vertex that arrives at the avatar's live size. The skin scale of the
+            // vertices they move lets the shader carry them across.
+            if (objectFrame && !staticMesh)
+                for (int i = 0; i < count; i++)
+                    if (shapes.Any(block => block[i * 3].sqrMagnitude > 1e-12f)) skinScales.Add(worldNormals[i].magnitude);
 
             // A shape the renderer simply holds is part of the mesh as worn, but
             // the bent path rebuilds each vertex from the bake. Left out, a part
@@ -282,13 +331,13 @@ namespace AvatarBridge
                     positions, normals, tangents, out heldWeights);
                 if (held > 0)
                 {
-                    report?.Converted(Category, $"{renderer.name}: kept {held} blendshape(s) it holds",
+                    report?.Converted(Category, $"{renderer.name}: kept {BridgeElements.Count(held, "blendshape", "blendshapes")} it holds",
                         "They sit at a fixed value on the renderer, so the plug keeps them while it " +
                         "bends instead of snapping back to the unshaped mesh.");
                 }
             }
 
-            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes);
+            var texture = WriteTexture(positions, normals, tangents, activeWeights, count, shapes, out var pixels);
             Directory.CreateDirectory(outputDir);
             // Named for the plug that wrote it, never numbered. A unique path is
             // the wrong answer here: the name it avoids belongs to the SAME plug
@@ -371,6 +420,7 @@ namespace AvatarBridge
                 Length = length,
                 Radius = Mathf.Sqrt(radius),
                 FromSkinnedMesh = !staticMesh,
+                SkinScale = skinScales.Count > 0 ? skinScales.OrderBy(x => x).ElementAt(skinScales.Count / 2) : 0f,
                 Renderer = renderer,
                 Root = plugRoot,
                 Shapes = shapeNames,
@@ -380,7 +430,28 @@ namespace AvatarBridge
                 Rotation = rotation,
                 AnchorVertex = anchor,
                 TipVertex = tip,
+                PortalSpan = portalSpan,
+                Pixels = keepPixels ? pixels : null,
             };
+        }
+
+        // The widest z-span of any triangle wholly on the shaft, over the
+        // rest length, with the margin.
+        static float PortalSpanOf(Mesh mesh, Vector3[] positions, List<float> activeWeights, float length)
+        {
+            if (length <= 0f) return -1f;
+            var tris = mesh.triangles;
+            float widest = 0f;
+            for (int t = 0; t + 2 < tris.Length; t += 3)
+            {
+                int a = tris[t], b = tris[t + 1], c = tris[t + 2];
+                if (a >= positions.Length || b >= positions.Length || c >= positions.Length) continue;
+                if (activeWeights[a] <= 0.001f || activeWeights[b] <= 0.001f || activeWeights[c] <= 0.001f) continue;
+                float lo = Mathf.Min(positions[a].z, Mathf.Min(positions[b].z, positions[c].z));
+                float hi = Mathf.Max(positions[a].z, Mathf.Max(positions[b].z, positions[c].z));
+                widest = Mathf.Max(widest, hi - lo);
+            }
+            return widest / length * PortalSpanMargin;
         }
 
         // Which child bone chain is the SHAFT, when the stated root sits above
@@ -527,12 +598,18 @@ namespace AvatarBridge
         // numbered step above them keeps their materials apart.
         internal static string Tail(Material source, Renderer on)
         {
+            while (StandsInFor.TryGetValue(source, out var original)) source = original;
             string id = AssetDatabase.TryGetGUIDAndLocalFileIdentifier(
                 source, out string guid, out long local)
                 ? guid + local
                 : source.GetInstanceID().ToString();
             return " " + YapsShaderPatcher.Hash(id + "|" + PathOf(on));
         }
+
+        // A stand-in made in memory on another shader, by the material it was made from. It has
+        // no asset to name it, and its instance id named a new bake file on every fresh bake.
+        internal static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Material, Material> StandsInFor =
+            new System.Runtime.CompilerServices.ConditionalWeakTable<Material, Material>();
 
         static string PathOf(Renderer on)
         {
@@ -578,18 +655,137 @@ namespace AvatarBridge
             target.SetFloat("_YAPS_BakeScale", 1f);   // the rest pose; a size animation drives these
             target.SetFloat("_YAPS_BakeGirth", 1f);
             target.SetFloat("_YAPS_FrameFromVertex", skinned ? 1f : 0f);
+            target.SetFloat("_YAPS_BakeSkinScale", skinned ? result.SkinScale : 0f);
             target.SetFloat("_YAPS_ShapeCount", result.Shapes.Count);
+            target.SetFloat("_YAPS_PortalSpan", result.PortalSpan);
             if (result.ShapeWeights != null)
             {
-                string[] packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
-                for (int p = 0; p < packs.Length; p++)
-                {
-                    float W(int k) => p * 4 + k < result.ShapeWeights.Length ? result.ShapeWeights[p * 4 + k] : 0f;
-                    target.SetVector(packs[p], new Vector4(W(0), W(1), W(2), W(3)));
-                }
+                // Where this material's lane reads them; ShareRenderer settles the rest.
+                int lane = LaneOf(target);
+                var weights = new float[MaxShapes];
+                for (int k = 0; k < Mathf.Min(MaxShapes, result.ShapeWeights.Length); k++)
+                    weights[YapsCurveMirror.ShapeSlot(k, lane)] = result.ShapeWeights[k];
+                WritePacks(target, weights);
             }
             EditorUtility.SetDirty(target);
         }
+
+        // Two plugs baked onto one renderer. Animation reaches every slot, so
+        // each plug's animated values need a place of their own: the second
+        // plug (lane 1) reads the shape slots from the top and the "2" scale,
+        // girth and tag properties. The lane is a material value nothing
+        // animates, so each slot keeps its own.
+        //
+        // A plug is its bake texture: every slot of one plug on one mesh holds
+        // the same one. The plug on the lowest slot is lane 0, so the answer
+        // does not depend on which was baked last, and a plug alone is lane 0
+        // with nothing written. Every plug material gets the same packs: a clip
+        // animating one component takes the rest from one material's values.
+        // Returns how many of the second plug's shapes did not fit.
+        // ponytail: two lanes; a third plug shares lane 1, add a lane 2 if that ever matters.
+        public static int ShareRenderer(Renderer renderer)
+        {
+            if (renderer == null) return 0;
+            var mats = renderer.sharedMaterials;
+            var plugs = new List<(Texture Bake, List<Material> Slots)>();
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var m = mats[i];
+                if (m == null || !m.HasProperty("_YAPS_Bake") || !m.HasProperty("_YAPS_PlugLane")) continue;
+                if ((YapsShaderPatcher.RolesOf(m.shader) & YapsShaderPatcher.Roles.Plug) == 0) continue;
+                var bake = m.GetTexture("_YAPS_Bake");
+                if (bake == null) continue;
+                int at = plugs.FindIndex(p => p.Bake == bake);
+                if (at < 0) plugs.Add((bake, new List<Material> { m }));
+                else if (!plugs[at].Slots.Contains(m)) plugs[at].Slots.Add(m);
+            }
+            foreach (var p in plugs)
+                foreach (var m in p.Slots) MirrorSwitches(m);
+            if (plugs.Count < 2)
+            {
+                // Alone again, after its partner went: back to the first plug's place.
+                foreach (var p in plugs)
+                    foreach (var m in p.Slots)
+                        if (m.GetFloat("_YAPS_PlugLane") > 0.5f) Relane(m, 0);
+                return 0;
+            }
+
+            var weights = new float[MaxShapes];
+            int firstCount = 0, dropped = 0;
+            for (int k = 0; k < plugs.Count; k++)
+            {
+                int lane = k == 0 ? 0 : 1;
+                var first = plugs[k].Slots[0];
+                var held = Held(first);
+                int count = Mathf.RoundToInt(first.GetFloat("_YAPS_ShapeCount"));
+                if (lane == 0) firstCount = count;
+                else if (count > MaxShapes - firstCount)
+                {
+                    dropped += count - (MaxShapes - firstCount);
+                    count = Mathf.Max(0, MaxShapes - firstCount);
+                }
+                for (int s = 0; s < count; s++) weights[YapsCurveMirror.ShapeSlot(s, lane)] = held[s];
+                foreach (var m in plugs[k].Slots)
+                {
+                    m.SetFloat("_YAPS_PlugLane", lane);
+                    m.SetFloat("_YAPS_ShapeCount", count);
+                }
+            }
+            foreach (var p in plugs)
+                foreach (var m in p.Slots)
+                {
+                    WritePacks(m, weights);
+                    EditorUtility.SetDirty(m);
+                }
+            return dropped;
+        }
+
+        // A plug's own held weights in its own order, wherever its lane put them.
+        static float[] Held(Material m)
+        {
+            var packs = Packs.Select(m.GetVector).ToArray();
+            int lane = m.GetFloat("_YAPS_PlugLane") > 0.5f ? 1 : 0;
+            var held = new float[MaxShapes];
+            for (int s = 0; s < MaxShapes; s++)
+            {
+                int slot = YapsCurveMirror.ShapeSlot(s, lane);
+                held[s] = packs[slot >> 2][slot & 3];
+            }
+            return held;
+        }
+
+        static void Relane(Material m, int lane)
+        {
+            var held = Held(m);
+            var weights = new float[MaxShapes];
+            for (int s = 0; s < MaxShapes; s++) weights[YapsCurveMirror.ShapeSlot(s, lane)] = held[s];
+            m.SetFloat("_YAPS_PlugLane", lane);
+            WritePacks(m, weights);
+            EditorUtility.SetDirty(m);
+        }
+
+        static readonly string[] Packs = { "_YAPS_ShapeWeights", "_YAPS_ShapeWeights2", "_YAPS_ShapeWeights3", "_YAPS_ShapeWeights4" };
+
+        static void WritePacks(Material m, float[] weights)
+        {
+            for (int p = 0; p < Packs.Length; p++)
+                m.SetVector(Packs[p], new Vector4(weights[p * 4], weights[p * 4 + 1], weights[p * 4 + 2], weights[p * 4 + 3]));
+        }
+
+        // A plug's switches as the second plug reads them, from the values every builder and
+        // the material panel write. Only animation tells the two apart.
+        public static void MirrorSwitches(Material m)
+        {
+            foreach (string name in new[] { "_YAPS_Enabled", "_YAPS_SelfAllow" })
+                if (m != null && m.HasProperty(name) && m.HasProperty(name + "2")) m.SetFloat(name + "2", m.GetFloat(name));
+        }
+
+        // The property a plug's own toggle animates on a mesh: the second plug has its own.
+        public static string SwitchName(string name, int lane) => lane > 0 ? name + "2" : name;
+
+        // The lane a plug's material was given; 0 for a lone plug and for any build before lanes.
+        public static int LaneOf(Material m) =>
+            m != null && m.HasProperty("_YAPS_PlugLane") && m.GetFloat("_YAPS_PlugLane") > 0.5f ? 1 : 0;
 
         // The generated material for one source material, at a name that does
         // not move.
@@ -605,22 +801,31 @@ namespace AvatarBridge
         public static Material Generated(Material source, Shader patched, string path)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            // The values Poiyomi's lock left, when the patch came from its locked stand-in.
+            var basis = YapsLock.Basis(source);
             var existing = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (existing != null && existing != source)
             {
-                existing.CopyPropertiesFromMaterial(source);
+                // On the source's shader first, so Wear really swaps and lays it out
+                // again. The copy gives it the source's layout, and Wear skips a shader
+                // it already wears: every bake value then sat outside the layout and the
+                // next refresh dropped them, bake texture included, on every reconvert.
+                existing.shader = basis.shader;
+                existing.CopyPropertiesFromMaterial(basis);
                 if (patched != null)
                 {
-                    existing.shader = patched;
+                    YapsShaderPatcher.Wear(existing, patched);
                 }
+                YapsLock.Stamp(existing, source);
                 EditorUtility.SetDirty(existing);
                 return existing;
             }
-            var made = new Material(source) { name = source.name + " (YAPS)" };
+            var made = new Material(basis) { name = source.name + " (YAPS)" };
             if (patched != null)
             {
-                made.shader = patched;
+                YapsShaderPatcher.Wear(made, patched);
             }
+            YapsLock.Stamp(made, source);
             AssetDatabase.CreateAsset(made, path);
             return made;
         }
@@ -731,7 +936,7 @@ namespace AvatarBridge
         // points anywhere. A rod's axis is where its points spread most, the
         // dominant eigenvector of their covariance. The base is the near end.
         static void MeasureFrame(List<Vector3> positions, List<float> active, Vector3 rootPosition, Quaternion rootRotation, bool flip,
-            out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
+            Vector3 avatarUp, out Vector3 origin, out Quaternion rotation, out float axisDrift, out float originDrift)
         {
             var authored = rootRotation;
             origin = rootPosition;
@@ -804,10 +1009,19 @@ namespace AvatarBridge
             originDrift = Vector3.Distance(rootPosition, measured);
             origin = measured;
 
-            var up = authored * Vector3.up;
-            if (Mathf.Abs(Vector3.Dot(up, axis)) > 0.99f)
+            // Up is the avatar's, so the bend's down is the avatar's down. The root
+            // bone's up was used, and a Blender bone's y runs along the bone, so every
+            // Blender rig fell back to the bone's x, which its roll decides: a forward
+            // plug with roll 0 drooped sideways. The bone decides only when the shaft
+            // points along the avatar's up, straight up or straight down.
+            var up = avatarUp;
+            if (up.sqrMagnitude < 1e-8f || Mathf.Abs(Vector3.Dot(up.normalized, axis)) > 0.99f)
             {
-                up = authored * Vector3.right;
+                up = authored * Vector3.up;
+                if (Mathf.Abs(Vector3.Dot(up, axis)) > 0.99f)
+                {
+                    up = authored * Vector3.right;
+                }
             }
             rotation = Quaternion.LookRotation(axis, up);
         }
@@ -1062,13 +1276,13 @@ namespace AvatarBridge
         // --- the texture ----------------------------------------------
 
         static Texture2D WriteTexture(Vector3[] positions, Vector3[] normals, Vector3[] tangents,
-            List<float> active, int count, List<Vector3[]> shapes)
+            List<float> active, int count, List<Vector3[]> shapes, out float[] pixels)
         {
             int floats = 1 + count * FloatsPerVertex + shapes.Count * count * FloatsPerShapeVertex;
             int height = Mathf.Max(1, Mathf.CeilToInt((float) floats / TextureWidth));
             // One float per RGBA32 pixel, uploaded as raw bytes: red is the
             // least significant byte, as the shader reads it.
-            var pixels = new float[TextureWidth * height];
+            pixels = new float[TextureWidth * height];
 
             int at = 0;
             Write(pixels, ref at, 0f);   // header
@@ -1103,10 +1317,15 @@ namespace AvatarBridge
                 }
             }
 
-            // Point filtering and no mips are load-bearing, not tidiness: the
-            // shader reassembles floats from raw bytes, so any interpolation
-            // corrupts the values.
-            var texture = new Texture2D(TextureWidth, height, TextureFormat.RGBA32, false, true)
+            return BakeTexture(pixels);
+        }
+
+        // Point filtering and no mips are load-bearing, not tidiness: the
+        // shader reassembles floats from raw bytes, so any interpolation
+        // corrupts the values.
+        internal static Texture2D BakeTexture(float[] pixels)
+        {
+            var texture = new Texture2D(TextureWidth, pixels.Length / TextureWidth, TextureFormat.RGBA32, false, true)
             {
                 name = "YAPS Bake",
                 filterMode = FilterMode.Point,
@@ -1197,9 +1416,13 @@ namespace AvatarBridge
             // every other user of it, the source avatar included, took the wider box.
             // So that, a built-in or a scene-only mesh is copied for this renderer.
             // A mesh asset of its own keeps the edit: the test plug's is one, and
-            // copying it would orphan the path it was given.
-            if (!(AssetDatabase.IsMainAsset(mesh)
-                  && AssetDatabase.GetAssetPath(mesh).EndsWith(".asset", StringComparison.OrdinalIgnoreCase)))
+            // copying it would orphan the path it was given. Only the toolkit's own:
+            // another tool's .asset mesh is shared like a model's.
+            string meshPath = AssetDatabase.GetAssetPath(mesh);
+            bool ours = meshPath.StartsWith("Assets/YAPS/", StringComparison.Ordinal)
+                        || meshPath.StartsWith(outputDir.TrimEnd('/') + "/", StringComparison.Ordinal);
+            if (!(AssetDatabase.IsMainAsset(mesh) && ours
+                  && meshPath.EndsWith(".asset", StringComparison.OrdinalIgnoreCase)))
             {
                 string path = outputDir + "/YAPS " + Sanitise(renderer.name) + " "
                               + PlaceKey(renderer.transform) + " bounds.asset";
@@ -1282,7 +1505,7 @@ namespace AvatarBridge
         // creating it again destroys the object and the file's identity, and
         // the materials and mesh filters of every earlier conversion still
         // point at both.
-        static T SaveInPlace<T>(T made, string path) where T : UnityEngine.Object
+        internal static T SaveInPlace<T>(T made, string path) where T : UnityEngine.Object
         {
             var existing = AssetDatabase.LoadAssetAtPath<T>(path);
             if (existing == null)

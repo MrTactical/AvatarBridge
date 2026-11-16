@@ -75,7 +75,12 @@ namespace AvatarBridge
 
         public string SurveyCard;
 
+        public string ChangesCard;
+
         [System.NonSerialized] public GameObject ConvertedRoot;
+
+        // Rows that may yet be thrown away stay off the console until kept.
+        [System.NonSerialized] public bool Quiet;
 
         public void Add(ReportStatus status, string category, string subject, string detail = "")
         {
@@ -89,7 +94,7 @@ namespace AvatarBridge
             // entries, one per cloth chain, parameter and menu control; wrote tens of thousands
             // of stack frames into the editor log and pushed it past 38 MB. Skipped in particular
             // was a warning, and a conversion legitimately skips a great deal.
-            if (status != ReportStatus.Error && status != ReportStatus.Warning)
+            if (Quiet || (status != ReportStatus.Error && status != ReportStatus.Warning))
             {
                 return;
             }
@@ -145,6 +150,14 @@ namespace AvatarBridge
                     }
                     sb.AppendLine();
                 }
+                sb.AppendLine();
+            }
+
+            if (!string.IsNullOrEmpty(ChangesCard))
+            {
+                sb.AppendLine("## Since the last conversion");
+                sb.AppendLine();
+                sb.Append(ChangesCard);
                 sb.AppendLine();
             }
 

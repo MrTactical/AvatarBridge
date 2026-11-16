@@ -90,8 +90,14 @@ namespace AvatarBridge
             {
                 throw new InvalidOperationException("AvatarBridge pass ordering is wrong: " + problem);
             }
+            // What each pass costs, in the log and never the report, whose
+            // lines must not move between two runs of the same avatar. The
+            // case for skipping passes on a reconvert starts here.
+            var times = new List<string>();
+            var clock = new System.Diagnostics.Stopwatch();
             foreach (var pass in passes)
             {
+                clock.Restart();
                 try
                 {
                     pass.Run(ctx);
@@ -101,7 +107,9 @@ namespace AvatarBridge
                     // The bare message never says where, and the report entry is all a user sends.
                     throw new Exception($"\"{pass.Name}\" failed: {e.GetType().Name}: {e.Message}", e);
                 }
+                times.Add($"{pass.Name} {clock.ElapsedMilliseconds}");
             }
+            UnityEngine.Debug.Log("[AvatarBridge] Pass times (ms): " + string.Join(", ", times));
         }
     }
 }

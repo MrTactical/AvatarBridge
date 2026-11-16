@@ -30,6 +30,12 @@ namespace AvatarBridge.Yaps
                  "bend. Empty for a mesh that is only the plug.")]
         public Transform rootBone;
 
+        [Tooltip("A second copy of the plug, drawn only while it has somewhere to go: the first copy goes " +
+                 "into one socket, and the second into the next or out of a portal's exit. Screen atlas only. " +
+                 "Doubles the plug's vertices and about doubles its deform cost, even while the copy is hidden. Only when no " +
+                 "other plug shares the mesh and the plug sits on one material. Bake again after changing it.")]
+        public bool twoAtOnce;
+
         [Header("Measurement")]
         [Tooltip("Tick if the measured base is at the wrong end. Skinned meshes only; a plain mesh " +
                  "bends from its origin along +Z.")]
@@ -39,7 +45,7 @@ namespace AvatarBridge.Yaps
         public float lengthOverride;
 
         [Header("Shape at rest")]
-        [Range(-1.5f, 1.5f), Tooltip("A resting bend along the whole shaft. Positive bends up.")]
+        [Range(-1.5f, 1.5f), Tooltip("A resting bend along the whole shaft. Positive bends down, toward the avatar's down, as DPS does.")]
         [YapsFrom("DPS")]
         public float curvature;
         [Range(-1.5f, 1.5f), Tooltip("A second bend near the tip, opposite in sign, so the shaft can sweep and then hook.")]
@@ -121,6 +127,13 @@ namespace AvatarBridge.Yaps
         [YapsFrom("DPS")]
         public bool emitTipLight = true;
 
+        [Tooltip("Toy mods measure a plug from the first mesh they find above its tip light, which on an " +
+                 "avatar is often another mesh entirely, so a toy can respond from the wrong place or the wrong " +
+                 "distance. On, the tip light carries a hidden mesh at the base, of the measured length, for them " +
+                 "to find. Needs the tip light; Bake again after changing it.")]
+        [YapsFrom("DPS")]
+        public bool toyModLength = true;
+
         [Tooltip("The tip pointers TPS and SPS sockets read.")]
         [YapsFrom("TPS · SPS")]
         public bool emitPointers = true;
@@ -137,9 +150,10 @@ namespace AvatarBridge.Yaps
         public List<string> refuses = new List<string>();
 
         // Whether a bake gives this plug an in-game readout. Drawn in the
-        // inspector's See it work card, not with the knobs.
+        // inspector's See it work card, not with the knobs. Off unless asked
+        // for: the CCK counts its material slot on every built avatar.
         [HideInInspector]
-        public bool readout = true;
+        public bool readout;
 
         // The renderer the readout sits on and the mesh it replaced, so a
         // rebuild or Remove can put it back; and what it is built from, so
@@ -183,6 +197,12 @@ namespace AvatarBridge.Yaps
         public System.Collections.Generic.List<BakedSlot> bakedSlots =
             new System.Collections.Generic.List<BakedSlot>();
 
+        // The shapes the last bake kept on its own mesh, in bake order. A second
+        // plug on that mesh reads them to tell its own old curves from this one's.
+        [HideInInspector]
+        public System.Collections.Generic.List<string> bakedShapes =
+            new System.Collections.Generic.List<string>();
+
         // A material an animation swaps into a baked slot, baked as that
         // slot's own. It sits on no renderer until the toggle plays, so the
         // knobs and the own-socket ticks reach it only through this record.
@@ -201,6 +221,11 @@ namespace AvatarBridge.Yaps
         // off a slot another plug's bake held, for Remove to put back.
         [HideInInspector]
         public Mesh splitFrom;
+
+        // The mesh the second copy was appended to, for a re-bake to build
+        // from and Remove to put back.
+        [HideInInspector]
+        public Mesh dupFrom;
 
         // A plain mesh before the bake widened its bounds on a copy, for
         // Remove to put back.

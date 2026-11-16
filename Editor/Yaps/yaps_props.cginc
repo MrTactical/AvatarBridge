@@ -25,6 +25,20 @@ float _YAPS_Overrun;       // may the tip travel past the socket
 // slider reaches the bake. Held at 1, a scaled plug squashes.
 float _YAPS_BakeScale;
 float _YAPS_BakeGirth;
+// Which plug on a shared mesh this material is: 0 alone or first, 1 second. Never animated, so
+// each slot keeps its own, while every animated value reaches every slot.
+float _YAPS_PlugLane;
+// The second plug's own copies.
+float _YAPS_BakeScale2;
+float _YAPS_BakeGirth2;
+float _YAPS_Enabled2;
+float _YAPS_SelfAllow2;
+// Each plug's own switches, so the second plug's menu toggle leaves the first alone.
+#define YAPS_ENABLED (_YAPS_PlugLane > 0.5 ? _YAPS_Enabled2 : _YAPS_Enabled)
+#define YAPS_SELF_ALLOW (_YAPS_PlugLane > 0.5 ? _YAPS_SelfAllow2 : _YAPS_SelfAllow)
+// A skinned plug's normal length at bake, the skin's own scale then.
+// 0 is not measured, and the plug keeps its baked size.
+float _YAPS_BakeSkinScale;
 
 // Where the plug's own frame comes from.
 //   0  the renderer's transform, when the plug is its own object
@@ -77,6 +91,10 @@ float _YAPS_SelfSockets;
 // rule. Those skip the tag test; a default tick does not, so the tag
 // chooser still narrows the wearer's own sockets.
 float _YAPS_SelfChosen;
+
+// This plug's number among its wearer's plugs, 1 to 15, which keys its light
+// relay with the owner. Zero has no relay. Set at build.
+float _YAPS_PlugIndex;
 
 
 // The screen atlas. The property defaults to 0; conversion and Build both
@@ -178,6 +196,7 @@ float _YAPS_MinimumSocketDistance;
 // there and not what it is. Both routes answer without knowing, so a plug
 // with a list still resolves through them. A preference, not a lock.
 float4 _YAPS_TagInclude;
+float4 _YAPS_TagInclude2;
 float4 _YAPS_TagExclude;
 
 // --- blendshapes -----------------------------------------------------
@@ -204,5 +223,34 @@ inline float YapsShapeWeight(uint index)
     uint slot = index & 3;
     return slot == 0 ? pack.x : slot == 1 ? pack.y : slot == 2 ? pack.z : pack.w;
 }
+
+// The band a portal collapses either side of its cut, as a
+// fraction of rest length: the widest triangle span along the shaft, with a
+// margin. -1 when the mesh is too coarse to cut, so entrances stay holes.
+float _YAPS_PortalSpan;
+
+// The first vertex of the plug's second copy, appended after every original
+// vertex; 0 when the mesh carries none. Read only with YAPS_DUPLICATE, which
+// the patcher defines for a material whose value is above 0.
+float _YAPS_CopyStart;
+
+// --- live tissue (the jelly) -----------------------------------------
+// A lattice of particles the avatar's blitters step every frame; parts it carries move with it
+// and leave the squash. Here, not in yaps_jelly.cginc, since the dent reads _YAPS_JellyParts.
+// Four slots, a jelly each, its own step and lattice: the first part's, then the second's.
+Texture2D<float4> _YAPS_JellyState;
+float4 _YAPS_JellyLattice;  // particles across, up and deep; spacing in metres. 0: no lattice
+Texture2D<float4> _YAPS_JellyState2;
+float4 _YAPS_JellyLattice2;
+Texture2D<float4> _YAPS_JellyState3;
+float4 _YAPS_JellyLattice3;
+Texture2D<float4> _YAPS_JellyState4;
+float4 _YAPS_JellyLattice4;
+// Per vertex its two strongest jelly parts, each as 2 slot + region plus one over 255 (0 none),
+// then its share: (part, share, part, share).
+Texture2D<float4> _YAPS_JellyOwn;
+float4 _YAPS_JellyOwn_TexelSize;
+float4 _YAPS_JellyParts;    // for each of the squash's parts (r, g, b, a of _YAPS_DentOwn) the jelly carries, its jelly part as _YAPS_JellyOwn names it
+float4 _YAPS_JellySlap;     // a slap's ring: how much of its depth (0 none), speed (m/s), wavelength (m), fade (s)
 
 #endif
