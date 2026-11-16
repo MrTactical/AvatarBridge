@@ -59,9 +59,9 @@ namespace AvatarBridge.Regression
                     double s = clock.Elapsed.TotalSeconds;
                     if (shader == null)
                     {
-                        // Kept for reading, outside Assets; then again without the nonce, so a refusal
+                        // Kept for reading in Logs, which Unity keeps on exit; then again without the nonce, so a refusal
                         // the nonce caused is not blamed on the patch.
-                        string keep = System.IO.Path.GetFullPath("Temp/FreshCompile");
+                        string keep = System.IO.Path.GetFullPath("Logs/FreshCompile");
                         System.IO.Directory.CreateDirectory(keep);
                         foreach (var f in System.IO.Directory.GetFiles(YapsNativeBuilder.OutputRoot, "*.shader", System.IO.SearchOption.AllDirectories)
                                      .Where(f => System.IO.File.GetLastWriteTime(f) > System.DateTime.Now.AddMinutes(-5)))

@@ -89,38 +89,45 @@ namespace AvatarBridge
             string[] problems;
             lock (Problems) problems = Problems.ToArray();
 
-            scroll.Add(BridgeElements.SubHeading($"Something went wrong in {_tool}", true));
-            scroll.Add(BridgeElements.Notice(Tone.Bad, problems.FirstOrDefault() ?? "An error was logged.",
-                problems.Length > 1 ? string.Join("\n", problems.Skip(1)) : null));
+            // A card and the footer, as every other window.
+            var card = new BridgeElements.Card($"Something went wrong in {_tool}");
+            scroll.Add(card);
+            var b = card.Body;
+            b.Add(BridgeElements.Notice(Tone.Bad, Plain(problems.FirstOrDefault() ?? "An error was logged."),
+                problems.Length > 1 ? string.Join("\n", problems.Skip(1).Select(Plain)) : null));
             if (_zip == null)
             {
-                scroll.Add(BridgeElements.Hint("What were you doing, and what did you expect to happen?"));
+                b.Add(BridgeElements.Hint("What were you doing, and what did you expect to happen?"));
                 var what = new TextField { multiline = true, value = _what };
                 what.style.minHeight = 90;
                 what.style.whiteSpace = WhiteSpace.Normal;
                 what.RegisterValueChangedCallback(e => _what = e.newValue);
-                scroll.Add(what);
-                scroll.Add(BridgeElements.Hint(
+                b.Add(what);
+                b.Add(BridgeElements.Hint(
                     "Make the report packs a small zip into your output folder: what you wrote, the recent console " +
                     "lines and the last conversion's report. It holds your project's file paths and object names, " +
                     "never the avatar's files. Nothing is sent: it opens a GitHub issue for you to check and submit."));
-                scroll.Add(BridgeElements.ButtonRow(
+                b.Add(BridgeElements.ButtonRow(
                     BridgeElements.Btn("Make the report", MakeReport, "Writes the zip and opens a pre-filled GitHub issue.", ButtonKind.Strong),
                     BridgeElements.Btn("Not now", Dismiss)));
             }
             else
             {
-                scroll.Add(BridgeElements.Notice(Tone.Good, $"Saved {_zip}.",
+                b.Add(BridgeElements.Notice(Tone.Good, $"Saved {Path.GetFileName(_zip)}.",
                     "In the GitHub issue that opened, drag this zip into the Attachments box, check the text, then press Submit."));
-                scroll.Add(BridgeElements.ButtonRow(
-                    BridgeElements.Btn("Show the zip", () => EditorUtility.RevealInFinder(_zip)),
+                b.Add(BridgeElements.ButtonRow(
+                    BridgeElements.Btn("Show the zip", () => EditorUtility.RevealInFinder(_zip), _zip, ButtonKind.Strong),
                     BridgeElements.Btn("Open the issue again", OpenIssue),
                     BridgeElements.Btn("Close", Dismiss)));
             }
-            scroll.Add(BridgeElements.Bind("Ask me when something goes wrong",
+            b.Add(BridgeElements.Bind("Ask me when something goes wrong",
                 "Off: errors stay in the Console. Turn it back on under Tools ▸ Avatar Bridge.",
                 Ask, v => EditorPrefs.SetBool(AskKey, v)));
+            scroll.Add(BridgeElements.Footer(BridgeLinks.Repo + "#reporting-a-bug", OpenIssue));
         }
+
+        // A log line as a person reads it: the tool's tag and the level off the front.
+        static string Plain(string line) => Regex.Replace(line, @"^\[(AvatarBridge|YAPS)\]\s*(Error:\s*)?", "");
 
         void Dismiss()
         {
