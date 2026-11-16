@@ -2478,6 +2478,64 @@ namespace AvatarBridge.Regression
 
         static readonly List<Texture2D> verifyShots = new List<Texture2D>();
 
+        // -jellyMiniMe: a copy as the game's MiniMe draws one, beside the avatar at half size. Each
+        // renderer's mesh as skinned this frame, on a plain renderer with the same materials and
+        // property block, so the jelly runs on it with the wearer's state. Shot from the front.
+        static Transform miniMe;
+        static Camera miniEye;
+        static readonly List<(SkinnedMeshRenderer from, MeshRenderer to, Mesh mesh)> miniParts = new List<(SkinnedMeshRenderer, MeshRenderer, Mesh)>();
+
+        static Transform MiniMeMake(Transform avatar)
+        {
+            miniParts.Clear();
+            var root = new GameObject("MiniMe probe").transform;
+            foreach (var smr in avatar.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                if (!smr.enabled || smr.sharedMesh == null) continue;
+                var go = new GameObject(smr.name);
+                go.transform.SetParent(root, false);
+                var mesh = new Mesh();
+                go.AddComponent<MeshFilter>().sharedMesh = mesh;
+                var mr = go.AddComponent<MeshRenderer>();
+                mr.sharedMaterials = smr.sharedMaterials;
+                miniParts.Add((smr, mr, mesh));
+            }
+            miniEye = new GameObject("MiniMe eye").AddComponent<Camera>();
+            miniEye.targetTexture = new RenderTexture(960, 720, 24);
+            miniEye.nearClipPlane = 0.02f;
+            return root;
+        }
+
+        static void MiniMeFrame()
+        {
+            var avatar = swing;
+            miniMe.SetPositionAndRotation(avatar.position + avatar.right * 0.55f + avatar.up * 0.5f, avatar.rotation);
+            miniMe.localScale = Vector3.one * 0.5f;
+            var block = new MaterialPropertyBlock();
+            foreach (var (from, to, mesh) in miniParts)
+            {
+                from.BakeMesh(mesh);
+                to.transform.localPosition = avatar.InverseTransformPoint(from.transform.position);
+                to.transform.localRotation = Quaternion.Inverse(avatar.rotation) * from.transform.rotation;
+                from.GetPropertyBlock(block);
+                to.SetPropertyBlock(block);
+            }
+            if (frame % 60 != 30 || frame > 400) return;
+            var look = avatar.position + avatar.up * 1.1f + avatar.right * 0.3f;
+            miniEye.transform.position = look + avatar.forward * 1.6f;
+            miniEye.transform.LookAt(look);
+            miniEye.Render();
+            var was = RenderTexture.active;
+            RenderTexture.active = miniEye.targetTexture;
+            var shot = new Texture2D(960, 720, TextureFormat.RGB24, false);
+            shot.ReadPixels(new Rect(0, 0, 960, 720), 0, 0);
+            RenderTexture.active = was;
+            Directory.CreateDirectory(SessionState.GetString(K + "out", "Jelly"));
+            File.WriteAllBytes(Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"minime-{frame}.png"), shot.EncodeToPNG());
+            Object.DestroyImmediate(shot);
+            Debug.Log($"[Jelly] minime shot at frame {frame}");
+        }
+
         static void OnLate()
         {
             if (!EditorApplication.isPlaying || eye == null) return;
@@ -2494,6 +2552,7 @@ namespace AvatarBridge.Regression
 #if AVATARBRIDGE_YAPS
             if (SessionState.GetInt(K + "on", 0) == 2)
             {
+                if (miniMe != null) MiniMeFrame();
                 if (testerRun) OnLateTester();
                 else if (stab != null) OnLateStab();
                 else OnLateBreasts();
@@ -3566,6 +3625,7 @@ namespace AvatarBridge.Regression
             wasStepping = true;
             secondAt = breastRegions[1].position;
             regionsAt = breastRegions.Select(r => swing.InverseTransformPoint(r.position)).ToArray();
+            miniMe = Environment.GetCommandLineArgs().Contains("-jellyMiniMe") ? MiniMeMake(avatar.transform) : null;
             sitting = Environment.GetCommandLineArgs().Contains("-jellySit");
             if (sitting) Sit(animator, true);
             flipped = Environment.GetCommandLineArgs().Contains("-jellyFlip");

@@ -80,7 +80,7 @@ namespace AvatarBridge.Regression
                 try
                 {
                     Call(painter, "Pick", root.gameObject);
-                    Call(painter, "AddPair");
+                    Call(painter, "AddPair", false);
                     Undo.IncrementCurrentGroup();
                     var w = (float[][])Field(painter, "_w");
                     for (int v = 0; v < w[0].Length; v++) w[0][v] = 1f;

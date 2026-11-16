@@ -214,6 +214,13 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     // Where the vertex sits on the lattice, in particles.
     float3 rel = world - place.xyz;
     float3 c = float3(dot(rel, ax), dot(rel, ay), dot(rel, az)) * per + float3(0.5 * (n.x - 1), 0.5 * (n.y - 1), 0);
+    // The lattice is fitted round the part's own skin, so a vertex cells off it is another copy
+    // drawn with these materials, as the game's MiniMe draws one: the pair's plane below dragged
+    // that copy's skin across to this body. Faded out from one cell off to three, not cut, so skin
+    // at the edge of a box that rides its bone does not tear.
+    float3 outside = abs(c - clamp(c, 0, n - 1));
+    float keep = saturate((3 - max(outside.x, max(outside.y, outside.z))) * 0.5);
+    if (keep <= 0) return 0;
     c = clamp(c, 0, n - 1);
     int3 c0 = min(int3(c), n - 2);
     float3 t = c - c0;
@@ -380,7 +387,8 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         float x = dot(world + move, plane.xyz) - plane.w;
         if (x > 0) move -= plane.xyz * ((x - give.x * (1 - exp(-x / give.x))) * give.y);
     }
-    return move;
+    bend *= keep;
+    return move * keep;
 }
 
 void YapsJellyDeform(inout float3 position, inout float3 normal, inout float3 tangent, uint vertexId)
