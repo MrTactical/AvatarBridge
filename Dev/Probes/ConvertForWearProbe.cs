@@ -38,7 +38,7 @@ namespace AvatarBridge.Regression
                 // run in the corpus project leaves it as it was (AVATARBRIDGE_SOFT=1 for soft parts).
                 var settings = Flag("-abSaved")
                     ? JsonUtility.FromJson<BridgeSettings>(EditorPrefs.GetString(CvrSetup.SettingsPrefsKey, "{}"))
-                    : Flag("-abCorpus") ? RegressionRunner.CorpusSettings() : Everything();
+                    : Flag("-abCorpus") ? CorpusSettings() : Everything();
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var report = BridgeConverter.Convert(descriptor, settings);
                 Debug.Log($"[ConvertForWear] converted in {clock.Elapsed.TotalMinutes:0.0} min: " +
@@ -81,6 +81,12 @@ namespace AvatarBridge.Regression
 
         // Every bool on. Toggle style, physics target and face tracking stay on their defaults,
         // which are the full-featured choice of each.
+        // Found at run time: a project without the corpus deploys this probe too.
+        static BridgeSettings CorpusSettings() =>
+            (BridgeSettings) AppDomain.CurrentDomain.GetAssemblies().Select(a => a.GetType("AvatarBridge.Regression.RegressionRunner")).FirstOrDefault(t => t != null)
+                ?.GetMethod("CorpusSettings", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)
+                ?.Invoke(null, null) ?? throw new InvalidOperationException("-abCorpus needs the corpus runner in this project");
+
         static BridgeSettings Everything()
         {
             var s = new BridgeSettings();
