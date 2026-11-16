@@ -248,6 +248,7 @@ namespace AvatarBridge
             var clips = YapsSwapFollow.RunnableClips(root);
             YapsLock.Animate(null, clips);
             Reuse = Owned(root, clips);
+            if (Reuse.Count == 0) Reuse = Unworn(root, folder);
             string jellyAt = YapsJelly.FolderFor(root, folder);
             string said;
             var jelly = (on: new List<string>(), refused: new List<string>());
@@ -1879,6 +1880,20 @@ namespace AvatarBridge
             return new HashSet<string>(EditorUtility.CollectDependencies(from)
                 .Where(o => !(o is Material m) || SourceOf(m) != null || (skin != null && o == skin.sharedMaterial)).Select(AssetDatabase.GetAssetPath)
                 .Where(p => p.EndsWith(".mat") || p.EndsWith(" shares.asset") || p.EndsWith(" swings.asset") || p.EndsWith(" surface.asset") || p.EndsWith(" squash skin.asset") || p.EndsWith(" soft.asset") || p.EndsWith(" soft rows.asset") || p.EndsWith(" jelly parts.asset")));
+        }
+
+        // A fresh avatar wears nothing of its last build, so nothing was written over and every
+        // build left a numbered set. Its files in the folder may be written over unless another
+        // avatar in the open scenes wears them.
+        static HashSet<string> Unworn(Transform root, string folder)
+        {
+            if (!AssetDatabase.IsValidFolder(folder)) return new HashSet<string>();
+            var others = UnityEngine.Object.FindObjectsOfType<Renderer>(true).Where(r => !r.transform.IsChildOf(root))
+                .SelectMany(r => r.sharedMaterials.Cast<UnityEngine.Object>().Append((r as SkinnedMeshRenderer)?.sharedMesh))
+                .Where(o => o != null).Distinct().ToArray();
+            var worn = new HashSet<string>(EditorUtility.CollectDependencies(others).Select(AssetDatabase.GetAssetPath));
+            return new HashSet<string>(AssetDatabase.FindAssets("", new[] { folder }).Select(AssetDatabase.GUIDToAssetPath)
+                .Where(p => System.IO.Path.GetDirectoryName(p).Replace('\\', '/') == folder && !worn.Contains(p)));
         }
 
         // Pair `k` as the skin carries it, posed as it stands: points from the renderer carrying
