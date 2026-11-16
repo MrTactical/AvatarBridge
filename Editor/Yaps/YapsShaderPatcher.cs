@@ -610,6 +610,9 @@ namespace AvatarBridge
 
         static Timings Timing = new Timings();
 
+        // Set by the release check that times a patched body compiled fresh; null otherwise.
+        internal static string FreshCompileNonce;
+
         // The conversion the counts belong to. A Patch reporting to another one starts afresh.
         static BridgeReport TimedFor;
 
@@ -761,6 +764,8 @@ namespace AvatarBridge
                 refusal = loadFailure;
                 return null;
             }
+            // A line more moves every #line, so Unity's shader cache cannot answer the compile.
+            if (FreshCompileNonce != null) yaps = "// " + FreshCompileNonce + "\n" + yaps;
             // Before any edit below: the name is taken from the source as it is on disk.
             string hash = NameHash(sourcePath, unit, yaps);
 

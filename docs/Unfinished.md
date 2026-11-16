@@ -3841,7 +3841,9 @@ README's 6 m, squish and shared plug toggle lines, a "parameter(s)" note. Left:
 9. ~~**Taking the jelly off puts the pressing colliders into every cloth of the pair**~~ **FIXED on dev
    2026-11-16.** Each collider's end carries a "Jelly listed in" mark per cloth it left, and goes back
    there alone; a jelly put on before the marks goes back as before (`JellyUnwornCollidersTest`).
-10. **No check times a fresh compile of a patched body.** Unity's shader cache survives a renamed
+10. ~~**No check times a fresh compile of a patched body.**~~ **DONE on dev 2026-11-16:** `FreshCompileTimeTest`
+    patches one body of each host (Poiyomi Toon and Pro, lilToon, YAPS Standard) with every role and the
+    jelly, a nonce line ahead of the YAPS code so the cache cannot answer, and fails past 120 s. Was: Unity's shader cache survives a renamed
     shader, so a body whose vertex program took 346 s in fxc (past Unity's limit, magenta) passed every
     run for days until an include's line numbers moved. Fixed for 5.0.0 (the jelly region compiled once
     for all four slots, 49 s); left: a release step that compiles one body variant of each patched
