@@ -3807,6 +3807,24 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   next import). Left as is.
 - Open: Joe in game, with the GS2 nightly.
 
+### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", after 5.0.0
+
+Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
+**Update**, so a reconvert keeps the changes made by hand that do not conflict. Today every Convert
+rebuilds the output from the source and writes over it; only the window's settings and the
+*Since the last conversion* comparison carry over.
+
+- **Proposed (not built): Unity's prefab Variant of the OUTPUT.** Convert writes a base prefab and
+  makes a Variant beside it once; the user edits the Variant. Update rewrites the base; the Variant's
+  overrides (added objects, moved bones, changed components) ride over it, and a value both set is
+  the user's, shown as an override. No merge logic of ours.
+- **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
+- **Differs from the parked Variant-of-the-ORIGINAL idea** under Major Ideas: the base here is our
+  own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
+- **Open:** what the slot accepts (a Variant of a past output, or any converted avatar), what Update
+  does to a Variant whose override names an object the new base no longer has, and the window
+  mock-up for Joe before building.
+
 ### 32. The 5.0.0 review, what it left for 5.0.1. 2026-11-06, Joe: "do one giant like review of everything we've done in 5.0.0"
 
 Seven reviewers over every shipped file of main..dev, each finding checked by a second reader against
