@@ -113,8 +113,8 @@ namespace AvatarBridge
             }
             else
             {
-                b.Add(BridgeElements.Notice(Tone.Good, $"Saved {Path.GetFileName(_zip)}.",
-                    "In the GitHub issue that opened, drag this zip into the Attachments box, check the text, then press Submit."));
+                b.Add(BridgeElements.Notice(Tone.Good, $"Saved {Path.GetFileName(_zip)}. Drag it into the GitHub issue " +
+                    "that opened, check the text, then press Submit."));
                 b.Add(BridgeElements.ButtonRow(
                     BridgeElements.Btn("Show the zip", () => EditorUtility.RevealInFinder(_zip), _zip, ButtonKind.Strong),
                     BridgeElements.Btn("Open the issue again", OpenIssue),

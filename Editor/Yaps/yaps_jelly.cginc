@@ -230,15 +230,16 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     {
         int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
         int3 l = c0 + d;
-        uint pi = (uint) ((l.z * n.y + l.y) * n.x + l.x);
-        float4 pt = YapsJellyTexel(slot, pi, base);
+        // Not "pi": Poiyomi 7.3 defines it as a macro, and the body would not compile.
+        uint corner = (uint) ((l.z * n.y + l.y) * n.x + l.x);
+        float4 pt = YapsJellyTexel(slot, corner, base);
         // Off the anchor here, its rest taken off once below: the rest is linear in the corner,
         // so its blend is the rest at c and its slopes the axes.
         float3 off = pt.xyz - place.xyz;
         // The step's right half: where it was before the step, and the step's time.
         [branch] if (between)
         {
-            float4 was = YapsJellyLoad(slot, int3(pi % 64 + 64, pi / 64 + base, 0));
+            float4 was = YapsJellyLoad(slot, int3(corner % 64 + 64, corner / 64 + base, 0));
             off += ((pt.xyz - was.xyz) / max(was.w, 1e-4) - carried.xyz) * since;
         }
         float3 w = d ? t : 1 - t;
