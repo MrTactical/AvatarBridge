@@ -6305,21 +6305,11 @@ namespace AvatarBridge
                     }
 
                     var children = tree.children;
-                    bool moved = false;
                     for (int i = 0; i < children.Length; i++)
                     {
-                        var rehomed = RehomeMotion(children[i].motion);
-                        if (rehomed != children[i].motion)
-                        {
-                            children[i].motion = rehomed;
-                            moved = true;
-                        }
+                        children[i].motion = RehomeMotion(children[i].motion);
                     }
-                    // Set only on a change: each set on a saved controller's tree or state is slow.
-                    if (moved)
-                    {
-                        tree.children = children;
-                    }
+                    tree.children = children;
                 }
                 return motion;
             }
@@ -6333,11 +6323,7 @@ namespace AvatarBridge
                 {
                     foreach (var child in machine.states)
                     {
-                        var rehomed = RehomeMotion(child.state.motion);
-                        if (rehomed != child.state.motion)
-                        {
-                            child.state.motion = rehomed;
-                        }
+                        child.state.motion = RehomeMotion(child.state.motion);
                     }
                 });
             }
