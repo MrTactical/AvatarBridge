@@ -1955,7 +1955,8 @@ dozen. `#` in ChilloutVR marks a local parameter; that's the spelling you'll see
 
 Pick one in the **Face tracking** dropdown. The two set-up modes remove whatever FT rig the avatar
 shipped with, animator layers, parameters *and* objects, so nothing is left fighting over the same
-blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
+blendshapes. That includes the layers the rig switches with its own toggles, such as one that holds
+every mouth shape at rest while the visemes play. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
 
 - **Native CVR Component**: sets up `CVRFaceTracking` and maps the shapes. Self-contained, but the
   built-in solver is a bit stiff. **Rigs that name their shapes without a side are handled**: many
@@ -1965,7 +1966,12 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   Slots where the side *is* the movement, a jaw, tongue or lip shifting left or right, are never
   filled from a sideless shape: a plain `Tongue` is not a tongue moving sideways. The same matching
   decides the *Analyse this avatar* recommendation, so a rig like that is not read as having no face
-  tracking at all.
+  tracking at all. **Slots still empty are built** on a copy of the face mesh in the output folder: a
+  shape with no side is split down the middle of the face into a left and a right half, ARKit's names
+  are blended into Unified Expressions' own the way VRCFaceTracking blends them (a smile is 0.8 corner
+  pull and 0.2 corner slant), a funnel or pucker is shared between the upper and lower lip, and a
+  two-step tongue becomes one that comes half out on the first step. The report counts them. Thanks to
+  Shiro Usagi, whose face tracking fixer these come from.
 - **Unity Animator Blendtrees (DSR)**: injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
   (bundled), repaths every clip onto your actual eye bones and face mesh, and reconciles its shape
   vocabulary against whatever your mesh has: by name, casing, **ARKit ↔ Unified Expressions**
@@ -2322,7 +2328,7 @@ Bipeds are unaffected by any of it.
 ### Not converted
 
 - **Blendshape-based gaze**: bone-based eye look converts (gaze limits measured from the VRChat
-  poses), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
+  poses, 25° for a direction left unset), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
   blendshape face tracking *are* handled.)
 - **PhysBone posing and stretch**, and the `_Stretch` / `_Squish` / `_IsPosed` parameters (squish
   itself carries over, as how firmly a chain's bones hold their length)

@@ -36,6 +36,32 @@ namespace AvatarBridge
             "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
         };
 
+        // A rig's own switches, read only when its layers are stripped: the menu keeps them, since
+        // with the rig kept they are its controls. A layer that reads nothing else belongs to the
+        // rig, as a viseme layer holding every mouth shape at 0 behind VisemesEnable. From Shiro
+        // Usagi's face tracking fixer.
+        static readonly HashSet<string> RigSwitches = new HashSet<string>
+        {
+            "EyeTrackingEnable", "MouthTrackingEnable", "TongueControlActive", "EyeTrackingActive 2",
+            "EyelidSync", "LeftEyeLidExpandedSqueeze 2", "BrowEmulation", "ForceTongueOutToggle",
+            "ForceTongueOutSync", "Tongue-x", "Tongue-y", "TongueXControl", "TongueYControl",
+            "trackingEyes", "trackingMouth"
+        };
+
+        public static bool IsRigSwitch(string name)
+        {
+            return !string.IsNullOrEmpty(name) && RigSwitches.Contains(name.TrimStart('#'));
+        }
+
+        // Read by every kind of layer, so they say nothing about whose a layer is.
+        public static bool IsNeutral(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return true;
+            string n = name.TrimStart('#');
+            return n == "IsLocal" || n == "TrackingType" || n == "VRMode" || n.StartsWith("Blend")
+                || n.Contains("__QuantizationParameters") || n.Contains("__ModularAvatarInternal/One");
+        }
+
         public static bool IsGateName(string name)
         {
             return !string.IsNullOrEmpty(name) && GateNames.Contains(name.TrimStart('#'));

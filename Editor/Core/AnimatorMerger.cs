@@ -9893,12 +9893,14 @@ namespace AvatarBridge
             {
                 return;
             }
-            bool IsFt(string name) => FaceTrackingParameters.IsFaceTracking(name);
+            bool IsFt(string name) => FaceTrackingParameters.IsFaceTracking(name) || FaceTrackingParameters.IsRigSwitch(name);
 
             var removedMachines = new HashSet<AnimatorStateMachine>();
             foreach (var layer in vrcLayers.ToList())
             {
-                var refs = SystemStripper.CollectParameterRefs(layer.stateMachine);
+                // Without IsLocal, TrackingType and the like: a viseme layer reading VisemesEnable and
+                // TrackingType came out half the rig's and stayed, holding the tracked mouth at 0.
+                var refs = SystemStripper.CollectParameterRefs(layer.stateMachine).Where(r => !FaceTrackingParameters.IsNeutral(r)).ToList();
                 if (refs.Count == 0)
                 {
                     continue;
