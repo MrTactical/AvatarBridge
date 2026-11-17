@@ -4236,9 +4236,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float wasEase = _MainTex.Load(int3(18, side, 0)).z;
                     float toward = _Fast > 0 ? saturate((length(Smoothed) - _Fast + 2) / 2) : 0;
                     // Untouched, it eases onto its bones over _Hold and holds there (1): walking, the
-                    // tissue's own swing on top of the cloth's stretched it twice over. Any hand, probe,
-                    // own limb, grip or the pair pressing together last step lets it go at once.
-                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || _MainTex.Load(int3(41, side, 0)).y != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
+                    // tissue's own swing on top of the cloth's stretched it twice over. Any hand in reach,
+                    // the wearer's own hand into the box, a probe, a grip or the pair pressing together
+                    // last step lets it go at once. An arm or thigh lies in the box at rest, so those
+                    // dent the skin through the draw alone while it holds.
+                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || ((uint) _MainTex.Load(int3(41, side, 0)).y & 0x44u) != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
                     float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : 0;
                     Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : max(toward, hold);
                     // A change of speed past _Landing in the step, kept for the next step: against the
