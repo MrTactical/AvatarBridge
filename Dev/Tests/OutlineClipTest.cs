@@ -12,7 +12,7 @@ namespace AvatarBridge.Regression
         const string Dir = "Assets/OutlineClipTest";
         static int failures;
 
-        static string Pass(string vert, string width) => $@"
+        static string Pass(string vert, string clip) => $@"
         Pass
         {{
             CGPROGRAM
@@ -25,7 +25,8 @@ namespace AvatarBridge.Regression
             v2f {vert} (appdata v) {{ v2f o; o.pos = UnityObjectToClipPos(v.vertex); o.uv = v.uv; return o; }}
             fixed4 frag (v2f i) : SV_Target
             {{
-                {(width == null ? "" : $"clip(tex2D(_OutlineMask, i.uv).r * ({width} /*_LineWidth*/) - 0.001);")}
+                float OutlineMask = tex2D(_OutlineMask, i.uv).r;
+                {clip ?? ""}
                 return 1;
             }}
             ENDCG
@@ -41,7 +42,12 @@ namespace AvatarBridge.Regression
                 Directory.CreateDirectory(Dir);
                 string path = $"{Dir}/Outlined.shader";
                 File.WriteAllText(path, "Shader \"Test/Outlined\"\n{\n    Properties { _OutlineMask (\"Mask\", 2D) = \"white\" {} }\n    SubShader\n    {" + Pass("vertMain", null)
-                    + Pass("vertZero", "0.0") + Pass("vertWide", "0.5") + "\n    }\n}\n");
+                    + Pass("vertZero", "clip(OutlineMask * (0.0 /*_LineWidth*/) - 0.001);")
+                    + Pass("vertWide", "clip(OutlineMask * (0.5 /*_LineWidth*/) - 0.001);")
+                    // Older locks write the width bare, Poiyomi Pro as float(0).
+                    + Pass("vertBare", "clip(OutlineMask * 0.0 - 0.001);")
+                    + Pass("vertFloat", "clip(OutlineMask * float(0) - 0.001);")
+                    + Pass("vertBareWide", "clip(OutlineMask * 0.05 - 0.001);") + "\n    }\n}\n");
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
                 var material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(path));
                 var result = YapsShaderPatcher.Patch(material, null, out string refusal, out _);
@@ -52,6 +58,9 @@ namespace AvatarBridge.Regression
                 Check(text.Contains("#define YAPS_ENTRY_vertMain"), "the main pass bends");
                 Check(text.Contains("#define YAPS_ENTRY_vertWide"), "an outline with a width bends");
                 Check(!text.Contains("#define YAPS_ENTRY_vertZero"), "a zero-width outline is left alone");
+                Check(!text.Contains("#define YAPS_ENTRY_vertBare"), "a bare zero width is left alone");
+                Check(!text.Contains("#define YAPS_ENTRY_vertFloat"), "a float(0) width is left alone");
+                Check(text.Contains("#define YAPS_ENTRY_vertBareWide"), "a bare width bends");
                 if (result != null) Check(!ShaderUtil.ShaderHasError(result), "the patched shader has no errors");
                 Object.DestroyImmediate(material);
             }
