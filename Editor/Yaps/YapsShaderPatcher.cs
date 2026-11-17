@@ -59,7 +59,7 @@ namespace AvatarBridge
         // property was added to the block below and every already-patched
         // shader went on without it, silently, because the name it hashes to
         // had not moved.
-        static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock + FogPerPixel);
+        static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock + FogPerPixel + VertexLightPixelOnly);
 
         // Fog's vertex half on PC is the same in every mode, the clip depth. Passed always and
         // turned into fog per pixel always, every fog mode shares one vertex program and a no-fog
@@ -111,6 +111,57 @@ namespace AvatarBridge
             }
             foreach (var edit in edits.Reverse())
                 file.Text = file.Text.Remove(edit.Key, edit.Value.cut).Insert(edit.Key, edit.Value.put);
+        }
+
+        static readonly Regex VertexLightPragma = new Regex(@"#pragma\s+multi_compile\s+_\s+VERTEXLIGHT_ON[ \t]*(?=\r?\n)");
+        const string VertexLightPixelOnly = "#pragma multi_compile_fragment _ VERTEXLIGHT_ON";
+        static readonly string[][] LightSets =
+        {
+            new[] { "DIRECTIONAL" }, new[] { "DIRECTIONAL", "SHADOWS_SCREEN" },
+            new[] { "DIRECTIONAL", "LIGHTPROBE_SH" }, new[] { "DIRECTIONAL", "SHADOWS_SCREEN", "LIGHTPROBE_SH" },
+        };
+
+        // Older Poiyomi declares the vertex-light keyword for both stages and reads it per pixel
+        // only, so every patched vertex program compiled twice over for the same bytes, a third
+        // of a patch's first-upload compile. Pixel-only, as later Poiyomi declares it, where the
+        // host's own vertex programs prove it: the same bytecode with the keyword and without.
+        static void VertexLightInPixelOnly(List<ShaderSpiPatcher.SourceFile> unit, Material host)
+        {
+            var file = unit[0];
+            if (!VertexLightPragma.IsMatch(file.Text) || !VertexIgnores(host, "VERTEXLIGHT_ON")) return;
+            file.Text = VertexLightPragma.Replace(file.Text, VertexLightPixelOnly);
+        }
+
+        static bool VertexIgnores(Material host, string keyword)
+        {
+            int passes = 0;
+            try
+            {
+                var data = ShaderUtil.GetShaderData(host.shader);
+                for (int s = 0; s < data.SerializedSubshaderCount; s++)
+                {
+                    var sub = data.GetSerializedSubshader(s);
+                    for (int p = 0; p < sub.PassCount; p++)
+                    {
+                        var pass = sub.GetPass(p);
+                        if (pass.IsGrabPass || !pass.HasShaderStage(UnityEditor.Rendering.ShaderType.Vertex)
+                            || !VertexLightPragma.IsMatch(pass.SourceCode + "\n")) continue;
+                        foreach (var set in LightSets)
+                        {
+                            var words = set.Concat(host.shaderKeywords).Distinct().ToArray();
+                            var off = pass.CompileVariant(UnityEditor.Rendering.ShaderType.Vertex, words,
+                                UnityEditor.Rendering.ShaderCompilerPlatform.D3D, BuildTarget.StandaloneWindows64);
+                            var on = pass.CompileVariant(UnityEditor.Rendering.ShaderType.Vertex, words.Append(keyword).ToArray(),
+                                UnityEditor.Rendering.ShaderCompilerPlatform.D3D, BuildTarget.StandaloneWindows64);
+                            if (!off.Success || !on.Success || off.ShaderData == null || off.ShaderData.Length == 0
+                                || !off.ShaderData.SequenceEqual(on.ShaderData)) return false;
+                        }
+                        passes++;
+                    }
+                }
+            }
+            catch (Exception) { return false; }
+            return passes > 0;
         }
 
         // What Properties{} needs. Distinct from the HLSL declarations in
@@ -901,6 +952,7 @@ namespace AvatarBridge
                 if (whole)
                 {
                     FogInPixelOnly(unit);
+                    VertexLightInPixelOnly(unit, material);
                     string newName = PatchedName(shaderFile.Text, hash);
                     shaderFile.Text = MarkLocked(ShaderSpiPatcher.Rename(shaderFile.Text, newName));
                     InstallShaderGui(shaderFile, material.shader.name,
