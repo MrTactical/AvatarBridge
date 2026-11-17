@@ -6196,6 +6196,10 @@ namespace AvatarBridge
             }
 
             var scannedInMemory = new HashSet<AnimationClip>();
+            // Log only: where this step's time goes on a big VRCFury avatar.
+            System.Diagnostics.Stopwatch walkClock = System.Diagnostics.Stopwatch.StartNew(), copyClock = new System.Diagnostics.Stopwatch(),
+                refClock = new System.Diagnostics.Stopwatch();
+            int scans = 0;
             AnimationClip RehomeClip(AnimationClip clip)
             {
                 if (clip == null)
@@ -6214,7 +6218,9 @@ namespace AvatarBridge
                 }
                 if (!clipMap.TryGetValue(clip, out var clone))
                 {
+                    copyClock.Start();
                     clone = UnityEngine.Object.Instantiate(clip);
+                    copyClock.Stop();
                     clone.name = clip.name;
                     // The whole point of the clone is that it CAN persist; a copied DontSave flag
                     // would recreate exactly the amputation this exists to prevent.
@@ -6230,6 +6236,15 @@ namespace AvatarBridge
             // cloned reference still points into Fury's temp. The toggle
             // then breaks the moment it is used, mesh gone magenta.
             void RehomeClipReferences(AnimationClip clone)
+            {
+                scans++;
+                bool outer = !refClock.IsRunning;
+                refClock.Start();
+                try { RehomeReferences(clone); }
+                finally { if (outer) refClock.Stop(); }
+            }
+
+            void RehomeReferences(AnimationClip clone)
             {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clone))
                 {
@@ -6328,6 +6343,8 @@ namespace AvatarBridge
                 });
             }
 
+            Debug.Log($"[AvatarBridge] Rehome steps (ms): walk {walkClock.ElapsedMilliseconds}, clip copies {copyClock.ElapsedMilliseconds} " +
+                      $"({clipMap.Count}), reference scans {refClock.ElapsedMilliseconds} ({scans} clips)");
             var layers = master.layers;
             int rehomedMasks = 0;
             for (int i = 0; i < layers.Length; i++)
