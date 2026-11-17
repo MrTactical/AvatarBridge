@@ -20,7 +20,7 @@ namespace AvatarBridge.Regression
             var tris = new List<int>();
             var share = new List<Vector2>();
             Sphere(at, tris, share, Vector3.zero, 0.14f, Vector2.zero);
-            Vector3 c0 = new Vector3(-0.06f, 0f, 0.11f), c1 = new Vector3(0.06f, 0f, 0.11f);
+            Vector3 c0 = new Vector3(-0.06f, 0f, 0.19f), c1 = new Vector3(0.06f, 0f, 0.19f);
             Sphere(at, tris, share, c0, 0.06f, new Vector2(1f, 0f));
             Sphere(at, tris, share, c1, 0.06f, new Vector2(0f, 1f));
 
@@ -82,7 +82,7 @@ namespace AvatarBridge.Regression
                 {
                     int a = first + i * segs + j, b = first + i * segs + (j + 1) % segs, c = a + segs, d = b + segs;
                     // Clockwise seen from outside, Unity's front face.
-                    tris.AddRange(new[] { a, b, c, b, d, c });
+                    tris.AddRange(new[] { a, c, b, b, c, d });
                 }
         }
     }
