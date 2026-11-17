@@ -6224,6 +6224,10 @@ times in `Diagnostics.md`. Still open, largest first:
   the stub targets: the resolve 2.33 to 1.40 s, the whole deform 2.50 to 1.96 s, temps 59 to 43,
   slots unchanged (3053 to 3050). Tried and dropped: the four nearest as named scalars (slower,
   deform 3.04 s) and the three passes folded into the same loop (5% more, 84 more slots).
+  In Unity, `FreshCompileTimeTest` (one body variant per host with every role, one run each):
+  Poiyomi Toon 65.3 to 59.9 s, Poiyomi Pro 54.6 to 47.9 s, YAPS Standard 67.9 to 63.9 s. The bend
+  tester's 88 lines are identical before and after. Not yet: a cold bundle build of a plug avatar,
+  and an in-game look with Shader Filtering on.
   4. Last resort: the deform in a blit (as the jelly does), the vertex program only reading it.
      A redesign, measured against the in-game cost first.
   Proof each step: cold bundle build on one plug avatar before and after, plus an in-game look
