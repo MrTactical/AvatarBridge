@@ -235,11 +235,11 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     bool between = since > 1e-4 && since < 0.1 && carried.w > 0;
     // Rolled: unrolled, the eight corners' loads were a fifth of the body's vertex program, which
     // every viewer's driver builds on first sight. Shader Filtering may cut it short, and part of
-    // the corners would tear the skin, so a cut lattice is drawn at rest instead.
-    int ran = 0;
+    // the corners would tear the skin, so a cut lattice is drawn at rest instead. Told by the
+    // weights' sum: a count of the corners the compiler proves is 8 and drops the check.
+    float weights = 0;
     [loop] for (int k = 0; k < 8; k++)
     {
-        ran++;
         int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
         int3 l = c0 + d;
         // Not "pi": Poiyomi 7.3 defines it as a macro, and the body would not compile.
@@ -256,12 +256,13 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         }
         float3 w = d ? t : 1 - t;
         float3 way = d ? 1 : -1;
+        weights += w.x * w.y * w.z;
         move += w.x * w.y * w.z * off;
         gx += way.x * w.y * w.z * off;
         gy += way.y * w.x * w.z * off;
         gz += way.z * w.x * w.y * off;
     }
-    if (ran < 8) return 0;
+    if (weights < 0.999) return 0;
     float3 rest = float3(c.x - 0.5 * (n.x - 1), c.y - 0.5 * (n.y - 1), c.z) * spacing;
     move -= ax * rest.x + ay * rest.y + az * rest.z;
     // Less the anchor's own turn since (94), which the skin already rides.
