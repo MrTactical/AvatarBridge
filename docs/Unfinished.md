@@ -3871,12 +3871,16 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   main and extra-light vertex programs of different materials are the SAME code: only the constant
   buffer offsets of the YAPS values differ, shifted by each material's own Poiyomi properties in `$Globals`.
   So the driver builds 12 distinct body programs (574 KB) where 4 would do (192 KB).
-  **Next, proposed: the YAPS values in named cbuffers of their own** (fixed layout, one per include),
-  so every material's vertex program is byte-identical and the driver builds each pass once, likely
-  across avatars too. Estimated ~0.9 s off this avatar's first view. Leaving Eyes/Brows and Tails
-  unpatched saves ~0.4 s today and nothing after it; no tissue in the extra-light and shadow passes
-  saves ~0.7 s today and ~0.2 s after it, and changes lighting. Needs: Unity filling a named cbuffer
-  from material values and `SetGlobal*` (built-in pipeline), proven in ChilloutVR.
+  **Done, 934e69b6, folded into 5.0.0 (Joe: "if it shows measurable improvement put it 5.0.0").** The YAPS
+  values sit in named cbuffers of their own, one per include. The plush re-patched (`-dumpRefresh`): its
+  four body materials share ONE vertex program per pass (27 distinct to 19), 917 KB to 535 KB of vertex
+  bytecode, and the cold driver build of everything it draws 2.6-2.7 s to 1.8-1.9 s (game closed). A
+  converted avatar picks it up on its next rebuild: the patch name hashes the include text, so the six
+  patched materials read as stale. Bend tester PASS with one place of 50 in the two-socket 25 cm case now
+  taking the nearer socket (twice); Kar's tissue numbers identical; fresh compile PASS. Leaving Eyes/Brows
+  and Tails unpatched now saves nothing (they share the program), so dropped. No tissue in the extra-light
+  and shadow passes: declined by Joe (a still shadow under a moving body). Open: ChilloutVR filling the
+  named cbuffers, Joe in game (a plug that bends and tissue that moves prove it).
 
 ### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", after 5.0.0
 
