@@ -214,7 +214,10 @@ namespace AvatarBridge
 
             report.Bones = bones.Count;
             report.Materials = materials.Count;
-            report.Textures.AddRange(textures.Values.OrderByDescending(t => t.Bytes));
+            // Ties by name and path, or two equal sizes list in material order and swap between runs.
+            report.Textures.AddRange(textures.Values.OrderByDescending(t => t.Bytes)
+                .ThenBy(t => t.Name, System.StringComparer.Ordinal)
+                .ThenBy(t => AssetDatabase.GetAssetPath(t.Texture), System.StringComparer.Ordinal));
             report.TextureBytes = report.Textures.Sum(t => t.Bytes);
             // A crunched texture downloads at its packed size and still
             // costs full size on the card, so the two figures only agree
