@@ -3815,6 +3815,10 @@ each: 5.0.0 140.4 s, these changes 124.0 s; YAPS and JellyStep compiles 122.3 to
 **The idle pass folded too** (Joe 2026-11-17: "shove it all in 5.0.0"; main 03962bd8): vertex light per pixel,
 the soft bake's presses side by side, the VRCFury rehome's material batch, the texture list's ties. Test build rc19
 (same contents) went to a tester with the in-game checks; nothing of it has been run in game yet.
+**The tester's rc19 conversions** (Xeon E5-2673 v3, 24 threads, RX 5500 XT; their own avatar with squash and
+tissue, 2026-11-17): first convert 148 s, 51 s of it recompiling the 13 patched files the update made stale; the
+third 54 s against 133 s for the same avatar on the 11-16 build (squash 104 to 42.7 s, FollowSwaps 35.9 to 5.7 s,
+animator merge 17.7 to 5.4 s), 0 errors. Upload time not recorded in the files.
 Four read-only reviews (first view, per-frame GPU, conversion, upload). Per-frame GPU had little left after
 item 36. Done on dev, each measured:
 - **Outline skip missed two lock forms** (e29f2013, test 84547ce8): older Poiyomi locks write a zero width bare,
