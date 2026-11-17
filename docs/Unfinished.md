@@ -3779,6 +3779,26 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
   client's MagicaCloth2 lacks `disableMode`); a material-swap toggle on a jellied part; Player.log has
   no `[ClipMaterialCrawler] ... disabled` line; the first-load hitch, re-measured.
 
+### 47. A remote hand held in live tissue made it jump and stretch up the arm. Joe in game on rc16, 2026-11-16, PART FIXED in rc18
+Joe, desktop, holding his hand still in a remote player's breast: "it just jumps and jitters up my
+arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the rest in
+`JellySpikeBuilder`) put a generated remote hand in Kar's first breast for 300 frames.
+- **Fixed (256c6653, 7a4d2163):** a gesture flickering between open and fist with the hand 6 cm in
+  started a grip on every close and moved the part 32 mm in a frame; opening a fist inside moved
+  it 47-62 mm; a deep grip letting go threw the tissue 36 mm. Now the slot's gesture eases at 5 a
+  second (a flicker under ~0.15 s never grips) and a let-go hand's plow eases in over 0.2 s:
+  4.3-9 mm a frame at worst. Full verify unchanged (grip pull 88.4 mm, ring 16.3 mm).
+- **Not reproduced:** a steady open hand, 4 to 10 cm in, still or swaying 1 cm, sliding in and
+  out, arm 60 degrees off, a smaller player, a second player's hand shifting the slots, uneven
+  frame times, a MagicaCloth capsule on the hand with and without Other Colliders' probes, the hand
+  fixed in the world while the avatar bobs 1-2 cm in 10 Hz packet steps or smoothly: all 0 to
+  1.7 mm a frame, no grips. Desktop gestures change only on a keyboard combo
+  (`CVRInputModule_Keyboard.Update_Emotes`), so his gesture was steady and the flicker fix is
+  probably not his case.
+- Next: Joe retests on rc18 (reconverted). If it still jumps, record his own hand's values in game
+  (the provider's `_CVR_PlayerLeftHandPositions[0]`, w the gesture, and the root's w, his
+  avatar's height) and the slot texels 0 to 15 and 112 to 119 while it jumps.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
@@ -6151,6 +6171,12 @@ times in `Diagnostics.md`. Still open, largest first:
 - **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
   10-15 s on a large VRCFury controller).
 - **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **Two digest moves since the 5.0.0 release run** (full corpus 2026-11-16 on 7a4d2163, 7 of 88
+  changed, the release run 0): six scenes of one avatar list two equal 5.3 MB texture warnings in
+  the other order (`AvatarWeight.cs:217` sorts by bytes alone, so ties follow material order:
+  add `ThenBy` name); one avatar's rehomed clip reads "Blush" where the baseline read "Blush 1",
+  the file still `Blush 1.anim`, so a name is now taken before the import that renames it. Both
+  cosmetic; check whether the speed work moved them before accepting a new baseline.
 - **Upload time, not measured yet** (Joe, 2026-11-16: "add the upload timing to the queue"). The
   CCK's bundle build compiles every patched shader's variants; fewer copies should help, nothing
   measured. A/B with `BundleBuildProbe` on one avatar, cold (salted include so Unity's shader
@@ -6161,6 +6187,43 @@ times in `Diagnostics.md`. Still open, largest first:
   already shader_feature_local). The A/B was dropped: the speed work leaves the final shaders
   identical, so it cannot change what the upload compiles. Levers left: fewer body copies (each
   role set is its own copy), or a cheaper JellyStep fragment.
+  Optimize Mesh Data ruled out 2026-11-16 (a plush avatar, cold, same machine): on 174 s, off
+  187 s, same 18.8 MiB. With it on, a mesh-data pre-pass compiled 1070 variants in 139 s; with it
+  off the main pass compiled the same variants itself. Off the plush's 173 s of shaders, the plug
+  shader alone is 72 s (1010 s CPU) and each squash copy ~20 s (156 variants each). Levers, in
+  order: the plug shader's variant count, then the number and cost of squash copies. After 5.0.0.
+  **Plug shader plan (read-only, 2026-11-16).** The cost is the vertex program, not the
+  fragment: per pass 32 vertex variants at ~10 s CPU each (325 s and 359 s for two passes) against
+  16 fragment variants at ~0.4 s. Four passes compile. The YAPS deform is the same in every
+  variant; only Poiyomi's lighting keywords differ (from the plush's compiler logs: DIRECTIONAL,
+  STEREO_INSTANCING_ON, VERTEXLIGHT_ON, SHADOWS_SCREEN, LIGHTPROBE_SH in the base pass; POINT, SPOT,
+  the cookies and SHADOWS_* in ForwardAdd; SHADOWS_DEPTH/CUBE in the caster). No double-wide
+  stereo variants compile, so the YapsJelly skip_variants trick buys nothing here; instancing and
+  the vertex-light keyword are both needed in ChilloutVR. Steps, cheapest first:
+  1. Measure where one vertex variant's time goes: fxc `/Zi /Fc` plus the per-function attribution
+     script used on the jelly step, on one base-pass variant. The walk (8 steps unrolled, kept so
+     because Shader Filtering cuts a late `[loop]`), the resolve's 3x3x3 atlas scan, and the chain
+     loops are the suspects. Pass bar: name the function that holds over half the instructions.
+  2. If it is a block written out several times (an unrolled step carrying its own copy, a
+     function inlined at several callers), write it out once, as the walk's landing already is.
+     The jelly step went 43.8k to 8.5k instructions this way.
+  3. Fewer passes run the deform: ForwardAdd and the outline pass could take the base pass's
+     deformed position only if the plug skipped them, which changes how it lights. Ask Joe first.
+  Step 1 measured the same night (the plush session, fxc on the exact preprocessed base-pass vertex
+  variant, Unity's own compile 2.6 to 3.8 s a plug variant; not re-run here yet): full 2589 ms /
+  2808 slots, YapsDeform stubbed 65 ms, YapsResolveChain stubbed with its result kept live 899 ms /
+  2019 slots. So the chain scan (3 scans x 3x3x3 cells x 2 homes x 8 octants, plus the 4-entry
+  sorted insert into a dynamically indexed local array) is ~65% of the compile at ~28% of the
+  instructions. By instructions nothing passes half (YapsResolveChain 20.5%, YapsDeform 15.1%,
+  YapsWalk 7.3%, YapsSafeNormalize 6.3% inlined many times). Not a duplicated block, so step 2
+  becomes: flatten the cell, home and octant loops into one `[loop]`, and keep the four nearest as
+  named scalars with compare-swaps instead of the array. YAPS_CHAIN_MAX below 4 does not compile
+  (indices written out for 4). Shader Filtering applies: the scan's loops are `[loop]`, so check
+  the flattened one still resolves with the filter on.
+  4. Last resort: the deform in a blit (as the jelly does), the vertex program only reading it.
+     A redesign, measured against the in-game cost first.
+  Proof each step: cold bundle build on one plug avatar before and after, plus an in-game look
+  with Shader Filtering on (the walk's unroll exists because of it).
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
 - **Parallel shader compiles: tried and pulled.** Handing every new copy's passes to the compiler
