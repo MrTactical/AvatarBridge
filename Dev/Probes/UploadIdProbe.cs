@@ -46,12 +46,11 @@ namespace AvatarBridge.Regression
                 var first = Convert();
                 string fresh = Id(first);
                 first.GetComponent<CVRAssetInfo>().objectId = Fake;
-                var second = Convert();
-                UnityEngine.Object.DestroyImmediate(first);
-                UnityEngine.Object.DestroyImmediate(second);
-                var third = Convert();
-                bool pass = string.IsNullOrEmpty(fresh) && Id(second) == Fake && Id(third) == Fake;
-                Debug.Log($"[UploadId] first \"{fresh}\", from the old copy \"{Id(second)}\", from the prefab alone \"{Id(third)}\": {(pass ? "PASS" : "FAIL")}");
+                string fromCopy = Id(Convert());
+                foreach (var old in scene.GetRootGameObjects().Where(r => r.GetComponent<CVRAssetInfo>() != null)) UnityEngine.Object.DestroyImmediate(old);
+                string fromPrefab = Id(Convert());
+                bool pass = string.IsNullOrEmpty(fresh) && fromCopy == Fake && fromPrefab == Fake;
+                Debug.Log($"[UploadId] first \"{fresh}\", from the old copy \"{fromCopy}\", from the prefab alone \"{fromPrefab}\": {(pass ? "PASS" : "FAIL")}");
                 code = pass ? 0 : 2;
             }
             catch (Exception e)
