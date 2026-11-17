@@ -3821,8 +3821,11 @@ Measured in the stability harness (`-jellyStab`, Kar's breasts, a glide eased in
 - **Open, probably the tester's "stretch": the cloth under it.** Cloth on, a steady 4 m/s run turns the breast
   bone about 60 degrees outward and 10 cm sideways (the masses 34 to 44 cm apart), and the skin goes with it;
   73 mm and 2.1x stretch at the back face, unchanged by `_Solid`, `_Motion`, `_MassHz`, `_Pair`, `_Smooth`
-  and `_Landing`. Next: the physics A/B probe on Kar, the converted MagicaCloth against the original
-  PhysBones on a steady run. If PhysBones swing far less, the conversion is too loose at speed.
+  and `_Landing`. **Physics A/B on Kar (`-abSpeed 4`), swing peak in degrees, original PhysBones against
+  the MagicaCloth copy:** 1.4 m/s walk 47 against 23-26, 4 m/s run 71 against 61. The conversion swings less
+  than VRChat, so the swing at a run is the avatar's own physics (pull 0.18, spring 0.8, limit 50 degrees),
+  not a loose conversion. Whether the tissue riding it looks worse than VRChat's skin on the same bone is
+  open; waits for the tester's answer on which stretch they meant.
 - **Folded into 5.0.0** (Joe 2026-11-17: "number 1"): main e32abbc8, tag moved, draft packages and notes
   updated; test build rc20 has the same contents.
 - Harness flags added: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f` (particles on the
