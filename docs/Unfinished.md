@@ -3807,6 +3807,34 @@ arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
+### 48. Optimisation pass. Joe, 2026-11-17: "full optimisation pass", then "yes" to items 1-6 and the cache measurement
+Four read-only reviews (first view, per-frame GPU, conversion, upload). Per-frame GPU had little left after
+item 36. Done on dev, each measured:
+- **Outline skip missed two lock forms** (e29f2013, test 84547ce8): older Poiyomi locks write a zero width bare,
+  `clip(OutlineMask * 0.0 - 0.001)`, Pro as `float(0)`; both now left unbent like the commented form. The
+  OutlineClipTest reproduced it first (bare and float(0) WRONG) and passes now. The reviewer's estimate: about a
+  third of an affected patch's first-upload compile (Zombunny 2: 18 s of 85 s wall), plus a dead vertex pass a frame.
+- **The tissue step's stereo variants** (95b5e3dc): its `skip_variants` never reached the ones Unity adds, so 9
+  variants compiled where 3 are drawn. YapsStereoStrip drops every stereo variant of `Hidden/AvatarBridge/JellyStep`
+  (only ever blitted). Estimate 38 s CPU off every first upload with tissue; not yet measured with a cold bundle.
+- **GoGo poses in one batch** (b2b9a1c1) and **no second controller save after the slot filler** (3b5cdf34):
+  measured by the 5-avatar subset run `opt-sub5` (below).
+- **The tissue's 8 lattice corners in a rolled loop** (6691fdbf): fxc 51,844 to 43,388 bytes at 3 slots; the plush's
+  body vertex programs 48.8-49.5 KB to 40.4-41.1 KB a pass. Cut short by Shader Filtering, the region is drawn at
+  rest rather than torn (not yet run under ShaderFilterProbe). Kar's tissue numbers identical.
+- **No marker-light search in a plug's shadow caster** (e2b3231c), which is handed no lights: the caster program
+  86,988 to 80,500 bytes. Bend tester identical, PlugGhostProbe PASS on every route (lights-only included, via the relay).
+- Plush vertex bytecode a viewer builds: 535 KB to 456 KB (two body passes now byte-identical, 19 to 18 distinct).
+- **The driver keeps built shaders across restarts** (NVIDIA, this machine): the same bytes in a fresh process
+  built in 49-76 ms against 2,790 ms for new bytes. So the first-view freeze is paid once per machine per exact
+  bytecode, not per session: byte stability across avatars and versions is worth more than kilobytes.
+
+Queued, larger: one tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, ~100-145 ms first view;
+risk, several steps writing one pair); lighting keywords the host's vertex never reads multiplying the YAPS vertex
+variants (~a third of a patch's upload compile; risk, a host lighting in its vertex loses point lights). Smaller,
+queued: the empty asset refreshes per avatar (attribute first), the orphan clips left in a merged controller,
+batching the rehomer's texture writes.
+
 ### 46. A Mini Me clone never squashes or jiggles. Joe in game, 2026-11-16, OPEN, waits for his call
 
 The clone (ChilloutVR's ContentCloneManager, as used by Mini Me) draws the host's skinned buffer with
