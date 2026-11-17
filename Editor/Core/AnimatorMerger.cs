@@ -6198,8 +6198,8 @@ namespace AvatarBridge
             var scannedInMemory = new HashSet<AnimationClip>();
             // Log only: where this step's time goes on a big VRCFury avatar.
             System.Diagnostics.Stopwatch walkClock = System.Diagnostics.Stopwatch.StartNew(), copyClock = new System.Diagnostics.Stopwatch(),
-                refClock = new System.Diagnostics.Stopwatch();
-            int scans = 0;
+                refClock = new System.Diagnostics.Stopwatch(), assetClock = new System.Diagnostics.Stopwatch();
+            int scans = 0, keyCount = 0;
             AnimationClip RehomeClip(AnimationClip clip)
             {
                 if (clip == null)
@@ -6256,7 +6256,10 @@ namespace AvatarBridge
                     bool changed = false;
                     for (int i = 0; i < keys.Length; i++)
                     {
+                        assetClock.Start();
                         var rescued = RehomeReferencedAsset(keys[i].value, ctx, volatileAssets);
+                        assetClock.Stop();
+                        keyCount++;
                         if (rescued != keys[i].value)
                         {
                             keys[i].value = rescued;
@@ -6344,7 +6347,8 @@ namespace AvatarBridge
             }
 
             Debug.Log($"[AvatarBridge] Rehome steps (ms): walk {walkClock.ElapsedMilliseconds}, clip copies {copyClock.ElapsedMilliseconds} " +
-                      $"({clipMap.Count}), reference scans {refClock.ElapsedMilliseconds} ({scans} clips)");
+                      $"({clipMap.Count}), reference scans {refClock.ElapsedMilliseconds} ({scans} clips), " +
+                      $"of them rescuing assets {assetClock.ElapsedMilliseconds} ({keyCount} keys, {volatileAssets.Count} assets)");
             var layers = master.layers;
             int rehomedMasks = 0;
             for (int i = 0; i < layers.Length; i++)
