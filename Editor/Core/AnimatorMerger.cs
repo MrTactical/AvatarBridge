@@ -6196,6 +6196,11 @@ namespace AvatarBridge
             }
 
             var scannedInMemory = new HashSet<AnimationClip>();
+            // Log only: where this step's time goes on a big VRCFury avatar.
+            System.Diagnostics.Stopwatch walkClock = System.Diagnostics.Stopwatch.StartNew(), copyClock = new System.Diagnostics.Stopwatch(),
+                refClock = new System.Diagnostics.Stopwatch(), assetClock = new System.Diagnostics.Stopwatch();
+            int scans = 0, keyCount = 0;
+            var byKind = new Dictionary<string, long>();
             AnimationClip RehomeClip(AnimationClip clip)
             {
                 if (clip == null)
@@ -6214,7 +6219,9 @@ namespace AvatarBridge
                 }
                 if (!clipMap.TryGetValue(clip, out var clone))
                 {
+                    copyClock.Start();
                     clone = UnityEngine.Object.Instantiate(clip);
+                    copyClock.Stop();
                     clone.name = clip.name;
                     // The whole point of the clone is that it CAN persist; a copied DontSave flag
                     // would recreate exactly the amputation this exists to prevent.
@@ -6231,6 +6238,15 @@ namespace AvatarBridge
             // then breaks the moment it is used, mesh gone magenta.
             void RehomeClipReferences(AnimationClip clone)
             {
+                scans++;
+                bool outer = !refClock.IsRunning;
+                refClock.Start();
+                try { RehomeReferences(clone); }
+                finally { if (outer) refClock.Stop(); }
+            }
+
+            void RehomeReferences(AnimationClip clone)
+            {
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clone))
                 {
                     var keys = AnimationUtility.GetObjectReferenceCurve(clone, binding);
@@ -6241,7 +6257,13 @@ namespace AvatarBridge
                     bool changed = false;
                     for (int i = 0; i < keys.Length; i++)
                     {
+                        long was = assetClock.ElapsedMilliseconds;
+                        assetClock.Start();
                         var rescued = RehomeReferencedAsset(keys[i].value, ctx, volatileAssets);
+                        assetClock.Stop();
+                        string kind = keys[i].value == null ? "none" : keys[i].value.GetType().Name;
+                        byKind[kind] = (byKind.TryGetValue(kind, out long had) ? had : 0) + assetClock.ElapsedMilliseconds - was;
+                        keyCount++;
                         if (rescued != keys[i].value)
                         {
                             keys[i].value = rescued;
@@ -6317,17 +6339,24 @@ namespace AvatarBridge
             // Every layer, not just the merged VRChat ones: any layer the pipeline has created by
             // this point can reference a Fury temp motion, and a reference this walk doesn't see
             // is a reference the temp wipe kills.
-            foreach (var layer in master.layers)
+            SceneAssetRehomer.Batched(ctx, () =>
             {
-                WalkMachines(layer.stateMachine, machine =>
+                foreach (var layer in master.layers)
                 {
-                    foreach (var child in machine.states)
+                    WalkMachines(layer.stateMachine, machine =>
                     {
-                        child.state.motion = RehomeMotion(child.state.motion);
-                    }
-                });
-            }
+                        foreach (var child in machine.states)
+                        {
+                            child.state.motion = RehomeMotion(child.state.motion);
+                        }
+                    });
+                }
+            });
 
+            Debug.Log($"[AvatarBridge] Rehome steps (ms): walk {walkClock.ElapsedMilliseconds}, clip copies {copyClock.ElapsedMilliseconds} " +
+                      $"({clipMap.Count}), reference scans {refClock.ElapsedMilliseconds} ({scans} clips), " +
+                      $"of them rescuing assets {assetClock.ElapsedMilliseconds} ({keyCount} keys, {volatileAssets.Count} assets: " +
+                      string.Join(", ", byKind.Select(k => $"{k.Key} {k.Value}")) + ")");
             var layers = master.layers;
             int rehomedMasks = 0;
             for (int i = 0; i < layers.Length; i++)

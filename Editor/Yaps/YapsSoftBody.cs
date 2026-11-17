@@ -34,6 +34,9 @@ namespace AvatarBridge
         // The palm the shader reads another player's hand as, at a 1.7 m viewpoint: its radius,
         // and its length less that.
         internal const float PalmRadius = 0.053f, PalmLength = 0.134f;
+        internal static bool OnePressAtATimeForTest;
+        // Set on a thread solving one press, while the presses run side by side.
+        [System.ThreadStatic] static bool serial;
 
         readonly float h;
         readonly Vector3 origin, X, Y, Z;
@@ -98,20 +101,31 @@ namespace AvatarBridge
             var rest = Normals(at, tris, welds);
             var moves = new Vector3[Ways * depths.Length][];
             var turns = new Vector3[moves.Length][];
-            int solved = 0;
-            for (int w = 0; w < Ways; w++)
+            var ways = Enumerable.Range(0, Ways).Where(w => twins == null || !OnSecond(w)).ToArray();
+            int solved = ways.Length;
+            void Solve(YapsSoftBody on, int w)
             {
-                if (twins != null && OnSecond(w)) continue;
-                solved++;
-                var fields = tissue.Respond(presses[w], depths);
+                var fields = on.Respond(presses[w], depths);
                 for (int k = 0; k < depths.Length; k++)
                 {
-                    var move = tissue.Smooth(tissue.SkinMoves(fields[k]), neighbours);
+                    var move = on.Smooth(on.SkinMoves(fields[k]), neighbours);
                     var now = Normals(at.Select((v, i) => v + move[i]).ToArray(), tris, welds);
                     moves[w * depths.Length + k] = move;
                     turns[w * depths.Length + k] = now.Select((n, i) => n - rest[i]).ToArray();
                 }
             }
+            // The presses side by side, each on one thread and a tissue of its own: one at a time,
+            // a hundred small parallel loops a substep kept most cores waiting. The same answers,
+            // since every loop it splits is over items that share no particle.
+            if (OnePressAtATimeForTest)
+                foreach (int w in ways) Solve(tissue, w);
+            else
+                System.Threading.Tasks.Parallel.ForEach(ways, w =>
+                {
+                    serial = true;
+                    try { Solve(new YapsSoftBody(tissue), w); }
+                    finally { serial = false; }
+                });
             if (twins != null)
                 for (int w = 0; w < Ways; w++)
                 {
@@ -149,6 +163,17 @@ namespace AvatarBridge
                     }
                 }
             return (moves, turns, $"{built}, {solved} presses{(twins != null ? ", the second side mirrored" : "")}{lopsided} in {clock.Elapsed.TotalSeconds:0.0} s");
+        }
+
+        // A press of its own: the built tissue shared, the particles and their contacts its own.
+        YapsSoftBody(YapsSoftBody of)
+        {
+            h = of.h; origin = of.origin; X = of.X; Y = of.Y; Z = of.Z; nx = of.nx; ny = of.ny; nz = of.nz;
+            x0 = of.x0; x = (Vector3[]) of.x0.Clone(); prev = new Vector3[x0.Length]; vel = new Vector3[x0.Length];
+            inv = of.inv; sideOf = of.sideOf; surface = of.surface; pairs = of.pairs; cubes = of.cubes;
+            edges = of.edges; tets = of.tets; edgeRest = of.edgeRest; tetRest = of.tetRest;
+            edgeBatches = of.edgeBatches; cubeBatches = of.cubeBatches; cubeTets = of.cubeTets;
+            who = of.who; corner = of.corner; within = of.within;
         }
 
         YapsSoftBody(Vector3[] bodyAt, int[] bodyTris, Vector2[] share, Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, float voxel,
@@ -393,7 +418,7 @@ namespace AvatarBridge
         // A batch over every core; small ones on this thread.
         static void Each(int count, int[] items, System.Action<int> body)
         {
-            if (count < 64)
+            if (count < 64 || serial)
             {
                 for (int i = 0; i < count; i++) body(items == null ? i : items[i]);
                 return;
@@ -641,7 +666,7 @@ namespace AvatarBridge
             }
             int chunks = 4 * System.Environment.ProcessorCount;
             var found = new List<int>[chunks];
-            System.Threading.Tasks.Parallel.For(0, chunks, c =>
+            void Chunk(int c)
             {
                 var mine = found[c] = new List<int>();
                 for (int p = x.Length * c / chunks, end = x.Length * (c + 1) / chunks; p < end; p++)
@@ -663,7 +688,11 @@ namespace AvatarBridge
                                 }
                             }
                 }
-            });
+            }
+            if (serial)
+                for (int c = 0; c < chunks; c++) Chunk(c);
+            else
+                System.Threading.Tasks.Parallel.For(0, chunks, Chunk);
             contacts = found.SelectMany(l => l).ToArray();
             contactBatches = Batches(contacts, 2, x.Length);
         }

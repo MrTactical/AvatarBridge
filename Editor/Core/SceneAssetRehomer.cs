@@ -117,6 +117,31 @@ namespace AvatarBridge
                 "pink or missing textures. Saved to " + dir + ".");
         }
 
+        // The animator's rescue of swap-clip references in one batch, as Run's: each copied
+        // material was a write and an import of its own.
+        internal static void Batched(BridgeContext ctx, System.Action body)
+        {
+            var state = StateOf(ctx);
+            if (state.Pending != null)
+            {
+                body();
+                return;
+            }
+            state.Pending = new List<(UnityEngine.Object, string)>();
+            state.Stale = new List<string>();
+            try
+            {
+                body();
+            }
+            catch
+            {
+                try { WritePending(state); }
+                catch (System.Exception e) { Debug.LogException(e); }
+                throw;
+            }
+            WritePending(state);
+        }
+
         // The four kinds a renderer wears, through the same map, so a rescue of swap-clip
         // references can reuse the renderers' copies instead of making its own. False for any
         // other kind, which the caller copies its own way.
