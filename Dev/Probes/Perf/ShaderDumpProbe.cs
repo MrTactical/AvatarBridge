@@ -52,6 +52,9 @@ namespace AvatarBridge.Regression
                     var mats = AssetDatabase.GetDependencies(prefab, true).Where(d => d.EndsWith(".mat"))
                         .Select(AssetDatabase.LoadAssetAtPath<Material>)
                         .Where(m => m != null && m.shader != null).Distinct().ToList();
+                    // -dumpRefresh: a built package carries its patches baked, so re-patch with this code first.
+                    if (System.Environment.GetCommandLineArgs().Contains("-dumpRefresh"))
+                        Debug.Log($"[ShaderDump] {label}: re-patched {mats.Count(m => YapsShaderPatcher.IsStale(m) && YapsShaderPatcher.Refresh(m, null))} materials");
                     Debug.Log($"[ShaderDump] {label}: {mats.Count} materials, {mats.Select(m => m.shader).Distinct().Count()} shaders");
                     var seen = new HashSet<string>();
                     int n = 0;
