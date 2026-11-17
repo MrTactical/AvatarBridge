@@ -929,6 +929,8 @@ namespace AvatarBridge.Regression
             // where the default is a VR walk's quarter-second ramp and a half-second turn.
             bool harsh = Environment.GetCommandLineArgs().Contains("-abHarsh");
             float ramp = harsh ? 0.05f : 0.25f, speed = harsh ? 2.5f : 1.4f;
+            // -abSpeed v: the walk at v m/s, a run at 4.
+            if (float.TryParse(Arg("-abSpeed"), NumberStyles.Float, CultureInfo.InvariantCulture, out float run)) speed = run;
             float v = t >= 2f && t <= 4f ? speed * Mathf.Clamp01((t - 2f) / ramp) * Mathf.Clamp01((4f - t) / ramp) : 0f;
             walked += v / Fps;
             float yaw = 90f * Smooth((t - 6.5f) / (harsh ? 0.15f : 0.5f));
