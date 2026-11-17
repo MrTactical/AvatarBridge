@@ -922,8 +922,14 @@ YapsSocket YapsResolveSocket(float3 plugOrigin, float3 plugForward, float3 plugU
     float3 lightPosition;
     float3 lightForward;
     float lightHoleHint;
+#if defined(UNITY_PASS_SHADOWCASTER)
+    // A caster is handed no vertex lights, so the search was dead code there, and a
+    // sixth of the caster program each viewer's driver builds.
+    bool lit = false;
+#else
     bool lit = !found && YapsFindLightSocket(plugOrigin, worldLength * 1.6,
                                              lightPosition, lightForward, lightHoleHint);
+#endif
     // Every other pass, the depth texture's caster above all, asks the
     // relay. Where a shader does not say which pass it is, ForwardBase asks
     // too, and finds what its own lights said a frame ago.
