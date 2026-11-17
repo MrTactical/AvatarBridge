@@ -233,8 +233,13 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     float4 carried = YapsJellyLoad(slot, int3(85, side, 0));
     // Not after a snap: 85 holds the jump's own speed, and the skin was pulled back by it.
     bool between = since > 1e-4 && since < 0.1 && carried.w > 0;
-    [unroll] for (int k = 0; k < 8; k++)
+    // Rolled: unrolled, the eight corners' loads were a fifth of the body's vertex program, which
+    // every viewer's driver builds on first sight. Shader Filtering may cut it short, and part of
+    // the corners would tear the skin, so a cut lattice is drawn at rest instead.
+    int ran = 0;
+    [loop] for (int k = 0; k < 8; k++)
     {
+        ran++;
         int3 d = int3(k & 1, (k >> 1) & 1, k >> 2);
         int3 l = c0 + d;
         // Not "pi": Poiyomi 7.3 defines it as a macro, and the body would not compile.
@@ -256,6 +261,7 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         gy += way.y * w.x * w.z * off;
         gz += way.z * w.x * w.y * off;
     }
+    if (ran < 8) return 0;
     float3 rest = float3(c.x - 0.5 * (n.x - 1), c.y - 0.5 * (n.y - 1), c.z) * spacing;
     move -= ax * rest.x + ay * rest.y + az * rest.z;
     // Less the anchor's own turn since (94), which the skin already rides.
