@@ -255,8 +255,10 @@ namespace AvatarBridge
 
         static Material CopyMaterial(BridgeContext ctx, Material mat, string dir)
         {
+            var diag = System.Diagnostics.Stopwatch.StartNew();
             var copy = UnityEngine.Object.Instantiate(mat);
             copy.name = mat.name;
+            long tInst = diag.ElapsedMilliseconds;
             // A generated (SPS/locked) shader lives in temp too; rescue it so the copy isn't pink.
             // Before the textures: assigning a shader can drop properties, and doing it after
             // would undo them.
@@ -272,8 +274,11 @@ namespace AvatarBridge
             // folder is wiped on its next build, and a particle with no _MainTex draws as an
             // untextured quad. Nothing about it is particle-specific; particles are simply where
             // a missing texture is unmistakable rather than merely wrong.
+            long tShader = diag.ElapsedMilliseconds;
             RehomeTextures(ctx, copy);
+            long tTex = diag.ElapsedMilliseconds;
             Create(ctx, copy, $"{dir}/{OutputAssetPaths.SafeFileName(mat.name)}.mat");
+            Debug.Log($"[RehomeDiag] {mat.name} on {copy.shader?.name}: instantiate {tInst}, shader {tShader - tInst}, textures {tTex - tShader}, create {diag.ElapsedMilliseconds - tTex} ms, pending {StateOf(ctx).Pending != null}");
             return copy;
         }
 
