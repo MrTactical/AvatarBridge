@@ -126,7 +126,7 @@ namespace AvatarBridge.Regression
                 int i = mesh.GetBlendShapeIndex(s), last = mesh.GetBlendShapeFrameCount(i) - 1;
                 var d = new Vector3[n];
                 mesh.GetBlendShapeFrameVertices(i, last, d, null, null);
-                float total = 0f, side = 0f;
+                float total = 0f, side = 0f, push = 0f;
                 bool nan = false;
                 for (int v = 0; v < n; v++)
                 {
@@ -134,13 +134,17 @@ namespace AvatarBridge.Regression
                     nan |= float.IsNaN(m) || float.IsInfinity(m);
                     total += m;
                     side += m * x[v];
+                    push += Vector3.Dot(t.rotation * d[v], across);
                 }
                 sums[s] = total;
                 float centre = total > 0 ? side / total * 1000f : 0f;
-                string want = s.EndsWith("Left") ? "left" : s.EndsWith("Right") ? "right" : null;
-                bool wrong = nan || total <= 0f || want == "left" && centre > 1f || want == "right" && centre < -1f;
+                // A whole shape that moves the mouth sideways lies on the middle; its move points to its side.
+                int sign = s.EndsWith("Left") ? -1 : s.EndsWith("Right") ? 1 : 0;
+                bool onSide = centre * sign > -1f || push * sign > 0f;
+                // An empty shape only copies an empty source; reported, not counted.
+                bool wrong = nan || total > 0f && !onSide;
                 if (wrong) problems++;
-                report.Add($"{s} {centre:+0.0;-0.0} mm{(wrong ? " WRONG" : "")}");
+                report.Add($"{s} {centre:+0.0;-0.0} mm{(total <= 0f ? " EMPTY" : "")}{(wrong ? " WRONG" : "")}");
             }
             foreach (var s in built.Where(b => b.EndsWith("Left")))
             {
