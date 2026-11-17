@@ -705,10 +705,11 @@ namespace AvatarBridge
                 });
             }
 
+            // Dirty only: the conversion's later saves write it, and on a controller of a gigabyte
+            // one save more cost 19 s. The filler carries no GUID, so the audit reads the same.
             if (filled > 0)
             {
                 EditorUtility.SetDirty(master);
-                AssetDatabase.SaveAssets();
             }
 
             if (emptied > 0)

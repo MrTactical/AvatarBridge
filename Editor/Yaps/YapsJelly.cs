@@ -2225,6 +2225,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #pragma fragment frag
             #pragma target 4.5
             // A blit into the state, never an eye: the stereo copies tripled the upload's compile.
+            // Unity adds its own stereo variants past this; YapsStereoStrip drops those.
             #pragma skip_variants UNITY_SINGLE_PASS_STEREO STEREO_INSTANCING_ON STEREO_MULTIVIEW_ON STEREO_CUBEMAP_RENDER_ON
             // shader_feature: an upload builds only the variants its passes use. multi_compile built
             // all eight, each at the compiler's time limit.

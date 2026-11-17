@@ -864,6 +864,8 @@ namespace AvatarBridge
                 OutputAssetPaths.EnsureFolder(dir);
             }
             var placed = new List<string>();
+            var stale = new List<string>();
+            var pending = new List<(AnimationClip copy, string path)>();
             for (int i = 0; i < picks.Count; i++)
             {
                 var (src, label) = picks[i];
@@ -887,7 +889,7 @@ namespace AvatarBridge
                     label += " Pose";
                 }
                 copy.name = label;
-                AssetDatabase.CreateAsset(copy, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(label)}.anim"));
+                pending.Add((copy, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(label)}.anim", stale)));
                 // The emote states leave after one play. A pose or a loop is held until the
                 // player moves, which ends any emote.
                 bool hold = src.isLooping || src.length <= 0.1f;
@@ -900,6 +902,17 @@ namespace AvatarBridge
                 }
                 GogoEmotes.Add(new KeyValuePair<AnimationClip, AnimationClip>(slot, copy));
                 placed.Add($"Emote{i + 1} \"{label}\"" + (hold ? " (held until you move)" : ""));
+            }
+            // Written in one batch: a delete and a create each refreshed the database, per pose.
+            if (stale.Count > 0) AssetDatabase.DeleteAssets(stale.ToArray(), new List<string>());
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                foreach (var (copy, path) in pending) AssetDatabase.CreateAsset(copy, path);
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
             }
             if (placed.Count == 0)
             {
