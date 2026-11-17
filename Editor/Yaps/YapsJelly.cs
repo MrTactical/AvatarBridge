@@ -3461,13 +3461,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Strained half way at a load a tenth of its length, wholly well past it.
                 if (x == 86) return float4(load / (load + 0.1 * zc * scale), load, 0, _Time.y);
-                // Carried, a hand moves the whole any way but out of the body: pushed out as well, a hand
-                // held deep leaned it on out along the arm, the part 1.16 times its depth.
-                [branch] if (_MassCarried > 0)
-                {
-                    float3 outward = normalize(m._m02_m12_m22);
-                    pushed -= outward * max(dot(pushed, outward), 0);
-                }
                 // A twitch kicks it as a hand would, never loading it.
                 pushed += Twitch();
                 spring *= 1 + taut;
@@ -3494,8 +3487,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float len0 = zc * scale;
                 float3 off = next - root;
                 float len = max(length(off), 1e-6);
-                // Carried, never longer than at rest: the cloth's bones decide its length.
-                next = root + off * (clamp(len, 0.9 * len0, (_MassCarried > 0 ? 1 : 1.1) * len0) / len);
+                next = root + off * (clamp(len, 0.9 * len0, 1.1 * len0) / len);
                 float3 swung = next - rest;
                 float most = _Limit * len0;
                 if (dot(swung, swung) > most * most) next = rest + swung * (most / length(swung));
