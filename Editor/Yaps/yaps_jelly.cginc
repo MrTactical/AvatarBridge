@@ -202,8 +202,12 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     float4 place = YapsJellyLoad(slot, int3(29, side, 0));
     // Far, where the parser switches the steps off, it keeps its rest shape; resting, switched off
     // too, the state as it lies, any dent in it included, however long ago it was stepped.
-    float2 off = YapsJellyLoad(slot, int3(18, side, 0)).xy;
+    float3 off = YapsJellyLoad(slot, int3(18, side, 0)).xyz;
     if (!(place.w > 0.5) || off.x > 0.5 || !(off.y > 0.5 || abs(_Time.y - YapsJellyTexel(slot, 0, base).w) < 0.25)) return 0;
+    // Held on its bones untouched (the step's Ease at 1): the skin is the bones' own, exactly. Read off
+    // the lattice, a step that took two passes left it a frame behind, 56 mm at 25 fps and 1.4 m/s.
+    // The hands, limbs and slaps below still dent it.
+    bool held = off.z >= 1 && off.z < 1.5;
     float3 ax = YapsJellyLoad(slot, int3(26, side, 0)).xyz;
     float3 ay = YapsJellyLoad(slot, int3(27, side, 0)).xyz;
     float3 az = YapsJellyLoad(slot, int3(28, side, 0)).xyz;
@@ -274,6 +278,7 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     // Never more than twice the tissue's depth: a lattice thrown off is drawn held in, not stretched across the room.
     float most = 2 * (n.z - 1) * spacing * length(ax);
     move *= min(1, most / max(length(move), 1e-9));
+    if (held) { move = 0; bend = 0; }
     [branch] if (_YAPS_JellySlap.x > 0 && _YAPS_JellySlap.z > 0) move += YapsJellySlap(slot, side, world, nw, bend);
     // The hands in reach push the skin itself on too, the palm and any finger out: the particles sit
     // a few centimetres apart, so a finger between them would sink into the skin. The way the hand
