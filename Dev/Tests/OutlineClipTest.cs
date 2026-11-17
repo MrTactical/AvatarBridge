@@ -47,7 +47,7 @@ namespace AvatarBridge.Regression
                     // Older locks write the width bare, Poiyomi Pro as float(0).
                     + Pass("vertBare", "clip(OutlineMask * 0.0 - 0.001);")
                     + Pass("vertFloat", "clip(OutlineMask * float(0) - 0.001);")
-                    + Pass("vertBareWide", "clip(OutlineMask * 0.05 - 0.001);") + "\n    }\n}\n");
+                    + Pass("vertSlim", "clip(OutlineMask * 0.05 - 0.001);") + "\n    }\n}\n");
                 AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceSynchronousImport);
                 var material = new Material(AssetDatabase.LoadAssetAtPath<Shader>(path));
                 var result = YapsShaderPatcher.Patch(material, null, out string refusal, out _);
@@ -60,7 +60,7 @@ namespace AvatarBridge.Regression
                 Check(!text.Contains("#define YAPS_ENTRY_vertZero"), "a zero-width outline is left alone");
                 Check(!text.Contains("#define YAPS_ENTRY_vertBare"), "a bare zero width is left alone");
                 Check(!text.Contains("#define YAPS_ENTRY_vertFloat"), "a float(0) width is left alone");
-                Check(text.Contains("#define YAPS_ENTRY_vertBareWide"), "a bare width bends");
+                Check(text.Contains("#define YAPS_ENTRY_vertSlim"), "a bare width bends");
                 if (result != null) Check(!ShaderUtil.ShaderHasError(result), "the patched shader has no errors");
                 Object.DestroyImmediate(material);
             }
