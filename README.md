@@ -1625,10 +1625,12 @@ running or flying never stretches it. A hand coming within reach, the wearer's o
 a pair swung into each other or a probe pressed lets it go at once, and it dents, grips and rings as
 before; let go, it fills back and settles again. A part no physics swing moves with the body, as on
 the source. A hand moves a part only through its physics: the cloth and Dynamic Bones keep their
-collision size and colliders, so a hand pushes the bones as it does on the source, and the tissue
+collision size, so another player's hand pushes the bones as it does on the source, and the tissue
 only dents the skin around it, never moving or stretching the part as a whole, however deep it is
-held. Parts built by an earlier version had their cloth shrunk and colliders taken out; converting again puts
-them back. With MagicaCloth installed and **Other Colliders**
+held. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth collides with
+press the skin instead of the bones, so an arm resting in or through a part does not throw the cloth
+about. Parts built by an earlier version had their cloth's collision size cut to a millimetre;
+converting again puts it back. With MagicaCloth installed and **Other Colliders**
 ticked under **Live tissue**, a net of probes spread over the skin also feels other players'
 MagicaCloth colliders, any shape, each pressing at about its own size, a fingertip's to a palm's.
 It is off by default: the net costs every viewer about 0.1 s more each time the avatar loads, and

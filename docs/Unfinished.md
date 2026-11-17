@@ -3874,8 +3874,10 @@ Found (a five-agent read plus 10 harness runs, synthesis in the session scratch)
   dent kept. Now `CarriedGive` 0 and no squeeze on a carried part; Give, Swing and Spring back leave the feel UI.
 - **The cloth was never recognised**: `PairCloth` took only roots on a sided bone, so a cloth on `Boob_Root` left the
   tissue riding the bone above the swung one. A root naming the part above the sided chains counts now.
-- **The cloth no longer drops its colliders or shrinks its balls**: hands move the bones through the cloth, as on
-  the source; the tissue dents. Old builds' marks still put them back on a rebuild.
+- **The cloth no longer shrinks its balls**: other players' hands (added to the cloth at runtime) move the bones
+  through it, as on the source; the tissue dents. The avatar's own colliders still leave the cloth's lists and only
+  dent: left in, the own-forearm run threw the cloth about (furthest 577 mm, snap guard every frame). Old builds'
+  marks still put the size back on a rebuild.
 - **Nothing bounded the draw**: the clamp was twice the part's depth. The skin is now drawn within its depth of
   where the bones hold it, a quarter of that outward.
 - **The tester's depth map was all 0xCD** in 8 of 8 of their outputs (rewritten about 4 minutes after converting; not

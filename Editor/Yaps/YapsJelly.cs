@@ -819,11 +819,14 @@ namespace AvatarBridge
                 if (ownRadii[c] < was) thinned.Add($"{ownBones[s0].name} {1000f * was:0} to {1000f * ownRadii[c]:0} mm");
             }
             // The avatar's own MagicaCloth and DynamicBone colliders that its breasts' cloth collides
-            // with press the breasts as its limbs do, and stay in that cloth's lists: the cloth moves
-            // the bones and the tissue only dents the skin. Each is handed as two ends, a child at
+            // with press the breasts as its limbs do, and come out of that cloth's lists, so they dent
+            // the skin and no longer move the bones: left in, a forearm through a breast threw the
+            // cloth about and the tissue with it, 577 mm. Other players' hands, which the client adds
+            // to the cloth at runtime, still move the bones. Each is handed as two ends, a child at
             // either end of its capsule, so it rides its bone as the limbs do. Not one within a cell
             // of the breasts' skin as built: it moves the lattice round that skin at rest and would
-            // dent it for good (a sphere in the cleavage left the tissue 41 mm off its rest).
+            // dent it for good (a sphere in the cleavage left the tissue 41 mm off its rest), so it
+            // stays in the cloth, moving the bones as before.
             var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
             // The squash's Twitch: a transform to kick the mass, which takes the last
             // collider's anchors.
@@ -837,6 +840,7 @@ namespace AvatarBridge
                 // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
                 else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
+            var unlisted = PairCollide(root, part, pressing.Select(p => p.c), with: false);
             Lap("Collide");
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
@@ -849,11 +853,21 @@ namespace AvatarBridge
                     t.SetParent(pressing[i].c.transform, false);
                     t.position = place;
                     colEnds.Add(t);
+                    if (end != "a") continue;
+                    // Which cloth it came out of, so taking the jelly off puts it back there alone.
+                    foreach (var b in unlisted.Where(u => u.c == pressing[i].c).Select(u => u.b))
+                    {
+                        string type = b.GetType().Name;
+                        int nth = Array.IndexOf(b.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == type).ToArray(), b);
+                        var mark = new GameObject($"{ListedMark}{type} {nth} {AnimationUtility.CalculateTransformPath(b.transform, root)}");
+                        Undo.RegisterCreatedObjectUndo(mark, "Put the breasts on the jelly");
+                        mark.transform.SetParent(t, false);
+                    }
                 }
                 colRadii[i] = pressing[i].r;
             }
-            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders denting it while the cloth moves the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
-                              (touching.Count > 0 ? $", {touching.Count} touching the breasts at rest left to the cloth alone ({string.Join(", ", touching)})" : "");
+            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
+                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "");
             var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
             var handed = anchors.transforms.ToList();
