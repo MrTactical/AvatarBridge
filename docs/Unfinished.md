@@ -3812,6 +3812,9 @@ Speed, held back from 5.0.0 (Joe, 2026-10-21).
 and notes updated). Cold first upload A/B on the plush, Library/ShaderCache cleared before each bundle build, one run
 each: 5.0.0 140.4 s, these changes 124.0 s; YAPS and JellyStep compiles 122.3 to 106.2 s, every other shader 9.2 and
 9.3 s (the control); bundle 27.62 to 27.57 MB. Two read-only reviews of the folded commits found nothing.
+**The idle pass folded too** (Joe 2026-11-17: "shove it all in 5.0.0"; main 03962bd8): vertex light per pixel,
+the soft bake's presses side by side, the VRCFury rehome's material batch, the texture list's ties. Test build rc19
+(same contents) went to a tester with the in-game checks; nothing of it has been run in game yet.
 Four read-only reviews (first view, per-frame GPU, conversion, upload). Per-frame GPU had little left after
 item 36. Done on dev, each measured:
 - **Outline skip missed two lock forms** (e29f2013, test 84547ce8): older Poiyomi locks write a zero width bare,
