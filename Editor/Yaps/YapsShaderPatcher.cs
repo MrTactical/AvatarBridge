@@ -1135,8 +1135,10 @@ namespace AvatarBridge
         }
 
         // The lock writes the width in as a literal: clip(mask * (0.0 /*_LineWidth*/) - 0.001).
+        // Older locks write it bare, clip(OutlineMask * 0.0 - 0.001), and Poiyomi Pro as float(0).
         static readonly Regex ZeroWidthOutlineClip = new Regex(
-            @"clip\s*\([^;]*\(\s*0(?:\.0*)?\s*/\*\s*_LineWidth\s*\*/\s*\)\s*-\s*0?\.0*1\s*\)");
+            @"clip\s*\([^;]*\(\s*0(?:\.0*)?\s*/\*\s*_LineWidth\s*\*/\s*\)\s*-\s*0?\.0*1\s*\)"
+            + @"|clip\s*\(\s*OutlineMask\s*\*\s*(?:0(?:\.0*)?|float\s*\(\s*0(?:\.0*)?\s*\))\s*-\s*0?\.0*1\s*\)");
 
         static bool OutlineAlwaysClipped(string block, List<ShaderSpiPatcher.SourceFile> reached)
             => ZeroWidthOutlineClip.IsMatch(block)
