@@ -27,8 +27,10 @@
 // Read for ONE purpose: telling a wearer's own socket lights from
 // everybody else's, so a plug does not bend into the hip it grows from.
 // Never as a target. See the note before the resolver.
+cbuffer YapsHips {
 float4 _CVR_PlayerHipPositions[255];
 float4 CVRGlobalParams1;
+};
 
 // --- the screen atlas ------------------------------------------------
 //
