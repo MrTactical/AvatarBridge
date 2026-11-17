@@ -295,6 +295,8 @@ namespace AvatarBridge
                 card.Body.Add(preset);
                 for (int q = 0; q < YapsJelly.FeelKnobs.Length; q++)
                 {
+                    // The cloth moves the whole, so these three only tune a mass no avatar part has.
+                    if (YapsJelly.FeelKnobs[q] == "give" || YapsJelly.FeelKnobs[q] == "swing" || YapsJelly.FeelKnobs[q] == "springBack") continue;
                     int knob = q;
                     var slider = BridgeElements.SliderField(FeelLabels[q], FeelTips[q], 0.25f, 3f, YapsJelly.KnobsOf(settings.feels[i])[q], v =>
                     {

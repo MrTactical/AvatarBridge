@@ -54,15 +54,11 @@ namespace AvatarBridge
             public bool wire = true;
         }
 
-        // How the build tunes a part its bone carries, before the part's feel scales it. Carried on
-        // the cloth: the mass at 2.5 Hz, critically damped, a hand's press moving 0.525 of the whole,
-        // held within 0.3 of its length any way, up and down too: a squeezed part goes where nothing
-        // presses. 0.35 within 0.2 was tuned while a hand also shoved the cloth's bone; with the cloth
-        // kept out of the touch it stopped a squeeze short. At 0.6 within 0.35 a squeeze from both
-        // sides drove a pair together until their masses met, and the hands' push then took them
-        // up toward the chin; held to 0.15 up and down, it rose 54 mm at 0.3 across, a hand's push
-        // then turned by where the mass was (Lean). Leaned from its rest, it rises 16 mm and back.
-        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0.525f, CarriedLimit = 0.3f;
+        // How the build tunes a part its bone carries, before the part's feel scales it. A hand moves
+        // none of the whole: the cloth's colliders move the bones and the tissue only dents. At 0.525
+        // a hand held deep leaned the whole 61 mm and drew the part out 1.3 times its length, and
+        // on a part as small as the hand it read as a cone along the arm.
+        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0f, CarriedLimit = 0.3f;
         // How deep a hand presses before the skin holds it, metres, before Press depth scales it.
         // At 0.08 a squeeze from both sides stopped denting 4 cm short of hands 12 cm in.
         internal const float Deepest = 0.12f;
@@ -145,7 +141,8 @@ namespace AvatarBridge
             // bulges it the other ways and it comes back when let go.
             mat.SetFloat("_Solid", 0.7f * (s != null ? s.volumeKept : 1f));
             // Squeeze: other players' palms flatten the whole at constant volume (Squeezed in the step).
-            mat.SetFloat("_Squeeze", 0.6f);
+            // Not a part the bones carry: it reshaped the whole along the hand, the dent's job.
+            mat.SetFloat("_Squeeze", mat.GetFloat("_MassCarried") > 0f ? 0f : 0.6f);
             // Flattened about its own middle, a squeezed part's inner side pulls off the cleavage;
             // the wholes close in to 0.55 of their distance at rest (was 0.85), so a pair squeezed
             // from the outsides presses into each other instead of parting top and bottom.
@@ -350,34 +347,32 @@ namespace AvatarBridge
                 }
             var pixels = cells.Select(d => new Color(float.IsPositiveInfinity(d) ? 0f : d, 0f, 0f, 0f)).ToArray();
             // Kept in place when it exists: remade at the same path, the materials would read it Missing.
+            // Filled as a new texture and copied over it, as the squash's textures are, and saved at
+            // once: rewritten where it lay, a tester's map reached disk as uninitialised memory.
             string path = folder + "/Jelly_Depth.asset";
+            var fresh = new Texture2D(G, 12 * G, TextureFormat.RFloat, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            fresh.SetPixels(pixels);
+            fresh.Apply(false);
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            // Flagged as the CCK's upload checks ask: left Read/Write enabled, it failed validation
-            // and blocked the upload. Readable again while it is rewritten. Never streamed, unlike
-            // the squash's: the step's materials are on no mesh, where the CCK warns of streaming.
-            void Flags(bool readable)
-            {
-                var flags = new SerializedObject(tex);
-                flags.FindProperty("m_IsReadable").boolValue = readable;
-                flags.FindProperty("m_StreamingMipmaps").boolValue = false;
-                flags.ApplyModifiedPropertiesWithoutUndo();
-            }
             if (tex == null)
             {
-                tex = new Texture2D(G, 12 * G, TextureFormat.RFloat, false, true);
-                AssetDatabase.CreateAsset(tex, path);
+                AssetDatabase.CreateAsset(fresh, path);
+                tex = fresh;
             }
             else
             {
-                Flags(true);
-                tex.Reinitialize(G, 12 * G, TextureFormat.RFloat, false);
+                EditorUtility.CopySerialized(fresh, tex);
+                Object.DestroyImmediate(fresh);
             }
-            tex.filterMode = FilterMode.Point;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.SetPixels(pixels);
-            tex.Apply(false);
-            Flags(false);
+            // Flagged as the CCK's upload checks ask: left Read/Write enabled, it failed validation
+            // and blocked the upload. Never streamed, unlike the squash's: the step's materials are on
+            // no mesh, where the CCK warns of streaming.
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = false;
+            flags.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(tex);
+            AssetDatabase.SaveAssetIfDirty(tex);
             return tex;
         }
 
@@ -824,12 +819,11 @@ namespace AvatarBridge
                 if (ownRadii[c] < was) thinned.Add($"{ownBones[s0].name} {1000f * was:0} to {1000f * ownRadii[c]:0} mm");
             }
             // The avatar's own MagicaCloth and DynamicBone colliders that its breasts' cloth collides
-            // with press the breasts as its limbs do, and come out of that cloth's lists, so they dent
-            // the skin and no longer move the bones: they deform the mesh. Each
-            // is handed as two ends, a child at either end of its capsule, so it rides its bone as the
-            // limbs do. Not one within a cell of the breasts' skin as built: it moves the lattice
-            // round that skin at rest and would dent it for good (a sphere in the cleavage left the
-            // tissue 41 mm off its rest), so it stays in the cloth, moving the bones as before.
+            // with press the breasts as its limbs do, and stay in that cloth's lists: the cloth moves
+            // the bones and the tissue only dents the skin. Each is handed as two ends, a child at
+            // either end of its capsule, so it rides its bone as the limbs do. Not one within a cell
+            // of the breasts' skin as built: it moves the lattice round that skin at rest and would
+            // dent it for good (a sphere in the cleavage left the tissue 41 mm off its rest).
             var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
             // The squash's Twitch: a transform to kick the mass, which takes the last
             // collider's anchors.
@@ -843,13 +837,6 @@ namespace AvatarBridge
                 // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
                 else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
-            var unlisted = PairCollide(root, part, pressing.Select(p => p.c), with: false);
-            // And every other collider, other players' among them: the client adds theirs to every
-            // cloth at runtime, past any list, and the cloth's balls, the source's size, moved the
-            // bones under each hand the tissue was denting. One touch answered twice: a breast shoved
-            // down and held, a squeeze shaking it. Shrunk, the tissue takes every touch and the cloth
-            // only swings.
-            var shrunk = PairShrink(root, part, made.transform);
             Lap("Collide");
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
@@ -862,22 +849,11 @@ namespace AvatarBridge
                     t.SetParent(pressing[i].c.transform, false);
                     t.position = place;
                     colEnds.Add(t);
-                    if (end != "a") continue;
-                    // Which cloth it came out of, so taking the jelly off puts it back there alone.
-                    foreach (var b in unlisted.Where(u => u.c == pressing[i].c).Select(u => u.b))
-                    {
-                        string type = b.GetType().Name;
-                        int nth = Array.IndexOf(b.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == type).ToArray(), b);
-                        var mark = new GameObject($"{ListedMark}{type} {nth} {AnimationUtility.CalculateTransformPath(b.transform, root)}");
-                        Undo.RegisterCreatedObjectUndo(mark, "Put the breasts on the jelly");
-                        mark.transform.SetParent(t, false);
-                    }
                 }
                 colRadii[i] = pressing[i].r;
             }
-            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
-                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "") +
-                              (shrunk.Count > 0 ? $", the cloth's balls shrunk to {1000f * Shrunk:0} mm so the tissue takes every touch ({string.Join(", ", shrunk)})" : "");
+            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders denting it while the cloth moves the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
+                              (touching.Count > 0 ? $", {touching.Count} touching the breasts at rest left to the cloth alone ({string.Join(", ", touching)})" : "");
             var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
             var handed = anchors.transforms.ToList();
@@ -982,7 +958,7 @@ namespace AvatarBridge
             string each = sides == 2 ? " each" : "", litres = string.Join(" and ", volume.Select(x => $"{1000f * x:0.0}")) + " litres";
             return $"On {root.name}: {names[pair]} on {(sides == 2 ? "two lattices" : "a lattice")} of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles{each}, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
-                   (cloth ? $"{litres}, riding {string.Join(" and ", carriers.Select(x => x ?? "nothing"))}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand moving the whole by {give:0.00} of its press; "
+                   (cloth ? $"{litres}, riding {string.Join(" and ", carriers.Select(x => x ?? "nothing"))}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand denting it and never moving the whole; "
                        : $"{litres}, {kilos:0.0} kg{each}, so it swings at {hz:0.00} Hz and a hand moves the whole by {give:0.00} of its push; ") +
                    probed + $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : clothed ? "its cloth left on" : "no cloth on it")
@@ -1393,18 +1369,21 @@ namespace AvatarBridge
         }
 
         // The cloth and dynamic bones whose roots are on the pair's bone chains, found as the squash
-        // finds the chains, by name and side.
+        // finds the chains, by name and side, or on a bone naming the part with no side above them,
+        // as one cloth rooted on a Boob_Root swings both: missed, the tissue rode the bone above the
+        // swung one and its colliders kept their full size.
         internal static List<Behaviour> PairCloth(Transform root, Regex part)
         {
             bool Sided(Transform t) => t != null && part.IsMatch(t.name) && SideOf.IsMatch(t.name);
-            var chains = new HashSet<Transform>(root.GetComponentsInChildren<Transform>(true)
-                .Where(t => Sided(t) && !Sided(t.parent)).SelectMany(t => t.GetComponentsInChildren<Transform>(true)));
+            var tops = root.GetComponentsInChildren<Transform>(true).Where(t => Sided(t) && !Sided(t.parent)).ToList();
+            var chains = new HashSet<Transform>(tops.SelectMany(t => t.GetComponentsInChildren<Transform>(true)));
+            bool Above(Transform t) => part.IsMatch(t.name) && tops.Any(c => c != t && c.IsChildOf(t));
             var found = new List<Behaviour>();
             foreach (var b in root.GetComponentsInChildren<Behaviour>(true))
             {
                 string type = b != null ? b.GetType().Name : "";
                 if (type != "MagicaCloth" && type != "DynamicBone") continue;
-                if (RootsOf(b).Any(t => t != null && chains.Contains(t))) found.Add(b);
+                if (RootsOf(b).Any(t => t != null && (chains.Contains(t) || Above(t)))) found.Add(b);
             }
             return found;
         }
@@ -1477,34 +1456,8 @@ namespace AvatarBridge
             return at != null ? at.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == bits[0]).ElementAtOrDefault(nth) : null;
         }
 
-        // A jellied part's cloth balls, MagicaCloth's least.
-        internal const float Shrunk = 0.001f;
         const string RadiusMark = "Jelly radius ";
         static string RadiusOf(string type) => type == "MagicaCloth" ? "serializeData.radius.value" : "m_Radius";
-
-        // The pair's cloth and dynamic bones' balls cut to Shrunk, each old size kept in a mark under
-        // the jelly, "Jelly radius <size> <type> <nth of its type there> <path>"; what was cut. Not one
-        // rooted inside another's chain: a piercing's cloth hanging off the part still feels a hand.
-        static List<string> PairShrink(Transform root, Regex part, Transform under)
-        {
-            var said = new List<string>();
-            var cloths = PairCloth(root, part).Select(b => (b, roots: RootsOf(b).Where(t => t != null).ToList())).ToList();
-            foreach (var (b, roots) in cloths.Where(c => !c.roots.Any(t => cloths.Any(o => o.b != c.b && o.roots.Any(r => r != t && t.IsChildOf(r))))).ToList())
-            {
-                string type = b.GetType().Name;
-                var so = new SerializedObject(b);
-                var r = so.FindProperty(RadiusOf(type));
-                if (r == null || r.floatValue <= Shrunk) continue;
-                int nth = Array.IndexOf(b.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == type).ToArray(), b);
-                var mark = new GameObject($"{RadiusMark}{r.floatValue.ToString("R", CultureInfo.InvariantCulture)} {type} {nth} {AnimationUtility.CalculateTransformPath(b.transform, root)}");
-                Undo.RegisterCreatedObjectUndo(mark, "Put the breasts on the jelly");
-                mark.transform.SetParent(under, false);
-                said.Add($"{b.name} from {1000f * r.floatValue:0} mm");
-                r.floatValue = Shrunk;
-                so.ApplyModifiedProperties();
-            }
-            return said;
-        }
 
         // A mark's ball back to the size it keeps.
         static void Unshrink(Transform root, string mark)
@@ -2041,6 +1994,11 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
                 if (m != null && mesh != null && m.HasProperty("_JellySkinStride")
                     && (m.GetFloat("_JellySkinStride") == 0f || OnDisk(m, @"^\s*- _JellySkinStride: 0\s*$")))
                     return $"{m.name} is back at its defaults ({AssetDatabase.GetAssetPath(m)})";
+            // One byte over and over is no depth map: a tester's was all 0xCD, and no hand pressed.
+            foreach (var m in made.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(q => q.materials ?? new Material[0]).Distinct())
+                if (m != null && m.HasProperty("_JellyDepth") && m.GetTexture("_JellyDepth") is Texture2D depth
+                    && OnDisk(depth, @"^\s*_typelessdata: ([0-9a-f]{2})\1*\s*$"))
+                    return $"its depth map is blank ({AssetDatabase.GetAssetPath(depth)})";
             return null;
         }
 
@@ -2662,7 +2620,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 int row = (int) ((Region * 6 + 2 * k + (face.x + face.y + face.z < 0 ? 1 : 0)) * DEPTH_GRID) + g0.y;
                 float a = _JellyDepth.Load(int3(g0.x, row, 0)), b = _JellyDepth.Load(int3(g0.x + 1, row, 0));
                 float c = _JellyDepth.Load(int3(g0.x, row + 1, 0)), d = _JellyDepth.Load(int3(g0.x + 1, row + 1, 0));
-                return lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
+                // A map that reads as no depth inside the box is taken as no map: one saved as
+                // garbage on a tester's machine read -4e8, and every hand was held 4e8 m away.
+                float skin = lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
+                return skin >= 0 && skin < 2 * dot(abs(face), half) ? skin : 0;
             }
 
             // A hand past _Deepest into the skin, or a third of the tissue, is held there, as skin

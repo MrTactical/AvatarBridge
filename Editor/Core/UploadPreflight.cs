@@ -54,6 +54,12 @@ namespace AvatarBridge
             Unsaved(report, root);
 #if AVATARBRIDGE_YAPS
             YapsNativeBuilder.ReportLostShaders(report, root);
+            // Read back now as well as at the build: a tester's depth map was written over as garbage
+            // minutes after a clean conversion.
+            foreach (var worn in root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
+                if (YapsJelly.Unsaved(worn.gameObject) is string lost)
+                    report.Warning(Category, $"The live tissue on {worn.name.Substring(YapsJelly.Worn.Length + 1)} is damaged on disk",
+                        $"Read back, {lost}, so it would not work in game. Convert again, and send Diagnostics.md and the avatar's Jelly folder with a bug report if it comes back.");
 #endif
 
             if (report.Entries.Count == before)

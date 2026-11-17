@@ -275,9 +275,9 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
     gy -= ay * spacing;
     gz -= az * spacing;
     bend = per * (ax * dot(gx, nw) + ay * dot(gy, nw) + az * dot(gz, nw));
-    // Never more than twice the tissue's depth: a lattice thrown off is drawn held in, not stretched across the room.
-    float most = 2 * (n.z - 1) * spacing * length(ax);
-    move *= min(1, most / max(length(move), 1e-9));
+    // Never more than the tissue's depth: a lattice thrown off is drawn held in, not stretched across the room.
+    float depth = (n.z - 1) * spacing * length(ax);
+    move *= min(1, depth / max(length(move), 1e-9));
     if (held) { move = 0; bend = 0; }
     [branch] if (_YAPS_JellySlap.x > 0 && _YAPS_JellySlap.z > 0) move += YapsJellySlap(slot, side, world, nw, bend);
     // The hands in reach push the skin itself on too, the palm and any finger out: the particles sit
@@ -399,6 +399,12 @@ float3 YapsJellyRegion(uint slot, float4 lattice, int m, uint r, float3 world, f
         float x = dot(world + move, plane.xyz) - plane.w;
         if (x > 0) move -= plane.xyz * ((x - give.x * (1 - exp(-x / give.x))) * give.y);
     }
+    // Whatever moved it, the skin drawn within the part's depth of where its bones hold it, and out
+    // from the body a quarter of that at most: a hand held deep drew a breast out into a cone along
+    // the arm twice its length.
+    float3 outward = normalize(az);
+    move -= outward * max(dot(move, outward) - 0.25 * depth, 0);
+    move *= min(1, depth / max(length(move), 1e-9));
     bend *= keep;
     return move * keep;
 }

@@ -3858,8 +3858,32 @@ Read against their output:
 - **Native builds the slots the CCK leaves empty** (cd36e8e3): sideless shapes split at the face's midline,
   ARKit names blended after VRCFaceTracking's weights, funnel and pucker halved, a two-step tongue. Eye look: an
   unset VRChat pose gets 25 degrees instead of pinning the eye.
-- **Open:** the shapes built are untested on the face-tracked corpus avatars (20 get the native component);
-  none of it is tested in game. Their fixer's blendshape eye look (EyeLook shapes, no eye bones) is not taken.
+- **Built shapes checked on 22 corpus scenes** (FaceTrackingShapesProbe, b6b7e97d): every left or right half
+  moves on its own side and the halves match; slots mapped went up on 21 of 22 (27 to 58 on five, 10 to 70 from
+  the CCK alone on one). **Open:** none of it is tested in game. Their fixer's blendshape eye look (EyeLook
+  shapes, no eye bones) is not taken.
+
+### 51. Live tissue drawn out into a cone along a hand held deep in it. A tester (fluffybat), 2026-11-17, rc21, IN PROGRESS on dev
+"insane stretching when the hand in breast", "when I nudge it slowly, almost stretching past breaking": a breast drawn
+2-3 times its length along the arm while a hand is pushed in deep and held. Their avatar: two 0.1 litre breasts on
+10x11x9 lattices, a hand radius as big as the part, one MagicaCloth rooted on an unsided Boob_Root. Joe's rule for it:
+the cloth's colliders move the bones, the tissue only dents the mesh; a hand never moves the whole.
+Found (a five-agent read plus 10 harness runs, synthesis in the session scratch):
+- **The hand moved and reshaped the whole.** `_Give` 0.525 leaned the mass 61 mm and `_Squeeze` flattened it along
+  the hand: lattice 1.30x its depth outward, steady through a 2.5 s hold (str-arm45); both 0: 0.32 spacings, the
+  dent kept. Now `CarriedGive` 0 and no squeeze on a carried part; Give, Swing and Spring back leave the feel UI.
+- **The cloth was never recognised**: `PairCloth` took only roots on a sided bone, so a cloth on `Boob_Root` left the
+  tissue riding the bone above the swung one. A root naming the part above the sided chains counts now.
+- **The cloth no longer drops its colliders or shrinks its balls**: hands move the bones through the cloth, as on
+  the source; the tissue dents. Old builds' marks still put them back on a rebuild.
+- **Nothing bounded the draw**: the clamp was twice the part's depth. The skin is now drawn within its depth of
+  where the bones hold it, a quarter of that outward.
+- **The tester's depth map was all 0xCD** in 8 of 8 of their outputs (rewritten about 4 minutes after converting; not
+  reproduced here by any save, unload or reload, DepthSaveProbe). The step reads a value outside the box as no
+  map; the map is written as a new texture copied over the old and saved at once, as the squash's are; the upload
+  check reads it back.
+- **Separate, not fixed:** a hand arriving during a 4 m/s glide jumps the tissue 77.7 mm in a frame (the 5.5x of
+  `rc21-handrun`); the wearer's own forearm deep inside flips live and held at one depth.
 
 ## 5.0.1
 
