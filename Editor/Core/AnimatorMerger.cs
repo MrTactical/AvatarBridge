@@ -6339,16 +6339,19 @@ namespace AvatarBridge
             // Every layer, not just the merged VRChat ones: any layer the pipeline has created by
             // this point can reference a Fury temp motion, and a reference this walk doesn't see
             // is a reference the temp wipe kills.
-            foreach (var layer in master.layers)
+            SceneAssetRehomer.Batched(ctx, () =>
             {
-                WalkMachines(layer.stateMachine, machine =>
+                foreach (var layer in master.layers)
                 {
-                    foreach (var child in machine.states)
+                    WalkMachines(layer.stateMachine, machine =>
                     {
-                        child.state.motion = RehomeMotion(child.state.motion);
-                    }
-                });
-            }
+                        foreach (var child in machine.states)
+                        {
+                            child.state.motion = RehomeMotion(child.state.motion);
+                        }
+                    });
+                }
+            });
 
             Debug.Log($"[AvatarBridge] Rehome steps (ms): walk {walkClock.ElapsedMilliseconds}, clip copies {copyClock.ElapsedMilliseconds} " +
                       $"({clipMap.Count}), reference scans {refClock.ElapsedMilliseconds} ({scans} clips), " +
