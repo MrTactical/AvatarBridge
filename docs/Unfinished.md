@@ -3808,6 +3808,10 @@ arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
 ### 48. Optimisation pass. Joe, 2026-11-17: "full optimisation pass", then "yes" to items 1-6 and the cache measurement
+**Folded into 5.0.0** (Joe 2026-11-17: "throw all optimisations into 5.0.0"; main 4077a2e4, tag moved, draft packages
+and notes updated). Cold first upload A/B on the plush, Library/ShaderCache cleared before each bundle build, one run
+each: 5.0.0 140.4 s, these changes 124.0 s; YAPS and JellyStep compiles 122.3 to 106.2 s, every other shader 9.2 and
+9.3 s (the control); bundle 27.62 to 27.57 MB. Two read-only reviews of the folded commits found nothing.
 Four read-only reviews (first view, per-frame GPU, conversion, upload). Per-frame GPU had little left after
 item 36. Done on dev, each measured:
 - **Outline skip missed two lock forms** (e29f2013, test 84547ce8): older Poiyomi locks write a zero width bare,
