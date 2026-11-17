@@ -3452,7 +3452,10 @@ namespace AvatarBridge.Regression
             RenderTexture.active = prev;
             var bgc = (Color32) eye.backgroundColor;
             float bg = shot.GetPixels32().Count(c => Mathf.Abs(c.r - bgc.r) + Mathf.Abs(c.g - bgc.g) + Mathf.Abs(c.b - bgc.b) <= 3) / (float) (shot.width * shot.height);
-            if (frame == 25 || frame == st.frames - 1 || st.poisonAt >= 0 && (frame == st.poisonAt + 5 || frame == st.poisonAt + 60))
+            // -jellyStabFilm: every frame, for a film.
+            if (Environment.GetCommandLineArgs().Contains("-jellyStabFilm"))
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"film-{frame:0000}.png"), shot.EncodeToPNG());
+            else if (frame == 25 || frame == st.frames - 1 || st.poisonAt >= 0 && (frame == st.poisonAt + 5 || frame == st.poisonAt + 60))
                 System.IO.File.WriteAllBytes(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"stab-{frame}.png"), shot.EncodeToPNG());
             Object.DestroyImmediate(shot);
             if (frame == 25) st.bgBase = bg;
@@ -3828,6 +3831,8 @@ namespace AvatarBridge.Regression
             float wide = Vector3.Distance(breastRegions[0].position, breastRegions[1].position) + (breastN.x - 1) * breastSpacing;
             var middle = 0.5f * (breastRegions[0].position + breastRegions[1].position) + jelly.forward * (0.5f * (breastN.z - 1) * breastSpacing);
             look.transform.position = middle + jelly.forward * (2f * wide) + jelly.up * (0.3f * wide);
+            // -jellyStabSide: from the side, where a lead or a lag along the walk shows.
+            if (Environment.GetCommandLineArgs().Contains("-jellyStabSide")) look.transform.position = middle - jelly.right * (2.5f * wide) + jelly.up * (0.2f * wide);
             look.transform.LookAt(middle);
             eye = look.AddComponent<Camera>();
             eye.enabled = false;
@@ -3835,7 +3840,7 @@ namespace AvatarBridge.Regression
             eye.backgroundColor = new Color(0.2f, 0.2f, 0.24f);
             eye.nearClipPlane = 0.05f;
             eye.fieldOfView = 35f;
-            eye.targetTexture = new RenderTexture(480, 360, 24);
+            eye.targetTexture = Environment.GetCommandLineArgs().Contains("-jellyStabFilm") ? new RenderTexture(960, 720, 24) : new RenderTexture(480, 360, 24);
         }
 
         // Particle p of region r in a read state, packed a block of rows a region.
