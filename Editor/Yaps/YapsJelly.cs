@@ -3295,6 +3295,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 tip = _MainTex.Load(int3(30, side, 0)), unused;
                 bool swings = _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1;
                 float3 hung = Hung(Region);
+                // On the anchor they were stepped on: the particles and the mass are last frame's, and
+                // against this frame's the mass lagged a frame's move, which read as a stretch along
+                // it. Fed back through the homes, the tissue sat 53 mm ahead at a run.
+                float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
+                float4x4 on = o0.w > 0.5 ? float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1) : m;
                 float3 pc = 0, qc = 0, qq = 0, c0 = 0, c1 = 0, c2 = 0;
                 // Summed as each is loaded, not held, so the pass keeps few registers. Rolled, and
                 // divided by as many as it took: Shader Filtering cuts it short, to the back layers.
@@ -3302,8 +3307,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [loop] for (int i = 0; i < 64; i++)
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
-                    float3 q = Rest(l), p = Into(m, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
-                        + q - Into(m, HomeOn(l, m, tip, swings, hands, hung, unused));
+                    float3 q = Rest(l), p = Into(on, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
+                        + q - Into(on, HomeOn(l, on, tip, swings, hands, hung, unused));
                     pc += p;
                     qc += q;
                     qq += q * q;

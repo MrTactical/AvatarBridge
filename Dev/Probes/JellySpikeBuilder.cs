@@ -3399,6 +3399,24 @@ namespace AvatarBridge.Regression
                 WriteState(raw);
             }
             var s = alone ? raw.Concat(raw).ToArray() : raw;
+            // -jellyStabDump f,f: region 0's particles on the anchor they were stepped on, and its side
+            // row's anchor and mass, at those frames, one csv each.
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-jellyStabDump") is int da && da >= 0
+                && Environment.GetCommandLineArgs()[da + 1].Split(',').Select(int.Parse).Contains(frame))
+            {
+                var dn = breastN;
+                int dr = Side(dn) * Wide;
+                var on = new Matrix4x4((Vector3) s[dr + 26], (Vector3) s[dr + 27], (Vector3) s[dr + 28], s[dr + 29]);
+                var lines = new List<string> { "i,j,k,x,y,z" };
+                for (int p = 0; p < dn.x * dn.y * dn.z; p++)
+                {
+                    var l = on.inverse.MultiplyPoint3x4((Vector3) Particle(s, 0, p)) / breastSpacing;
+                    lines.Add(string.Join(",", p % dn.x, p / dn.x % dn.y, p / (dn.x * dn.y), l.x.ToString("0.0000", CultureInfo.InvariantCulture), l.y.ToString("0.0000", CultureInfo.InvariantCulture), l.z.ToString("0.0000", CultureInfo.InvariantCulture)));
+                }
+                foreach (int x in new[] { 29, 30, 31, 85 }) lines.Add($"# {x} {(Vector3) s[dr + x]:F4} {s[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) s[dr + x]) / breastSpacing:F3}");
+                lines.Add($"# region0 {breastRegions[0].name} parent {(breastRegions[0].parent ? breastRegions[0].parent.name : "-")} scale {breastRegions[0].lossyScale.x:F4}");
+                File.WriteAllLines(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"dump-{frame}.csv"), lines);
+            }
 
             float furthest = Furthest(s, breastRegions), L = (n.z - 1) * breastSpacing * breastRegions[0].lossyScale.x;
             int badCount = s.Count(v => float.IsNaN(v.x + v.y + v.z + v.w) || float.IsInfinity(v.x + v.y + v.z + v.w));
@@ -3782,6 +3800,18 @@ namespace AvatarBridge.Regression
             // the tissue moves.
             if (stab != null && Environment.GetCommandLineArgs().Contains("-jellyStabClothOff"))
                 foreach (var c in animator.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true)) c.enabled = false;
+            // -jellyStabSet name=v,name=x;y;z;w: values set on every step material before the run.
+            if (stab != null && Array.IndexOf(Environment.GetCommandLineArgs(), "-jellyStabSet") is int sa && sa >= 0)
+                foreach (var kv in Environment.GetCommandLineArgs()[sa + 1].Split(','))
+                {
+                    var parts = kv.Split('=');
+                    var v = parts[1].Split(';').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+                    foreach (var m in Object.FindObjectsOfType<CVRBlitter>().Select(bl => bl.blitMaterial).Where(m => m != null && m.HasProperty(parts[0])).Distinct())
+                    {
+                        if (v.Length == 1) m.SetFloat(parts[0], v[0]); else m.SetVector(parts[0], new Vector4(v[0], v[1], v[2], v[3]));
+                        Debug.Log($"[Jelly] stab set {m.name} {parts[0]} = {parts[1]}");
+                    }
+                }
             innerOff = innerOn = null;
             foreach (var rt in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
             {
