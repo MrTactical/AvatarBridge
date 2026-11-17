@@ -3823,6 +3823,8 @@ Measured in the stability harness (`-jellyStab`, Kar's breasts, a glide eased in
   73 mm and 2.1x stretch at the back face, unchanged by `_Solid`, `_Motion`, `_MassHz`, `_Pair`, `_Smooth`
   and `_Landing`. Next: the physics A/B probe on Kar, the converted MagicaCloth against the original
   PhysBones on a steady run. If PhysBones swing far less, the conversion is too loose at speed.
+- **Folded into 5.0.0** (Joe 2026-11-17: "number 1"): main e32abbc8, tag moved, draft packages and notes
+  updated; test build rc20 has the same contents.
 - Harness flags added: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f` (particles on the
   stepped anchor, the plane's distances, the region on the body), `-jellyStabSide`, `-jellyStabFilm`.
 
