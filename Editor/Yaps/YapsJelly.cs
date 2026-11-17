@@ -2157,6 +2157,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
         // Over a sprint's 4 m/s and under flight's 10, by the client's own defaults.
         _Fast (""Hangs rigid moving faster than this many metres a second, easing in over the 2 below; 0 never"", Float) = 7
+        // The bones' own physics swing it; the tissue only answers what touches it.
+        _Hold (""Seconds an untouched part takes to settle onto its bones and hold there, until something touches it; 0 never"", Float) = 0.4
         _Half (""Steps at _Rate.y past this many metres from the viewer's head, short of _Far; 0 never"", Float) = 2
         // Every frame: the client reads the switch back late and one read at a time, so at 45 a
         // second and 230 fps the steps came in bursts, the draw stuttered and it never slept.
@@ -2242,7 +2244,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Fast, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Fast, _Hold, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Squeeze, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
             float _Landing, _Cap, _Mid, _Smooth;
@@ -2863,6 +2865,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // Far from the viewer's head or well behind their camera, judged on the first region for
             // every region alike, half a metre's give on the distance so it does not flicker.
+            // Held on its bones, untouched (_Hold): stepped and scanned still, so a hand wakes it.
+            bool Held() { return Ease >= 1 && Ease < 1.5; }
+
             bool Away(bool was)
             {
                 float4x4 a = Anchor(0);
@@ -3432,7 +3437,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 root = m._m03_m13_m23;
                 float zc = 0.5 * (Count().z - 1) * _Lattice.w;
                 float3 rest = mul(m, float4(0, 0, zc, 1)).xyz;
-                bool fresh = distant || Bad(tip) || Bad(was) || Hot >= 8 || !(tip.w > 0 && abs(_Time.y - tip.w) < Stale) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < Reach);
+                bool fresh = distant || Held() || Bad(tip) || Bad(was) || Hot >= 8 || !(tip.w > 0 && abs(_Time.y - tip.w) < Stale) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < Reach);
                 if (x == 31) return float4(fresh ? rest : tip.xyz, dt);
                 if (fresh) return x == 86 ? 0 : float4(rest, _Time.y);
                 // Strained, as last frame's 86 has it, flesh goes taut: pulled out by a fist or
@@ -3557,7 +3562,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 turn = Quat((float3x3) m / scale);
                 q = Mul(swing, turn);
                 // The back face rides the anchor, or on a limb the core round its bone.
-                if (Pinned(l) || distant) return home;
+                if (Pinned(l) || distant || Held()) return home;
                 float4 s = _MainTex.Load(Texel(p, 0));
                 float3 ahead, base;
                 float kh = 0;
@@ -4217,7 +4222,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // rigid. Off the smoothed speed, so every copy agrees, and a snap keeps the last.
                     float wasEase = _MainTex.Load(int3(18, side, 0)).z;
                     float toward = _Fast > 0 ? saturate((length(Smoothed) - _Fast + 2) / 2) : 0;
-                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : toward;
+                    // Untouched, it eases onto its bones over _Hold and holds there (1): walking, the
+                    // tissue's own swing on top of the cloth's stretched it twice over. Any hand, probe,
+                    // own limb or grip in reach last step lets it go at once.
+                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || _MainTex.Load(int3(41, side, 0)).x != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5;
+                    float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : 0;
+                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : max(toward, hold);
                     // A change of speed past _Landing in the step, kept for the next step: against the
                     // smoothed speed, a steady speed-up read as one and rang every step.
                     float3 by = sped.xyz - vNow;
