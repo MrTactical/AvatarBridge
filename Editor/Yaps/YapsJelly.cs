@@ -3281,7 +3281,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return v > 0.1 ? h * pow(v, -1.0 / 3.0) : id;
             }
 
-            float4 Bulk(int k, float4x4 m, float scale, bool distant, uint side)
+            float4 Bulk(int k, float4x4 m, float scale, bool distant, uint side, bool predicted)
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
                 if (distant) return none;
@@ -3298,8 +3298,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // On the anchor they were stepped on: the particles and the mass are last frame's, and
                 // against this frame's the mass lagged a frame's move, which read as a stretch along
                 // it. Fed back through the homes, the tissue sat 53 mm ahead at a run.
+                // ponytail: one pass only. Under 72 fps the two whole passes leave the front a frame
+                // behind for a reason not found yet, and this frame's anchor happens to cancel it
+                // (25 fps walk: 15 mm against 65 mm fitted on the stepped one). Queue item 49.
                 float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
-                float4x4 on = o0.w > 0.5 ? float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1) : m;
+                float4x4 on = predicted && o0.w > 0.5 ? float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1) : m;
                 float3 pc = 0, qc = 0, qq = 0, c0 = 0, c1 = 0, c2 = 0;
                 // Summed as each is loaded, not held, so the pass keeps few registers. Rolled, and
                 // divided by as many as it took: Shader Filtering cuts it short, to the back layers.
@@ -4297,7 +4300,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Scan(px.x, m, scale, side, felt, presses);
                         }
 #endif
-                        [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, scale, distant, side);
+                        [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, scale, distant, side, predicted);
                         // How far the wearer's capsules in reach moved against the anchor since last frame,
                         // for the rest's count.
                         [branch] if (px.x == 37) return float4(Shifted(m, scale, side, false), 0, 0, 1);

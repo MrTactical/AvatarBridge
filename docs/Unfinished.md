@@ -3803,6 +3803,29 @@ arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the
   (the provider's `_CVR_PlayerLeftHandPositions[0]`, w the gesture, and the root's w, his
   avatar's height) and the slot texels 0 to 15 and 112 to 119 while it jumps.
 
+### 49. Live tissue stretching while moving. Joe, 2026-11-17: "disable squash and jelly in fast flight mode", then a tester on rc19: "the physics still stretch like last time or more"
+Measured in the stability harness (`-jellyStab`, Kar's breasts, a glide eased in over 30 frames).
+- **Fast flight, DONE on dev** (8b2fb4bb): past `_Fast` (7 m/s) the tissue hangs rigid, eased in from 5 m/s, off
+  the smoothed speed so every copy agrees. Sprint (4 m/s) and walk are under it. At 10 m/s the old tissue sat
+  65 mm off and stretched 2x the whole flight, then 209 mm on landing; now drawn at rest, 118 mm on landing.
+  Film: before against after at 4 and 10 m/s (Dev/Release/tissue-speed-film.mp4).
+- **The tissue led the body, DONE on dev for one pass** (db9574e8, then one-pass only): the solid squash
+  fitted last frame's particles and mass against this frame's anchor, read a frame's move as a stretch and fed
+  it back. Cloth off, steady at 90 fps: 18 mm ahead at a walk, 53 mm at a run, now 0.8 mm. Under 72 fps
+  (two whole passes) the same fix left the front a frame behind (60 fps 22 mm, 25 fps 65 mm against 15 mm), so
+  there it keeps this frame's anchor, which happens to cancel that lag. **Open:** why two passes lag a frame.
+  Each pass moves the particles exactly the anchor's half step; the shape holds compressed (back layers
+  ahead, front behind), and `_Solid` amplifies it (0.44 to 0.73 cells at 60 fps). Taking the first pass's
+  homes half a step back made it worse (60 fps 1.01, 25 fps 2.48 cells; the 60 fps hitch tore 5.6x) and was
+  reverted.
+- **Open, probably the tester's "stretch": the cloth under it.** Cloth on, a steady 4 m/s run turns the breast
+  bone about 60 degrees outward and 10 cm sideways (the masses 34 to 44 cm apart), and the skin goes with it;
+  73 mm and 2.1x stretch at the back face, unchanged by `_Solid`, `_Motion`, `_MassHz`, `_Pair`, `_Smooth`
+  and `_Landing`. Next: the physics A/B probe on Kar, the converted MagicaCloth against the original
+  PhysBones on a steady run. If PhysBones swing far less, the conversion is too loose at speed.
+- Harness flags added: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f` (particles on the
+  stepped anchor, the plane's distances, the region on the body), `-jellyStabSide`, `-jellyStabFilm`.
+
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
