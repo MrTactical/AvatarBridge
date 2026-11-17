@@ -2155,6 +2155,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Far (""Hangs rigid past this many metres from the viewer's head"", Float) = 4
         _Behind (""Hangs rigid more than this many degrees off where the viewer's camera looks, 0 never"", Float) = 100
         _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
+        // Over a sprint's 4 m/s and under flight's 10, by the client's own defaults.
+        _Fast (""Hangs rigid moving faster than this many metres a second, easing in over the 2 below; 0 never"", Float) = 7
         _Half (""Steps at _Rate.y past this many metres from the viewer's head, short of _Far; 0 never"", Float) = 2
         // Every frame: the client reads the switch back late and one read at a time, so at 45 a
         // second and 230 fps the steps came in bursts, the draw stuttered and it never slept.
@@ -2240,7 +2242,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Fast, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Squeeze, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
             float _Landing, _Cap, _Mid, _Smooth;
@@ -2255,6 +2257,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // steps, taken off what the particles feel, and the anchor's smoothed speed (95).
             static float3 Kick = 0;
             static float3 Smoothed = 0;
+            static float Ease = 0;
             // A landing heard this step, rung next step if the new speed held (97 and 98).
             static float4 Landed = 0, LandedBy = 0;
             static float Scale = 1;
@@ -3278,7 +3281,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return v > 0.1 ? h * pow(v, -1.0 / 3.0) : id;
             }
 
-            float4 Bulk(int k, float4x4 m, float scale, bool distant, uint side)
+            float4 Bulk(int k, float4x4 m, float scale, bool distant, uint side, bool predicted)
             {
                 float4 none = float4(k == 0, k == 1, k == 2, 1);
                 if (distant) return none;
@@ -3292,6 +3295,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 tip = _MainTex.Load(int3(30, side, 0)), unused;
                 bool swings = _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1;
                 float3 hung = Hung(Region);
+                // On the anchor they were stepped on: the particles and the mass are last frame's, and
+                // against this frame's the mass lagged a frame's move, which read as a stretch along
+                // it. Fed back through the homes, the tissue sat 53 mm ahead at a run.
+                // ponytail: one pass only. Under 72 fps the two whole passes leave the front a frame
+                // behind for a reason not found yet, and this frame's anchor happens to cancel it
+                // (25 fps walk: 15 mm against 65 mm fitted on the stepped one). Queue item 49.
+                float4 x0 = _MainTex.Load(int3(26, side, 0)), y0 = _MainTex.Load(int3(27, side, 0)), z0 = _MainTex.Load(int3(28, side, 0)), o0 = _MainTex.Load(int3(29, side, 0));
+                float4x4 on = predicted && o0.w > 0.5 ? float4x4(x0.x, y0.x, z0.x, o0.x, x0.y, y0.y, z0.y, o0.y, x0.z, y0.z, z0.z, o0.z, 0, 0, 0, 1) : m;
                 float3 pc = 0, qc = 0, qq = 0, c0 = 0, c1 = 0, c2 = 0;
                 // Summed as each is loaded, not held, so the pass keeps few registers. Rolled, and
                 // divided by as many as it took: Shader Filtering cuts it short, to the back layers.
@@ -3299,8 +3310,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [loop] for (int i = 0; i < 64; i++)
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
-                    float3 q = Rest(l), p = Into(m, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
-                        + q - Into(m, HomeOn(l, m, tip, swings, hands, hung, unused));
+                    float3 q = Rest(l), p = Into(on, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
+                        + q - Into(on, HomeOn(l, on, tip, swings, hands, hung, unused));
                     pc += p;
                     qc += q;
                     qq += q * q;
@@ -3718,6 +3729,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float3 lp = Into(m, next);
                     if (lp.y < _Floor.y) next = mul(m, float4(lp.x, _Floor.y, lp.z, 1)).xyz;
                 }
+                // Easing toward rigid while fast: a pull home at up to 20 a second.
+                [branch] if (Ease > 0 && Ease < 1.5) next = lerp(next, home, 1 - exp(-20 * Ease * h));
                 return next;
             }
 
@@ -4199,6 +4212,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     bool smooth = !Snapped && _Smooth > 0 && sped.w > 0 && _Time.y - sped.w < 0.1 && was95.w > 0 && _Time.y - was95.w < 0.1;
                     Smoothed = smooth ? lerp(vNow, was95.xyz, exp(-dt / _Smooth)) : vNow;
                     Kick = smooth ? (vNow - sped.xyz) - (Smoothed - was95.xyz) : 0;
+                    // Fast, as in flight, it eases home over the 2 m/s under _Fast and hangs rigid past it
+                    // until back under them: flying, every turn and gust threw it about. 0 to 1 easing, 2
+                    // rigid. Off the smoothed speed, so every copy agrees, and a snap keeps the last.
+                    float wasEase = _MainTex.Load(int3(18, side, 0)).z;
+                    float toward = _Fast > 0 ? saturate((length(Smoothed) - _Fast + 2) / 2) : 0;
+                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : toward;
                     // A change of speed past _Landing in the step, kept for the next step: against the
                     // smoothed speed, a steady speed-up read as one and rang every step.
                     float3 by = sped.xyz - vNow;
@@ -4217,9 +4236,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // as near.
                 float4 switches = _MainTex.Load(int3(18, side, 0));
                 bool wasDistant = switches.x > 0.5, distant = wasDistant;
+                [branch] if (!(_Pass < 0.5)) Ease = switches.z;
                 // A particle near last frame takes that: going far, the second pass discards this one's
                 // step, so the twin's particles it wrote are never read; coming back is tested here.
-                [branch] if (_Pass < 0.5 && ((uint) px.y == side || wasDistant)) distant = !(_Stress > 0) && Away(wasDistant);
+                [branch] if (_Pass < 0.5 && ((uint) px.y == side || wasDistant)) distant = !(_Stress > 0) && (Away(wasDistant) || Ease > 1.5);
                 // Asleep: settled, untouched, on an anchor that has not moved. The second pass decided
                 // it last frame, so both passes take the same way; a moved anchor or a hand wakes it
                 // the frame after.
@@ -4238,7 +4258,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (!anchored) return 0;
 #ifdef JELLY_SCAN
                     {
-                        if (px.x == 18) return float4(distant, asleep, 0, 1);
+                        if (px.x == 18) return float4(distant, asleep, Ease, 1);
                         if (px.x == 25) return float4(held, smooth, _Time.y, frames);
                         // Whether the gate above takes _Mid next frame: halved once here, not per particle. A
                         // flag, not the rate, so a changed material takes at once.
@@ -4280,7 +4300,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             return Scan(px.x, m, scale, side, felt, presses);
                         }
 #endif
-                        [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, scale, distant, side);
+                        [branch] if (px.x >= 32 && px.x <= 34 && _Solid > 0) return Bulk(px.x - 32, m, scale, distant, side, predicted);
                         // How far the wearer's capsules in reach moved against the anchor since last frame,
                         // for the rest's count.
                         [branch] if (px.x == 37) return float4(Shifted(m, scale, side, false), 0, 0, 1);
@@ -4419,7 +4439,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         return float4(distant ? 0 : bits, 0, 0, 1);
                     }
 #ifdef JELLY_SLEEP
-                    if (px.x == 18) return float4(distant, Sleepy(m, distant, side), 0, 1);
+                    if (px.x == 18) return float4(distant, Sleepy(m, distant, side), Ease, 1);
                     if (asleep) return here;
                     if (px.x == 19) return Still(here, m, scale, dt, distant, side);
                     if (px.x >= 20 && px.x <= 22) return float4(px.x == 20 ? m._m00_m10_m20 : px.x == 21 ? m._m01_m11_m21 : m._m03_m13_m23, 1);
@@ -4430,7 +4450,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     if (px.x == 18)
                     {
                         float4 rest = _MainTex.Load(int3(35, side, 0));
-                        return float4(distant, _Rest > 0 && !distant && rest.y > 0 && _Time.y - rest.y < 0.1 && rest.x >= _Rest, 0, 1);
+                        return float4(distant, _Rest > 0 && !distant && rest.y > 0 && _Time.y - rest.y < 0.1 && rest.x >= _Rest, Ease, 1);
                     }
                     if (px.x == 35) return Settling(here, m, scale, dt, distant, side, predicted, predicted ? Gravity * h * h : 0);
 #endif

@@ -3399,6 +3399,25 @@ namespace AvatarBridge.Regression
                 WriteState(raw);
             }
             var s = alone ? raw.Concat(raw).ToArray() : raw;
+            // -jellyStabDump f,f: region 0's particles on the anchor they were stepped on, and its side
+            // row's anchor and mass, at those frames, one csv each.
+            if (Array.IndexOf(Environment.GetCommandLineArgs(), "-jellyStabDump") is int da && da >= 0
+                && Environment.GetCommandLineArgs()[da + 1].Split(',').Select(int.Parse).Contains(frame))
+            {
+                var dn = breastN;
+                int dr = Side(dn) * Wide;
+                var on = new Matrix4x4((Vector3) s[dr + 26], (Vector3) s[dr + 27], (Vector3) s[dr + 28], s[dr + 29]);
+                var lines = new List<string> { "i,j,k,x,y,z" };
+                for (int p = 0; p < dn.x * dn.y * dn.z; p++)
+                {
+                    var l = on.inverse.MultiplyPoint3x4((Vector3) Particle(s, 0, p)) / breastSpacing;
+                    lines.Add(string.Join(",", p % dn.x, p / dn.x % dn.y, p / (dn.x * dn.y), l.x.ToString("0.0000", CultureInfo.InvariantCulture), l.y.ToString("0.0000", CultureInfo.InvariantCulture), l.z.ToString("0.0000", CultureInfo.InvariantCulture)));
+                }
+                foreach (int x in new[] { 29, 30, 31, 40, 58, 59, 85 }) lines.Add($"# {x} {(Vector3) s[dr + x]:F4} {s[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) s[dr + x]) / breastSpacing:F3}");
+                lines.Add($"# region0 on the body {carried.InverseTransformPoint(breastRegions[0].position) / breastSpacing:F3} turned {(Quaternion.Inverse(carried.rotation) * breastRegions[0].rotation).eulerAngles:F1}");
+                lines.Add($"# region0 {breastRegions[0].name} parent {(breastRegions[0].parent ? breastRegions[0].parent.name : "-")} scale {breastRegions[0].lossyScale.x:F4}");
+                File.WriteAllLines(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"dump-{frame}.csv"), lines);
+            }
 
             float furthest = Furthest(s, breastRegions), L = (n.z - 1) * breastSpacing * breastRegions[0].lossyScale.x;
             int badCount = s.Count(v => float.IsNaN(v.x + v.y + v.z + v.w) || float.IsInfinity(v.x + v.y + v.z + v.w));
@@ -3434,7 +3453,10 @@ namespace AvatarBridge.Regression
             RenderTexture.active = prev;
             var bgc = (Color32) eye.backgroundColor;
             float bg = shot.GetPixels32().Count(c => Mathf.Abs(c.r - bgc.r) + Mathf.Abs(c.g - bgc.g) + Mathf.Abs(c.b - bgc.b) <= 3) / (float) (shot.width * shot.height);
-            if (frame == 25 || frame == st.frames - 1 || st.poisonAt >= 0 && (frame == st.poisonAt + 5 || frame == st.poisonAt + 60))
+            // -jellyStabFilm: every frame, for a film.
+            if (Environment.GetCommandLineArgs().Contains("-jellyStabFilm"))
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"film-{frame:0000}.png"), shot.EncodeToPNG());
+            else if (frame == 25 || frame == st.frames - 1 || st.poisonAt >= 0 && (frame == st.poisonAt + 5 || frame == st.poisonAt + 60))
                 System.IO.File.WriteAllBytes(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"stab-{frame}.png"), shot.EncodeToPNG());
             Object.DestroyImmediate(shot);
             if (frame == 25) st.bgBase = bg;
@@ -3778,6 +3800,22 @@ namespace AvatarBridge.Regression
             glideStop = 0f;
             if (flipped) carried.rotation = Quaternion.AngleAxis(180f, carried.forward) * carried.rotation;
             stab = Environment.GetCommandLineArgs().Contains("-jellyStab") ? new Stab() : null;
+            // -jellyStabClothOff: every cloth on the avatar off, so its bones ride the skeleton and only
+            // the tissue moves.
+            if (stab != null && Environment.GetCommandLineArgs().Contains("-jellyStabClothOff"))
+                foreach (var c in animator.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true)) c.enabled = false;
+            // -jellyStabSet name=v,name=x;y;z;w: values set on every step material before the run.
+            if (stab != null && Array.IndexOf(Environment.GetCommandLineArgs(), "-jellyStabSet") is int sa && sa >= 0)
+                foreach (var kv in Environment.GetCommandLineArgs()[sa + 1].Split(','))
+                {
+                    var parts = kv.Split('=');
+                    var v = parts[1].Split(';').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
+                    foreach (var m in Object.FindObjectsOfType<CVRBlitter>().Select(bl => bl.blitMaterial).Where(m => m != null && m.HasProperty(parts[0])).Distinct())
+                    {
+                        if (v.Length == 1) m.SetFloat(parts[0], v[0]); else m.SetVector(parts[0], new Vector4(v[0], v[1], v[2], v[3]));
+                        Debug.Log($"[Jelly] stab set {m.name} {parts[0]} = {parts[1]}");
+                    }
+                }
             innerOff = innerOn = null;
             foreach (var rt in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
             {
@@ -3794,6 +3832,8 @@ namespace AvatarBridge.Regression
             float wide = Vector3.Distance(breastRegions[0].position, breastRegions[1].position) + (breastN.x - 1) * breastSpacing;
             var middle = 0.5f * (breastRegions[0].position + breastRegions[1].position) + jelly.forward * (0.5f * (breastN.z - 1) * breastSpacing);
             look.transform.position = middle + jelly.forward * (2f * wide) + jelly.up * (0.3f * wide);
+            // -jellyStabSide: from the side, where a lead or a lag along the walk shows.
+            if (Environment.GetCommandLineArgs().Contains("-jellyStabSide")) look.transform.position = middle - jelly.right * (2.5f * wide) + jelly.up * (0.2f * wide);
             look.transform.LookAt(middle);
             eye = look.AddComponent<Camera>();
             eye.enabled = false;
@@ -3801,7 +3841,7 @@ namespace AvatarBridge.Regression
             eye.backgroundColor = new Color(0.2f, 0.2f, 0.24f);
             eye.nearClipPlane = 0.05f;
             eye.fieldOfView = 35f;
-            eye.targetTexture = new RenderTexture(480, 360, 24);
+            eye.targetTexture = Environment.GetCommandLineArgs().Contains("-jellyStabFilm") ? new RenderTexture(960, 720, 24) : new RenderTexture(480, 360, 24);
         }
 
         // Particle p of region r in a read state, packed a block of rows a region.
