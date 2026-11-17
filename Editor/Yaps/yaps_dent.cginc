@@ -61,6 +61,8 @@
 #define YAPS_SQUASH_GIVE 0.3
 #define YAPS_DENT_SPAN 2.4494897   // the dent's shoulder, in t; root 6 makes it hold what the bowl moved
 
+// Its own cbuffer, as yaps_props.cginc says why.
+cbuffer YapsDent {
 float _YAPS_DentPower;
 float _YAPS_DentSpill;
 Texture2D _YAPS_DentOwn;       // per vertex: its share of parts 0 to 3 in r, g, b, a
@@ -127,10 +129,14 @@ float4 _YAPS_SoftSideB;
 // Per pair in x and y: 1 where the first part's across runs toward the feet, -1 the other way, as
 // the slanted press from below was baked under the part whichever way across runs.
 float4 _YAPS_SoftBelow;
+};
+// The client's globals apart, so a pass that reads none of them binds none of them.
+cbuffer YapsPlayers {
 float4 _CVR_PlayerLeftHandPositions[255];
 float4 _CVR_PlayerRightHandPositions[255];
 float4 _CVR_PlayerChestPositions[255];
 float4 _CVR_PlayerRootPositions[255];   // w the player's viewpoint height
+};
 
 // The same slots again, from a helper mesh weighted one vertex to each and skinned. The provider
 // reads transforms in a script LateUpdate, before the cloth writes its bones and after it put
