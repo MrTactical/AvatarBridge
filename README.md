@@ -1607,9 +1607,8 @@ over the skin (a bra, a shirt, piercings) takes the same move and nothing comes 
 costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
 players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
 anything set up for it. The physics are untouched: the parts still swing as their cloth makes
-them, and the squash works from where they swung to. As they swing they also stretch away from
-where they hang and squash back toward it, keeping their volume, which a bone chain alone cannot
-do, as far as real flesh would.
+them, and the squash works from where they swung to: the physics do the moving, the squash only
+the squashing.
 
 **Live tissue.** On a humanoid avatar, building the squash also puts each of its parts on the
 jelly, up to four on one avatar: a pair, or a part painted on one side alone (a belly, a tail). The
@@ -1617,8 +1616,13 @@ jelly is a lattice of flesh the graphics card steps every frame in each viewer's
 same body shader. A bigger part gets a finer lattice, up to a cap, so large breasts or a large seat
 dent as cleanly as small ones. Any player's hand or head dents it, the dent shaded as a hollow, and it fills back; a fist grips the skin and pulls
 it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
-each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
-the tissue rides it, but the touch is the tissue's alone: each part's cloth and Dynamic Bones drop
+each other, and the wearer's own arms and legs press it too. **The physics do the moving and the
+tissue only the touching:** the cloth or Dynamic Bones swing each part as on the source avatar, and
+left alone the tissue settles onto its bones within half a second and holds there, so walking,
+running or flying never stretches it. A hand coming within reach, the wearer's own hand reaching in,
+a pair swung into each other or a probe pressed lets it go at once, and it dents, grips and rings as
+before; let go, it fills back and settles again. A part no physics swing moves with the body, as on
+the source. The touch is the tissue's alone: each part's cloth and Dynamic Bones drop
 to a millimetre of collision size, so a hand, the wearer's or another player's, dents the skin
 without also shoving the bone, and the avatar's own MagicaCloth and Dynamic Bone colliders that a
 pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed and **Other Colliders**
@@ -1700,11 +1704,9 @@ shader another avatar already patched is reused instead of compiled again.
 **Set up squash** on the Setup card opens it again. The settings live on the component and the
 testing in the Avatar Tester, one place each. Its knobs write straight to the materials as you move them, so nothing
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
-pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
-the physics' own colliders, off by default). The stretch is real flesh's: a small one, with small swings
-ignored. With the live tissue on, the six knobs only the squash's own dent reads (how flat and how wide,
-the spill, the physics' colliders, lying back and your own arms) are hidden; the tissue takes the stretch in
-motion on parts their physics swing, and other players' hands as in (above 0) or out (0), and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
+pair meets (on by default), and what presses it (own arms, other players' hands, plugs, and
+the physics' own colliders, off by default). With the live tissue on, the six knobs only the squash's own dent reads (how flat and how wide,
+the spill, the physics' colliders, lying back and your own arms) are hidden; the tissue takes other players' hands as in (above 0) or out (0), and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
 squash preview running under **Interaction lab ▸ Squash**. On parts still on the squash it starts half squeezed
 outside Play mode, so every knob shows as it moves there; the live tissue presses in Play mode only. **Squeeze** is another
 player's two open hands pushing each pair together from outside (on the squash, *Other players' hands* scales it), **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
@@ -1793,7 +1795,7 @@ light shares the four vertex-light slots with everything else that uses them. Th
 thickness, so the shaft's radius is taken as a tenth of its length, between 1.2 and 6 cm. Without a
 socket between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*,
 sets how hard; 0 leaves them out. A squash built by an earlier version needs **Rebuild** pressed
-again (or the avatar reconverted) to notice its socket, and to stretch in motion.
+again (or the avatar reconverted) to notice its socket.
 
 ### Testing it
 

@@ -154,10 +154,6 @@ namespace AvatarBridge
             mat.SetFloat("_Pair", (s == null || s.meet) && mat.GetFloat("_Regions") > 1.5f ? 1f : 0f);
             // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.
             mat.SetFloat("_GripSlip", slide || s != null && s.gripSlides ? 0.02f : 0f);
-            // The stretch in motion, on a part a cloth swings: w 1, or x on from a build before w was kept.
-            var motion = mat.GetVector("_Motion");
-            bool swung = motion.w > 0f || motion.x > 0f;
-            mat.SetVector("_Motion", swung && (s == null || s.stretchInMotion) ? YapsSquash.Stretch + new Vector4(0f, 0f, 0f, 1f) : new Vector4(0f, motion.y, motion.z, swung ? 1f : 0f));
             // Other players' hands, in or out: the tissue keeps a hand out of the skin, so a share has
             // nothing to scale.
             float hands = s == null || s.othersHands > 0f ? 1f : 0f;
@@ -552,14 +548,7 @@ namespace AvatarBridge
                     if (shares[side][v] >= 0.5f)
                         skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
             }
-            // The squash's stretch in motion, as the conversion set it; none for a pair no cloth of its
-            // own swings, as thighs: the bone it rides is the limb, and a seated thigh would read as
-            // swung a quarter turn off where it hangs.
-            var motion = mats[0].GetVector("_YAPS_SquashMotion");
             bool clothed = PairCloth(root, part).Count > 0;
-            if (!clothed) motion.x = 0f;
-            // w marks a part a cloth swings, for Live to turn the stretch back on.
-            motion.w = clothed ? 1f : 0f;
             var depthMap = DepthMap(sides, shares, at, body, chest, undo, los, his, into);
             Lap("Depth map");
             // The third pass too, which judges the same reach to wake a rest.
@@ -588,7 +577,6 @@ namespace AvatarBridge
                 // Flesh barely changes volume but gives easily in shear, so nearly all of each
                 // neighbourhood's own squash is kept: half kept, it sprang back like rubber.
                 mat.SetFloat("_Squish", 0.9f);
-                mat.SetVector("_Motion", motion);
                 EditorUtility.SetDirty(mat);
             }
             var restored = Restore(root, names[pair]);
@@ -2186,7 +2174,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Limit (""Furthest its centre swings off its rest, as a share of its length from the root"", Float) = 0.6
         _Taut (""How much a loaded region's swing stiffens and damps: fully strained, the spring 1 + _Taut times as stiff, the damping 1 + 3 _Taut times"", Float) = 1
         _JellyTwitch (""Which handed transform the animator moves off the first hang to kick the mass; 0 none"", Float) = 0
-        _Motion (""Stretch in motion, the squash's own: x per reach of swing, y swing ignored below this share of the reach, z longest stretch; x 0 none"", Vector) = (0, 0, 1, 0)
         _Pair (""1: regions 0 and 1 are a pair, each keeping off the other"", Float) = 0
         _PairKeep (""Nearest the pair's centres come, as a share of their distance at rest"", Float) = 0.85
         _Squish (""Share of each neighbourhood's own squash and stretch it keeps, at constant volume; 0 rigid"", Range(0, 1)) = 0
@@ -2263,7 +2250,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // A landing heard this step, rung next step if the new speed held (97 and 98).
             static float4 Landed = 0, LandedBy = 0;
             static float Scale = 1;
-            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
+            float4 _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
@@ -3204,25 +3191,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // The region's mass, as one piece: its centre, the lattice's at rest, swings on the root,
             // the anchor's place. Each particle's home turns with it, more the nearer the front, so the
             // back face stays on the chest wall, and follows its centre in and out at constant volume.
-            // Then the squash's own stretch in motion (yaps_dent.cginc), as real flesh's: swung
-            // away from where it hangs it stretches, toward it it squashes, by _Motion.x per reach of
-            // swing past _Motion.y of the reach, within _Motion.z, at constant volume, about the side
-            // it hangs from. Off, or not stepped this tenth of a second, home is the rest on the anchor
-            // alone. swing is the turn the particle's home took.
-            // How far region r's bone has carried its centre off where it hangs on the chest, as the
-            // squash's swing is its follow off its rest: the provider's third and fourth transforms
-            // hold each region still on its parent. 0 for a region riding no bone.
-            float3 Hung(uint r)
-            {
-                float4 at = r == 0 ? _JellyOffsetAt0 : _JellyOffsetAt1;
-                if (r > 1 || !(at.w > 0)) return 0;
-                float4x4 h = _JellyAnchor[2 + r];
-                if (!(dot(h._m00_m10_m20, h._m00_m10_m20) > 1e-12)) return 0;
-                float4 c = float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1);
-                return mul(Anchor(r), c).xyz - mul(h, c).xyz;
-            }
-
-            float3 HomeOn(int3 l, float4x4 m, float4 tip, bool swings, float3x3 shape, float3 hung, out float4 swing)
+            // Off, or not stepped this tenth of a second, home is the rest on the anchor alone. swing is
+            // the turn the particle's home took.
+            float3 HomeOn(int3 l, float4x4 m, float4 tip, bool swings, float3x3 shape, out float4 swing)
             {
                 float3 local = mul((float3x3) m, Shaped(l, shape));
                 float3 root = m._m03_m13_m23;
@@ -3236,21 +3207,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 swing = normalize(lerp(float4(0, 0, 0, 1), normalize(float4(cross(a, b), 1 + dot(a, b))), w));
                 float s = lerp(1, len / len0, w), along = dot(local, a);
                 local = a * (along * s) + (local - a * along) * rsqrt(s);
-                float3 at = root + mul(Turn(swing), local);
-                // The cloth's swing of the bone, as the squash's stretch reads it, and the mass's lag on
-                // it.
-                float3 sw = hung + tip.xyz - root - rest;
-                float reach = _MassRadius * length(m._m00_m10_m20), sl = length(sw), off = sl - _Motion.y * reach;
-                [branch] if (_Motion.x > 0 && off > 0)
-                {
-                    float3 u = sw / sl, up = normalize(m._m01_m11_m21);
-                    float st = lerp(1, clamp(1 + _Motion.x * off / reach * -dot(u, up), 1 / _Motion.z, _Motion.z), w);
-                    float3 hangAt = tip.xyz + up * (0.5 * (n.y - 1) * _Lattice.w * length(m._m01_m11_m21));
-                    float3 r0 = at - hangAt;
-                    float by = dot(r0, u);
-                    at = hangAt + u * (by * st) + (r0 - u * by) * rsqrt(st);
-                }
-                return at;
+                return root + mul(Turn(swing), local);
             }
 
             // The solid, once a frame in the first pass, column k of the squash the homes take: the best
@@ -3314,7 +3271,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // swing and stretch, which turn the front more than the back, read as a shear.
                 float4 tip = _MainTex.Load(int3(30, side, 0)), unused;
                 bool swings = _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1;
-                float3 hung = Hung(Region);
                 // On the anchor they were stepped on: the particles and the mass are last frame's, and
                 // against this frame's the mass lagged a frame's move, which read as a stretch along
                 // it. Fed back through the homes, the tissue sat 53 mm ahead at a run.
@@ -3331,7 +3287,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
                     float3 q = Rest(l), p = Into(on, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
-                        + q - Into(on, HomeOn(l, on, tip, swings, hands, hung, unused));
+                        + q - Into(on, HomeOn(l, on, tip, swings, hands, unused));
                     pc += p;
                     qc += q;
                     qq += q * q;
@@ -3392,7 +3348,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (Snapped && _Pass < 0.5) tip.xyz = Carried(tip.xyz, m, side);
                 // Stamped and recent: a cleared texel reads as stepped at time 0, and at a scene's first
                 // frame that passed, swinging every home toward the world's origin.
-                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), swing);
+                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), swing);
             }
 
             // How fast particle l's home moves: from last frame's anchor and mass (texels 26 to 29 and
@@ -3408,7 +3364,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Carried, 31 holds last frame's mass moved on with the anchor: put back on last frame's.
                 if (_MassCarried > 0) was.xyz = mul(last, float4(Into(Anchor(Region), was.xyz), 1)).xyz;
                 float4 unused;
-                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), unused)) / FrameDt;
+                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), unused)) / FrameDt;
             }
 
             // Where a particle is headed from s, where it was was (w that step's time): its home's own

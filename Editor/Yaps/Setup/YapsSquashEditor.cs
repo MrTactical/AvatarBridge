@@ -38,7 +38,6 @@ namespace AvatarBridge
         {
             { "How it gives", "how far it flattens and where the volume goes" },
             { "The pair", "whether the two meet in the middle, on by default" },
-            { "In motion", "stretch and squash as it swings" },
             { "What presses it", "arms, hands, plugs and cloth" },
             { "Live tissue", "a twitch toggle, a grip that slides, and what it tells the animator" },
         };
@@ -48,7 +47,6 @@ namespace AvatarBridge
         {
             { "How it gives", "How a part answers any press: how flat it goes and how wide it spreads to keep its volume. See it in the Avatar Tester with Squeeze or the test hand." },
             { "The pair", "With Meet on, a part swung or pushed into a still partner keeps its round front and pushes the partner aside by as much as it pushed in, the partner taking a rounded hollow where they still meet. Pushed alike from both sides, the two press flat against each other, swelling out round the contact. With Meet off, what overlaps passes through. See it in the Avatar Tester: Squeeze presses from both sides, and in Play mode Push one in shoves one part into the other." },
-            { "In motion", "As the physics swing a part, it stretches away from where it hangs and squashes back. See it in the Avatar Tester with Bounce, or move the avatar in Play mode." },
             { "What presses it", "What dents the parts besides each other, each with its own strength. See hands in the Avatar Tester with the test hand." },
             { "Live tissue", "Twitch adds a menu toggle whose every flip kicks the jiggle; Grip slides lets a hand that grabs the skin stroke along it, the grip going with the hand. " +
                              "Other Colliders lets other players' MagicaCloth colliders press it too, at about 0.1 s more for every viewer each time the avatar loads. " +
@@ -61,7 +59,7 @@ namespace AvatarBridge
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
         static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides", "otherColliders", "probeMarkers" };
         // The squash's dent alone reads these, and every part it dents is on the live tissue once
-        // that is built: the tissue takes the hand size, volume, meet, grip, the stretch in motion and
+        // that is built: the tissue takes the hand size, volume, meet, grip and
         // other players' hands in or out, and its own reach for every limb. Shown there, "0 leaves
         // them out" left the wearer's arms pressing.
         static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush", "lyingBack", "ownArms" };
@@ -85,7 +83,6 @@ namespace AvatarBridge
         const string Animatable =
             "material._YAPS_DentPower        0 off, 1 on\n" +
             "material._YAPS_SquashTune.y     strength\n" +
-            "material._YAPS_SquashMotion.x   stretch in motion, 0 off\n" +
             "material._YAPS_SquashHands.x    own arms\n" +
             "material._YAPS_SquashHands.z    other players' hands\n" +
             "material._YAPS_SquashPlug       plugs";

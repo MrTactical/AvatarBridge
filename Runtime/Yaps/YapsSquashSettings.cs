@@ -40,11 +40,6 @@ namespace AvatarBridge.Yaps
         [Range(0f, 2f), Tooltip("How much of what the meeting pushes back swells out round the contact.")]
         public float spill = 1f;
 
-        [Header("In motion")]
-        [Tooltip("As its physics swing it, a part stretches away from where it hangs and squashes back toward it, " +
-                 "keeping its volume. The swing is the physics' own, unchanged.")]
-        public bool stretchInMotion = true;
-
         [Header("What presses it")]
         [Range(0f, 2f), Tooltip("The wearer's own arms and hands. 0 leaves them out.")]
         public float ownArms = 1f;
