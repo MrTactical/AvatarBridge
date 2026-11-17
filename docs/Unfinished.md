@@ -6220,6 +6220,10 @@ times in `Diagnostics.md`. Still open, largest first:
   named scalars with compare-swaps instead of the array. YAPS_CHAIN_MAX below 4 does not compile
   (indices written out for 4). Shader Filtering applies: the scan's loops are `[loop]`, so check
   the flattened one still resolves with the filter on.
+  Step 2 done 2026-11-17: cells, homes and octants are one `[loop]` of 16 steps a cell. fxc on
+  the stub targets: the resolve 2.33 to 1.40 s, the whole deform 2.50 to 1.96 s, temps 59 to 43,
+  slots unchanged (3053 to 3050). Tried and dropped: the four nearest as named scalars (slower,
+  deform 3.04 s) and the three passes folded into the same loop (5% more, 84 more slots).
   4. Last resort: the deform in a blit (as the jelly does), the vertex program only reading it.
      A redesign, measured against the in-game cost first.
   Proof each step: cold bundle build on one plug avatar before and after, plus an in-game look
