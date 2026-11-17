@@ -257,7 +257,7 @@ void YapsAtlasCellPixels(int idx, int level, YapsAtlasLayout l, out int cellPx, 
     Texture2D _YAPS_Atlas;
     #define YAPS_ATLAS_LOAD(px, py) _YAPS_Atlas.Load(int3(px, py, 0))
 #endif
-float4 _YAPS_Atlas_TexelSize;
+cbuffer YapsAtlas { float4 _YAPS_Atlas_TexelSize; };
 
 // Compile-time fact, never _TexelSize.y's sign.
 // That sign is for UV samples. Wrong here.

@@ -6,6 +6,11 @@
 #ifndef YAPS_PROPS_INCLUDED
 #define YAPS_PROPS_INCLUDED
 
+// In a cbuffer of its own, not $Globals, where each host's own properties shifted every offset:
+// with a fixed layout every material's patched vertex program is the same bytes, and a viewer's
+// driver builds it once. A texture inside is hoisted out by the compiler.
+cbuffer YapsProps {
+
 // --- baked mesh data -------------------------------------------------
 // Header pixel, then ten floats per vertex.
 // position(3) normal(3) tangent(3) active(1), one RGBA32 pixel each.
@@ -212,18 +217,6 @@ float4 _YAPS_ShapeWeights2;   // shapes 4-7
 float4 _YAPS_ShapeWeights3;   // shapes 8-11
 float4 _YAPS_ShapeWeights4;   // shapes 12-15
 
-// Sixteen, matching SPS. Eight ran out on a plug with separate
-// length, girth, curve and knot sliders.
-inline float YapsShapeWeight(uint index)
-{
-    float4 pack = index < 4 ? _YAPS_ShapeWeights
-                : index < 8 ? _YAPS_ShapeWeights2
-                : index < 12 ? _YAPS_ShapeWeights3
-                : _YAPS_ShapeWeights4;
-    uint slot = index & 3;
-    return slot == 0 ? pack.x : slot == 1 ? pack.y : slot == 2 ? pack.z : pack.w;
-}
-
 // The band a portal collapses either side of its cut, as a
 // fraction of rest length: the widest triangle span along the shaft, with a
 // margin. -1 when the mesh is too coarse to cut, so entrances stay holes.
@@ -252,5 +245,18 @@ Texture2D<float4> _YAPS_JellyOwn;
 float4 _YAPS_JellyOwn_TexelSize;
 float4 _YAPS_JellyParts;    // for each of the squash's parts (r, g, b, a of _YAPS_DentOwn) the jelly carries, its jelly part as _YAPS_JellyOwn names it
 float4 _YAPS_JellySlap;     // a slap's ring: how much of its depth (0 none), speed (m/s), wavelength (m), fade (s)
+};
+
+// Sixteen, matching SPS. Eight ran out on a plug with separate
+// length, girth, curve and knot sliders.
+inline float YapsShapeWeight(uint index)
+{
+    float4 pack = index < 4 ? _YAPS_ShapeWeights
+                : index < 8 ? _YAPS_ShapeWeights2
+                : index < 12 ? _YAPS_ShapeWeights3
+                : _YAPS_ShapeWeights4;
+    uint slot = index & 3;
+    return slot == 0 ? pack.x : slot == 1 ? pack.y : slot == 2 ? pack.z : pack.w;
+}
 
 #endif

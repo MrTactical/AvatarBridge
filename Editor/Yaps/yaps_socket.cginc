@@ -26,6 +26,7 @@
 
 // Depth from the contact channel, as a fraction of plug length.
 // Negative when the channel has nothing to say.
+cbuffer YapsSocket {
 float _YAPS_SocketDepth;
 
 // The socket's position in the mesh's local space. Zero for a dedicated
@@ -42,6 +43,9 @@ float _YAPS_SocketNoSelfExclude;
 // length. Up to sixteen, so several can open together.
 float4 _YAPS_SocketShapeStart, _YAPS_SocketShapeStart2, _YAPS_SocketShapeStart3, _YAPS_SocketShapeStart4;
 float4 _YAPS_SocketShapeFade, _YAPS_SocketShapeFade2, _YAPS_SocketShapeFade3, _YAPS_SocketShapeFade4;
+// How much of the baked shapes to apply. Zero is off, as older bakes are.
+float _YAPS_SocketPower;
+};
 
 float YapsSocketStageStart(uint s)
 {
@@ -58,9 +62,6 @@ float YapsSocketStageFade(uint s)
              : pack == 2 ? _YAPS_SocketShapeFade3 : _YAPS_SocketShapeFade4;
     return v[lane];
 }
-
-// How much of the baked shapes to apply. Zero is off, as older bakes are.
-float _YAPS_SocketPower;
 
 // How far a shaft has travelled past this socket, as a fraction of its
 // own length. Zero when nothing has arrived. The plug's length rides in
