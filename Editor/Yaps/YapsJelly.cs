@@ -2771,7 +2771,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
                 float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
                 float3 cb = tb.w > 0 ? tb.xyz : mul(AnchorOf(other), float4(0, 0, zc, 1)).xyz;
-                return (length(_PairOffset.xyz) - _PairReach.z) * scale > distance(ca, cb) && Meet(m, ps) > 0;
+                // 2 mm in: at rest they sit at exactly the distance they were built at, and the float
+                // noise either side of it let the hold go every other step while standing.
+                return (length(_PairOffset.xyz) - _PairReach.z) * scale - 0.002 * scale > distance(ca, cb) && Meet(m, ps) > 0;
             }
 
             // How far a capsule from a to b of radius r leans the mass's spring target: c of its
