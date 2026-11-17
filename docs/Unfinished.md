@@ -13,6 +13,10 @@ Laid out by when: what 5.0.0 waits for, what 5.0.1 takes, then the ideas.
 
 ## Before 5.0.0
 
+**CUT OFF 2026-11-17 (Joe: "put rc18 in there, and then that's the cut off point").** The draft as
+it stands (main 81d80c99, rc18 included) is 5.0.0. Nothing else goes in; everything new is 5.0.1 on
+dev. Only a bug that breaks conversion or crashes the game for users reopens it, as a hotfix off main.
+
 5.0.0 ships when Joe has worn it through the in-game checklist (`Dev/Release/ingame-checklist-5.0.0.md`,
 local) and says so. SPS2 tags (S23), the portal (S24) and the duplicate (S25) must pass in game, and
 both packages ship together. Joe, 2026-10-21: the items below are fixed first. Records of work done
