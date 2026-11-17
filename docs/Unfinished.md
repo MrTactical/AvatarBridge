@@ -3816,12 +3816,18 @@ item 36. Done on dev, each measured:
   third of an affected patch's first-upload compile (Zombunny 2: 18 s of 85 s wall), plus a dead vertex pass a frame.
 - **The tissue step's stereo variants** (95b5e3dc): its `skip_variants` never reached the ones Unity adds, so 9
   variants compiled where 3 are drawn. YapsStereoStrip drops every stereo variant of `Hidden/AvatarBridge/JellyStep`
-  (only ever blitted). Estimate 38 s CPU off every first upload with tissue; not yet measured with a cold bundle.
+  (only ever blitted). Proven on a Kar bundle: the step's funnel now ends 4 -> 16 -> 4 after scriptable
+  stripping (Zombunny before: 3 -> 12 -> 9). Open: those 3 compiled fp variants still took 161 s wall / 224 s CPU
+  on Kar, against 9 in 10 s / 57 s on Zombunny on 11-16. Not this change (it removes variants only); another
+  Unity may have been compiling at the time, and Kar's step variants differ. Worth one quiet re-time.
 - **GoGo poses in one batch** (b2b9a1c1) and **no second controller save after the slot filler** (3b5cdf34):
   measured by the 5-avatar subset run `opt-sub5` (below).
 - **The tissue's 8 lattice corners in a rolled loop** (6691fdbf): fxc 51,844 to 43,388 bytes at 3 slots; the plush's
   body vertex programs 48.8-49.5 KB to 40.4-41.1 KB a pass. Cut short by Shader Filtering, the region is drawn at
-  rest rather than torn (not yet run under ShaderFilterProbe). Kar's tissue numbers identical.
+  rest rather than torn. The first check counted the corners, and fxc proved the count 8 and dropped it, so a
+  filter cutting the loop in bytecode would have torn the skin anyway; it reads the weights' sum now (696a6c94),
+  which survives in the listing (`ge ..., 0.999` then `if_nz`), +196 bytes. Not run under the filter: Joe in game.
+  Kar's tissue numbers identical.
 - **No marker-light search in a plug's shadow caster** (e2b3231c), which is handed no lights: the caster program
   86,988 to 80,500 bytes. Bend tester identical, PlugGhostProbe PASS on every route (lights-only included, via the relay).
 - Plush vertex bytecode a viewer builds: 535 KB to 456 KB (two body passes now byte-identical, 19 to 18 distinct).
