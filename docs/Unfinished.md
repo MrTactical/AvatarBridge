@@ -3863,6 +3863,20 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   YAPS properties on a patched body shader, which must stay declared (undeclared values die on the
   next import). Left as is.
 - Open: Joe in game, with the GS2 nightly.
+- **A plush avatar still hitches once on first view (Joe in game, 2026-11-17).** Its built package dumped
+  (`ShaderDumpProbe`, 108 programs) and timed cold with `d3d-load.py`, ChilloutVR running so the times
+  are rough (3.3-3.6 s): the tissue step ~1.0 s (355 KB, once per viewer per version), the plug ~0.8 s,
+  four tissue body shaders ~1.3 s. A plain locked Poiyomi material is 25-31 KB; patched, 206-250 KB,
+  all of the growth in the vertex programs (~45 KB in each of four passes; fragments unchanged). The
+  main and extra-light vertex programs of different materials are the SAME code: only the constant
+  buffer offsets of the YAPS values differ, shifted by each material's own Poiyomi properties in `$Globals`.
+  So the driver builds 12 distinct body programs (574 KB) where 4 would do (192 KB).
+  **Next, proposed: the YAPS values in named cbuffers of their own** (fixed layout, one per include),
+  so every material's vertex program is byte-identical and the driver builds each pass once, likely
+  across avatars too. Estimated ~0.9 s off this avatar's first view. Leaving Eyes/Brows and Tails
+  unpatched saves ~0.4 s today and nothing after it; no tissue in the extra-light and shadow passes
+  saves ~0.7 s today and ~0.2 s after it, and changes lighting. Needs: Unity filling a named cbuffer
+  from material values and `SetGlobal*` (built-in pipeline), proven in ChilloutVR.
 
 ### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", after 5.0.0
 
