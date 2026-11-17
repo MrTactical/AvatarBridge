@@ -3842,7 +3842,7 @@ Measured in the stability harness (`-jellyStab`, Kar's breasts, a glide eased in
   unchanged; a hand pressed in 64.7 mm both ways. A part no cloth swings no longer swings at all, as on the
   source. The squash's stretch in motion is removed (shader, homes, setting, setup fold). Not in game yet.
 
-### 50. Face tracking failing in every mode on a VRCFaceTracking add-on avatar. A user (Shiro Usagi), 2026-11-17, with their own fixer script and a 4.7.2 Keep-mode output, DONE on dev, not in game
+### 50. Face tracking failing in every mode on a VRCFaceTracking add-on avatar. A user (Kneesox), 2026-11-17, with their own fixer script and a 4.7.2 Keep-mode output, DONE on dev, not in game
 Their fixer (strip the rig, native component, built shapes) works for them; they gave permission to take from it.
 Read against their output:
 - **Native and DSR left five rig layers** (3d3c3280): a viseme layer holding every mouth shape at 0 behind

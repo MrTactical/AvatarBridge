@@ -335,7 +335,9 @@ if you want penetration.
    component count that moved, listed under *Since the last conversion* in `ConversionReport.md`.
    So reconverting on a new release, or after changing one setting, tells you what it did. The
    comparison is kept in the output folder as `.last-conversion.txt`, which Unity never imports;
-   delete it to start over.
+   delete it to start over. It also keeps the **upload ID**: once a conversion has been uploaded,
+   converting it again uploads over that same avatar instead of adding a new one (see
+   [each upload adds a new avatar](#each-upload-adds-a-new-avatar-instead-of-updating-the-old-one)).
 
 ## What gets converted
 
@@ -1973,7 +1975,7 @@ every mouth shape at rest while the visemes play. On a typical VRCFT avatar that
   are blended into Unified Expressions' own the way VRCFaceTracking blends them (a smile is 0.8 corner
   pull and 0.2 corner slant), a funnel or pucker is shared between the upper and lower lip, and a
   two-step tongue becomes one that comes half out on the first step. The report counts them. Thanks to
-  Shiro Usagi, whose face tracking fixer these come from.
+  Kneesox, whose face tracking fixer these come from.
 - **Unity Animator Blendtrees (DSR)**: injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
   (bundled), repaths every clip onto your actual eye bones and face mesh, and reconciles its shape
   vocabulary against whatever your mesh has: by name, casing, **ARKit ↔ Unified Expressions**
@@ -2491,7 +2493,7 @@ Find your symptom:
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) · [live tissue jumps or breaks Mini Me](#the-live-tissue-jumps-or-flickers-when-pressed-or-mini-me-breaks-the-avatar) |
 | **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [plug stops at a portal](#yaps-a-plug-stops-at-a-portal-entrance) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
-| **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
+| **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) · [new avatar every upload](#each-upload-adds-a-new-avatar-instead-of-updating-the-old-one) |
 
 ### Nothing compiles: `'ImageDownloader' does not contain a definition for 'GetImage'`
 
@@ -3273,6 +3275,16 @@ shader back on, so nothing on them bends (see [after unlocking materials](#yaps-
 
 Not AvatarBridge: that's the CCK. ChilloutVR's API refused a content slot, usually the account's
 private upload limit. The real message is in `Player.log` or the console just above the exception.
+
+### Each upload adds a new avatar instead of updating the old one
+
+The CCK remembers which avatar to update by an ID on the converted copy, and each conversion makes
+a new copy. Converting again copies the ID across from the last conversion of the same avatar: from
+the prefab in its output folder, or from the old copy if it is still in an open scene. The report
+says so under **Upload**. It finds nothing when the old copy was deleted before its ID ever reached
+the prefab, or when another avatar in the open scenes has the same name. Then copy the ID off the
+old copy (its Asset Info, **Copy asset unique identifier**) into the new copy's Asset Info,
+**Re-Attach GUID**. To upload a reconversion as a separate avatar, clear its GUID in the CCK.
 
 ### One extra recompile after importing
 

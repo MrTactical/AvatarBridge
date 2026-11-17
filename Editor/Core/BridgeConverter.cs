@@ -1,6 +1,9 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using ABI.CCK.Components;
 using UnityEditor;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -99,6 +102,7 @@ namespace AvatarBridge
                 DetachCrashingController(ctx);
                 WarnFastPlayMode(ctx);
                 ReportSyncUsage(ctx);
+                KeepUploadId(ctx, descriptor.gameObject);
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 SaveConvertedPrefab(ctx);
                 long saved = clock.ElapsedMilliseconds;
@@ -310,12 +314,56 @@ namespace AvatarBridge
         static BridgePass Pass(string name, Action<BridgeContext> run, PassTraits traits = PassTraits.None) =>
             new BridgePass { Name = name, Run = run, Traits = traits };
 
+        static string PrefabPath(BridgeContext ctx) =>
+            $"{ctx.OutputDir}/{string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()))}.prefab";
+
+        // Every conversion is a new copy, and the CCK uploads a copy without an ID as a new avatar.
+        // The ID comes from earlier conversions of this source: the prefab in its output folder,
+        // which only this source writes, and copies of the same name in the open scenes, trusted
+        // only when no other avatar there shares the source's name. Two IDs is a choice left to the
+        // user. Saved into the prefab next, so deleting the old copy later loses nothing.
+        static void KeepUploadId(BridgeContext ctx, GameObject source)
+        {
+            var info = ctx.Target.GetComponent<CVRAssetInfo>();
+            if (info == null || !string.IsNullOrEmpty(info.objectId)) return;
+            var found = new List<CVRAssetInfo>();
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath(ctx));
+            if (prefab != null && prefab.TryGetComponent(out CVRAssetInfo kept)) found.Add(kept);
+            var roots = new List<GameObject>();
+            for (int i = 0; i < UnityEngine.SceneManagement.SceneManager.sceneCount; i++)
+            {
+                var scene = UnityEngine.SceneManagement.SceneManager.GetSceneAt(i);
+                if (scene.isLoaded) roots.AddRange(scene.GetRootGameObjects());
+            }
+            bool sharedName = roots.SelectMany(r => r.GetComponentsInChildren<VRCAvatarDescriptor>(true))
+                .Any(d => d.gameObject != source && d.gameObject.name == source.name);
+            if (!sharedName)
+                found.AddRange(roots.SelectMany(r => r.GetComponentsInChildren<CVRAssetInfo>(true))
+                    .Where(a => a.gameObject != ctx.Target && a.gameObject.name == ctx.Target.name));
+            var ids = found.Where(a => a.type == CVRAssetInfo.AssetType.Avatar && Guid.TryParse(a.objectId, out _))
+                .Select(a => a.objectId).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            if (ids.Count == 1)
+            {
+                Undo.RecordObject(info, "AvatarBridge conversion");
+                info.objectId = ids[0];
+                EditorUtility.SetDirty(info);
+                ctx.Report.Converted("Upload", "Upload ID kept from the last conversion",
+                    $"Uploading updates the avatar already uploaded as {ids[0]} instead of adding a new one. " +
+                    "To upload it as a new avatar, clear its GUID in the CCK first.");
+            }
+            else if (ids.Count > 1)
+            {
+                ctx.Report.Warning("Upload", "Earlier conversions were uploaded under different IDs",
+                    $"{string.Join(", ", ids)}. Uploading adds a new avatar unless you attach the one to update " +
+                    "in the avatar's Asset Info (Re-Attach GUID).");
+            }
+        }
+
         static void SaveConvertedPrefab(BridgeContext ctx)
         {
             try
             {
-                string safe = string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()));
-                string path = $"{ctx.OutputDir}/{safe}.prefab";
+                string path = PrefabPath(ctx);
                 bool linked = ctx.Settings.linkConvertedPrefab, success;
                 var prefab = linked
                     ? PrefabUtility.SaveAsPrefabAssetAndConnect(ctx.Target, path, InteractionMode.AutomatedAction, out success)
@@ -419,8 +467,8 @@ namespace AvatarBridge
         static void WarnMissingScripts(BridgeContext ctx)
         {
             int missing = 0;
-            var examples = new System.Collections.Generic.List<string>();
-            var missingPrefabs = new System.Collections.Generic.List<string>();
+            var examples = new List<string>();
+            var missingPrefabs = new List<string>();
             foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
             {
                 // Unity renames a broken prefab instance to

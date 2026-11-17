@@ -148,8 +148,8 @@ namespace AvatarBridge
         // what it has. Recipes are tried in order, the first whose shapes all exist wins:
         // "A+B*k" sums shapes, "@L" / "@R" keeps one half of the face, ":w" is a frame's weight and
         // ";" starts another frame. {S} is Right or Left, {s} R or L, for the slot built.
-        // Weights after VRCFaceTracking's own simple expressions. From Shiro Usagi's face tracking
-        // fixer, with thanks.
+        // Weights after VRCFaceTracking's own simple expressions. From Kneesox's face tracking fixer,
+        // with thanks.
         static readonly (string slot, string[] recipes)[] Recipes =
         {
             ("EyeWide{S}", new[] { "EyeWide@{s}" }),

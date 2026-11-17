@@ -38,8 +38,8 @@ namespace AvatarBridge
 
         // A rig's own switches, read only when its layers are stripped: the menu keeps them, since
         // with the rig kept they are its controls. A layer that reads nothing else belongs to the
-        // rig, as a viseme layer holding every mouth shape at 0 behind VisemesEnable. From Shiro
-        // Usagi's face tracking fixer.
+        // rig, as a viseme layer holding every mouth shape at 0 behind VisemesEnable. From Kneesox's
+        // face tracking fixer.
         static readonly HashSet<string> RigSwitches = new HashSet<string>
         {
             "EyeTrackingEnable", "MouthTrackingEnable", "TongueControlActive", "EyeTrackingActive 2",
