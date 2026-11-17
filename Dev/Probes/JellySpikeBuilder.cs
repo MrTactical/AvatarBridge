@@ -3778,6 +3778,10 @@ namespace AvatarBridge.Regression
             glideStop = 0f;
             if (flipped) carried.rotation = Quaternion.AngleAxis(180f, carried.forward) * carried.rotation;
             stab = Environment.GetCommandLineArgs().Contains("-jellyStab") ? new Stab() : null;
+            // -jellyStabClothOff: every cloth on the avatar off, so its bones ride the skeleton and only
+            // the tissue moves.
+            if (stab != null && Environment.GetCommandLineArgs().Contains("-jellyStabClothOff"))
+                foreach (var c in animator.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true)) c.enabled = false;
             innerOff = innerOn = null;
             foreach (var rt in new[] { "/Jelly_State.renderTexture", "/Jelly_State_B.renderTexture" })
             {
