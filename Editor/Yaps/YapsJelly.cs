@@ -2258,6 +2258,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             static float3 Kick = 0;
             static float3 Smoothed = 0;
             static float Ease = 0;
+            // How far a first of two passes took its homes back from this frame's, which their speed adds back.
+            static float3 Short = 0;
             // A landing heard this step, rung next step if the new speed held (97 and 98).
             static float4 Landed = 0, LandedBy = 0;
             static float Scale = 1;
@@ -3385,7 +3387,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Carried, 31 holds last frame's mass moved on with the anchor: put back on last frame's.
                 if (_MassCarried > 0) was.xyz = mul(last, float4(Into(Anchor(Region), was.xyz), 1)).xyz;
                 float4 unused;
-                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), unused)) / FrameDt;
+                return (home + Short - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), unused)) / FrameDt;
             }
 
             // Where a particle is headed from s, where it was was (w that step's time): its home's own
@@ -4496,6 +4498,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // The fit's right half was settled in the first pass: no home to work out.
                     if (predicted && _Pass > 0.5 && half_ == 1) return here;
                     home = Home(l, m, side, swing);
+                    // Two whole passes, the first ends half the step short of this frame: its homes taken
+                    // there too. At this frame's, the back face and the springs sat half a step ahead of
+                    // the rest and squeezed the tissue, its front a frame behind under 72 fps.
+                    [branch] if (!predicted && _Pass < 0.5)
+                    {
+                        Short = HomeSpeed(l, side, home) * h;
+                        home -= Short;
+                    }
                     if (predicted && _Pass < 0.5)
                     {
                         // Where each particle is headed, for the second pass to fit, w 0 for one put back
