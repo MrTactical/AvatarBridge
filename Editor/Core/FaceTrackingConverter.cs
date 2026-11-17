@@ -47,6 +47,20 @@ namespace AvatarBridge
         {
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
             {
+                int bits = 0;
+#if VRC_SDK_VRCSDK3
+                var expressions = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+                if (expressions != null && expressions.parameters != null)
+                    bits = expressions.parameters.Count(p => p != null && FaceTrackingParameters.IsBinarySyncBit(p.name));
+#endif
+                if (bits > 0)
+                {
+                    ctx.Report.Warning(Category, "Kept the avatar's own face tracking, which syncs through binary bits",
+                        $"Its {bits} sync bits do not work in ChilloutVR: the tracking app sends nothing to them here, " +
+                        $"and they cost {bits * 32} of the 3200 synced bits. Convert with \"Native CVR Component\" " +
+                        "(or \"Unity Animator Blendtrees (DSR)\") for face tracking that works and others see.");
+                    return;
+                }
                 ctx.Report.Skipped(Category, "Kept the avatar's own face tracking (chosen)",
                     "Nothing added. An existing rig merges with the animator; to add one, convert with " +
                     "\"Native CVR Component\" or \"Unity Animator Blendtrees (DSR)\" selected.");

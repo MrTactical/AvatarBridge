@@ -62,6 +62,13 @@ namespace AvatarBridge
                 || n.Contains("__QuantizationParameters") || n.Contains("__ModularAvatarInternal/One");
         }
 
+        // VRCFaceTracking's binary sync: v2/JawOpen1, 2, 4, 8 and v2/JawOpenNegative.
+        public static bool IsBinarySyncBit(string name)
+        {
+            return IsFaceTracking(name) && !name.Contains("/Smoothed/")
+                && System.Text.RegularExpressions.Regex.IsMatch(name, @"v2/[A-Za-z]+(\d+|Negative)$");
+        }
+
         public static bool IsGateName(string name)
         {
             return !string.IsNullOrEmpty(name) && GateNames.Contains(name.TrimStart('#'));

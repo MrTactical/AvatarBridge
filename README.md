@@ -1985,12 +1985,16 @@ every mouth shape at rest while the visemes play. On a typical VRCFT avatar that
   the animator. Smoothing proxies VRChat never synced automatically become `#`-local, which costs
   **zero** sync bits, so a full smoothed rig fits ChilloutVR's 3200-bit budget comfortably, and
   the FT parameters that were synced keep syncing. The pick for avatars whose shipped rig is the
-  point.
+  point. **Not for a VRCFaceTracking rig that syncs through binary bits** (`v2/JawOpen1`, `2`, `4`,
+  `Negative`...): VRChat lists those to the tracking app as bools, the animator holds them as floats,
+  and ChilloutVR lists them as the animator has them, so the app sends them nothing; as floats they would
+  also cost 32 bits each. The report warns when one is kept, and *Analyse this avatar* recommends Native.
 
 **Analyse this avatar** recommends Native when the face mesh carries the shapes. When the avatar
 also brings its own rig, the animator layers a face-tracking add-on or template uses to drive and
 smooth those shapes, a *your call* card says so and offers **Keep the avatar's own rig**: both set-up
-modes replace that rig, and *Apply all* leaves the choice to you. When this avatar has no tracking
+modes replace that rig, and *Apply all* leaves the choice to you. A rig that syncs through binary bits
+gets no such card: kept, it does not work here, so Native is recommended instead. When this avatar has no tracking
 shapes but another in the scene wears the same mesh with them, as an add-on's installer leaves
 things when it works on a copy, the analysis and the report name that avatar: it is the one to
 convert. A face-tracking add-on installed in the project but not yet run on the avatar is named the

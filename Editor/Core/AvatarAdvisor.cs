@@ -253,7 +253,25 @@ namespace AvatarBridge
             {
                 string where = $"{score} face-tracking blendshapes on \"{mesh.name}\" " +
                                $"({(unified ? "Unified Expressions" : "Legacy / SRanipal")} naming)";
-                int rig = OwnRigParameters(root, descriptor);
+                int rig = OwnRigParameters(root, descriptor, out int bits);
+                // A rig that syncs through binary bits cannot run here: VRChat lists those bits to
+                // the tracking app as bools while the animator holds them as floats, as ChilloutVR
+                // lists them, so the app never sends them; and as floats they cost 32 bits each.
+                if (bits > 0 && settings.faceTrackingMode == FaceTrackingMode.None)
+                {
+                    advice.Add(new Advice
+                    {
+                        Kind = AdviceKind.Change,
+                        Setting = "Face tracking",
+                        Finding = $"{where}. The avatar's own rig syncs them through {bits} binary bits, which do not " +
+                                  "work in ChilloutVR: the tracking app sends nothing to them here, and they would cost " +
+                                  $"{bits * 32} of the 3200 synced bits. ChilloutVR's native component drives the same " +
+                                  "shapes and syncs them for nothing.",
+                        Apply = s => s.faceTrackingMode = FaceTrackingMode.Native,
+                        Targets = new UnityEngine.Object[] { mesh.gameObject },
+                    });
+                    return;
+                }
                 if (rig > 0 && settings.faceTrackingMode == FaceTrackingMode.None)
                 {
                     advice.Add(new Advice
@@ -293,7 +311,7 @@ namespace AvatarBridge
                 // Native is the better default for the shapes, but a rig somebody paid for is
                 // usually the point of the add-on, and either set-up mode replaces it. So the
                 // choice is shown, and left out of Apply all.
-                if (rig > 0)
+                if (rig > 0 && bits == 0)
                 {
                     string mode = settings.faceTrackingMode == FaceTrackingMode.Native
                         ? "Native CVR Component" : "Unity Animator Blendtrees (DSR)";
@@ -837,7 +855,10 @@ namespace AvatarBridge
         // Face-tracking parameters the avatar's own rig uses: its expression parameters and those
         // of every controller a component hands over, the descriptor's and a merge component's
         // alike, so a rig an add-on merges in at bake time is counted before the bake.
-        static int OwnRigParameters(GameObject root, VRCAvatarDescriptor descriptor)
+        static int OwnRigParameters(GameObject root, VRCAvatarDescriptor descriptor) => OwnRigParameters(root, descriptor, out _);
+
+        // bits: of those, the binary sync bits a VRCFaceTracking rig sends its values to others with.
+        static int OwnRigParameters(GameObject root, VRCAvatarDescriptor descriptor, out int bits)
         {
             var names = new HashSet<string>(ParameterNames(descriptor));
             foreach (var behaviour in root.GetComponentsInChildren<MonoBehaviour>(true))
@@ -857,6 +878,7 @@ namespace AvatarBridge
                     }
                 }
             }
+            bits = names.Count(FaceTrackingParameters.IsBinarySyncBit);
             return names.Count(FaceTrackingParameters.IsFaceTracking);
         }
 
