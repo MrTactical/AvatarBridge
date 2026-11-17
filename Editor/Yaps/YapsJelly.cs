@@ -4238,7 +4238,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // Untouched, it eases onto its bones over _Hold and holds there (1): walking, the
                     // tissue's own swing on top of the cloth's stretched it twice over. Any hand, probe,
                     // own limb, grip or the pair pressing together last step lets it go at once.
-                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || _MainTex.Load(int3(41, side, 0)).x != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
+                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || _MainTex.Load(int3(41, side, 0)).y != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
                     float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : 0;
                     Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : max(toward, hold);
                     // A change of speed past _Landing in the step, kept for the next step: against the
@@ -4348,8 +4348,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float r;
                             uint c = px.x < 64 ? (uint) (px.x - 42) >> 1 : 8 + ((uint) (px.x - 64) >> 1);
                             Own(c, scale, a, b, r);
-                            bool reach = false;
-                            [branch] if ((px.x & 1) && r > 0) reach = InReach(a, b, r, m, scale, side);
+                            // 1 in reach, 2 into the skin's box itself: an arm at the side is always in
+                            // reach, so only 2 counts as touching for the hold.
+                            float reach = 0;
+                            [branch] if ((px.x & 1) && r > 0) { float gap = Gap(a, b, r, m, scale, side); reach = gap <= 0 ? 2 : gap <= 0.08 * scale ? 1 : 0; }
                             float hold;
                             [branch] if (c == 2 || c == 6) Held(a, b, r, r, false, a, b, m, scale, hold);
                             return (px.x & 1) == 0 ? float4(a, r) : float4(b, reach);
@@ -4457,9 +4459,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // judgements. Read a frame late by the first pass, so the reach has room.
                     [branch] if (px.x == 41)
                     {
-                        uint bits = 0;
-                        [unroll] for (uint c = 0; c < 16; c++) bits |= _MainTex.Load(int3(c < 8 ? 43 + 2 * c : 49 + 2 * c, side, 0)).w > 0.5 ? 1u << c : 0;
-                        return float4(distant ? 0 : bits, 0, 0, 1);
+                        uint bits = 0, into = 0;
+                        [unroll] for (uint c = 0; c < 16; c++)
+                        {
+                            float w = _MainTex.Load(int3(c < 8 ? 43 + 2 * c : 49 + 2 * c, side, 0)).w;
+                            bits |= w > 0.5 ? 1u << c : 0;
+                            into |= w > 1.5 ? 1u << c : 0;
+                        }
+                        return float4(distant ? 0 : bits, distant ? 0 : into, 0, 1);
                     }
 #ifdef JELLY_SLEEP
                     if (px.x == 18) return float4(distant, Sleepy(m, distant, side), Ease, 1);
