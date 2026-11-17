@@ -2761,6 +2761,19 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 return smoothstep(0.5736, 0.7660, 0.5 * (t - 1));
             }
 
+            // Whether the pair press on each other as Moved's plane has them: a cloth swinging them
+            // together touches like a hand, so the hold lets go.
+            bool Meeting(float4x4 m, float scale, uint side)
+            {
+                if (!(_Pair > 0 && _PairReach.x > 0)) return false;
+                uint rows = side - Base, other = Region ^ 1, ps = other * (rows + 1) + rows;
+                float zc = 0.5 * (Count().z - 1) * _Lattice.w;
+                float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
+                float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
+                float3 cb = tb.w > 0 ? tb.xyz : mul(AnchorOf(other), float4(0, 0, zc, 1)).xyz;
+                return (length(_PairOffset.xyz) - _PairReach.z) * scale > distance(ca, cb) && Meet(m, ps) > 0;
+            }
+
             // How far a capsule from a to b of radius r leans the mass's spring target: c of its
             // overlap with the mass at rest, centred on p, out of the hand, fading to nothing within a
             // quarter of the reach of a hand lying through the centre, which pushes no way more than
@@ -4224,8 +4237,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     float toward = _Fast > 0 ? saturate((length(Smoothed) - _Fast + 2) / 2) : 0;
                     // Untouched, it eases onto its bones over _Hold and holds there (1): walking, the
                     // tissue's own swing on top of the cloth's stretched it twice over. Any hand, probe,
-                    // own limb or grip in reach last step lets it go at once.
-                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || _MainTex.Load(int3(41, side, 0)).x != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5;
+                    // own limb, grip or the pair pressing together last step lets it go at once.
+                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || _MainTex.Load(int3(41, side, 0)).x != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
                     float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : 0;
                     Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : max(toward, hold);
                     // A change of speed past _Landing in the step, kept for the next step: against the

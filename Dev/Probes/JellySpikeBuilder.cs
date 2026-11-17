@@ -3413,7 +3413,7 @@ namespace AvatarBridge.Regression
                     var l = on.inverse.MultiplyPoint3x4((Vector3) Particle(s, 0, p)) / breastSpacing;
                     lines.Add(string.Join(",", p % dn.x, p / dn.x % dn.y, p / (dn.x * dn.y), l.x.ToString("0.0000", CultureInfo.InvariantCulture), l.y.ToString("0.0000", CultureInfo.InvariantCulture), l.z.ToString("0.0000", CultureInfo.InvariantCulture)));
                 }
-                foreach (int x in new[] { 29, 30, 31, 40, 58, 59, 85 }) lines.Add($"# {x} {(Vector3) s[dr + x]:F4} {s[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) s[dr + x]) / breastSpacing:F3}");
+                foreach (int x in new[] { 1, 18, 29, 30, 31, 40, 41, 58, 59, 85, 87, 92 }) lines.Add($"# {x} {(Vector3) s[dr + x]:F4} {s[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) s[dr + x]) / breastSpacing:F3}");
                 lines.Add($"# region0 on the body {carried.InverseTransformPoint(breastRegions[0].position) / breastSpacing:F3} turned {(Quaternion.Inverse(carried.rotation) * breastRegions[0].rotation).eulerAngles:F1}");
                 lines.Add($"# region0 {breastRegions[0].name} parent {(breastRegions[0].parent ? breastRegions[0].parent.name : "-")} scale {breastRegions[0].lossyScale.x:F4}");
                 File.WriteAllLines(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"dump-{frame}.csv"), lines);
