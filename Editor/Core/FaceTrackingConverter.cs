@@ -190,7 +190,7 @@ namespace AvatarBridge
 
         struct Term { public int shape, side; public float k; }
 
-        static int MakeMissingShapes(BridgeContext ctx, CVRFaceTracking faceTracking, SkinnedMeshRenderer smr)
+        internal static int MakeMissingShapes(BridgeContext ctx, CVRFaceTracking faceTracking, SkinnedMeshRenderer smr)
         {
             var targets = faceTracking.CurrentShapeNames;
             var slots = faceTracking.FaceBlendShapes;
@@ -335,7 +335,7 @@ namespace AvatarBridge
             return right;
         }
 
-        static int FillUnsidedShapes(CVRFaceTracking faceTracking, SkinnedMeshRenderer mesh)
+        internal static int FillUnsidedShapes(CVRFaceTracking faceTracking, SkinnedMeshRenderer mesh)
         {
             var targets = faceTracking.CurrentShapeNames;
             var slots = faceTracking.FaceBlendShapes;
