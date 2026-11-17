@@ -3841,7 +3841,18 @@ item 36. Done on dev, each measured:
 
 Queued, larger: one tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, ~100-145 ms first view;
 risk, several steps writing one pair); lighting keywords the host's vertex never reads multiplying the YAPS vertex
-variants (~a third of a patch's upload compile; risk, a host lighting in its vertex loses point lights). Smaller,
+variants. **VERTEXLIGHT_ON done on dev 2026-11-17** (7d6f71f3): a host declaring it for both stages gets it per
+pixel when its own vertex programs compile to the same bytes with and without it (four light sets, the
+material's keywords, 0.35 s a host); later Poiyomi already declares it so. VertexLightTest: a pixel reader is
+rewritten, a vertex reader is not, and under a vertex light the pixel stage still sees the keyword. All six
+Poiyomi 8.1 hosts tried are rewritten. Cold upload of an avatar with two such patches: 286 to 238 variants,
+22.3 to 20.6 s of YAPS compile, bundle 43.9 to 41.4 s (one run each). LIGHTPROBE_SH and the ForwardAdd axes
+come from Unity's built-in sets, which cannot be split by stage without redeclaring them: not done.
+Not run in game: Joe, point lights on an older Poiyomi avatar look the same.
+- **Kar's slow tissue step was not the shipped code** (re-timed quiet 2026-11-17: 4 variants, 214 s wall,
+  403 s CPU). Kar's test scene still draws the 10-31 spike's `Assets/AvatarBridge_JellySpike/JellyStep.shader`
+  (four copies of the step share the name in Attempt Conversion); the tool's own in YAPS/Generated/Jelly built
+  in about 5 s on the plush. Nothing to fix. Smaller,
 queued: the empty asset refreshes per avatar (attribute first), the orphan clips left in a merged controller,
 batching the rehomer's texture writes.
 
@@ -6220,7 +6231,10 @@ sets animator transitions and behaviours only when they changed, caches the mate
 renderer and property, and finds GoGo clips with one search. Measured from each step's
 times in `Diagnostics.md`. Still open, largest first:
 
-- **The soft bake itself (~13 s a pair)** when it does run (a squash with no jelly, a refused
+- ~~**The soft bake itself (~13 s a pair)**~~ **Presses side by side, done on dev 2026-11-17** (16f1a73d): each
+  press on one thread and a tissue of its own. SoftBakeTest, a synthetic pair of 6782 particles: 20.5 s to 7.0 s,
+  all 30 answers bit for bit. Not timed on an avatar: none in the corpus bakes now, the jelly takes every pair.
+  The cache by input hash is not built. Was: when it does run (a squash with no jelly, a refused
   part): run the presses in parallel with each press single-threaded instead of ~100 small
   `Parallel.For` calls per substep, and cache the result by a hash of every input it reads.
 - **The texture-size scan (~7 s in a large project, again in the window after Convert).** Not
@@ -6230,11 +6244,17 @@ times in `Diagnostics.md`. Still open, largest first:
   window instead.
 - **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
   10-15 s on a large VRCFury controller).
-- **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`). **Measured and part
+  fixed on dev 2026-11-17.** The step took 8 to 22 s on the large VRCFury avatars; a log line (`Rehome steps`)
+  put all of it in rescuing the materials swap clips name (43 on one avatar, 14 of them copied), about 175 ms to
+  write each and 310-350 ms in its textures. The writes now go in the scene pass's batch (936bfcc8): 7.8 to
+  5.7 s and 13.4 to 8.6 s on that avatar, the same 243 output files. Setting motions only on a change measured
+  nothing and was reverted. Left: the textures' 310 ms a material, not yet split; texture clones stay
+  immediate, since a batched material must not name a texture written in the same batch.
 - **Two digest moves since the 5.0.0 release run** (full corpus 2026-11-16 on 7a4d2163, 7 of 88
   changed, the release run 0): six scenes of one avatar list two equal 5.3 MB texture warnings in
   the other order (`AvatarWeight.cs:217` sorts by bytes alone, so ties follow material order:
-  add `ThenBy` name); one avatar's rehomed clip reads "Blush" where the baseline read "Blush 1",
+  ~~add `ThenBy` name~~ done e5bea683, by name then path); one avatar's rehomed clip reads "Blush" where the baseline read "Blush 1",
   the file still `Blush 1.anim`, so a name is now taken before the import that renames it. Both
   cosmetic; check whether the speed work moved them before accepting a new baseline.
 - **Upload time, not measured yet** (Joe, 2026-11-16: "add the upload timing to the queue"). The
