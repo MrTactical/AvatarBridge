@@ -1627,7 +1627,8 @@ MagicaCloth colliders, any shape, each pressing at about its own size, a fingert
 It is off by default: the net costs every viewer about 0.1 s more each time the avatar loads, and
 hands press without it. Walls, tables and dropped props do not
 press it. Past 4 m from a viewer, or well behind where the viewer looks, it stops
-stepping and holds its shape. A dropped frame, a snap turn or a teleport carries it along with the
+stepping and holds its shape. Moving faster than a sprint, as in flight, it eases to rest from
+5 m/s and holds its shape past 7 m/s, until back under 5. A dropped frame, a snap turn or a teleport carries it along with the
 body instead of flinging or tearing it, at any frame rate; the stop-start way other players' copies
 move is smoothed the same on every copy, the wearer's included, so every viewer sees much the same
 tissue; and a part whose numbers go bad puts itself back at rest in a frame instead of vanishing.
