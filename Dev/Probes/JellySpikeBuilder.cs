@@ -3417,16 +3417,6 @@ namespace AvatarBridge.Regression
                 lines.Add($"# region0 on the body {carried.InverseTransformPoint(breastRegions[0].position) / breastSpacing:F3} turned {(Quaternion.Inverse(carried.rotation) * breastRegions[0].rotation).eulerAngles:F1}");
                 lines.Add($"# region0 {breastRegions[0].name} parent {(breastRegions[0].parent ? breastRegions[0].parent.name : "-")} scale {breastRegions[0].lossyScale.x:F4}");
                 File.WriteAllLines(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"dump-{frame}.csv"), lines);
-                // The twin as the first pass left it, on the same anchor.
-                var twin = Read(AssetDatabase.LoadAssetAtPath<RenderTexture>(Folder + "/Jelly_State_B.renderTexture"));
-                var tl = new List<string> { "i,j,k,x,y,z" };
-                for (int p = 0; p < dn.x * dn.y * dn.z; p++)
-                {
-                    var l = on.inverse.MultiplyPoint3x4((Vector3) Particle(twin, 0, p)) / breastSpacing;
-                    tl.Add(string.Join(",", p % dn.x, p / dn.x % dn.y, p / (dn.x * dn.y), l.x.ToString("0.0000", CultureInfo.InvariantCulture), l.y.ToString("0.0000", CultureInfo.InvariantCulture), l.z.ToString("0.0000", CultureInfo.InvariantCulture)));
-                }
-                foreach (int x in new[] { 25, 29, 30, 31 }) tl.Add($"# {x} {(Vector3) twin[dr + x]:F4} {twin[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) twin[dr + x]) / breastSpacing:F3}");
-                File.WriteAllLines(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"dumpB-{frame}.csv"), tl);
             }
 
             float furthest = Furthest(s, breastRegions), L = (n.z - 1) * breastSpacing * breastRegions[0].lossyScale.x;
