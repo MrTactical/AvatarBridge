@@ -3830,6 +3830,36 @@ Measured in the stability harness (`-jellyStab`, Kar's breasts, a glide eased in
   updated; test build rc20 has the same contents.
 - Harness flags added: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f` (particles on the
   stepped anchor, the plane's distances, the region on the body), `-jellyStabSide`, `-jellyStabFilm`.
+- **The physics move, the tissue only touches, DONE on dev** (caf63e98 to ce9e95b5, Joe 2026-11-17: "let magica
+  handle all physics ... squash and jelly only handle mesh deforms"). The tester's rc20 avatar had live tissue,
+  squash and a MagicaCloth chain on the same breasts and butt: the tissue's own swing rode the cloth's. Now an
+  untouched part eases onto its bones over `_Hold` (0.4 s) and holds there (Ease 1, particles at home, mass
+  reset), stepped and scanned so a touch wakes it next step: a hand in reach, the wearer's own HAND into the
+  box (arms and the avatar's own colliders lie in the box at rest, 41.y bits 0 and 8 on Kar, and dent through
+  the draw alone), a probe, a grip, or the pair 2 mm past their built distance (exactly at it, float noise
+  let the hold go every frame while standing). Harness, hold off against on, steady: walk 1.82x to 1.05x,
+  run 2.10x to 1.08x, 25 fps 1.59x to 1.00x, worst over a whole run 3.81x to 1.09x; still and kick
+  unchanged; a hand pressed in 64.7 mm both ways. A part no cloth swings no longer swings at all, as on the
+  source. The squash's stretch in motion is removed (shader, homes, setting, setup fold). Not in game yet.
+
+### 50. Face tracking failing in every mode on a VRCFaceTracking add-on avatar. A user (Shiro Usagi), 2026-11-17, with their own fixer script and a 4.7.2 Keep-mode output, DONE on dev, not in game
+Their fixer (strip the rig, native component, built shapes) works for them; they gave permission to take from it.
+Read against their output:
+- **Native and DSR left five rig layers** (3d3c3280): a viseme layer holding every mouth shape at 0 behind
+  `VisemesEnable` and `TrackingType`, and four tongue layers on `TongueControlActive`, `ForceTongueOut*`,
+  `Tongue-x/y`. The strip now knows those switches (menu unchanged, Keep keeps them) and leaves `IsLocal`,
+  `TrackingType`, `VRMode` and quantization out of a layer's count: it strips exactly the 12 their fixer did.
+- **Keep cannot run a binary-synced rig** (4f587f66). VRCFaceTracking (master, `BaseParam`) does match
+  `#FT/v2/JawOpen` and sends to that exact address, so the `#` alone is not it. But ChilloutVR lists every
+  animator parameter where VRChat lists the expression parameters, so the input, its `Drive` and its
+  `Generated` copy all end in `/v2/JawOpen` and the first match wins; and the 130 binary bits are floats in the
+  animator, so the app's bool parameters never match them, and synced they cost 4160 of 3200 bits. The
+  analyser steers such a rig to Native and drops the keep card; a kept one is a report warning.
+- **Native builds the slots the CCK leaves empty** (cd36e8e3): sideless shapes split at the face's midline,
+  ARKit names blended after VRCFaceTracking's weights, funnel and pucker halved, a two-step tongue. Eye look: an
+  unset VRChat pose gets 25 degrees instead of pinning the eye.
+- **Open:** the shapes built are untested on the face-tracked corpus avatars (20 get the native component);
+  none of it is tested in game. Their fixer's blendshape eye look (EyeLook shapes, no eye bones) is not taken.
 
 ## 5.0.1
 
