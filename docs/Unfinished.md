@@ -3863,7 +3863,7 @@ Read against their output:
   the CCK alone on one). **Open:** none of it is tested in game. Their fixer's blendshape eye look (EyeLook
   shapes, no eye bones) is not taken.
 
-### 51. Live tissue drawn out into a cone along a hand held deep in it. A tester (fluffybat), 2026-11-17, rc21, IN PROGRESS on dev
+### 51. Live tissue drawn out into a cone along a hand held deep in it. A tester (fluffybat), 2026-11-17, rc21, FIXED on dev (harness), not in game
 "insane stretching when the hand in breast", "when I nudge it slowly, almost stretching past breaking": a breast drawn
 2-3 times its length along the arm while a hand is pushed in deep and held. Their avatar: two 0.1 litre breasts on
 10x11x9 lattices, a hand radius as big as the part, one MagicaCloth rooted on an unsided Boob_Root. Joe's rule for it:
@@ -3872,6 +3872,8 @@ Found (a five-agent read plus 10 harness runs, synthesis in the session scratch)
 - **The hand moved and reshaped the whole.** `_Give` 0.525 leaned the mass 61 mm and `_Squeeze` flattened it along
   the hand: lattice 1.30x its depth outward, steady through a 2.5 s hold (str-arm45); both 0: 0.32 spacings, the
   dent kept. Now `CarriedGive` 0 and no squeeze on a carried part; Give, Swing and Spring back leave the feel UI.
+  Joe would have kept some push if it could stay unstretched: the push without its outward part still reached
+  15.2-15.3 of 14 spacings at 0.525 and 15.0-15.2 at 0.25 (bar 14.75), so it stays off.
 - **The cloth was never recognised**: `PairCloth` took only roots on a sided bone, so a cloth on `Boob_Root` left the
   tissue riding the bone above the swung one. A root naming the part above the sided chains counts now.
 - **The cloth no longer shrinks its balls**: other players' hands (added to the cloth at runtime) move the bones
@@ -3884,8 +3886,16 @@ Found (a five-agent read plus 10 harness runs, synthesis in the session scratch)
   reproduced here by any save, unload or reload, DepthSaveProbe). The step reads a value outside the box as no
   map; the map is written as a new texture copied over the old and saved at once, as the squash's are; the upload
   check reads it back.
+- **Proof on e42bf610**, Kar with a hand at the tester's proportions (`-jellyHandTall 6.4 -jellyStabSet _Deepest=0.48`,
+  slow push in four steps, each held 150 frames), lattice front in rest spacings of 14 (was on rc21):
+  45 degree arm 14.32 max (18.26), outward 0.53 (4.26), dent -5.10 kept; hand collider 14.27 (outward 4.91 before);
+  80 degree arm 14.52, one back particle 1.19 out under the hand; straight 13.98. Films: dented round the arm, no cone.
+  Own forearm: tear 5.80, furthest 144 mm (5.77, 139.6). Walk, run and 25 fps: tear 1.00-1.01, nothing left over.
+  Hand dents keep their depth (65.9 mm, 106.9 mm at 10 cm), tear up from 1.41 to 1.51 and 1.85 to 2.11: the whole
+  no longer gives, so the particles take all of it. FreshCompileTimeTest PASS.
 - **Separate, not fixed:** a hand arriving during a 4 m/s glide jumps the tissue 77.7 mm in a frame (the 5.5x of
-  `rc21-handrun`); the wearer's own forearm deep inside flips live and held at one depth.
+  `rc21-handrun`, tear 5.53 unchanged); the wearer's own forearm deep inside flips live and held at one depth.
+- **Open:** in game with the tester. Nothing here reads the drawn skin, only the lattice; the films are the check.
 
 ## 5.0.1
 
