@@ -33,6 +33,13 @@ its number; only the look in game is left here.
   name has a slash? If not, the converted avatar plays a sound the original did not (checklist S6.9).
 - **(45) Editor, 2022.3.58f1:** press Squash and a row's Customise in the YAPS setup window; the
   Console stays free of the `SerializedObjectBindingToBaseField` NullReferenceException.
+- **(32.12) Nested PhysBone chains on MagicaCloth 2:** an avatar with a PhysBone inside another's
+  chain (a hair strand on a hair chain, a tail tip with its own bone): the inner chain swings by
+  its own settings and the outer chain does not drag it stiffly.
+- **(32.6) A user's own shader below target 4.5 on YAPS Standard:** the squash still moves with
+  the cloth.
+- **(32.1) Editor Play mode:** the Avatar Tester's remote copy starts from rest (`TwinRestTest` passes
+  in batch; never looked at by hand).
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -767,37 +774,6 @@ rebuilds the output from the source and writes over it; only the window's settin
   - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
     button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
     (UiOffscreenProbe) before building.
-
-### 32. The 5.0.0 review of 2026-11-06: what it left. OPEN
-
-Seven reviewers over every shipped file of main..dev; 29 findings held. Points 1 to 11 are fixed
-or answered and shipped in 5.0.0 (record, and the three withdrawn findings, in
-`archive/Closed-2026-11.md`). The numbers below are the review's own.
-
-- Remainders of the fixed points. **6:** a user's own shader below target 4.5
-   still reads the squash from the matrix slots; the patcher leaves its target alone. Whether the
-   skinned slots now move the squash with the cloth on YAPS Standard: in game. **1:** the tester's
-   copy as others see it now starts from rest (`TwinRestTest`); untested by hand in editor Play mode.
-12. **Nested PhysBone chains on MagicaCloth 2** still move both chains, and the report names them.
-    `MagicaClothKeepOut` now keeps ignored bones still; it could do the same for the nested chain.
-13. **The live tissue dents a sparse part only broadly.** A deep poke moves the facing skin 2-4 cm on
-    every part, but over the whole area under the hand. Where the mesh has no vertex within a
-    fingertip's reach (measured: none within 3 cm of the poke and 2-12 within 10 cm, against 25-80 on
-    a denser part), there is nothing to draw a finger-sized dent with, so it reads as no dent. Not the
-    preset: the denser part's values pressed only 10-20% further. A finer dent needs either more
-    vertices there or a dent drawn in the fragment stage.
-14. **The live tissue's first compile: what the 2026-11-07 fix left.** The record, and two claims
-    this item made withdrawn, is in `archive/Closed-2026-11.md`: a tissue shader's first compile
-    is now two and a half to four times faster, and the check compiles a copy before reading its
-    errors, so a shader that fails keeps that material on the squash alone, with a warning. Left:
-    - A real timeout was never forced (a bloated include compiled 292 s without one). That the new
-      check catches one rests on the corpus run, where a check after the wear's compile saw it.
-    - In the editor window, Unity may compile a shader in the background where batch mode waits;
-      the check now compiles it in place either way. Timed in batch only (first time 27-49 s a
-      Poiyomi Pro material, again 0.7-1.1 s); in the window, untimed.
-    - Each state read now takes four texture reads where one ran. Unmeasured in game.
-    - The first-conversion times start to finish (notes, add-on card and film) are the corpus
-      run's on the old code; a fresh one needs a corpus run.
 
 ### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
 

@@ -590,8 +590,8 @@ a large avatar.
   it is by default.
 - **Left-out transforms** are usually kept out by starting the cloth below them. Where that leaves
   too little chain, the cloth starts at the chain's root and marks those bones to be left alone.
-- **A PhysBone nested inside another's chain** is moved by both cloths on MagicaCloth2, and the
-  report names it. DynamicBone excludes it exactly.
+- **A PhysBone nested inside another's chain** is left to its own cloth, as VRChat does: the outer
+  cloth marks those bones to be left alone. DynamicBone excludes it exactly.
 - **An *inside bounds* collider** has no equivalent. The report names it.
 
 </details>

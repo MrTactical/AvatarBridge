@@ -153,16 +153,14 @@ namespace AvatarBridge
                     "if they are deliberate.");
             }
 
-            // ponytail: reported, not rooted around. Rooting below a nested chain pins the bones
-            // this chain moves beside it; measure that against two cloths on one bone before choosing.
+            // Kept out by attribute, as an ignored bone is, so its own cloth alone moves it: rooting
+            // below it would pin the bones this chain moves beside it.
             if (data.NestedExclusions.Count > 0)
             {
-                ctx.Report.Approximated(Category, data.Label,
-                    $"Also moves {BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")}: " +
-                    $"{string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
-                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below. VRChat leaves those to their own PhysBone " +
-                    "(Ignore Other PhysBones), but MagicaCloth2 leaves a bone out only by rooting below it, which would " +
-                    "pin bones this chain moves.");
+                ctx.Report.Converted(Category, data.Label,
+                    $"Leaves {BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")} " +
+                    $"to their own cloth, as VRChat does: {string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below.");
             }
 
             bool keptOut = false;
@@ -194,7 +192,8 @@ namespace AvatarBridge
                 }
             }
             // Once the tips exist, so they are listed as moving.
-            if (keptOut) MagicaClothKeepOut.KeepOut(cloth, data.Ignores);
+            if (keptOut || data.NestedExclusions.Count > 0)
+                MagicaClothKeepOut.KeepOut(cloth, (keptOut ? data.Ignores : new List<Transform>()).Concat(data.NestedExclusions));
 
             if (data.Colliders.Count > 0)
             {
