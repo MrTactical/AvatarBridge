@@ -1872,7 +1872,9 @@ on it. The **Also in this package** card links to the tester, the converter and 
 **Weigh it** measures:
 
 - Texture memory against the surface each map covers, so a 2K texture on a fingernail is named and
-  given the size it should be.
+  given the size it should be. This is what the textures take on the graphics card, not the
+  download: the CCK compresses the bundle, so the download is usually much smaller, and the CCK
+  shows it at upload.
 - Contacts against the 512 overlapping pairs ChilloutVR gives the whole instance.
 - Triangles, cloth (how many transforms each simulates, mesh cloth counted apart), blendshapes
   nothing animates, materials each carrying their own locked shader copy, pointers by family, and
@@ -3307,8 +3309,10 @@ link). Anything reproducible is better as a GitHub issue.
 
 `Diagnostics.md` holds the measurements behind the report: package versions, every setting used, the
 rig's shape, where the head and eye bones sit against the viewpoint, a count of constraints, asset
-references that point at nothing, your PC's processor, memory and graphics card, and how long each
-step took. It is facts with no advice, so two conversions can be compared line by line.
+references that point at nothing, your PC's processor, memory, graphics card, free memory and free
+disk, how long each step took with the three slowest passes first, the editor's memory at the start
+and end of the run, and how many console warnings and errors the run logged. It is facts with no
+advice, so two conversions can be compared line by line.
 
 The YAPS Setup window writes no report file. Its **Report an issue** link adds the last Build's
 counts, and its **Copy diagnostics** copies those with what Build and the squash said, line by line.

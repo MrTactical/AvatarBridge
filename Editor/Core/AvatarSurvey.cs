@@ -31,6 +31,8 @@ namespace AvatarBridge
             public readonly SortedSet<Source> How = new SortedSet<Source>();
             // Layers that read it AND write to the avatar: if nothing changes it, the feature is unreachable.
             public int DrivesBindings;
+            // Read as a switch or a picker somewhere, not only as a blend weight or animation time.
+            public bool Steered;
         }
 
         public class Layer
@@ -43,6 +45,8 @@ namespace AvatarBridge
             // Every state's, reachable or not: the weight and the slimmer read these.
             public readonly SortedSet<string> Bindings = new SortedSet<string>(System.StringComparer.Ordinal);
             public readonly SortedSet<string> Reads = new SortedSet<string>(System.StringComparer.Ordinal);
+            // The reads that switch or pick, so the rest are weights and animation times.
+            public readonly SortedSet<string> Steers = new SortedSet<string>(System.StringComparer.Ordinal);
             public AnimatorLayerBlendingMode Mode;
             public AvatarMask MaskAsset;
             public bool HasTransitions;
@@ -206,6 +210,7 @@ namespace AvatarBridge
                     if (p == null) continue;
                     p.Readers.Add($"layer \"{l.name}\"");
                     if (layer.Bindings.Count > 0) p.DrivesBindings += layer.Bindings.Count;
+                    if (layer.Steers.Contains(name)) p.Steered = true;
                 }
             }
         }
@@ -223,9 +228,9 @@ namespace AvatarBridge
                 states.Add(writes);
 
                 // A state can read a parameter without any transition doing so.
-                if (st.speedParameterActive) layer.Reads.Add(st.speedParameter);
-                if (st.cycleOffsetParameterActive) layer.Reads.Add(st.cycleOffsetParameter);
-                if (st.mirrorParameterActive) layer.Reads.Add(st.mirrorParameter);
+                if (st.speedParameterActive) Steer(layer, st.speedParameter);
+                if (st.cycleOffsetParameterActive) Steer(layer, st.cycleOffsetParameter);
+                if (st.mirrorParameterActive) Steer(layer, st.mirrorParameter);
                 if (st.timeParameterActive) layer.Reads.Add(st.timeParameter);
 
                 CollectMotion(st.motion, layer, model, writes.Writes);
@@ -275,12 +280,18 @@ namespace AvatarBridge
         static Motion Played(Motion motion, Model model) =>
             motion is AnimationClip original && model.Overrides.TryGetValue(original, out var swapped) ? swapped : motion;
 
+        static void Steer(Layer layer, string name)
+        {
+            layer.Reads.Add(name);
+            layer.Steers.Add(name);
+        }
+
         static void CollectConditions(AnimatorTransitionBase t, Layer layer)
         {
             if (t == null || t.conditions == null) return;
             foreach (var c in t.conditions)
             {
-                if (!string.IsNullOrEmpty(c.parameter)) layer.Reads.Add(c.parameter);
+                if (!string.IsNullOrEmpty(c.parameter)) Steer(layer, c.parameter);
             }
         }
 
@@ -290,8 +301,8 @@ namespace AvatarBridge
             motion = Played(motion, model);
             if (motion is BlendTree tree)
             {
-                if (!string.IsNullOrEmpty(tree.blendParameter)) layer.Reads.Add(tree.blendParameter);
-                if (!string.IsNullOrEmpty(tree.blendParameterY)) layer.Reads.Add(tree.blendParameterY);
+                if (!string.IsNullOrEmpty(tree.blendParameter)) Steer(layer, tree.blendParameter);
+                if (!string.IsNullOrEmpty(tree.blendParameterY)) Steer(layer, tree.blendParameterY);
                 foreach (var child in tree.children)
                 {
                     if (!string.IsNullOrEmpty(child.directBlendParameter)) layer.Reads.Add(child.directBlendParameter);
@@ -615,6 +626,10 @@ namespace AvatarBridge
                 {
                     Add(model, "unused parameter", p.Name, "nothing reads it and nothing writes it");
                 }
+                else if (p.Writers.Count == 0 && p.Name.StartsWith(AvatarScalerInjector.Prefix, System.StringComparison.Ordinal))
+                {
+                    // The scaler's own constants, fixed on purpose; listing them read as a fault.
+                }
                 else if (p.Writers.Count == 0 && p.DrivesBindings > 0 && Neutralised(p.Name, out string by))
                 {
                     // Frozen on purpose by a setting; not a lost feature.
@@ -629,6 +644,13 @@ namespace AvatarBridge
                         $"{was}, so nothing writes it here. It drives {BridgeElements.Count(p.DrivesBindings, "binding", "bindings")} " +
                         $"and now sits at {p.Default}.");
                 }
+                else if (p.Writers.Count == 0 && p.DrivesBindings > 0 && FixedWeight(p))
+                {
+                    // A constant the author set, such as a 1 multiplying a blend tree: nothing to switch.
+                    Add(model, "fixed weight", p.Name,
+                        $"never written, and read only as a blend weight or animation time, so it holds {p.Default}. " +
+                        "A constant, not a switch: what it drives shows as built.");
+                }
                 else if (p.Writers.Count == 0 && p.DrivesBindings > 0)
                 {
                     // The author built the behaviour and never wired a way in.
@@ -638,7 +660,10 @@ namespace AvatarBridge
                 }
                 else if (p.Writers.Count == 0)
                 {
-                    Add(model, "frozen parameter", p.Name, $"read but never written, so it stays {p.Default}");
+                    // Only layers that write nothing read it, so the fixed value shows nowhere.
+                    Add(model, "frozen parameter", p.Name, $"read but never written, so it stays {p.Default}" +
+                        (p.Readers.All(r => r.StartsWith("layer ", System.StringComparison.Ordinal))
+                            ? ". Nothing it steers changes the avatar, so it is harmless" : ""));
                 }
                 else if (p.Readers.Count == 0)
                 {
@@ -788,6 +813,11 @@ namespace AvatarBridge
 
         static string Readable(string binding) => binding.Replace("::", ".");
 
+        // At 0 a weight hides what it weights, so only a non-zero one is a harmless constant.
+        static bool FixedWeight(Param p) =>
+            p.Type == AnimatorControllerParameterType.Float && !p.Steered && p.Default != "0"
+            && p.Readers.All(r => r.StartsWith("layer ", System.StringComparison.Ordinal));
+
         // Its writer cut on purpose; the name survives because a layer still reads it.
         static bool Neutralised(string name, out string by)
         {
@@ -904,6 +934,8 @@ namespace AvatarBridge
                     return $"{BridgeElements.Count(count, "menu control", "menu controls")} naming a parameter the controller does not have";
                 case "unused parameter":
                     return $"{BridgeElements.Count(count, "parameter", "parameters")} nothing reads or writes";
+                case "fixed weight":
+                    return $"{BridgeElements.Count(count, "parameter", "parameters")} the author fixed as a constant weight";
                 case "frozen parameter":
                     return $"{BridgeElements.Count(count, "parameter", "parameters")} read but never written";
                 case "write-only parameter":
@@ -925,7 +957,7 @@ namespace AvatarBridge
             "state that bicycles the body",
             "unreachable feature", "stopped working when converted", "control that does nothing",
             "control with no parameter", "hidden by a layer above", "state that can never play",
-            "state with no motion", "contested binding", "neutralised by a setting",
+            "state with no motion", "contested binding", "neutralised by a setting", "fixed weight",
             "unused parameter", "frozen parameter", "write-only parameter", "empty layer",
         };
 

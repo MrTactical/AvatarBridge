@@ -38,6 +38,7 @@ namespace AvatarBridge
             Section(text, "Editor", () => EditorEnvironment());
             Section(text, "Machine", () => Machine());
             Section(text, "Time taken", () => TimeTaken());
+            Section(text, "This run", () => ThisRun());
             Section(text, "Settings used", () => SettingsDump(ctx));
             Section(text, "Rig", () => Rig(ctx));
             Section(text, "Head, eyes and the viewpoint", () => HeadGeometry(ctx));
@@ -194,14 +195,82 @@ namespace AvatarBridge
             Row("Memory", $"{SystemInfo.systemMemorySize / 1024f:0.#} GB"),
             Row("Graphics", $"{SystemInfo.graphicsDeviceName} ({SystemInfo.graphicsMemorySize / 1024f:0.#} GB)"),
             Row("System", SystemInfo.operatingSystem),
+            Row("Free memory", FreeMemory()),
+            Row("Free disk (project drive)", FreeDisk()),
         });
+
+        static string Gb(long bytes) => $"{bytes / 1073741824.0:0.#} GB";
+
+        static string FreeDisk()
+        {
+            try
+            {
+                return Gb(new DriveInfo(Path.GetPathRoot(Path.GetFullPath(Application.dataPath))).AvailableFreeSpace);
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct MemoryStatus
+        {
+            public uint Length, Load;
+            public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, AvailExtendedVirtual;
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool GlobalMemoryStatusEx(ref MemoryStatus status);
+
+        // Windows only: Unity has no free-memory call, and ChilloutVR runs on Windows anyway.
+        static string FreeMemory()
+        {
+            try
+            {
+                var status = new MemoryStatus { Length = (uint)System.Runtime.InteropServices.Marshal.SizeOf<MemoryStatus>() };
+                return GlobalMemoryStatusEx(ref status) ? Gb((long)status.AvailPhys) : "unknown";
+            }
+            catch
+            {
+                return "unknown";
+            }
+        }
 
         // Each step's time in milliseconds, as the steps logged it: one that runs far longer than
         // the rest, or runs more often than the avatar has parts, is where a slow conversion went.
         static string TimeTaken()
         {
             var lines = ProblemReport.TakeTimings();
-            return lines.Count == 0 ? "No step times were logged." : string.Join("\n", lines.Select(l => "- " + l));
+            if (lines.Count == 0) return "No step times were logged.";
+            string all = string.Join("\n", lines.Select(l => "- " + l));
+            // The passes run one after another, so their line ranks the run; the other lines
+            // break single passes down.
+            const string head = "Pass times (ms): ";
+            string passes = lines.LastOrDefault(l => l.StartsWith(head, StringComparison.Ordinal));
+            if (passes == null) return all;
+            var slowest = passes.Substring(head.Length).Split(new[] { ", " }, StringSplitOptions.None)
+                .Select(p => System.Text.RegularExpressions.Regex.Match(p, @"^(.+) (\d+)$"))
+                .Where(m => m.Success)
+                .Select(m => (name: m.Groups[1].Value, ms: long.Parse(m.Groups[2].Value)))
+                .OrderByDescending(p => p.ms).Take(3)
+                .Select(p => $"{p.name} {p.ms / 1000.0:0.0} s");
+            return $"**Slowest passes:** {string.Join(", ", slowest)}\n\n" + all;
+        }
+
+        // Editor memory beside the step times: a step that leaks shows as a climb across runs.
+        static string ThisRun()
+        {
+            var (warnings, errors, start) = ProblemReport.RunCounts();
+            var process = System.Diagnostics.Process.GetCurrentProcess();
+            return Table(new[] { "", "" }, new List<string>
+            {
+                Row("Unity editor memory at the start", start > 0 ? Gb(start) : "unknown"),
+                Row("Unity editor memory at the end", Gb(process.WorkingSet64)),
+                Row("Highest since the editor opened", Gb(process.PeakWorkingSet64)),
+                Row("Console warnings", warnings.ToString()),
+                Row("Console errors", errors.ToString()),
+            });
         }
 
         static string SettingsDump(BridgeContext ctx)

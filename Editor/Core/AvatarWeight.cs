@@ -76,7 +76,6 @@ namespace AvatarBridge
             public int MaxParticles;
             public int Lights;
             public int MarkerLights;
-            public long DownloadBytes;
             public int Cloth;
             public int ClothColliders;
             public int ClothParticles;
@@ -211,8 +210,6 @@ namespace AvatarBridge
                 .ThenBy(t => t.Name, System.StringComparer.Ordinal)
                 .ThenBy(t => AssetDatabase.GetAssetPath(t.Texture), System.StringComparer.Ordinal));
             report.TextureBytes = report.Textures.Sum(t => t.Bytes);
-            // Crunched: packed size to download, full size on the card.
-            report.DownloadBytes = report.Textures.Sum(t => t.Crunched ? t.DiskBytes : t.Bytes);
             // Only what nothing visible uses; a texture behind two dead renderers counts once.
             deadMaterials.ExceptWith(liveMaterials);
             var liveTextures = new HashSet<Texture>(liveMaterials.SelectMany(TexturesOf));
@@ -357,16 +354,6 @@ namespace AvatarBridge
                           string.Join(", ", r.ContactFamilies.Select(f => $"{f.Value} {f.Key}")) +
                           ". Each family carries its own pair per socket, and the instance shares 512 " +
                           "overlapping pairs a frame.", 2);
-            }
-
-            // CVR's default download limit is 100 MB; past it most viewers silently see a robot.
-            // The CCK measures upload size and crunch separates it from card size, so this
-            // speaks only where the figure alone settles it.
-            if (r.DownloadBytes > 100L * 1048576)
-            {
-                Add(r, 0, $"About {Mb(r.DownloadBytes)} of texture to download, against a default limit of " +
-                          "100 MB. People who keep that default never see an avatar past it, and nothing tells " +
-                          "them why. An estimate: the CCK settles the real figure at upload.", 2);
             }
 
             var crowded = r.ClothParents.Where(p => p.Value > 3).ToList();
@@ -816,10 +803,8 @@ namespace AvatarBridge
             sb.Append("# Weight of ").Append(r.Avatar).Append('\n');
             sb.Append("textures   ").Append(r.Textures.Count).Append(", ")
               .Append(Mb(r.TextureBytes)).Append(" on the graphics card\n");
-            sb.Append("download   ~").Append(Mb(r.DownloadBytes))
-              .Append(" of that is texture to download, give or take what the CCK's build does")
-              .Append(r.DownloadBytes > 100L * 1048576 ? "  (the default limit is 100 MB)" : "")
-              .Append('\n');
+            // The bundle is compressed, so card size says nothing reliable about the download.
+            sb.Append("download   the CCK shows the real size at upload (the default limit is 100 MB)\n");
             sb.Append("meshes     ").Append(r.Renderers).Append(" renderers (").Append(r.Skinned).Append(" skinned), ")
               .Append(r.Triangles.ToString("N0")).Append(" tris, ").Append(r.SubMeshes).Append(" submeshes, ")
               .Append(r.Bones).Append(" bones\n");
@@ -906,7 +891,7 @@ namespace AvatarBridge
         public static string Summary(Report r, bool markdown = false)
         {
             long saved = Reclaimable(r);
-            string head = $"{Mb(r.TextureBytes)} of texture across {r.Textures.Count} maps, " +
+            string head = $"{Mb(r.TextureBytes)} of texture memory across {r.Textures.Count} maps, " +
                           $"{r.Triangles:N0} triangles, {r.Pointers + r.Triggers} contacts.";
             // Read/Write alone still has a line of its own below.
             if (saved <= 0) return r.Callouts.Any(c => c.Bytes > 0) ? head : head + " Nothing here is worth changing.";

@@ -625,6 +625,30 @@ Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.m
   partner pass's hand loop as `[loop]` was identical but saved a quarter of a second at best and was
   not applied. Not done: a tester's own upload timed before and after.
 
+### 57. Five avatars' reports from a tester (fluffybat), 2026-11-18. PART FIXED on dev, the rest waits on the tester
+
+Fixed on dev 2026-11-18, not yet in a release:
+- The weight card called graphics-card texture size the download and warned against the 100 MB
+  limit (107-147 MB reported, about 50 MB real). The download line now defers to the CCK.
+- The survey listed the scaler's own constants (`#AvatarScaler/One`, `StepSize`) as features
+  nothing can switch on, and a float read only as a blend weight or animation time with a non-zero
+  default (a 1 multiplying a Direct tree, a motion-time 1) the same way. Both are now "fixed weight"
+  or skipped, never a warning. A frozen parameter that only write-nothing layers read says it is
+  harmless.
+- Diagnostics.md gains the three slowest passes, free memory and disk, editor memory at the start
+  and end of the run and its session peak, and the run's console warning and error counts.
+
+Open:
+- **A scale layer hides the controller layer it shares bindings with, on three avatars.** Asked the
+  tester whether that part moves in VRChat. If it does not, it is the avatar's own layer order and
+  the report is right; if it does, the converter changed something and this becomes a bug.
+- **Editor memory grew several GB across conversions.** The new Diagnostics lines answer whether a
+  step leaks; read them from the tester's next runs before guessing.
+- **The soft body step is slow on a 287k-triangle avatar:** 65.6 s warm, 129 s cold, against
+  19-23 s on the others (11-16 and 11-17 runs). Cold is shader compiles (13 files imported, Slots
+  37 s). Warm, Prewrite alone is 19 s for 48 copies against 1.3 s for 18, so it grows far faster
+  than the copy count: find the repeated work. The tester also asked for a progress bar on Add.
+
 ### Joe's own
 
 The GrabbyBones upstream PR (plan in `Regression/GrabbyBonesForkPlan.md`, local). Not

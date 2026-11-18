@@ -26,6 +26,9 @@ namespace AvatarBridge
         static readonly List<string> Timed = new List<string>();
         static bool _pending;
         static string _tool = "AvatarBridge";
+        // Every console warning and error since the conversion started, its own or anyone's.
+        static int _warnings, _errors;
+        static long _startMemory;
 
         string _what = "";
         string _zip;
@@ -49,6 +52,8 @@ namespace AvatarBridge
             bool ours = condition.StartsWith("[AvatarBridge]") || condition.StartsWith("[YAPS]")
                         || stack != null && stack.Contains("AvatarBridge.") && !stack.Contains("AvatarBridge.Regression");
             bool bad = type == LogType.Error || type == LogType.Exception || type == LogType.Assert;
+            if (bad) System.Threading.Interlocked.Increment(ref _errors);
+            else if (type == LogType.Warning) System.Threading.Interlocked.Increment(ref _warnings);
             // Each step's time, for Diagnostics.md: where a slow conversion spent it. The step logs
             // that end in " (ms): " stay for this; a reworded one drops out of Diagnostics.md.
             if (ours && condition.Contains(" (ms): "))
@@ -258,6 +263,15 @@ namespace AvatarBridge
             string root = m.Success ? m.Groups[1].Value : "";
             return root.StartsWith("Assets") ? root : "Assets/AvatarBridgeOutput";
         }
+
+        internal static void StartRun()
+        {
+            _warnings = 0;
+            _errors = 0;
+            _startMemory = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+        }
+
+        internal static (int warnings, int errors, long startMemory) RunCounts() => (_warnings, _errors, _startMemory);
 
         // The step times logged since the last call.
         internal static List<string> TakeTimings()
