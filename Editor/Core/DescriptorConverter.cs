@@ -527,30 +527,7 @@ namespace AvatarBridge
                     }
                 }
             }
-
-            foreach (var clip in clips)
-            {
-                foreach (var binding in AnimationUtility.GetCurveBindings(clip))
-                {
-                    const string prefix = "blendShape.";
-                    if (!binding.propertyName.StartsWith(prefix, StringComparison.Ordinal))
-                    {
-                        continue;
-                    }
-                    string shape = binding.propertyName.Substring(prefix.Length);
-                    // Loose on purpose: a false positive costs the client blink, a false negative is
-                    // two systems fighting. Held at zero is a reset, not blinking (the merge agrees).
-                    if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0
-                        && AnimationUtility.GetEditorCurve(clip, binding) is AnimationCurve curve
-                        && curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
-                    {
-                        drivenShape = shape;
-                        drivenBy = $"\"{clip.name}\" drives \"{shape}\"";
-                        return true;
-                    }
-                }
-            }
-            return false;
+            return AvatarFeatureDetect.DrivenBlink(clips, out drivenShape, out drivenBy);
         }
 
         static bool TryWireBlinkFromMesh(BridgeContext ctx, CVRAvatar cvrAvatar)

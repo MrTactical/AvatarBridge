@@ -548,7 +548,7 @@ namespace AvatarBridge
             {
                 if (filler == null)
                 {
-                    filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
+                    filler = new AnimationClip { name = OutputAssetPaths.EmptySlotClip };
                     string anchor = EmptySlotAnchorPath(ctx);
                     if (anchor != null)
                     {
@@ -715,7 +715,7 @@ namespace AvatarBridge
             {
                 return null;
             }
-            const string anchorName = "AvatarBridge_EmptySlot";
+            const string anchorName = OutputAssetPaths.EmptySlotClip;
             var anchor = ctx.Target.transform.Find(anchorName);
             if (anchor == null)
             {
@@ -4090,12 +4090,6 @@ namespace AvatarBridge
             return raised;
         }
 
-        static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
-            => LayerWeightStates(source, on: false);
-
-        static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
-            => LayerWeightStates(source, on: true);
-
         static HashSet<string> LayerWeightStates(AnimatorControllerLayer source, bool on)
         {
             var found = new HashSet<string>();
@@ -5951,10 +5945,7 @@ namespace AvatarBridge
             }
 
             string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
-            if (!AssetDatabase.IsValidFolder(dir))
-            {
-                AssetDatabase.CreateFolder(ctx.OutputDir.TrimEnd('/'), "RehomedAssets");
-            }
+            EnsureAssetFolder(dir);
             UnityEngine.Object copy = value;
             if (AssetDatabase.IsMainAsset(value))
             {
@@ -7550,7 +7541,7 @@ namespace AvatarBridge
             {
                 if (!AssetDatabase.Contains(clip))
                 {
-                    Debug.Log($"[AvatarBridge] Restore clip {path} did not persist from its batch");
+                    Debug.LogWarning($"[AvatarBridge] Restore clip {path} did not persist from its batch");
                 }
             }
             pending.Clear();

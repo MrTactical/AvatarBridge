@@ -123,9 +123,7 @@ namespace AvatarBridge
 
             string from = AssetDatabase.GetAssetPath(plan.Controller);
             // CopyAsset fails silently into a folder that is not there.
-            System.IO.Directory.CreateDirectory(System.IO.Path.GetFullPath(
-                System.IO.Path.Combine(Application.dataPath, "..", System.IO.Path.GetDirectoryName(savePath))));
-            AssetDatabase.Refresh();
+            OutputAssetPaths.EnsureFolder(System.IO.Path.GetDirectoryName(savePath));
             if (string.IsNullOrEmpty(from) || !AssetDatabase.CopyAsset(from, savePath))
             {
                 report.Error(Category, "Could not copy the controller", $"\"{from}\" to \"{savePath}\"");
@@ -268,7 +266,7 @@ namespace AvatarBridge
             var bindings = AnimationUtility.GetCurveBindings(clip);
             return bindings.Length > 0
                    && bindings.All(b => b.path != null
-                                        && b.path.EndsWith("AvatarBridge_EmptySlot", System.StringComparison.Ordinal));
+                                        && b.path.EndsWith(OutputAssetPaths.EmptySlotClip, System.StringComparison.Ordinal));
         }
 
         // Every motion in the machine, blend trees and sub-machines included.

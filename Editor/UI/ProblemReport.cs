@@ -49,7 +49,8 @@ namespace AvatarBridge
             bool ours = condition.StartsWith("[AvatarBridge]") || condition.StartsWith("[YAPS]")
                         || stack != null && stack.Contains("AvatarBridge.") && !stack.Contains("AvatarBridge.Regression");
             bool bad = type == LogType.Error || type == LogType.Exception || type == LogType.Assert;
-            // Each step's time, for Diagnostics.md: where a slow conversion spent it.
+            // Each step's time, for Diagnostics.md: where a slow conversion spent it. The step logs
+            // that end in " (ms): " stay for this; a reworded one drops out of Diagnostics.md.
             if (ours && condition.Contains(" (ms): "))
                 lock (Timed)
                 {

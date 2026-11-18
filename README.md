@@ -1854,7 +1854,7 @@ controller*. After a run it shows the count of errors and warnings instead. A bu
 | **What this avatar costs** | **Weigh it**, **Fix it**, **Put the textures back** | **Weigh it** reads only: texture memory, contacts, triangles, cloth and more. **Fix it** shrinks textures and removes meshes nothing can show. Detail below |
 | **Free wins** | **Tidy it** | Removes empty layers and parameters nothing uses, in a copy of the controller. Detail below |
 | **Stereo shaders** | **Patch shaders for VR stereo** | Patches [one-eye shaders](#shaders-that-only-draw-into-one-eye) into copies and points the object's materials at them. Materials an animation swaps in are not followed here; the converter follows them |
-| **Face: visemes and blink** | **Wire face** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set is kept unless the visemes are on another one |
+| **Face: visemes and blink** | **Wire face** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set is kept unless the visemes are on another one. Native blink stays off when the avatar's own animator already blinks |
 | **Audio limits** | **Clamp audio sources** | Sets every audio source to values ChilloutVR handles: doppler off, distance floors and caps, fully 3D |
 | **Mesh bounds** | **Fix mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
 | **PhysBones to cloth** | **Convert PhysBones** | Converts PhysBones still on a ChilloutVR avatar, in place. Shown only with the VRChat SDK installed. Detail below |

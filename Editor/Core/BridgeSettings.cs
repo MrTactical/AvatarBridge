@@ -107,13 +107,13 @@ namespace AvatarBridge
         // rigged props are rigid on purpose. The Toolkit leaves it off, it cannot see hand-placed cloth.
         public bool addPhysicsToRiggedStyles = false;
 
-        [Header("VRChat-only system stripping")]
         // Read-only: texture memory per surface, contacts against the instance budget,
         // triangles, cloth, locked shader copies.
         public bool weighAvatar = true;
         // Read-only: unreachable features, overridden toggles, states that never play,
         // what lost its driver in the conversion.
         public bool surveyAvatar = true;
+        [Header("VRChat-only system stripping")]
         // CVR provides locomotion and emotes natively. GoGo's layers
         // fight them while burning sync budget.
         public bool stripGogoLoco = true;

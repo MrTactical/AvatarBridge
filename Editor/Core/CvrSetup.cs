@@ -325,6 +325,16 @@ namespace AvatarBridge
                 return;
             }
 
+            // The converter's rule: an avatar that blinks in its own animator keeps that blink alone.
+            if (cvrAvatar.overrides != null
+                && AvatarFeatureDetect.DrivenBlink(cvrAvatar.overrides.animationClips, out _, out string drivenBy))
+            {
+                cvrAvatar.useBlinkBlendshapes = false;
+                ctx.Report.Warning(Category, "Native blink left off",
+                    $"The avatar blinks in its own animator ({drivenBy}), and ChilloutVR's blink on top would fight it.");
+                return;
+            }
+
             cvrAvatar.useBlinkBlendshapes = true;
             if (cvrAvatar.blinkBlendshape == null || cvrAvatar.blinkBlendshape.Length < 4)
             {
@@ -339,12 +349,22 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, "Blink blendshapes",
                     $"Wired to \"{left}\" / \"{right}\" (Separate). Verify L/R aren't swapped.");
             }
+            else if (combined != null)
+            {
+                cvrAvatar.blinkBlendshape[0] = combined;
+                AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
+                ctx.Report.Converted(Category, "Blink blendshape", $"Wired to \"{combined}\" (Combined).");
+            }
             else
             {
-                string single = combined ?? left ?? right;
+                // Half a pair and no combined shape closes one eye only.
+                string single = left ?? right;
                 cvrAvatar.blinkBlendshape[0] = single;
                 AvatarFeatureDetect.SetBlinkMode(cvrAvatar, "Combined");
-                ctx.Report.Converted(Category, "Blink blendshape", $"Wired to \"{single}\" (Combined).");
+                ctx.Report.Warning(Category, "Blink blendshape",
+                    $"Only \"{single}\" was found: a {(left != null ? "left" : "right")}-side shape with no counterpart, " +
+                    "so blinking will close one eye. Wired as Combined; if the other eye's shape exists under a name " +
+                    "without a side marker, assign it on the CVRAvatar and set Blink Mode to Separate.");
             }
         }
 

@@ -418,7 +418,7 @@ namespace AvatarBridge
             int states = 0;
             foreach (var layer in controller.layers)
             {
-                states += CountStates(layer.stateMachine);
+                states += BridgeDiagnostics.CountStates(layer.stateMachine);
             }
             var clips = new HashSet<AnimationClip>(controller.animationClips.Where(c => c != null));
             return Table(new[] { "", "" }, new List<string>
@@ -429,20 +429,6 @@ namespace AvatarBridge
                 Row("Distinct clips", clips.Count.ToString()),
                 Row("Total curves", clips.Sum(c => AnimationUtility.GetCurveBindings(c).Length).ToString()),
             });
-        }
-
-        static int CountStates(UnityEditor.Animations.AnimatorStateMachine machine)
-        {
-            if (machine == null)
-            {
-                return 0;
-            }
-            int n = machine.states.Length;
-            foreach (var child in machine.stateMachines)
-            {
-                n += CountStates(child.stateMachine);
-            }
-            return n;
         }
 
         // ------------------------------------------------------------------- meshes ----

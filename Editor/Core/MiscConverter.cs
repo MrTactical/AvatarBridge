@@ -244,7 +244,7 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    var go = new GameObject(ContactsConverter.UniqueChildName(ctx.Target.transform, "FPRExclusion_" + setting.transform.name));
+                    var go = new GameObject(PhysBoneConverter.UniqueChildName(ctx.Target.transform, "FPRExclusion_" + setting.transform.name));
                     go.transform.SetParent(ctx.Target.transform, false);
                     var exclusion = go.AddComponent<FPRExclusion>();
                     exclusion.isShown = isShown;

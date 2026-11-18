@@ -1896,22 +1896,6 @@ namespace AvatarBridge
             }
         }
 
-        static bool TrySetCurveValue(object target, string fieldName, float value,
-            float curveStart, float curveEnd)
-        {
-            if (target == null)
-            {
-                return false;
-            }
-            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null || !(field.GetValue(target) is CurveSerializeData curveData))
-            {
-                return false;
-            }
-            curveData.SetValue(value, curveStart, curveEnd);
-            return true;
-        }
-
         static bool TrySetCurve(object target, string fieldName, float value, AnimationCurve curve)
         {
             var field = target?.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);

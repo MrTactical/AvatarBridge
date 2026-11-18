@@ -1085,7 +1085,7 @@ namespace AvatarBridge
         static GameObject CreateContactObject(GameObject parent, string name,
             VRC.Dynamics.ContactBase.ShapeType shapeType, float radius, Vector3 position, float height, Quaternion rotation)
         {
-            var go = new GameObject(UniqueChildName(parent.transform, name));
+            var go = new GameObject(PhysBoneConverter.UniqueChildName(parent.transform, name));
             go.transform.SetParent(parent.transform, false);
             go.transform.localPosition = position;
             go.transform.localScale = Vector3.one;
@@ -1107,24 +1107,6 @@ namespace AvatarBridge
                 capsule.direction = 1; // Y, matching VRC capsule contacts
             }
             return go;
-        }
-
-        // Two zones for one parameter on one bone would share an animation path, and every curve
-        // reaches only the first. Compared by name, not Transform.Find: a parameter name's '/'
-        // reads to Find as a path.
-        internal static string UniqueChildName(Transform parent, string name)
-        {
-            var taken = new HashSet<string>(System.StringComparer.Ordinal);
-            foreach (Transform child in parent)
-            {
-                taken.Add(child.name);
-            }
-            string candidate = name;
-            for (int n = 2; taken.Contains(candidate); n++)
-            {
-                candidate = $"{name} {n}";
-            }
-            return candidate;
         }
 
         // A new host is live from load, so a contact shipped off would be always on. It takes the
