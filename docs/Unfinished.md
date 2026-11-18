@@ -646,36 +646,6 @@ Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.m
   partner pass's hand loop as `[loop]` was identical but saved a quarter of a second at best and was
   not applied. Not done: a tester's own upload timed before and after.
 
-### 6. Conversions got slower between corpus 418 and 419: the squash's compile. SHIPPED in 5.0.0, one check open
-
-The slowdown is fixed and confirmed (squash pass 261 min in run 419, 14.2 min in run 427); the record
-is in `archive/Closed-2026-11.md`. The live tissue's own compile cost is items 36 and 48 and
-"Conversion speed: what is left".
-
-Left, small: the squash's copy rule from 2026-10-24 (`YapsSquash.MinShare`: a layer is copied only
-with a stored share of 4/255 on some vertex of the slot, and a material carrying a plug bake never
-takes a copy).
-- The plug half is seen in corpus output (2026-11-13 soft subset: Kar's soft parts made copies for
-  bra, body, panties, piercings, shirt, shorts and tail, none for the baked plug).
-- The faint-layer half is not checked against share textures: the layers the cutoff should drop read
-  1 to 3 (a plug on three variants of one avatar, a hood, a belt, a socket mesh), a stocking at 4
-  keeps its copy.
-- Neither rule has been seen in ChilloutVR.
-- The full corpus runs with soft parts off since 1d515e4, so this needs a `--soft` subset, on Joe's word.
-
-### 7. What the shader sweep left open. SHIPPED in 5.0.0, one corpus read open
-
-The three fixes (the false "may not render correctly in VR" on YAPS Standard, the render queue
-across a shader swap, the two patcher gaps) are in 5.0.0; records in `archive/Closed-2026-11.md`.
-
-Left: **run 427's three metallic-map avatars** should build on YAPS Standard since 8c5bcf5a
-(2026-10-24). No full run has been read for them. The 2026-11-13 run named YAPS Standard copies on
-4 corpus avatars (the false VR warning), so copies are being built [R: not matched to those three].
-Next: read those three in the next full run's digests.
-
-Known ceiling of the stereo fix: a pass the planner cannot read, in a shader that also includes
-Unity's Standard core or shadow include, is trusted.
-
 ### Joe's own
 
 The GrabbyBones upstream PR (plan in `Regression/GrabbyBonesForkPlan.md`, local). Not
