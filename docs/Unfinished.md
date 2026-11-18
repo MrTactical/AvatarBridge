@@ -49,6 +49,12 @@ its number; only the look in game is left here.
   white means the step never read it, unmoved means the client gave the probes no collider.
 - **(31.8) A top-and-bottom squeeze with the breast cloths' full-size balls,** seen by a viewer who shares
   colliders: the part does not ring on ("one touch answered twice").
+- **(48) Shader Filtering on, a live tissue avatar:** the region draws at rest, not torn, when the
+  filter cuts the lattice corners' rolled loop short.
+- **(48) Point lights on an older Poiyomi avatar** (`VERTEXLIGHT_ON` now per pixel): they look as
+  before.
+- **(31.5) A converted chain whose PhysBone has a radius curve** (MagicaCloth 2): it collides like the
+  original in VRChat, thinner toward the tip, not as a full-size ball along its length.
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -803,76 +809,6 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
 - README: the options table default, the scaler's section, and a line on the hand-over between the
   two sliders. The window tooltip and the settings comment say the same.
 - Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
-
-### 48. Optimisation pass: what is queued, and what nobody has seen in game. Joe, 2026-11-17. SHIPPED in 5.0.0; the rest OPEN
-
-Everything done and measured shipped in 5.0.0 (main 4077a2e4, 03962bd8) and is recorded in
-`archive/Closed-2026-11.md`. Baselines to measure against: cold first
-upload of the plush 140.4 s to 124.0 s (ShaderCache cleared, one run each); its vertex bytecode a
-viewer builds 535 KB to 456 KB; a tester's third convert 54 s against 133 s on the 11-16 build.
-The lesson to keep: the driver keeps built shaders across restarts (NVIDIA: the same bytes built in
-49-76 ms in a fresh process against 2,790 ms for new bytes), so the first-view freeze is paid once
-per machine per exact bytecode, and byte stability across avatars and versions is worth more than
-kilobytes.
-- **Not run in game:**
-  - The tissue's lattice corners in a rolled loop under Shader Filtering (6691fdbf, 696a6c94): cut
-    short, the region should draw at rest, not torn.
-  - `VERTEXLIGHT_ON` per pixel (7d6f71f3): point lights on an older Poiyomi avatar look the same.
-  - rc19 went to a tester with the in-game checks; no answer recorded. Their upload time was not
-    recorded in the files either.
-- **Queued, larger:**
-  - One tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, about 100-145 ms of
-    first view; risk: several steps writing one pair).
-  - Lighting keywords the host's vertex never reads still multiply the YAPS vertex variants.
-    `LIGHTPROBE_SH` and the ForwardAdd axes come from Unity's built-in sets, which cannot be split
-    by stage without redeclaring them: not done.
-- **Queued, smaller:** the empty asset refreshes per avatar (attribute first); the orphan clips
-  left in a merged controller; batching the rehomer's texture writes (texture clones must stay
-  immediate: a batched material must not name a texture written in the same batch, see
-  "Conversion speed: what is left").
-
-### 10. Squash, stereo, contacts and the lock: what is left of the speed work. OPEN, after 5.0.0
-
-The work of 2026-10-16 to 10-21 shipped in 5.0.0; the record, with every measurement, is in
-`archive/Closed-2026-11.md`. Baselines: full run 418, squash 27,468 s to 13,402 s and all passes
-34,587 s to 17,181 s; one heavy avatar 474.9 s to 88.9 s. Later passes are item 48 and "Conversion
-speed: what is left" under Minor Ideas; read that first, it is newer. Left here:
-- **Squash, `YapsSquash.Add`:** on the heaviest of subset `ab5` (47.7 s) Add took 42.2 s: Shares
-  16.9, Prewrite 11.2, Slots 5.5, SaveAssets 5.3, Flush 1.8; FollowSwaps 5.1 outside it. Shares and
-  Prewrite were the targets (Shares 1.8 to 3.8 s on small avatars). Measured 2026-10-17: re-time
-  before working on it, since the 2026-11-16 pass skips the spread on skin far from every part and
-  remembers shader copies, and a tester's squash went 104 to 42.7 s.
-- **The first material on a fresh patch pays the compile** (P0): `new Material(shader)` 89.9 s in
-  the trigger probe, the squash's first copy 445 s, the second 71 s, the rest about 200 ms; the GUI
-  editor waits the same (20.1 s against 22.8 s in batch). Not the patcher (about 8 s) and not Thry
-  (5.6 s). **Open:** whether anything avoids it short of fewer patches (one shader shared by more
-  materials).
-- **Probes P1 to P5, never run** (copy project): P1 whether `new Material` /
-  `CopyPropertiesFromMaterial` / `CopySerialized` carry override tags; P2 lock the same stand-ins in
-  two calls and other company, diff the text; P3 how many compiles a line-1-blind `NameHash` would
-  save over the 21 probe avatars (build it only if at least one per avatar); P4 Thry Unlock on a
-  copy sharing a patch, tag kept against cleared; P5 a forced Thry exception, does the
-  StartAssetEditing block stay open.
-- **The shared patch folder (`Assets/YAPS/Generated/Shaders`):** *Remove unused patched shaders*
-  does not cover Generated/Locked. Deleting the folder turns every YAPS avatar in the project
-  magenta until each is converted again (README Troubleshooting says so); a `.meta` GUID derived
-  from each copy's hash would let one reconvert relink the rest, left out until somebody hits it.
-  The stereo patcher's copies could share a folder the same way, but their verify depends on the
-  folder, so not without a probe.
-- **Stereo planning, point (4) not done:** the report check reads each unit a second time where it
-  could reuse what Prejudge read (about 4 ms a shader, read and SHA-256 twice per path). Also:
-  Stage plans again a shader whose verdict an earlier avatar cached.
-- **Animator merge:** the texture clones in `RehomeVolatileAssets` (`SceneAssetRehomer`, each
-  `CreateAsset` 0.7 s outside any batch). Batching them means a rescued material naming a texture
-  created in the same batch; that path broke before (particles drawn as white squares). Timings
-  [M], fix [R]. The material copies were batched on 2026-11-17 (936bfcc8).
-- **Contacts:** what is left of zone growth is the samples themselves, 3.3 s scan and 7.0 s
-  attribution on the 212-contact avatar (was 282.8 s).
-- **Not to be retried** (measured, in the archive): compiling a material's passes together or in
-  parallel (146 s against 147 s; the vertex-only verify 387 s); a home for the patches per output
-  folder.
-- Timers left in the log on purpose: `YapsSquash.Add`'s steps, `ContactsConverter.Run`,
-  `Texture sizes steps`, the merge's own.
 
 ### 13. What the speed work missed, read from run 425 against 417. 2026-10-21. OPEN, nothing done; re-read against a current run first
 
@@ -2130,3 +2066,51 @@ in `Diagnostics.md`. Still open, largest first:
   compiler at once measured nothing; the import is the cost (archive).
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
+- **Item 10's leftovers (the 2026-10-16 to 10-21 speed work), moved here 2026-11-18:**
+  - **Squash, `YapsSquash.Add`:** on the heaviest of subset `ab5` (47.7 s) Add took 42.2 s: Shares
+    16.9, Prewrite 11.2, Slots 5.5, SaveAssets 5.3, Flush 1.8; FollowSwaps 5.1 outside it. Shares and
+    Prewrite were the targets (Shares 1.8 to 3.8 s on small avatars). Measured 2026-10-17: re-time
+    before working on it, since the 2026-11-16 pass skips the spread on skin far from every part and
+    remembers shader copies, and a tester's squash went 104 to 42.7 s.
+  - **The first material on a fresh patch pays the compile** (P0): `new Material(shader)` 89.9 s in
+    the trigger probe, the squash's first copy 445 s, the second 71 s, the rest about 200 ms; the GUI
+    editor waits the same (20.1 s against 22.8 s in batch). Not the patcher (about 8 s) and not Thry
+    (5.6 s). **Open:** whether anything avoids it short of fewer patches (one shader shared by more
+    materials).
+  - **Probes P1 to P5, never run** (copy project): P1 whether `new Material` /
+    `CopyPropertiesFromMaterial` / `CopySerialized` carry override tags; P2 lock the same stand-ins in
+    two calls and other company, diff the text; P3 how many compiles a line-1-blind `NameHash` would
+    save over the 21 probe avatars (build it only if at least one per avatar); P4 Thry Unlock on a
+    copy sharing a patch, tag kept against cleared; P5 a forced Thry exception, does the
+    StartAssetEditing block stay open.
+  - **The shared patch folder (`Assets/YAPS/Generated/Shaders`):** *Remove unused patched shaders*
+    does not cover Generated/Locked. Deleting the folder turns every YAPS avatar in the project
+    magenta until each is converted again (README Troubleshooting says so); a `.meta` GUID derived
+    from each copy's hash would let one reconvert relink the rest, left out until somebody hits it.
+    The stereo patcher's copies could share a folder the same way, but their verify depends on the
+    folder, so not without a probe.
+  - **Stereo planning, point (4) not done:** the report check reads each unit a second time where it
+    could reuse what Prejudge read (about 4 ms a shader, read and SHA-256 twice per path). Also:
+    Stage plans again a shader whose verdict an earlier avatar cached.
+  - **Animator merge:** the texture clones in `RehomeVolatileAssets` (`SceneAssetRehomer`, each
+    `CreateAsset` 0.7 s outside any batch). Batching them means a rescued material naming a texture
+    created in the same batch; that path broke before (particles drawn as white squares). Timings
+    [M], fix [R]. The material copies were batched on 2026-11-17 (936bfcc8).
+  - **Contacts:** what is left of zone growth is the samples themselves, 3.3 s scan and 7.0 s
+    attribution on the 212-contact avatar (was 282.8 s).
+  - **Not to be retried** (measured, in the archive): compiling a material's passes together or in
+    parallel (146 s against 147 s; the vertex-only verify 387 s); a home for the patches per output
+    folder.
+  - Timers left in the log on purpose: `YapsSquash.Add`'s steps, `ContactsConverter.Run`,
+    `Texture sizes steps`, the merge's own.
+- **Item 48's queued parts (the 2026-11-17 optimisation pass), moved here 2026-11-18:**
+  - **Queued, larger:**
+    - One tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, about 100-145 ms of
+      first view; risk: several steps writing one pair).
+    - Lighting keywords the host's vertex never reads still multiply the YAPS vertex variants.
+      `LIGHTPROBE_SH` and the ForwardAdd axes come from Unity's built-in sets, which cannot be split
+      by stage without redeclaring them: not done.
+  - **Queued, smaller:** the empty asset refreshes per avatar (attribute first); the orphan clips
+    left in a merged controller; batching the rehomer's texture writes (texture clones must stay
+    immediate: a batched material must not name a texture written in the same batch, see
+    "Conversion speed: what is left").
