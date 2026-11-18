@@ -667,13 +667,18 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
 The work Joe means to take on now that 5.0.0 is out (published 2026-11-18). None of it is started
 unless its heading says so.
 
-### AvatarBridge Chambers: a home world with a test wing. Joe's idea 2026-10-20. THE MAIN FOCUS NOW THAT 5.0.0 IS OUT (2026-11-18), NOT STARTED
+### AvatarBridge Chambers: a home world with a test wing. Joe's idea 2026-10-20. CHOSEN 2026-11-18 as the next big work, NOT STARTED
 
 Joe, 2026-10-20: a ChilloutVR world under the AvatarBridge name. One side is a home world, fully
 built, to hang out and relax in. The other side is a run of test chambers with a clinical
 test-facility mood, entirely original in look, story and names. Walk in wearing any avatar and test
 anything: whatever the CCK does, whatever the converter changed, whatever YAPS adds. Its own project
 apart from the converter, and the main focus once 5.0.0 ships.
+
+Joe, 2026-11-18, choosing it: "a neat, chill world" on the surface, and underneath it secret labs
+that test everything; the contrast between the two is the point. The adult (YAPS) labs stay in the
+same public world, locked away: props and flight off, and the adult part behind a locked door with a
+PIN nobody is given. Work happens in its own session on its own branch.
 
 **Why a world.** Physics, shaders and sync are only falsifiable in ChilloutVR. Today that proof is a
 checklist and a friend with time. A chamber that sets each check up makes it repeatable, for anyone.
@@ -703,8 +708,11 @@ checklist and a friend with time. A chamber that sets each check up makes it rep
 1. Where it lives: a new repository under the AvatarBridge name (recommended), or a GitHub fork of
    this one. A world shares no code with the converter, and a fork of a public repository carries
    its whole history and stays public.
-2. The YAPS chambers: a separate adult world (recommended, it matches the package split), an adult
-   wing behind a gate in the same world, or none.
+2. ~~The YAPS chambers: a separate adult world, an adult wing behind a gate, or none.~~ DECIDED
+   2026-11-18 (Joe): the secret labs under the chill world, the adult part behind a PIN door, props and
+   flight off. To check before it goes public: ChilloutVR's rules for adult content in a public world,
+   and whether a PIN held in the world's own animator can be read out of the downloaded bundle (if it
+   can, the lock keeps out visitors, not someone who unpacks the world).
 
 **First step (5.0.0 shipped 2026-11-18, so this is next):** a spike. One lounge room and one chamber in a fresh CCK world project,
 uploaded privately, to learn the world CCK's limits before designing the rest.
