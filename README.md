@@ -1622,8 +1622,9 @@ each other, and the wearer's own arms and legs press it too. **The physics do th
 tissue only the touching:** the cloth or Dynamic Bones swing each part as on the source avatar, and
 left alone the tissue settles onto its bones within half a second and holds there, so walking,
 running or flying never stretches it. A hand coming within reach, the wearer's own hand reaching in,
-a pair swung into each other or a probe pressed lets it go at once, and it dents, grips and rings as
-before; let go, it fills back and settles again. A part no physics swing moves with the body, as on
+a pair swung into each other or a probe pressed lets it go within an eighth of a second, eased, so a
+hand or arm already inside does not throw the skin, and it dents, grips and rings as before; let go,
+it fills back and settles again. A part no physics swing moves with the body, as on
 the source. A hand moves a part only through its physics: the cloth and Dynamic Bones keep their
 collision size, so another player's hand pushes the bones as it does on the source, and the tissue
 only dents the skin around it, never moving or stretching the part as a whole, however deep it is

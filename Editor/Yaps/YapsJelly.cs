@@ -2219,6 +2219,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             static float3 Kick = 0;
             static float3 Smoothed = 0;
             static float Ease = 0;
+            static const float Waking = 0.12;
             // A landing heard this step, rung next step if the new speed held (97 and 98).
             static float4 Landed = 0, LandedBy = 0;
             static float Scale = 1;
@@ -3682,6 +3683,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Easing toward rigid while fast: a pull home at up to 20 a second.
                 [branch] if (Ease > 0 && Ease < 1.5) next = lerp(next, home, 1 - exp(-20 * Ease * h));
+                else if (Ease < 0) next = lerp(next, home, Ease * Ease * (3 + 2 * Ease));
                 return next;
             }
 
@@ -4174,8 +4176,12 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // last step lets it go at once. An arm or thigh lies in the box at rest, so those
                     // dent the skin through the draw alone while it holds.
                     bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || ((uint) _MainTex.Load(int3(41, side, 0)).y & 0x44u) != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
-                    float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : 0;
-                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : max(toward, hold);
+                    // Touched while held, it lets go over Waking, eased at both ends, the share still
+                    // held home kept negative: let go at once, an arm already inside threw the skin
+                    // 80 mm in a frame, and a linear let go left a 26 mm step where it ended.
+                    float letting = wasEase >= 1 && wasEase < 1.5 ? 1 : max(-wasEase, 0);
+                    float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : -max(letting - dt / Waking, 0);
+                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : toward > 0 ? max(toward, hold) : hold;
                     // A change of speed past _Landing in the step, kept for the next step: against the
                     // smoothed speed, a steady speed-up read as one and rang every step.
                     float3 by = sped.xyz - vNow;

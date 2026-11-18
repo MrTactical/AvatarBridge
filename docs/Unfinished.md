@@ -3799,6 +3799,9 @@ arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the
   1.7 mm a frame, no grips. Desktop gestures change only on a keyboard combo
   (`CVRInputModule_Keyboard.Update_Emotes`), so his gesture was steady and the flicker fix is
   probably not his case.
+- **Rechecked on the dent-only tissue (2026-11-18):** a steady hand at 6 to 10 cm, bobbing in 10 Hz packets, swaying,
+  with a MagicaCloth capsule, or sweeping in and out moved the part 0.5 to 4.7 mm a frame; a flickering fist 7.1 mm.
+  Still not reproduced. The dent-only change (item 51) took out the hand's push up the arm, the likeliest match.
 - Next: Joe retests on rc18 (reconverted). If it still jumps, record his own hand's values in game
   (the provider's `_CVR_PlayerLeftHandPositions[0]`, w the gesture, and the root's w, his
   avatar's height) and the slot texels 0 to 15 and 112 to 119 while it jumps.
@@ -3893,8 +3896,18 @@ Found (a five-agent read plus 10 harness runs, synthesis in the session scratch)
   Own forearm: tear 5.80, furthest 144 mm (5.77, 139.6). Walk, run and 25 fps: tear 1.00-1.01, nothing left over.
   Hand dents keep their depth (65.9 mm, 106.9 mm at 10 cm), tear up from 1.41 to 1.51 and 1.85 to 2.11: the whole
   no longer gives, so the particles take all of it. FreshCompileTimeTest PASS.
-- **Separate, not fixed:** a hand arriving during a 4 m/s glide jumps the tissue 77.7 mm in a frame (the 5.5x of
-  `rc21-handrun`, tear 5.53 unchanged); the wearer's own forearm deep inside flips live and held at one depth.
+- **The wake jump, FIXED on dev (harness), not in game.** A part held on its bones and touched let go in one frame,
+  so whatever was already in it moved the lattice at once: a hand arriving during a 4 m/s glide 77.7 mm in a frame
+  (tear 5.53), the wearer's own forearm reaching in 80.5 mm (tear 5.80). Now it lets go over 0.12 s, eased at both
+  ends (Ease negative while it does, the share still held home). Bar set before the runs: at most 15 mm between
+  frames after the wake. Handrun 14.0 mm, tear 4.27. Own forearm: the wake itself spread over 11 frames (1.8 to 17.0
+  mm a frame), the skin's film steady through it (pixels changed per frame 2160-2415, rc22 3063 at the wake); a
+  27.9 mm step remains in the lattice two frames before the let go ends, as rc22's 22.5 mm one two frames after
+  its wake, with no matching change on the skin, so the literal bar fails on own there. Tear 5.77 (the forearm
+  lies through the lattice; the harness's IK puts it through from behind). Regressions unchanged to the first
+  decimal (arm 45 and 80, collider, deep hand, dents 65.9 and 106.9 mm, walk, run, 25 fps).
+- **Own forearm live/held at one depth:** the deep own run settles asleep with the arm inside (lattice still, 92.7
+  mm, nothing on the skin); not a stretch.
 - **Open:** in game with the tester. Nothing here reads the drawn skin, only the lattice; the films are the check.
 
 ## 5.0.1
