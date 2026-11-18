@@ -40,6 +40,10 @@ its number; only the look in game is left here.
   the cloth.
 - **(32.1) Editor Play mode:** the Avatar Tester's remote copy starts from rest (`TwinRestTest` passes
   in batch; never looked at by hand).
+- **(30.1) The wearer's own hand pressing once, not twice:** press your own live tissue with your
+  own hand; the dent is one hand deep, not doubled.
+- **(30.4) The press's lighting on a smooth-shaded avatar:** no ring round a dent with the slope
+  on (only toon ramps have been looked at).
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -794,42 +798,6 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
 - README: the options table default, the scaler's section, and a line on the hand-over between the
   two sliders. The window tooltip and the settings comment say the same.
 - Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
-
-### 30. Pointers for the live tissue from a VRChat skin-touch module: what is left. Approved by Joe 2026-11-06. PART BUILT and SHIPPED in 5.0.0; the rest OPEN
-
-DocMe Skin Touch 1.1.0 (free, Booth), read for ideas only: its licence bars its code, or a rewrite
-of it, in ours. Built and shipped: the wearer's own hand skipped in the arrays, overlapping presses
-joined, the press lit, heads pressing, the Firm preset (record in `archive/Closed-2026-11.md`, with
-its withdrawals). The numbers are the item's own.
-
-1. **The wearer's own hand pressing twice: built, check in game.** The step skips a player whose
-   both hands sit within 5 cm of the own hand capsules' starts (`Wearer`). Batch cannot show it: no
-   probe puts the wearer in the arrays.
-2. Built. Left: the probe's own copy of the press for its test prop still sums, so a probe reading
-   of the prop's draw is the old rule.
-3. **A press pushing the far side of a thin part: measured 2026-11-06, NOT BUILT.** The far side
-   never moves; skin facing away is pushed only just past the flank by a palm deep in (8 cm limb:
-   0.8 mm at 2 cm in, 2.3 at 3, 4.4 at 4; 12 cm: under 1 mm to 6 cm in), and `Held` stops a hand at
-   about 2.7 cm on 8 cm, so about 2 mm at most. Build the facing ease only if a limb's flank is
-   seen to bulge in game.
-4. Built. Refilmed on the jelly, no ring with the slope on or off; on a toon ramp the difference
-   is all but nothing. **Open:** a smooth-shaded avatar to see it on. The plug's press still lights
-   as flat skin.
-5. **A soft shadow as a hand nears: not built, large.** A darkening per vertex from the hand slots
-   and own capsules the draw already reads, multiplied into the host's colour; needs a colour hook
-   per shader family in `YapsShaderPatcher`, which patches the vertex stage only today.
-6. Heads built. **Feet not built:** the client hands every player's feet, hips and chest
-   (`_CVR_PlayerLeftFootPositions`, `_CVR_PlayerRightFootPositions`, `_CVR_PlayerHipPositions`), but
-   not the foot's direction, so only an ankle ball would press. (~~"Feet do not port: the client
-   hands a root, not feet"~~ withdrawn 2026-11-06.)
-7. **The Avatar Tester's hand put on the skin by a click** in the Scene view (bake the body, ray,
-   back off along the normal by the palm), and its controls in a Scene view panel. Not built.
-8. Firm built, a first guess, untuned. **Left:** presets named by feel, not by part (maybe Thin;
-   the enum serialises by index, so add after Firm), and saving a part's feel to a small file to
-   share.
-9. Smaller, none built: every problem at the top of the component with its fix; a line saying what
-   the build adds; a cost measured on the user's own card; a pile-up ring round a deep press,
-   draw-only; a dent whose rim grows with the press.
 
 ### 31. The breasts less fluid than the Oct 31 films: what is left. Joe, 2026-11-06. SHIPPED in 5.0.0; the feel question CLOSED by decision 2026-11-17; the collider points OPEN
 
@@ -2012,6 +1980,24 @@ are the nearest measured thing; see items 25 and 29 in the archive.
 ## Minor Ideas
 
 Small features and leftovers, after 5.0.0.
+
+### Live tissue ideas from a VRChat skin-touch module (item 30's unbuilt points). Approved as ideas 2026-11-06, NOT STARTED
+Read for ideas only (DocMe Skin Touch 1.1.0: its licence bars its code, or a rewrite of it, in ours).
+Numbers are item 30's own; its record is in `archive/Closed-2026-11.md`.
+- (3) A press pushing the far side of a thin part: the far side never moves (8 cm limb, 2.3 mm at
+  3 cm in). Build the facing ease only if a limb's flank is seen to bulge in game.
+- (5) A soft shadow as a hand nears: a darkening per vertex from the hand slots, multiplied into the
+  host's colour. Needs a colour hook per shader family in `YapsShaderPatcher` (vertex stage only
+  today). Large.
+- (6) Feet pressing: the client hands feet, hips and chest positions but no foot direction, so only
+  an ankle ball would press.
+- (7) The Avatar Tester's hand put on the skin by a click in the Scene view, its controls in a Scene
+  view panel.
+- (8) Presets named by feel, not part (maybe Thin; the enum saves by index, so add after Firm), and a
+  part's feel saved to a small file to share.
+- (9) Every problem at the top of the component with its fix; a line saying what the build adds; a
+  cost measured on the user's own card; a pile-up ring round a deep press; a dent whose rim grows
+  with the press.
 
 ### Fold into the next intentional YAPS shader change. From the code rot review (item 52), 2026-11-18
 Each changes the patched shader text, so on its own it would make every YAPS avatar read "Needs a rebuild"

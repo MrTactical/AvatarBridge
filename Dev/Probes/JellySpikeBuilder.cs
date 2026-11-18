@@ -5405,7 +5405,10 @@ Shader ""AvatarBridge/Jelly Spike""
                 {
                     float4 mass = _State.Load(int3(30, row, 0));
                     float3 centre = mass.w > 0 ? mass.xyz : _State.Load(int3(29, row, 0)).xyz + _State.Load(int3(28, row, 0)).xyz * (0.5 * (n.z - 1) * _Lattice.w);
-                    float3 move = 0;
+                    // Joined as the avatar's draw joins them (YapsJellyJoined): a 4-norm, the
+                    // deepest leading, where a plain sum pushed skin past both at a knuckle.
+                    float s4 = 0;
+                    float3 ways = 0;
                     [unroll] for (int e = 0; e < 8; e++)
                     {
                         float4 a = _State.Load(int3(2 * e, row, 0)), b = _State.Load(int3(2 * e + 1, row, 0));
@@ -5414,10 +5417,19 @@ Shader ""AvatarBridge/Jelly Spike""
                         float3 pb, fa, fb;
                         float rf;
                         Hand(a, b, pb, fa, fb, rf);
-                        move += Press(at, a.xyz, pb, a.w, centre);
-                        if (rf > 0) move += Press(at, fa, fb, rf, centre);
+                        float3 p = Press(at, a.xyz, pb, a.w, centre);
+                        float f2 = dot(p, p);
+                        s4 += f2 * f2;
+                        ways += p * f2 * sqrt(f2);
+                        if (rf > 0)
+                        {
+                            p = Press(at, fa, fb, rf, centre);
+                            f2 = dot(p, p);
+                            s4 += f2 * f2;
+                            ways += p * f2 * sqrt(f2);
+                        }
                     }
-                    at += move;
+                    if (s4 > 1e-20) at += ways / s4 * sqrt(sqrt(s4));
                 }
                 // A slap's ring rides out across the skin as the avatar's draw rides it
                 // (yaps_jelly.cginc's YapsJellySlap), from texels 80 to 83: where and when, then how
