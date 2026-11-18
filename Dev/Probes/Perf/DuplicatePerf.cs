@@ -7,18 +7,13 @@
 //                                          land within the larger spread of the two
 //       [-dupNoSkin]                       the vertex stage only
 //
-// PortalDeformPerf's method: 16 draws of about 2^20 points into a 1024 square,
-// best of eight renders after a warm one, the floor pass subtracted, cases of
-// one content timed render by render in turn, medians and spread over the
-// repeats, after one group timed and thrown away. Each draw is a whole number
-// of meshes, so a duplicate draw holds both copies in the mesh's own
-// proportion. Reported per pass of the whole mesh: 6433 vertices for the
-// plug, 12866 with its copy.
+// PortalDeformPerf's method (one warm-up group discarded). Each draw is whole meshes, so a
+// duplicate draw keeps both copies in proportion. Reported per pass of the whole mesh:
+// 6433 vertices for the plug, 12866 with its copy.
 //
-// Gate: every check below, every number finite, skinning clear of its own
-// spread, and with -dupCompare every series within the larger spread of the
-// two runs. Whether a hidden copy costs more than half a drawn one is
-// reported, not gated.
+// Gate: every check below, every number finite, skinning clear of its spread, and with
+// -dupCompare every series within the larger spread. A hidden copy costing over half a
+// drawn one is reported, not gated.
 //
 // Three materials on two variants of the spike's includes:
 //   plain      YAPS_DUPLICATE off, the plug alone
@@ -40,11 +35,9 @@
 // the plain plug; the hidden copy on one point far behind the eye; the drawn
 // copy vertex by vertex as the plain plug resolved to the second hole alone.
 //
-// Skinning, measured apart: the same plug geometry on a four-bone chain,
-// 200 plugs to a mesh and four renderers, skinned against the same meshes
-// drawn unskinned, so the difference is the skinning alone. A check first
-// moves a bone between two renders and reads back what skinning wrote, so a
-// skin reused from the last frame fails the run instead of timing nothing.
+// Skinning, apart: the plug on a four-bone chain, 200 to a mesh, four renderers, against the
+// same meshes unskinned. A bone moved between two renders first proves the skin is not
+// reused from the last frame, so the run cannot time nothing.
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;

@@ -392,16 +392,9 @@ namespace AvatarBridge
             hosts.Add(hostPath);
         }
 
-        // A pulse means one thing to a pair of states that hand over on the
-        // same condition, and the opposite thing to the toggle the merger
-        // rewired that pair into. Enter 1, leave 0 a frame later advanced
-        // the pair one step; against a rewired pair it is on for a frame and
-        // off again, so the contact stops doing anything visible.
-        //
-        // Hold instead: 1 while something is inside, 0 when it leaves. Not
-        // what VRChat did, and it is the closest behaviour that survives the
-        // rewire, which the menu needed to stop the loop. Runs after the
-        // merger because only the merger knows which pairs it rewired.
+        // A one-frame pulse advanced a ping-pong pair; against the toggle the merger rewired it
+        // into, it is on for one frame and does nothing visible. Hold instead (1 while inside):
+        // the closest behaviour that survives the rewire. After the merger, which knows the pairs.
         internal static void HoldUnlatchedContacts(BridgeContext ctx)
         {
             if (ctx.UnlatchedParameters.Count == 0 || ctx.Target == null) return;
@@ -412,10 +405,7 @@ namespace AvatarBridge
                 if (trigger == null || trigger.enterTasks == null) continue;
                 foreach (string param in ctx.UnlatchedParameters)
                 {
-                    // The pulse is the pair the OnEnter branch wrote: set 1
-                    // now, set 0 a frame later, same parameter. Anything else
-                    // on this parameter was authored differently and is left
-                    // as it is.
+                    // Only the OnEnter pulse pair (1 now, 0 a frame later); anything else is left alone.
                     var release = trigger.enterTasks.FirstOrDefault(
                         t => t != null && t.settingName == param && t.settingValue == 0f && t.delay > 0f);
                     bool sets = trigger.enterTasks.Any(
@@ -618,10 +608,7 @@ namespace AvatarBridge
                 var clipsInServiceTrees = new HashSet<AnimationClip>();
                 var seenTrees = new HashSet<UnityEditor.Animations.BlendTree>();
 
-                // A tree a menu control drives is a toggle. A Direct tree,
-                // or one keyed on an internal parameter (VRCFury's
-                // counters and math), is service plumbing; a zone write
-                // inside one is baked residue, never the user's switch.
+                // Menu-driven tree: a toggle. Direct or internal-keyed (VRCFury math): plumbing, its zone writes are residue.
                 var menuParameters = new HashSet<string>();
                 if (ctx.CvrAvatar?.avatarSettings?.settings != null)
                 {
@@ -651,12 +638,8 @@ namespace AvatarBridge
                     else if (motion is UnityEditor.Animations.BlendTree tree && seenTrees.Add(tree))
                     {
                         trees.Add(tree);
-                        // Not inherited: VRCFury reuses the same toggle
-                        // tree as a child of its math layer, and a menu
-                        // gated tree is a toggle wherever it sits. Its
-                        // clips are shared with the toggle's own layer,
-                        // so stripping them through the service route
-                        // would break the toggle everywhere at once.
+                        // Not inherited: VRCFury nests the toggle tree in its math layer with shared
+                        // clips, so stripping it as plumbing would break the toggle everywhere.
                         bool service = tree.blendType == UnityEditor.Animations.BlendTreeType.Direct
                             || !menuParameters.Contains(tree.blendParameter);
                         foreach (var child in tree.children)
@@ -774,11 +757,8 @@ namespace AvatarBridge
                     }
                     if (switchesOn == restsOn)
                     {
-                        // Asserts rest and nothing else: Write Defaults
-                        // residue, and it overrides real toggles below it.
-                        // Kept when every toggle sits above: then it is the
-                        // only write putting the zone back once that layer
-                        // stops switching it.
+                        // Rest only: Write Defaults residue overriding toggles below. Kept when every
+                        // toggle sits above, as their only restore.
                         bool restoresAbove = movers.TryGetValue(binding, out var moved)
                             && moved.Any(i => i > index) && !moved.Any(i => i < index);
                         if (!restoresAbove)
@@ -793,10 +773,7 @@ namespace AvatarBridge
                     // Away from rest with no way back.
                     if (owned.Any(c => clipsInTrees.Contains(c)))
                     {
-                        // A constant restore in a sibling slot fights the
-                        // blend; drop the suppression instead. Never the
-                        // switch-on of a zone resting off, which would
-                        // leave it dead.
+                        // A sibling restore fights the blend; drop it, but never a resting-off zone's switch-on.
                         if (restsOn)
                         {
                             foreach (var clip in owned)
@@ -816,10 +793,7 @@ namespace AvatarBridge
                     continue;
                 }
 
-                // Cloned per layer, never shared: the same clip (the
-                // empty-slot filler especially) sits in other layers too,
-                // and an edit written into the shared asset would have an
-                // unrelated layer changing zones it knows nothing about.
+                // Per layer: shared clips (the empty-slot filler especially) would leak edits to unrelated layers.
                 var perLayer = new Dictionary<AnimationClip, AnimationClip>();
                 AnimationClip Owned(AnimationClip clip)
                 {
@@ -1023,10 +997,7 @@ namespace AvatarBridge
             }
         }
 
-        // Masks pass float curves through but gate transform curves by
-        // their transform list, and the zones did not exist when any
-        // author mask was baked. Every layer whose clips now scale a
-        // zone gets that path carried active in its mask.
+        // Masks gate transform curves by their list, which predates the zones, so add each scaled zone.
         static void CarryZonesInMasks(BridgeContext ctx, HashSet<string> zonePaths)
         {
             foreach (var layer in ctx.MergedController.layers)
@@ -1156,12 +1127,9 @@ namespace AvatarBridge
             return candidate;
         }
 
-        // A new host is live from load, so a contact that shipped switched off came out always
-        // on. The host takes the off state the hierarchy does not already give it: a disabled
-        // component, or an inactive object the host is not under (a rootTransform elsewhere).
-        // Animated switching reaches it through the repoint passes, a native toggle through
-        // ToggleNativizer.WithContactHosts, which wakes the host with its object unless the
-        // component itself was off.
+        // A new host is live from load, so a contact shipped off would be always on. It takes the
+        // off state the hierarchy does not give it (disabled component, or inactive object it is
+        // not under). Toggles reach it via the repoint passes and ToggleNativizer.WithContactHosts.
         static void MatchRestState(BridgeContext ctx, VRC.Dynamics.ContactBase contact, GameObject host)
         {
             bool live = contact.enabled;
@@ -1248,18 +1216,9 @@ namespace AvatarBridge
             return created;
         }
 
-        // Every penetration tag with its _SelfNotOnHips twin beside it.
-        //
-        // That suffix is the SELF channel, not a second name for the same
-        // thing: a socket's own trigger listens for the twin ALONE, so a tag
-        // carried without it answers everyone except the person wearing the
-        // avatar. Most sources ship both and are passed through unchanged;
-        // one that ships only the bare tag would convert into a socket that
-        // works for the room and not for its owner, which is the same bug
-        // the YAPS socket builder had.
-        //
-        // Only the penetration families. A Finger or Hand tag has no self
-        // channel and inventing one would cost contacts for nothing.
+        // _SelfNotOnHips is the SELF channel: a socket's own trigger listens for the twin alone,
+        // so a bare tag answers everyone but the wearer. Penetration families only; Finger and
+        // Hand have no self channel.
         static IEnumerable<string> WithSelfTwins(IEnumerable<string> tags)
         {
             const string twin = "_SelfNotOnHips";

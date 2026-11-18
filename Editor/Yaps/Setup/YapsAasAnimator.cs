@@ -79,10 +79,8 @@ namespace AvatarBridge
         // there, which can belong to another avatar's generated folder.
         public static List<AnimatorController> ControllersOf(CVRAvatar avatar) => YapsOwner.Targets(avatar);
 
-        // The CCK writes its clips to folder/Anim_<name>_..., replacing any file
-        // there. A second controller's write under the same name deleted the
-        // clips the first had just been given, and its states came out with
-        // no motion: the bicycle pose. So each write gets a name of its own.
+        // The CCK writes clips to folder/Anim_<name>_..., replacing any file there, so a second
+        // write under one name left the first's states motionless (bicycle pose). Unique names.
         static string Unused(string folder, string name)
         {
             string free = name;

@@ -3,18 +3,9 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Moves conversions out of the tool's own folder.
-    //
-    // Output used to default to Assets/AvatarBridge/Output; inside the folder every
-    // .unitypackage update flow deletes and reimports. One update erased every converted
-    // controller, override controller, prefab and rehomed material in a user's project at
-    // once: Missing (Runtime Animator Controller) on every converted avatar, particles
-    // rendering as pink squares. The new home is Assets/AvatarBridgeOutput, a sibling the
-    // tool's uninstall can't reach.
-    //
-    // Migration uses AssetDatabase.MoveAsset, which KEEPS every GUID; scene references,
-    // prefabs and override controllers keep resolving as if nothing happened. Runs from the
-    // window and on load; both are idempotent and silent when there is nothing to do.
+    // Moves output out of Assets/AvatarBridge/Output, which an update deletes (it erased every
+    // converted controller and material in a project), to Assets/AvatarBridgeOutput. MoveAsset
+    // keeps GUIDs, so references still resolve. Idempotent; runs from the window and on load.
     [InitializeOnLoad]
     public static class OutputFolderMigration
     {
@@ -34,10 +25,7 @@ namespace AvatarBridge
             }
             if (AssetDatabase.IsValidFolder(NewFolder))
             {
-                // Both exist (a conversion ran on an old version after the new folder was
-                // made). Move what sits directly in it across, subfolders and loose files
-                // alike, since the folder goes afterwards; name clashes stay put and are
-                // reported rather than overwritten.
+                // Both exist: move every entry across; clashes stay put and are reported, not overwritten.
                 bool anyLeft = false;
                 foreach (var guid in AssetDatabase.FindAssets("", new[] { OldFolder }))
                 {

@@ -1,16 +1,8 @@
-// Two plugs on one material slot, from different shafts.
-//
-// A material holds one plug's bake, length and frame, so the second plug
-// baked into the slot took the material over and the first never bent:
-// two plugs on one accessory mesh, one of them rigid. The bake is indexed
-// by vertex, not by triangle, so moving the second plug's triangles into a
-// submesh of their own, on a copy of the mesh, gives it a slot and a
-// material without touching either bake. The rest of the slot stays with
-// the first plug's material, whose bake leaves every vertex but its own
-// where it is.
-//
-// The same shaft baked twice is not this: three plug components on one
-// shaft share the slot, and the last bake winning is right.
+// Two plugs from different shafts on one material slot. A material holds one plug's
+// bake, so the second took it over and the first went rigid. The bake is per vertex,
+// so moving the second plug's triangles to their own submesh on a mesh copy gives it
+// its own material without touching either bake.
+// Several plugs on the SAME shaft share the slot; the last bake winning is right.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.IO;
@@ -85,14 +77,12 @@ namespace AvatarBridge
             split.SetTriangles(move, added);
             split.bounds = mesh.bounds;
 
-            // Named for where the renderer and the plug sit, as the bake is: a
-            // third plug's split is made from the second's mesh, which has to
-            // survive it for Remove to go back to.
+            // Named by place, as the bake is: a third plug splits the second's
+            // mesh, which must survive for Remove.
             Directory.CreateDirectory(dir);
             string path = dir + "/YAPS " + Safe(skin.name) + " " + YapsBaker.PlaceKey(skin.transform, plugRoot) + Suffix + ".asset";
-            // Rewritten in place when the file is there: deleting it destroys
-            // the mesh an earlier conversion's renderer still wears. Safe when
-            // the file is the mesh being split, which split already copied.
+            // Rewritten in place: deleting it breaks a renderer from an earlier
+            // conversion that still wears it.
             var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (saved != null)
             {
@@ -156,9 +146,8 @@ namespace AvatarBridge
             var mask = new bool[mesh.vertexCount];
             for (int i = 0; i < mask.Length && i < weights.Length; i++)
             {
-                // The baker's own sum: tested one bone at a time, a vertex
-                // blended across the shaft's bones bent in the bake and was
-                // left out here.
+                // The baker's sum: per bone, a vertex blended across the shaft's
+                // bones would bend yet be left out here.
                 mask[i] = YapsBaker.WeightOnPlug(weights[i], plugBones) > 0.5f;
             }
             return mask;

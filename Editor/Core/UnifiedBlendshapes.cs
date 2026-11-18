@@ -17,17 +17,10 @@ namespace AvatarBridge
 
     // Unified Expressions "blended shapes" reconciliation (see
     // https://docs.vrcft.io/docs/tutorial-avatars/tutorial-avatars-extras/unified-blendshapes).
-    //
-    // The face-tracking rig drives a fixed set of shape names, but avatars only carry a subset
-    // at a given granularity: some ship a single combined shape (e.g. "LipFunnel"), others the
-    // directional components ("MouthUpperUpLeft/Right"). This maps a combined shape to its
-    // components so AvatarBridge can, per shape the mesh is missing, either COLLAPSE the driven
-    // components onto the combined shape the mesh has, or EXPAND a driven combined shape onto
-    // the split shapes the mesh has.
-    //
-    // It's an approximation: the rig's Direct blend tree *sums* contributions, so collapsing
-    // N components onto one shape scales each by 1/N (symmetric expressions reach full strength;
-    // asymmetric ones land at a fraction; which a combined-only mesh can't represent anyway).
+    // Per shape the mesh lacks: collapse driven components onto the combined shape it has, or
+    // expand a driven combined shape onto its split shapes. Approximate: the Direct blend tree
+    // sums, so a collapse scales each of N components by 1/N, and asymmetric expressions land
+    // at a fraction (a combined-only mesh cannot show them anyway).
     public static class UnifiedBlendshapes
     {
         // Combined shape -> its directional components. Bilateral (Left/Right) unless quadranted.
@@ -80,13 +73,8 @@ namespace AvatarBridge
             return d;
         }
 
-        // Alternate blendshape names for the same shape under other tracking standards. The
-        // rig drives Unified-Expressions names; a mesh may instead carry ARKit names, so a UE
-        // shape resolves against any of these. Only entries whose names actually DIFFER from UE
-        // beyond capitalization need listing (pure case differences are handled directly).
-        // ARKit's 52 shapes are Apple-fixed, so this mapping is stable; extend with SRanipal /
-        // Meta Movement here if needed. (Applied defensively; only used when the alt name is
-        // actually present on the mesh, so a wrong entry simply never fires.)
+        // ARKit names for UE shapes, for meshes that carry those instead. Only names that differ
+        // beyond case; used only when present on the mesh, so a wrong entry never fires.
         static readonly Dictionary<string, string[]> AltNames =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {

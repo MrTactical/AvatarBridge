@@ -6,13 +6,10 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Rebuilds the humanoid rig when the objects above the hips were moved or scaled after it
-    // was made. Edit mode draws the body where it stands, but a running animator places the
-    // hips from the rig's own record, so the avatar floats or sinks in Play mode and in game,
-    // and full-body calibration measures a body the IK then does not drive.
-    //
-    // Only those objects and the hips' position are rewritten. The limbs keep the rig's
-    // configured T-pose, which the current pose need not be.
+    // Rebuilds the humanoid rig when objects above the hips moved or scaled after it was made.
+    // A running animator places the hips from the rig's record, so the avatar floats or sinks
+    // in game and full-body calibration measures the wrong body. Only those objects and the
+    // hips' position are rewritten; limbs keep the rig's T-pose.
     public static class RigSkeletonSync
     {
         const string Category = "Humanoid rig";

@@ -1,15 +1,7 @@
-// VRCFury patches the plug's shader with SPS during its own bake. That
-// patched shader is VRChat-only, and the patcher correctly refuses to
-// touch a shader that already carries it, so a normal bake would leave
-// no clean input to work from.
-//
-// Turning the plug's own SPS flag off before the bake solves it, and
-// costs nothing that is needed: the plug and socket objects, the
-// protocol lights and the contacts all still appear, and only VRCFury's
-// own bake texture is lost, which is what YapsBaker replaces.
-//
-// The flags are flipped on the user's own avatar in their own scene, so
-// they are put back afterwards no matter how the bake ends.
+// VRCFury's bake patches the plug shader with VRChat-only SPS, and the
+// patcher refuses an already patched shader. Turning the plug's SPS flag off
+// first loses only VRCFury's bake texture, which YapsBaker replaces.
+// The flags are on the user's own avatar, so they are always put back.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -26,21 +18,15 @@ namespace AvatarBridge
         readonly List<Component> _flipped = new List<Component>();
         readonly List<string> _unswitchable = new List<string>();
 
-        // The author's own per-plug settings, read off the component while it
-        // still exists. The bake destroys it, so anything not captured here is
-        // lost and quietly replaced by a default, which is what happened to
-        // overrun: VRCFury lets an author say whether the tip may travel past
-        // the socket, and every converted plug was getting "yes" regardless.
-        //
-        // Keyed by KeyOf the object the plug component sits on, which survives
-        // the bake as the parent of BakedSpsPlug. PlugKey finds it again.
+        // Per-plug settings, read before the bake destroys the component.
+        // Anything missed becomes a default: overrun came out "yes" on every
+        // plug. Keyed by KeyOf the plug's object, which survives the bake as
+        // the parent of BakedSpsPlug.
         public static readonly Dictionary<string, bool> AuthoredOverrun =
             new Dictionary<string, bool>();
 
-        // Tags, same reason and same key. SPS writes them as 32-bit hashes
-        // into a generated animation clip, so the baked avatar has the
-        // numbers and not the words; the components still hold the words,
-        // and a hash cannot be turned back into one.
+        // Tags, same reason and key: the bake keeps only 32-bit hashes, which
+        // cannot be turned back into words.
         public static readonly Dictionary<string, List<string>> AuthoredSocketTags =
             new Dictionary<string, List<string>>();
         public static readonly Dictionary<string, List<string>> AuthoredAnswers =
@@ -48,30 +34,23 @@ namespace AvatarBridge
         public static readonly Dictionary<string, List<string>> AuthoredRefuses =
             new Dictionary<string, List<string>>();
 
-        // The same two lists for the wearer's OWN sockets. SPS asks each rule
-        // which side it governs, and YAPS answers the two sides in different
-        // places: the lists above become the plug's tag test, these become its
-        // own-socket ticks. Plugs whose author turned hip avoidance off may
-        // enter the wearer's own hip sockets.
+        // The same lists for the wearer's OWN sockets, which YAPS answers as
+        // own-socket ticks rather than the tag test. Plugs with hip avoidance
+        // off may enter the wearer's own hip sockets.
         public static readonly Dictionary<string, List<string>> AuthoredSelfAnswers =
             new Dictionary<string, List<string>>();
         public static readonly Dictionary<string, List<string>> AuthoredSelfRefuses =
             new Dictionary<string, List<string>>();
         public static readonly HashSet<string> AuthoredEntersOwnHips = new HashSet<string>();
 
-        // SPS's "global" tag, which nearly every socket and plug carries by
-        // default. It is a fixed number over there rather than a hashed
-        // word; the number cannot mean anything here, since a VRChat plug
-        // and a ChilloutVR socket never meet, but the BEHAVIOUR has to
-        // carry: a plug with it answers anything, and a plug without it
-        // answers only what it named.
+        // SPS's default "global" tag. Its number means nothing here, but the
+        // behaviour carries: a plug with it answers anything, without it only
+        // what it named.
         const string Shared = YapsTags.Shared;
 
-        // Every plug and socket read, by key, and by name where no other of
-        // its kind has that name. The name is the fallback for an object the
-        // bake moved, and it was the only key once: VRCFury's own menu names
-        // every plug "SPS Plug" and every socket "SPS Socket", so the last one
-        // read gave its tags and overrun to all of them.
+        // By key, and by name only where the name is unique: the name is the
+        // fallback for objects the bake moved, and VRCFury names every plug
+        // "SPS Plug", so a name key gave one plug's settings to all.
         static readonly HashSet<string> PlugKeys = new HashSet<string>(), SocketKeys = new HashSet<string>();
         static readonly Dictionary<string, string> PlugNames = new Dictionary<string, string>(),
             SocketNames = new Dictionary<string, string>();
@@ -90,10 +69,8 @@ namespace AvatarBridge
             return names.TryGetValue(YapsScanner.StripFuryId(owner.name), out string named) ? named : null;
         }
 
-        // The path from the avatar root, with "#n" on an object that has n
-        // earlier siblings of the same name, so two sockets of one name under
-        // one bone are still two keys. The bake keeps it: the copy keeps the
-        // order, and what the bake adds goes after.
+        // Path from the avatar root, "#n" after n earlier same-named siblings.
+        // The bake keeps sibling order and appends what it adds.
         static string KeyOf(Transform root, Transform t)
         {
             var parts = new List<string>();
@@ -184,12 +161,8 @@ namespace AvatarBridge
                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
                 if (field == null || field.FieldType != typeof(bool))
                 {
-                    // This used to be a silent continue, and it is the one
-                    // place a VRCFury update can put two deforms on a plug:
-                    // with the switch gone Fury patches its own shader, and
-                    // YAPS patches on top unless the patcher still recognises
-                    // what Fury wrote. Nothing about the new system needs to
-                    // be known to notice the switch is missing.
+                    // Not silent: a VRCFury update that drops the switch puts
+                    // two deforms on the plug (Fury's and YAPS on top).
                     prep._unswitchable.Add(component.gameObject.name);
                     continue;
                 }
@@ -223,13 +196,9 @@ namespace AvatarBridge
             return prep;
         }
 
-        // Everything the bake is about to destroy, in words.
-        //
-        // A plug carrying the shared tag answers anything, so its own list
-        // only narrows when the author turned that off. Reproducing that is
-        // what stops a converted plug refusing every socket on the avatar:
-        // carrying an include list without carrying what the sockets ARE
-        // would do exactly that.
+        // A plug with the shared tag answers anything; its list narrows only
+        // when the author turned that off. Without this a converted plug
+        // refused every socket on the avatar.
         static void ReadTags(GameObject source, List<Component> plugs, List<Component> sockets,
             Dictionary<Component, string> plugKeys, Dictionary<Component, string> socketKeys)
         {
@@ -238,9 +207,8 @@ namespace AvatarBridge
                 if (!plugKeys.TryGetValue(component, out string plug)) continue;
                 var answers = Rules(component, "includeTags", self: false);
                 var selfAnswers = Rules(component, "includeTags", self: true);
-                // First, never last: the bake keeps four, and the word that
-                // widens the list is the one that must not be cut. Appended,
-                // a plug with four tags of its own lost it and narrowed to them.
+                // First: the bake keeps four, and appended it was cut from a
+                // plug with four tags of its own.
                 if (Flag(component, "useSharedTag")) { answers.Insert(0, Shared); selfAnswers.Insert(0, Shared); }
                 var refuses = Rules(component, "excludeTags", self: false);
                 var selfRefuses = Rules(component, "excludeTags", self: true);
@@ -295,10 +263,9 @@ namespace AvatarBridge
         {
             var map = new Dictionary<Transform, string[]>();
             if (animator == null || !animator.isHuman) return map;
-            // Every humanoid bone, the unnamed ones with no tags, so the climb
-            // stops at the first bone of any kind as SPS's does. Mapping the
-            // named ones alone climbed past them: a forearm socket came out
-            // "chest", and a thigh socket "hips", which also broke the hip pair.
+            // Every humanoid bone, so the climb stops at the first as SPS's
+            // does. Named ones alone made a forearm socket "chest" and a thigh
+            // socket "hips", breaking the hip pair.
             for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
             {
                 var t = animator.GetBoneTransform(bone);
@@ -308,10 +275,8 @@ namespace AvatarBridge
             return map;
         }
 
-        // Climb to the bone the socket hangs off rather than measuring to
-        // the nearest one. A socket is parented where it belongs, and a
-        // distance answers wrongly as soon as two bones sit close: a mouth
-        // socket is nearer the chest than the head on a short neck.
+        // Climb the parents, not the nearest bone: on a short neck a mouth
+        // socket is nearer the chest than the head.
         static List<string> Bones(Transform socket, Dictionary<Transform, string[]> bones)
         {
             for (var at = socket; at != null; at = at.parent)
@@ -321,12 +286,9 @@ namespace AvatarBridge
             return new List<string>();
         }
 
-        // Two sockets on the hips: the one further forward is the front.
-        //
-        // With three or more, the pair is the two nearest the hips along the
-        // forward axis, the lower path first on a tie, which is SPS's choice.
-        // Dropping the split there instead left a plug refusing "hipsback"
-        // free to enter a socket it never entered in VRChat.
+        // Two hip sockets: the further forward is the front. With three or
+        // more, the two nearest along forward, lower path first on a tie, as
+        // SPS does. Skipping the split let a plug refusing "hipsback" in.
         static void FrontAndBack(Dictionary<Component, List<string>> derived, Animator animator, Transform root)
         {
             if (animator == null || !animator.isHuman) return;
@@ -371,10 +333,8 @@ namespace AvatarBridge
             return found;
         }
 
-        // A plug rule says which side it governs: the wearer's own sockets,
-        // everybody else's, or both. Neither ticked, or a rule from a version
-        // without the fields, reads as both, so no rule the author wrote is
-        // dropped.
+        // Own sockets, others', or both. Neither ticked (or an older rule
+        // without the fields) reads as both, so no rule is dropped.
         static List<string> Rules(Component component, string name, bool self)
         {
             var found = new List<string>();

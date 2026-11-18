@@ -12,34 +12,14 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge.Regression
 {
-    // Drives every toggle a converted avatar exposes and reports
-    // anything that does not come back. Reading the controller is not
-    // enough; the sweep moves each parameter and looks at the avatar.
-    //
-    // Method:
-    //   Each parameter measures against the state settled immediately
-    //   before it moves, never a global baseline; the controller
-    //   legitimately turns things off while settling.
-    //   Nothing is put back by hand; the animator owns these objects.
-    //   Game-driven parameters and "#" locals are left alone.
-    //   Four kinds of state are watched: object activity, blendshape,
-    //   material, Renderer.enabled.
-    //
-    // Edit mode, driving Animator.Update by hand; a runtime
-    // MonoBehaviour cannot live in an Editor folder. Edit-mode
-    // driving has reproduced a real in-game fault, but the subsets
-    // differ, so a clean result means "found nothing", not "nothing
-    // is wrong".
-    //
-    // The on direction is checked too: while a parameter is held
-    // away from rest, every constant claim the playing clips make
-    // (float curves and material swaps) is compared against the
-    // scene. A masked layer dropping slots, or a write that never
-    // lands, reports as NOT APPLIED. Intent stays invisible; only
-    // claims the controller itself makes can be verified.
-    //
-    // This moves things in the open scene and does not put them back.
-    // Reload the scene before doing anything else with it.
+    // Drives every toggle and reports anything that does not come back.
+    // Each parameter compares against the state settled just before it moves,
+    // never a global baseline (settling legitimately turns things off). Nothing
+    // is restored by hand; game-driven parameters and "#" locals are skipped.
+    // Edit mode, Animator.Update by hand (no runtime MonoBehaviour in an Editor
+    // folder), so clean means "found nothing", not "nothing is wrong".
+    // While held, the clips' constant claims are checked against the scene
+    // (NOT APPLIED). Leaves the scene moved: reload it afterwards.
     public static class ToggleSweep
     {
         const int SettleFrames = 12;
@@ -127,9 +107,7 @@ namespace AvatarBridge.Regression
                 return -1;
             }
 
-            // A "#" local is user-facing when a menu control drives it;
-            // the zone toggles are all built that way. Locals with no
-            // menu entry stay excluded: those are internal scratch.
+            // A "#" local counts only when a menu control drives it (the zone toggles).
             var menuNames = new HashSet<string>();
             var cvrAvatar = root.GetComponentInParent<ABI.CCK.Components.CVRAvatar>()
                 ?? root.GetComponent<ABI.CCK.Components.CVRAvatar>();
@@ -164,9 +142,7 @@ namespace AvatarBridge.Regression
             animator.Rebind();
             Settle(animator, Warmup);
 
-            // A graph bound to the animator trips VRCFury's parameter shims, and the CCK
-            // driver's SetFloat goes through them too, so its writes are lost. Named here
-            // because nothing in the converter creates one.
+            // A bound graph trips VRCFury's parameter shims and the CCK driver's writes are lost.
             if (animator.hasBoundPlayables)
             {
                 var bound = UnityEditor.Playables.Utility.GetAllGraphs()
@@ -178,10 +154,7 @@ namespace AvatarBridge.Regression
                 Debug.Log($"[Sweep] graphs bound to the animator: {string.Join(", ", bound)}");
             }
 
-            // What the animator has actually made of the physics once it has settled, which is a
-            // different question from what the prefab was saved as. A cloth saved disabled whose
-            // toggle defaults ON should be running by now; one that is still off after the
-            // animator has had its say is off in game too.
+            // Physics state after settling, not as saved: cloth still off now is off in game.
             var clothStates = new List<string>();
             foreach (var behaviour in root.GetComponentsInChildren<Behaviour>(true))
             {
@@ -200,11 +173,9 @@ namespace AvatarBridge.Regression
                       "slots. This moves things in the open scene and does not put them back: reload it " +
                       "afterwards.");
 
-            // Two drives that change nothing. Every Drive rebinds, and a rebind captures the scene
-            // as the new defaults, so a tree resting between two children that animate different
-            // properties re-blends against its own output and creeps on every drive. That creep
-            // belongs to the rest pose, and was being charged to whichever parameter came next.
-            // Two, not one: Warmup leaves a different clip phase than SettleFrames does.
+            // Two no-op drives: each rebind captures the scene as defaults, so a tree
+            // between two children creeps, and that was charged to the next parameter.
+            // Two: Warmup leaves a different clip phase than SettleFrames.
             string first = parameters[0];
             Drive(controller, animator, first, DefaultOf(controller, first));
             Settle(animator, SettleFrames);
@@ -220,9 +191,7 @@ namespace AvatarBridge.Regression
 
             var stuck = new List<string>();
             var notApplied = new List<string>();
-            // How many parameters visibly did anything when driven.
-            // Distinguishes "every toggle came back" from "nothing was
-            // ever moved"; the two must not report identically.
+            // Tells "all came back" from "nothing ever moved".
             int responded = 0;
 
             // Mismatches already present at rest belong to the rest
@@ -238,9 +207,7 @@ namespace AvatarBridge.Regression
                 float original = DefaultOf(controller, parameter);
                 var before = watch.Capture();
 
-                // Away from rest, not always to 1. Default-true toggles
-                // are ordinary; driving one to the value it already
-                // holds tests that 1 equals 1.
+                // Away from rest, not always to 1: default-true toggles exist.
                 float away = original > 0.5f ? 0f : 1f;
                 Drive(controller, animator, parameter, away);
                 Settle(animator, SettleFrames);
@@ -248,9 +215,7 @@ namespace AvatarBridge.Regression
                 bool moves = whileOn.Count > 0;
                 if (moves)
                 {
-                    // What a toggle does, not only what it fails to put
-                    // back. Needed to answer "does this toggle reach
-                    // the converted physics at all".
+                    // What it does, e.g. whether it reaches the converted physics.
                     Debug.Log($"[Sweep] MOVES \"{parameter}\": {string.Join("; ", whileOn.Take(6))}" +
                               (whileOn.Count > 6 ? $" (+{whileOn.Count - 6} more)" : ""));
                     foreach (var held in watch.Holdings(before))
@@ -259,10 +224,7 @@ namespace AvatarBridge.Regression
                     }
                 }
 
-                // What the playing clips claim versus what the scene
-                // holds. This is the on-direction check: a masked layer
-                // that drops material slots, or a curve that lands on
-                // nothing, shows up here as a claim the scene refuses.
+                // On-direction check: clip claims the scene refuses.
                 bool claimsFailed = false;
                 foreach (var finding in VerifyApplied(animator, controller, root))
                 {
@@ -312,9 +274,7 @@ namespace AvatarBridge.Regression
 
             if (responded == 0)
             {
-                // Not a clean bill of health; the opposite. Nothing
-                // moving at all means nothing was really driven, and
-                // every "came back fine" below is vacuous.
+                // Nothing moved: nothing was driven, so every pass below is vacuous.
                 Debug.LogError($"[Sweep] INVALID RUN: none of the {parameters.Length} parameters changed " +
                                "anything even while held on, so nothing was really being driven. Edit-mode " +
                                "Animator.Update is the likely culprit and this result says NOTHING about " +
@@ -340,10 +300,8 @@ namespace AvatarBridge.Regression
             return stuck.Count + notApplied.Count;
         }
 
-        // Compares what the currently playing clips assert against what
-        // the scene actually holds. Constant curves only; a toggle's
-        // claim is a constant. Catches a masked layer dropping material
-        // slots, and any curve whose write never lands.
+        // Constant curves only (a toggle's claim is a constant). Catches a masked
+        // layer dropping material slots and writes that never land.
         static List<string> VerifyApplied(Animator animator, AnimatorController controller, GameObject root)
         {
             var findings = new List<string>();
@@ -454,10 +412,8 @@ namespace AvatarBridge.Regression
             return findings;
         }
 
-        // VRCFury replaces Animator.GetLayerWeight with a playable lookup that
-        // throws ArgumentNullException once a graph bound to the animator has an
-        // output with no source, and that aborted whole sweeps. Its own fallback
-        // is used then, so the reading matches every avatar the lookup survives.
+        // VRCFury's GetLayerWeight replacement throws ArgumentNullException when a
+        // bound graph has a sourceless output, aborting sweeps. Fall back like it does.
         static float LayerWeight(Animator animator, int layer)
         {
             try
@@ -518,9 +474,7 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // Everything a toggle can plausibly leave behind, addressed
-        // once so each sweep is a cheap array read. Labels are built
-        // once; they are only wanted when something went wrong.
+        // Everything a toggle can leave behind, addressed once for cheap reads.
         sealed class Watchlist
         {
             readonly string[] labels;
@@ -542,9 +496,7 @@ namespace AvatarBridge.Regression
                 objects = root.GetComponentsInChildren<Transform>(true);
                 renderers = root.GetComponentsInChildren<Renderer>(true);
                 skins = root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
-                // Components switched on and off, which is how converted
-                // physics is toggled: the clip drives the cloth's
-                // enabled flag, not the object's.
+                // Converted physics toggles the component's enabled flag, not the object.
                 behaviours = root.GetComponentsInChildren<Behaviour>(true);
 
                 var names = new List<string>();
@@ -615,9 +567,7 @@ namespace AvatarBridge.Regression
 
             public List<string> Differences(Reading before) => Compare(before, false);
 
-            // What each object that switched on or off carries, so a flip can be
-            // read from the log without opening the scene. Light ranges hold the
-            // protocol digit in their third decimal.
+            // What each flipped object carries. Light ranges hold the protocol digit in the third decimal.
             public IEnumerable<string> Holdings(Reading before)
             {
                 for (int i = 0; i < objects.Length; i++)

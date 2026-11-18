@@ -1,9 +1,7 @@
-// The YAPS Squash component's inspector, in steps: the parts with the region painter, the knobs
-// (written straight to the build's materials) and the build last. Then the preview that presses
-// the parts as the game does, run from the Avatar Tester alone: a second copy of its controls here
-// read as a second preview. Another player's hands, written into the client's own globals, squeeze
-// the pair from outside and press where dragged, in edit and Play mode alike. Edit mode runs no
-// cloth, so there the preview also swings the rests under it.
+// The YAPS Squash inspector, in steps: parts and region painter, knobs (written straight to the
+// build's materials), build last. The preview runs from the Avatar Tester alone (a copy here read
+// as a second preview): another player's hands, written into the client's globals, press the
+// parts. Edit mode runs no cloth, so the preview also swings the rests.
 #if CVR_CCK_EXISTS
 using System.Linq;
 using ABI.CCK.Components;
@@ -58,10 +56,8 @@ namespace AvatarBridge
 
         static readonly string[] HereNotKnobs = { "partBones", "leaveAlone" };
         static readonly string[] JellyOnly = { "twitch", "twitchSize", "gripSlides", "otherColliders", "probeMarkers" };
-        // The squash's dent alone reads these, and every part it dents is on the live tissue once
-        // that is built: the tissue takes the hand size, volume, meet, grip and
-        // other players' hands in or out, and its own reach for every limb. Shown there, "0 leaves
-        // them out" left the wearer's arms pressing.
+        // Only the squash's dent reads these; once the live tissue is built it takes over, so
+        // shown there, "0 leaves them out" left the wearer's arms pressing.
         static readonly string[] DentOnly = { "flattest", "widest", "spill", "clothPush", "lyingBack", "ownArms" };
 
         static readonly string[] FeelLabels = { "Firmness", "Settle", "Give", "Swing", "Spring back", "Taut", "Press depth", "Slap" };
@@ -109,8 +105,7 @@ namespace AvatarBridge
             var root = YapsSquash.RootOf(settings);
             bool built = YapsSquash.Has(root);
             bool painted = settings.pairs.Count > 0;
-            // One line for the build's state, the same one every window shows, naming what a
-            // rebuild is for. A bare "built" left nobody knowing when to press it.
+            // The build's state, as every window shows it, naming what a rebuild is for.
             string status = YapsSquash.Status(root, out var statusTone);
             bool needed = !built || statusTone == Tone.Warn;
 
@@ -128,17 +123,14 @@ namespace AvatarBridge
             // what squashes, how it feels, then build.
             var parts = new BridgeElements.Card("Which parts squash").Step(1, 3);
             body.Add(parts);
-            // One step whatever the parts come from, said first. As two steps, the first said the
-            // paint wins and the second "only if the bones miss", side by side.
+            // One step whatever the parts come from: two steps contradicted each other.
             bool picked = settings.partBones.Count > 0;
-            // Always open, so the step shows what squashes, coloured on the body, before anything
-            // is pressed. Behind a "Paint them" button it showed nothing until painting began.
+            // Always open, so what squashes shows on the body before anything is pressed.
             if (_painter == null) _painter = YapsSquashPainter.For(root.gameObject, RebuildLater);
             if (painted)
                 parts.Body.Add(BridgeElements.Hint($"Squashing {string.Join(" and ", settings.pairs.Select(p => p.name))}, painted on \"{(settings.body != null ? settings.body.name : "?")}\"."));
 
-            // The painter lives here, not in a window of its own: a step that sent the reader to
-            // another window was a step they lost.
+            // The painter lives here: a step in another window was a lost step.
             if (picked || _pickBones) _painter.Panel(parts.Body);
             else _painter.Panel(parts.Body, BridgeElements.Btn("Pick bones instead", () => { _pickBones = true; RebuildLater(); },
                 "Pick by hand the bones of anything that comes in two: cheeks, thighs."));
@@ -397,9 +389,7 @@ namespace AvatarBridge
             return row;
         }
 
-        // The Avatar Tester on this avatar, its squash section open and the preview running. The
-        // tester ships in the public package and the add-on can be installed alone, so it is
-        // reached by name.
+        // Reached by name: the add-on can be installed without the public tester.
         public static void Test(YapsSquashSettings s)
         {
             var open = typeof(YapsSquashPreview).Assembly.GetType("AvatarBridge.CckAnimatorTester")
@@ -487,9 +477,8 @@ namespace AvatarBridge
             SceneView.RepaintAll();
         }
 
-        // The stand-in for the cloth edit mode never runs. Squeeze is not one: moving the follows
-        // together left the skin where it was, so the shader read an overlap and swung the pair
-        // apart, the opposite of a squeeze. Hands press the skin as the game's do.
+        // Stands in for the cloth edit mode never runs. Not for Squeeze: moving the follows
+        // together left the skin behind and the shader swung the pair apart.
         static void Stand(Transform root, Matrix4x4[] m, System.Collections.Generic.List<Material> mats)
         {
             var reach = mats[0].GetVector("_YAPS_SquashReach");
@@ -565,8 +554,7 @@ namespace AvatarBridge
             }
         }
 
-        // The part the hand reaches for. The first part always was, so a hand dragged onto a
-        // second pair faced up toward the first and never pressed in.
+        // The part the hand reaches for, not always the first, or it faced the wrong pair.
         static Vector3 Nearest(Transform[] slots, Vector3 wrist) =>
             slots.Take(4).Where(t => t != null && t.lossyScale.sqrMagnitude > 0f).Select(t => t.position)
                 .OrderBy(p => (p - wrist).sqrMagnitude).DefaultIfEmpty(wrist + Vector3.forward).First();
@@ -676,10 +664,9 @@ namespace AvatarBridge
             PlayerLoop.SetPlayerLoop(loop);
         }
 
-        // The first pair's first part, moved by its chain's root, the bone the cloth holds still
-        // and carries the chain with: the first under the rest's parent on the way up from the
-        // follow. One pair only: every pair at once shoved a second one unasked. The push is kept
-        // in the root's parent's space, so it turns with the avatar.
+        // The first pair's first part, moved by its chain root (the bone the cloth carries the
+        // chain with). One pair only: all at once shoved others unasked. Kept in the root's
+        // parent's space so it turns with the avatar.
         static void PushNow()
         {
             if (!Application.isPlaying) return;

@@ -1,18 +1,9 @@
 // Does a conversion leave TWO menu toggles on one object?
 //
-// A user reported it on 4.3.4: their SPS toggles are listed, and converting
-// to YAPS adds a second set, so the menu carries two of each and one of them
-// is inert. YapsToggles already tries not to do that. ToggledBy asks whether
-// anything already switches the object and stands its own toggle down if so.
-// But that check only recognises an entry driving the object through
-// gameObjectTargets, and a converted VRChat or SPS toggle very often drives
-// it through an ANIMATION CLIP instead, which the check cannot see.
-//
-// This finds every object that more than one menu entry controls, by either
-// route, and says which route each took. If every duplicate turns out to
-// pair one Targets with one Clip, the blind spot in ToggledBy is the cause.
-// Running it over the corpus finds every affected avatar at once, which
-// beats reproducing one.
+// Reported on 4.3.4: converting SPS to YAPS added a second, inert toggle set.
+// YapsToggles.ToggledBy only sees entries driving gameObjectTargets, not ones
+// driving the object through an animation clip, as converted toggles often do.
+// Lists every object more than one entry controls, and by which route.
 //
 //   Tools/Avatar Bridge/Dev/Probes/Duplicate menu toggles (this avatar)
 //   -executeMethod AvatarBridge.Probes.DuplicateToggleCheck.RunBatch
@@ -84,9 +75,7 @@ namespace AvatarBridge.Probes
                     }
                 }
 
-                // Route two: a layer this parameter drives animates
-                // m_IsActive on some path. The route ToggledBy cannot see,
-                // and the one a converted SPS toggle usually takes.
+                // Route two: a driven layer animates m_IsActive (invisible to ToggledBy).
                 if (ac == null) continue;
                 foreach (var layer in ac.layers)
                 {
@@ -218,13 +207,10 @@ namespace AvatarBridge.Probes
         }
 
 #if AVATARBRIDGE_YAPS
-        // The user's route, not the corpus's: convert, then Build all in the
-        // YAPS window. The converter wires the author's socket toggles itself;
-        // the window's toggles come from a second builder, and same-path
-        // matching above never sees an entry that switches a socket's
-        // CHILDREN against one that switches the socket. So per part: every
-        // entry reaching its subtree by any binding, and whether that entry
-        // still animates anything that exists.
+        // The user's route: convert, then Build all in the YAPS window (a second
+        // builder). Same-path matching misses an entry switching a socket's
+        // children, so per part: every entry reaching its subtree, and whether
+        // it still animates anything that exists.
         //   -executeMethod AvatarBridge.Probes.DuplicateToggleCheck.RunNativeBatch -dupScenes <file>
         public static void RunNativeBatch()
         {

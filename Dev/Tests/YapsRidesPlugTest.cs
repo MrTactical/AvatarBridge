@@ -5,13 +5,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for which meshes join a plug.
-    //
-    // A two-bone chain, Base then Shaft, beside an unrelated Hips. The body
-    // meets the plug at Base and nowhere further; a harness rides Shaft with
-    // most of its vertices elsewhere; a tip sits wholly on Base. Before, the
-    // converter took only a mesh more than half on the chain, so the harness
-    // stayed rigid while the shaft bent through it.
+    // Which meshes join a plug. Chain Base then Shaft beside an unrelated Hips: the body touches only
+    // Base, a harness rides Shaft with most vertices elsewhere, a tip sits wholly on Base. A
+    // "more than half on the chain" rule left the harness rigid while the shaft bent through it.
     public static class YapsRidesPlugTest
     {
         public static void Run()

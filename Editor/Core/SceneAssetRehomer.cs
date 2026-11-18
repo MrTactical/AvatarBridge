@@ -7,30 +7,19 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // VRCFury bakes generated assets; meshes (SPS-deformed bodies, blendshape/mesh-optimizer
-    // output, merged armatures), and materials/shaders (SPS-patched, poiyomi-locked); under
-    // Packages/com.vrcfury.temp, and it deletes that folder on its next build. A converted
-    // avatar that still points at those temp assets loses them:
-    //   * a null sharedMesh renders nothing -> the avatar comes back **blank/invisible**;
-    //   * a null material/shader renders **pink** and drops out of the scene.
-    //
-    // This copies every renderer mesh, material and (generated) shader that lives in the
-    // volatile temp into the output folder and repoints the renderers, making the avatar
-    // self-contained. Mesh-side sibling of AnimatorMerger.RehomeVolatileAssets (clips/masks).
+    // VRCFury bakes meshes, materials and shaders under Packages/com.vrcfury.temp and deletes
+    // that folder on its next build, leaving the avatar invisible or pink. Copies them into the
+    // output folder and repoints the renderers. Sibling of AnimatorMerger.RehomeVolatileAssets.
     public static class SceneAssetRehomer
     {
         const string Category = "Assets";
 
-        // One conversion's copies, so a temp object named from several places comes out as one
-        // copy. Two gave "Body 1.mat" beside "Body.mat", and a swap restored an object the mesh
-        // was not wearing.
+        // One copy per temp object, or a swap restores a duplicate the mesh is not wearing.
         sealed class Rescued
         {
             internal readonly Dictionary<UnityEngine.Object, UnityEngine.Object> Copies =
                 new Dictionary<UnityEngine.Object, UnityEngine.Object>();
-            // Source container path to its copy. Never carried over: the paths point into THIS
-            // avatar's output folder, and reusing them on the next avatar would hand it the
-            // previous one's pictures.
+            // Source container path to its copy. Per avatar: the copies live in its output folder.
             internal readonly Dictionary<string, string> Containers = new Dictionary<string, string>();
             // Set only while Run walks the renderers, whose mesh and material copies are written
             // in one batch at its end. Null for a later caller, which may load its copy at once.
@@ -49,10 +38,8 @@ namespace AvatarBridge
             {
                 return false;
             }
-            // Shared with the animator rescue: covers Fury's own temp AND NDMF's __Generated,
-            // where Fury bakes the moment Modular Avatar is installed. A mesh referenced from
-            // either dies on the next play mode's bake; the avatar goes invisible rather than
-            // frozen, but by the same mechanism.
+            // Fury's temp and NDMF's __Generated (used once Modular Avatar is installed); both
+            // are wiped by the next play mode bake.
             return AnimatorMerger.IsDoomedGeneratedPath(AssetDatabase.GetAssetPath(obj));
         }
 
@@ -142,9 +129,8 @@ namespace AvatarBridge
             WritePending(state);
         }
 
-        // The four kinds a renderer wears, through the same map, so a rescue of swap-clip
-        // references can reuse the renderers' copies instead of making its own. False for any
-        // other kind, which the caller copies its own way.
+        // The four kinds a renderer wears, through the same map, so swap-clip rescue reuses the
+        // renderers' copies. False for other kinds.
         internal static bool TryRehome(BridgeContext ctx, UnityEngine.Object value, out UnityEngine.Object copy)
         {
             copy = value;
@@ -221,9 +207,8 @@ namespace AvatarBridge
             state.Pending.Add((copy, OutputAssetPaths.Claim(desiredPath, state.Stale)));
         }
 
-        // One delete and one import for the pass, where each copy cost a full refresh for its
-        // delete and another for its write. Meshes name nothing, and every asset a material
-        // names was imported before the batch, so no write here depends on another.
+        // One delete and one import for the pass instead of two refreshes per copy. Safe to batch:
+        // meshes name nothing and every asset a material names is already imported.
         static void WritePending(Rescued state)
         {
             var pending = state.Pending;
@@ -289,14 +274,9 @@ namespace AvatarBridge
             {
                 ShaderSpiPatcher.Wear(copy, shader);
             }
-            // And so do its TEXTURES, which for a long time they did not. Instantiate carries every
-            // texture reference over verbatim, so a material rescued out of the doomed folder kept
-            // pointing INTO it; the shader survived and the pictures did not. Reported from game
-            // as particles turning from golden stars into plain white squares on every avatar that
-            // had any: Fury packs baked textures as sub-assets of one "VRCFury Other.asset", that
-            // folder is wiped on its next build, and a particle with no _MainTex draws as an
-            // untextured quad. Nothing about it is particle-specific; particles are simply where
-            // a missing texture is unmistakable rather than merely wrong.
+            // And its textures: Instantiate keeps texture references verbatim, so a rescued
+            // material still pointed into the wiped folder (Fury packs baked textures in one
+            // "VRCFury Other.asset"). Showed in game as particles drawing as white squares.
             RehomeTextures(ctx, copy);
             Create(ctx, copy, $"{dir}/{OutputAssetPaths.SafeFileName(mat.name)}.mat");
             return copy;
@@ -324,11 +304,9 @@ namespace AvatarBridge
             }
         }
 
-        // Fury packs its baked textures as sub-assets of one container, so a file of nothing but
-        // textures is copied once, byte for byte, and each texture's counterpart found in the
-        // copy. A 2D texture inside anything else comes out alone: one bake kept four inside its
-        // FX controller, and copying that carried the whole controller into the output for them.
-        // Other kinds keep the whole copy, since only a 2D clone has been measured.
+        // A file of only textures is copied once, byte for byte. A 2D texture inside anything
+        // else comes out alone (one bake kept four inside its FX controller). Other kinds keep
+        // the whole copy, since only a 2D clone has been measured.
         static Texture CopyTexture(BridgeContext ctx, Texture texture, string dir)
         {
             string source = AssetDatabase.GetAssetPath(texture);
@@ -362,8 +340,7 @@ namespace AvatarBridge
             return true;
         }
 
-        // Instantiate keeps the pixels of a texture no script can read: measured on the GPU
-        // against the original (TextureRehomeTest).
+        // Instantiate keeps the pixels of a non-readable texture: measured on the GPU.
         static Texture CloneTexture(Texture2D texture, string dir)
         {
             var copy = UnityEngine.Object.Instantiate(texture);

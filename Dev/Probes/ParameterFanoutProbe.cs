@@ -7,13 +7,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Everything in a converted controller that reacts to one parameter, read through Unity's API
-    // rather than by grepping the YAML.
-    //
-    // Written because hand-parsing the controller file produced two confidently wrong answers in
-    // ten minutes; a transition attributed to the wrong state machine, and a layer credited with
-    // a condition it does not have. The object model knows which layer owns what; the text does
-    // not without care that is easy to get quietly wrong.
+    // Everything in a converted controller that reacts to one parameter, through Unity's API: grepping
+    // the YAML gave two wrong answers (a transition on the wrong state machine, a condition on the
+    // wrong layer), since the text does not say which layer owns what.
     //
     // Set AVATARBRIDGE_PROBE_CONTROLLER to the .controller asset path and AVATARBRIDGE_PROBE_PARAM
     // to the parameter name. Dev tooling; never ships.
@@ -37,10 +33,8 @@ namespace AvatarBridge.Regression
                 return;
             }
 
-            // Every spelling worth reporting: the parameter itself, the local name the contact
-            // bridge gives it, and anything that merely contains the name; a neighbouring
-            // parameter whose name starts with this one is exactly the kind of overlap that makes
-            // two systems look like one.
+            // The name, the contact bridge's "#" local, and anything containing it: a neighbour
+            // sharing the prefix is the overlap that makes two systems look like one.
             var related = controller.parameters
                 .Select(p => p.name)
                 .Where(n => n == wanted || n == "#" + wanted || n.Contains(wanted))

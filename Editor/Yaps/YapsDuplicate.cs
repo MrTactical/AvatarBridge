@@ -1,21 +1,15 @@
 // A plug's second copy, so one plug can enter two sockets at once.
 //
-// A copy of every corner of the plug slot's triangles whose three corners
-// are all on the plug and carry a frame, appended after every vertex, and
-// those triangles added to the same slot over the copies. Always built from
-// the mesh under it, so copies never compound. The deform tells the copy
-// apart by _YAPS_CopyStart, the original vertex count.
+// Copies of the plug triangles whose corners all carry a frame, appended
+// after every vertex. Built from the mesh under it, so copies never compound.
+// The deform finds them by _YAPS_CopyStart, the original vertex count.
 //
-// ANCHORED, not weighted as their originals. With the originals' weights a
-// bent plug's copy vertices recovered roots up to 119 mm apart, and near
-// where the copy starts drawing a triangle hid one corner at a time. So
-// every copy sits on one point, the bake's origin, wholly on the root's
-// bone, its normal and tangent the root's up and forward, no blendshape
-// deltas, colours and UVs its original's. Every copy vertex skins the same
-// numbers, so every test the deform makes answers once for the whole copy,
-// and a viewer without the deform sees nothing. Its shape is its original's
-// bake entry: the plain bake, extended, never a bake over the copies, which
-// would measure a point.
+// ANCHORED, not weighted: with the originals' weights a bent copy recovered
+// roots up to 119 mm apart and triangles lost corners. Every copy sits on the
+// bake's origin, wholly on the root's bone, no blendshape deltas, so the
+// deform's tests answer once for the whole copy and a viewer without the
+// deform sees nothing. Its shape is its original's bake entry, never a bake
+// over the copies, which would measure a point.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;

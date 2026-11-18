@@ -13,13 +13,9 @@ namespace AvatarBridge
     // Patches shaders without single-pass instanced support into
     // copies that have it. CVR forces instanced; VRChat forces
     // double-wide, where shaders get both eyes for free.
-    //
-    // Three rules: never touch the original (copy into RehomedAssets,
-    // repoint this avatar's materials only); patch only what is plainly
-    // written, every vertex and fragment pass of it, and refuse a shader
-    // with no pass it can read; prove the copy compiles, the single-pass
-    // instanced variant included, before repointing, or delete it.
-    // Only compilation is verifiable here; looks need VR eyes.
+    // Never touch the original (copy into RehomedAssets, repoint this avatar only); patch only
+    // plainly written passes, refuse a shader with none; prove the copy compiles, SPI variant
+    // included, or delete it. Only compilation is verifiable here; looks need a headset.
     public static class ShaderSpiPatcher
     {
         const string Category = "Shaders";
@@ -59,10 +55,8 @@ namespace AvatarBridge
         static Dictionary<Material, Material> _clones;
         static string _dir;
 
-        // Every file name written this run, across shaders. Names were only
-        // kept apart within one shader, so two shaders with an include of
-        // the same name wrote one file, and a failed patch deleted a file a
-        // good copy still included.
+        // Every file name written this run, across shaders: two shaders with a same-named include
+        // must not share a file a failed patch would delete.
         static readonly HashSet<string> Claimed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         // Written text, file names included, whose copy passed both compile
@@ -204,10 +198,8 @@ namespace AvatarBridge
             public Staged Staged;
         }
 
-        // Every shader not judged yet, in the order met. Each copy is written first, then all of
-        // them import in one batch, then each is checked and reported in that same order, so the
-        // names, the outcome and the report come out as one at a time made them. One at a time,
-        // each copy cost its own imports and every package's import hooks with them.
+        // Every shader not judged yet, in order met. All copies are written, imported in one batch
+        // (one at a time, each paid every package's import hooks), then checked in that order.
         static void Prepare(IEnumerable<Shader> shaders, string dir, Dictionary<Shader, Shader> patched, Outcome outcome)
         {
             var weighed = new List<Weighed>();
@@ -392,12 +384,8 @@ namespace AvatarBridge
             }
             Prepared = null;
 
-            // Materials that arrive by animated swap sit on no renderer
-            // right now, invisible to the loop above, and draw into one
-            // eye just as badly when assigned. Their curves are rewritten
-            // to the patched clone too, in RepointSwapClips: the clips
-            // are the avatar's own until the self-container copies them,
-            // so the converter runs that part late. Kept for the caches.
+            // Swap-clip materials sit on no renderer yet. Their curves are repointed later in
+            // RepointSwapClips, once the clips are copies. Kept for the caches.
             _patched = patched;
             _clones = clones;
             _dir = dir;
@@ -415,10 +403,8 @@ namespace AvatarBridge
                    && File.Exists(path) ? path : null;
         }
 
-        // Whether a shader already draws in both eyes, from the same plan the
-        // patch would follow, so the two never disagree. A shader that throws
-        // while being read goes on to the patch, which refuses it by name; it
-        // used to read as correct and say nothing.
+        // Whether a shader already draws in both eyes, from the patch's own plan so they agree. A
+        // shader that throws goes on to the patch, which refuses it by name.
         internal static bool DeclaresStereo(string path)
         {
             try
@@ -431,20 +417,14 @@ namespace AvatarBridge
             }
         }
 
-        // What keeps a shader from drawing in both eyes, for the report: the
-        // macros a pass is missing. A surface shader's passes are Unity's own,
-        // generated with every macro (measured), so
-        // only its vertex and fragment passes count, and a shader with none
-        // of them has nothing to fix. A plain depth read alone is not counted:
-        // locked Poiyomi Pro names every macro in every pass and still declares
-        // a plain depth texture for optional features, and counting it sent
-        // most Poiyomi materials to be copied (SpiSweepProbe).
+        // The macros a pass is missing, for the report. Surface shader passes are generated with
+        // every macro (measured), so only vertex/fragment passes count. A plain depth read alone
+        // does not: locked Poiyomi Pro declares one for optional features, measured on most of
+        // its materials.
         internal static List<string> StereoProblems(string path) => StereoProblems(ReadUnit(path), out _);
 
-        // Verdicts by the text they came from, for the editor session. The
-        // advisor, the patch pass and the report each judge the same shaders,
-        // on every avatar wearing them, and one plan can take seconds. Keyed
-        // by content, never path: a patched copy is rewritten in place.
+        // Verdicts per session, keyed by content (a patched copy is rewritten in place): the
+        // advisor, patch and report all judge the same shaders, and a plan can take seconds.
         static readonly Dictionary<string, List<string>> ProblemsByContent = new Dictionary<string, List<string>>();
 
         // The plan comes back only when this call made it.
@@ -485,11 +465,9 @@ namespace AvatarBridge
         // Set while a pass judges: each shader's unit as read, with its plan when Prejudge made one.
         static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prepared;
 
-        // Every shader a pass is about to judge, planned at once on the thread pool: one plan can
-        // take seconds, and they ran one after another. Planning is string work on text already
-        // read; reading stays here, since the AssetDatabase answers only on the main thread. The
-        // verdicts land in ProblemsByContent, so the judging after it never plans these again.
-        // With forPatch, a shader the verdict sends to the patch gets its full plan here too.
+        // Plans every shader at once on the thread pool (a plan can take seconds). Reading stays
+        // on the main thread for the AssetDatabase. Verdicts land in ProblemsByContent; with
+        // forPatch, shaders sent to the patch get their full plan too.
         internal static Dictionary<string, (List<SourceFile> unit, StereoPlan plan)> Prejudge(IEnumerable<Shader> shaders,
             bool forPatch = true)
         {
@@ -551,14 +529,10 @@ namespace AvatarBridge
             }
         }
 
-        // Every edit a shader's stereo patch needs, found on the text as read
-        // and applied later in one go, from the end of each file back, so no
-        // edit moves another's place. Each vertex function named by a pragma,
-        // in every pass and every file: only the first was ever patched, so a
-        // second pass with its own vertex function (an outline, a ForwardAdd)
-        // stayed in one eye. A macro already present is never added twice;
-        // a duplicated instancing member compiles everywhere but the
-        // single-pass instanced variant (SpiFactsProbe).
+        // Every edit the stereo patch needs, applied from each file's end back so none moves
+        // another. Every pragma-named vertex function in every pass (an outline or ForwardAdd pass
+        // has its own). A present macro is never added twice: a duplicated instancing member
+        // fails only the SPI variant (measured).
         internal class StereoPlan
         {
             public readonly List<(SourceFile file, int at, string text)> Edits = new List<(SourceFile, int, string)>();
@@ -606,12 +580,8 @@ namespace AvatarBridge
                 if (macro != null) plan.Adds.Add(macro);
             }
 
-            // Authors wrap the macros: locked Poiyomi Pro calls its own
-            // POI_INITIALIZE_VERTEX_OUTPUT_STEREO, a #define holding Unity's.
-            // Reading names literally sent every Poiyomi material to be patched
-            // a second time (SpiSweepProbe), so a #define or a called function
-            // that holds the macro counts, one level deep. One scan for every
-            // #define, not one per macro.
+            // Authors wrap the macros (Poiyomi's POI_INITIALIZE_VERTEX_OUTPUT_STEREO), so a #define
+            // or called function holding one counts, one level deep. One scan for all #defines.
             var defines = unit.SelectMany(f => DefineLine.Matches(f.Text).Cast<Match>())
                 .Select(d => (name: d.Groups[1].Value, body: d.Groups[2].Value)).ToList();
             var wrappers = StereoMacros.Concat(new[] { EyeIndexMacro }).ToDictionary(m => m, m =>
@@ -657,9 +627,8 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Last in the struct, as Unity places them. First, the stereo member
-            // came before a fragment's own system values (a VFACE) and only the
-            // single-pass instanced variant failed to compile (SpiPatcherProbe).
+            // Last in the struct, as Unity places them: before a fragment's own system values
+            // (a VFACE), only the SPI variant failed to compile.
             void Member(SourceFile owner, int open, string macro)
             {
                 int end = MatchBrace(owner.Text, open);
@@ -765,9 +734,8 @@ namespace AvatarBridge
             return plan;
         }
 
-        // A program that never compiles for PC is left alone. VRCFury's socket
-        // marker ends in a Metal-only pass with no stereo macros, and patching
-        // it copied a shader that already draws in both eyes (SpiSweepProbe).
+        // A program that never compiles for PC is left alone: VRCFury's socket marker ends in a
+        // Metal-only pass with no stereo macros, and already draws in both eyes.
         static readonly Regex Program = new Regex(@"\b(?:CG|HLSL)PROGRAM\b(.*?)\bEND(?:CG|HLSL)\b", RegexOptions.Singleline);
         static readonly Regex OnlyRenderers = new Regex(@"#pragma[ \t]+only_renderers\b([^\r\n]*)");
         static readonly Regex ExcludeRenderers = new Regex(@"#pragma[ \t]+exclude_renderers\b([^\r\n]*)");
@@ -830,10 +798,8 @@ namespace AvatarBridge
             return (null, -1);
         }
 
-        // Depth reads made eye-aware: the declaration becomes the stereo one
-        // and tex2D, tex2Dproj and tex2Dlod reads become Unity's depth macros,
-        // whatever their arguments. Only two exact spellings were caught. Run
-        // only when every read takes the depth value alone (DepthRewritable).
+        // Depth reads made eye-aware: stereo declaration, and tex2D/tex2Dproj/tex2Dlod reads
+        // become Unity's depth macros. Only when every read takes depth alone (DepthRewritable).
         internal static string StereoDepth(string text)
         {
             text = DepthDeclaration.Replace(text, "UNITY_DECLARE_DEPTH_TEXTURE(_CameraDepthTexture);");
@@ -858,10 +824,8 @@ namespace AvatarBridge
             return result.Append(text, copied, text.Length - copied).ToString();
         }
 
-        // One file of a shader's source: the .shader, or a .cginc it
-        // pulls in. The vertex stage often lives in an include, and
-        // editing a shared include reaches every shader using it, so
-        // includes are cloned and the clones are what get edited.
+        // One file of a shader's source. Includes are cloned before editing: a shared include
+        // reaches every shader using it.
         internal class SourceFile
         {
             public string OriginalPath;   // as on disk
@@ -911,11 +875,8 @@ namespace AvatarBridge
             return unit;
         }
 
-        // The file an #include names, found the way Unity finds it: beside the
-        // file it appears in, else from the project root, which is how an
-        // "Assets/..." or "Packages/..." include is written. Only the first was
-        // tried, so a shader whose vertex function sat in a root-written include
-        // was refused as unreadable and drew in one eye. Null for Unity's own.
+        // The file an #include names, as Unity finds it: beside the including file, else from the
+        // project root ("Assets/..."). Null for Unity's own.
         internal static string ResolveInclude(string folder, string rel)
         {
             string trimmed = Regex.Replace(rel, @"[\\/]+", "/").TrimStart('/');
@@ -1016,10 +977,8 @@ namespace AvatarBridge
             }
             var shaderFile = unit[0];
 
-            // Line endings are tracked per file (SourceFile.Crlf) and reapplied before writing:
-            // the inserted lines use \n, and mixing them into a CRLF file makes Unity warn about
-            // inconsistent endings on import and blame AvatarBridge for it. An include can easily
-            // disagree with its shader, so this can't be decided once for the whole unit.
+            // Line endings per file (an include can differ from its shader): inserted \n lines in a
+            // CRLF file make Unity warn about inconsistent endings.
 
             if (plan == null || !plan.Full) plan = PlanStereo(unit);
             if (plan.Passes == 0)
@@ -1036,11 +995,8 @@ namespace AvatarBridge
             }
             passesLeft = plan.Left;
 
-            // A GrabPass is patched like anything else; the macros make
-            // the effect draw in both eyes. Its screen grab cannot be
-            // made eye-correct here: the screen-space macros expect a
-            // per-eye array a GrabPass never produces and render grey.
-            // One eye's view shown to both beats grey.
+            // A GrabPass draws in both eyes but its grab stays one eye's: the screen-space macros
+            // expect a per-eye array a GrabPass never makes, and render grey.
             grabPassLimited = Regex.IsMatch(shaderFile.Text, @"GrabPass\s*\{");
 
             // The struct members, the vertex setup and the fragment eye index,
@@ -1053,11 +1009,8 @@ namespace AvatarBridge
                 }
             }
 
-            // Screen-space depth, which the macros alone never fix:
-            // _CameraDepthTexture is an array under instancing. Unity's depth
-            // macros return the depth value alone, so a read used for more
-            // (DecodeFloatRG of two channels) would compile and read wrong;
-            // then every read is left, and the report says so.
+            // _CameraDepthTexture is an array under instancing. The depth macros return depth
+            // alone, so a read used for more (DecodeFloatRG) leaves every read as is, and is reported.
             if (plan.Depth && plan.DepthRewritable)
             {
                 foreach (var file in unit)
@@ -1074,12 +1027,9 @@ namespace AvatarBridge
             string newName = shaderName + " (SPI)";
             shaderFile.Text = Rename(shaderFile.Text, newName);
 
-            // Name every file, then repoint the #include lines at the copies. Flattened into one
-            // folder, so an include written as "sub/foo.cginc" becomes just "foo_SPI.cginc", and
-            // named apart from every other file this run writes there.
-            // A folder the AssetDatabase has not seen takes no imports, so it is made and seen
-            // before the first write, while nothing of this batch is in it. A refresh rescans
-            // the whole project, so only once.
+            // Name every file flat in one folder ("sub/foo.cginc" becomes "foo_SPI.cginc"), then
+            // repoint the #includes. A folder the AssetDatabase has not seen takes no imports, so
+            // it is made and refreshed once before the first write.
             if (!(AssetDatabase.IsValidFolder(dir) && Directory.Exists(dir)))
             {
                 Directory.CreateDirectory(dir);
@@ -1090,12 +1040,8 @@ namespace AvatarBridge
                 file.OutputName = Claim(dir, Path.GetFileNameWithoutExtension(file.OriginalPath) + "_SPI",
                     Path.GetExtension(file.OriginalPath));
             }
-            // Repoint by resolving each #include against the file it appears in, rather than by
-            // string-matching the spelling it was first discovered under. The same file is often
-            // referred to two ways: Cancercore.cginc includes "CGInclude/CSEnums.cginc" while the
-            // files inside CGInclude include their siblings as plain "CSEnums.cginc". Matching one
-            // remembered spelling repointed the first and left the second dangling, and the copy
-            // failed to compile on an include it could no longer find.
+            // Resolve each #include against its own file, not by spelling: one file is often named
+            // two ways ("CGInclude/CSEnums.cginc" and, from a sibling, "CSEnums.cginc").
             var byPath = new Dictionary<string, SourceFile>(StringComparer.OrdinalIgnoreCase);
             foreach (var file in unit)
             {
@@ -1121,10 +1067,8 @@ namespace AvatarBridge
                 }
             }
 
-            // A reconvert into the same folder writes the same text again, and a
-            // rewritten file is reimported and recompiled for nothing. Only byte for
-            // byte what is already there; text not proven this session, after a
-            // restart, is checked where it lies, and written again only if that fails.
+            // Skip a byte-identical rewrite, which would reimport and recompile for nothing. Text
+            // not proven this session is checked in place and rewritten only if that fails.
             string key = ContentKey(unit, true);
             bool proven = CompiledCopies.Contains(key);
             string outPath = dir + "/" + shaderFile.OutputName;
@@ -1264,10 +1208,8 @@ namespace AvatarBridge
                     return $"{m.message}{where}{platform}{detail}";
                 }));
 
-        // The variant ChilloutVR draws, compiled outright for every pass: a
-        // fault only that variant has, a macro declared twice, left
-        // ShaderHasError false and the default variant compiling
-        // (SpiFactsProbe). Null when every pass compiles.
+        // The variant ChilloutVR draws, compiled for every pass: a fault only it has (a macro
+        // declared twice) leaves ShaderHasError false (measured). Null when all compile.
         static string StereoVariantError(Shader shader)
         {
             Times.VariantChecks++;

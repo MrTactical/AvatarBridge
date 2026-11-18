@@ -11,11 +11,8 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Play-mode driver for everything CVR feeds an avatar: gestures,
-    // locomotion, visemes, emotes, the Advanced Settings menu.
-    // Gesture Manager cannot test conversions; it needs the removed
-    // VRC descriptor. Every control here writes the parameters the
-    // client writes, coerced by declared type like the client.
+    // Play-mode driver for everything CVR feeds an avatar, writing what the client writes,
+    // coerced by declared type. Gesture Manager needs the VRC descriptor a conversion removes.
     public partial class CckAnimatorTester : EditorWindow
     {
         // The Interaction lab card lives in its own file, each solver it reads
@@ -55,10 +52,8 @@ namespace AvatarBridge
             ("Gun", 3, null), ("Point", 4, null), ("Peace", 5, null), ("RnR", 6, "Rock'n'roll")
         };
 
-        // The state flags are not independent; the client computes them together. Chairs and
-        // water keep Grounded true, crouch and prone derive from Upright in VR, Flying
-        // interrupts everything. So: one exclusive stance writing the exact flag set the game
-        // would feed, never a flag soup.
+        // The client computes the state flags together (chairs and water keep Grounded true, crouch
+        // and prone derive from Upright in VR), so one exclusive stance writes the game's exact set.
         static readonly (string name, string tip)[] Stances =
         {
             ("Standing", "Grounded, nothing else: Standard Locomotion."),
@@ -80,11 +75,8 @@ namespace AvatarBridge
         int _fingerprint;
         double _nextPoll;
 
-        // What the face card asks for, and the mesh indices to write
-        // it through. Held every frame, not written once; the client
-        // holds these weights too, and a single write loses to the
-        // next animator evaluation. Indices cached like the client
-        // caches them; this runs on the render path.
+        // The face card's weights, held every frame as the client holds them: a single write loses
+        // to the next animator evaluation. Indices cached, since this runs on the render path.
         SkinnedMeshRenderer _faceMesh;
         int[] _blinkIndexes = new int[0];
         int[] _visemeIndexes = new int[0];
@@ -93,9 +85,7 @@ namespace AvatarBridge
         float _blink;
         int _viseme;
 
-        // Several cards write the same parameters: Reset, the physics motions and the stance
-        // all move what the sliders show. Each control registers how to show a value, and Drive
-        // calls them after writing, so no card is left showing a value the animator dropped.
+        // Several cards write the same parameters, so Drive calls every registered view after writing.
         readonly Dictionary<string, List<System.Action<float>>> _views =
             new Dictionary<string, List<System.Action<float>>>();
 
@@ -114,23 +104,18 @@ namespace AvatarBridge
             titleContent = new GUIContent("Avatar Tester");
             EditorApplication.playModeStateChanged += OnPlayModeChanged;
             Selection.selectionChanged += OnSelectionChanged;
-            // The menu card mirrors the Animator's current controller.
-            // The CCK regenerates it and conversions swap it wholesale;
-            // polling a cheap fingerprint keeps the card true.
+            // The CCK regenerates the controller and conversions swap it, so a fingerprint is polled.
             EditorApplication.update += PollForChanges;
-            // onBeforeRender and not EditorApplication.update: it fires inside the player loop
-            // after LateUpdate and before anything is drawn, which is exactly where the client
-            // writes these weights. An editor-update write lands at an unspecified point around
-            // the frame and loses to the animator often enough to look broken.
+            // onBeforeRender, after LateUpdate, is where the client writes these weights. An
+            // editor-update write lands anywhere in the frame and often loses to the animator.
             Application.onBeforeRender += HoldFaceShapes;
             EnablePhysics();
         }
 
         void CreateGUI()
         {
-            // Skin and stylesheet applied here and never again, bar OnFocus. isProSkin is not
-            // dependable inside update polls, and one false reading would stick. Rebuild only
-            // clears children, so this setup survives every rebuild.
+            // Skin applied here and in OnFocus only: isProSkin is unreliable inside update polls,
+            // and one false reading would stick. Rebuild only clears children.
             BridgeElements.Root(rootVisualElement);
             Rebuild();
         }
@@ -186,10 +171,8 @@ namespace AvatarBridge
                 return;
             }
             _nextPoll = EditorApplication.timeSinceStartup + 0.5;
-            // Twice a second, not per frame: the Eye Blink and viseme fields are edited in the
-            // inspector while the tester is open, and the fingerprint below deliberately does not
-            // cover them.
-            // Resolved once for both: with nothing selected it searches the scene.
+            // The Eye Blink and viseme fields can change in the inspector, and the fingerprint does
+            // not cover them. Resolved once for both: with nothing selected it searches the scene.
             var avatar = ResolveAvatar();
             CacheFaceShapes(avatar);
             if (ComputeFingerprint(avatar) != _fingerprint)
@@ -309,10 +292,8 @@ namespace AvatarBridge
             return animator;
         }
 
-        // animator.parameters copies every parameter on each read, and a dragged
-        // slider drives once per event. Read again for another animator or
-        // controller, a changed count (an animator that only now initialised),
-        // and after every rebuild.
+        // animator.parameters copies every parameter per read, and a dragged slider drives per event.
+        // Re-read on another animator or controller, a changed count, and every rebuild.
         static Animator _typesFor;
         static RuntimeAnimatorController _typesController;
         static int _typesCount;
@@ -454,9 +435,8 @@ namespace AvatarBridge
 
             scroll.Add(BridgeElements.Footer(BridgeLinks.Repo + "#highlights"));
 
-            // Pinned below the scroll view, not inside it. The point is watching layers react
-            // while a control is driven, so the readout must stay on screen. Its own rows scroll
-            // internally, so fifty layers cannot swallow the window either.
+            // Pinned below the scroll view so layers stay visible while a control is driven. Its
+            // rows scroll on their own, so fifty layers cannot swallow the window.
             root.Add(SafeCard("Animator layers", () => BuildLayerCard(avatar)));
         }
 
@@ -650,10 +630,8 @@ namespace AvatarBridge
 
         VisualElement BuildFaceCard(bool live)
         {
-            // Visemes and blinking are not animator features in CVR;
-            // the client writes blendshape weights on the mesh
-            // directly. Parameters are still driven for animator logic,
-            // but the visible mouth comes from the blendshapes.
+            // CVR writes viseme and blink blendshapes on the mesh directly; the parameters only
+            // feed animator logic.
             var card = new BridgeElements.Card("Face & emotes", expanded: true).Remember("Tester.Face & emotes");
             // Held on the mesh every frame; backing fields must start
             // where the controls start.
@@ -691,11 +669,8 @@ namespace AvatarBridge
             return card;
         }
 
-        // The avatar as other players run it. Remote copies never receive "#" locals, and
-        // streams are stripped from them, so those parameters sit at their defaults forever. An
-        // animator depending on a live local value can behave differently for others: a layer
-        // that looks parked to the wearer can cycle between states for everyone else, which in
-        // game reads as an animation rapidly looping that the wearer cannot see at all.
+        // The avatar as other players run it. Remote copies never get "#" locals or streams, so those
+        // sit at defaults: a layer parked for the wearer can loop rapidly for everyone else.
         VisualElement BuildRemoteCard(bool live)
         {
             var card = new BridgeElements.Card("Remote view", expanded: true).Remember("Tester.Remote view");
@@ -922,15 +897,13 @@ namespace AvatarBridge
             header.Add(gutter);
             card.Body.Add(header);
 
-            // The rows scroll under the fixed column header, capped so the pinned card leaves
-            // the controls above it room to breathe. Scrollbar space is why the header sits
-            // outside: with it inside, the header would shift left whenever the bar appears.
+            // Rows scroll under a fixed header, capped to leave the controls room. The header sits
+            // outside, or it shifts left whenever the scrollbar appears.
             var list = new ScrollView();
             list.AddToClassList("ab-list-short");
             card.Body.Add(list);
-            // The rows lose the scrollbar's width and the header does not, so the flexible
-            // columns would split the difference and every column after Layer drift right.
-            // Measured, so it follows the bar appearing and going: a data width.
+            // The rows lose the scrollbar's width and the header does not; measured so columns after
+            // Layer stay aligned as the bar comes and goes.
             list.contentViewport.RegisterCallback<GeometryChangedEvent>(_ =>
                 gutter.style.width = list.layout.width - list.contentViewport.layout.width);
 
@@ -1116,9 +1089,7 @@ namespace AvatarBridge
 
             void ScanTree(Motion motion)
             {
-                // Trees are shared between states constantly (VRCFury reuses one tree across
-                // dozens of toggles), so without this the walk re-descends the same subtree
-                // over and over.
+                // VRCFury reuses one tree across dozens of toggles; visit each subtree once.
                 if (!(motion is BlendTree tree) || !visited.Add(motion))
                 {
                     return;
@@ -1175,10 +1146,8 @@ namespace AvatarBridge
             var declared = ControllerParameterList(avatar);
             var faceParams = declared.Where(AvatarFeatureDetect.IsFaceTrackingParameter).ToList();
 
-            // Native first: the component reads the headset and writes the
-            // mesh, with no parameters. It used to show only when the
-            // controller declared none, so one stray TongueOut hid a fully
-            // mapped native face behind a slider nothing reads.
+            // Native first, always: it writes the mesh with no parameters, so one stray TongueOut
+            // parameter must not hide a mapped native face.
             var nativeSetup = avatar != null ? avatar.GetComponentInChildren<CVRFaceTracking>(true) : null;
             bool native = nativeSetup != null && nativeSetup.FaceMesh != null && nativeSetup.FaceBlendShapes != null
                           && nativeSetup.FaceBlendShapes.Any(s => !string.IsNullOrEmpty(s) && s != "-none-");
@@ -1243,9 +1212,8 @@ namespace AvatarBridge
                     pair.Value.SetValueWithoutNotify(value);
                     Drive(a, pair.Key, value);
                 }
-                // The gates and #Direct have no slider of their own. #Direct is the rig's
-                // blend-tree master weight; left at 0 the whole face freezes, which reads as
-                // "face tracking is broken". Undeclared names are ignored, like the game does.
+                // The gates and #Direct get no slider. #Direct is the rig's blend-tree master
+                // weight; at 0 the whole face freezes. Undeclared names are ignored, as in game.
                 foreach (string param in declared.Where(AvatarFeatureDetect.IsFaceTrackingGate))
                 {
                     Drive(a, param, FaceRestValue(param));
@@ -1448,9 +1416,7 @@ namespace AvatarBridge
             }
             var quiet = live ? avatar.GetComponentInChildren<Animator>(true) : null;
 
-            // The card follows the controller actually on the Animator.
-            // Undeclared entries grey out with the reason; the
-            // fingerprint poll rebuilds on any controller change.
+            // Follows the controller on the Animator; undeclared entries grey out with the reason.
             var declared = new HashSet<string>(ControllerParameterList(avatar));
             var watched = avatar.GetComponentInChildren<Animator>(true);
             if (watched == null || watched.runtimeAnimatorController == null)

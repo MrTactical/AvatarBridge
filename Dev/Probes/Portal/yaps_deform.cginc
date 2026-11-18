@@ -1,48 +1,22 @@
 // YAPS deform core, for ChilloutVR.
-//
-// Inspired by VRCFury's SPS. Written from a description of the behaviour,
+// Inspired by VRCFury's SPS, written from a description of the behaviour,
 // never their source. See docs/YAPS-CLEAN-ROOM.md.
 //
-// The plug is baked in its own local space, +Z base to tip. A vertex is
-// not a point in space, it is a point on a rod:
-//
-//     * Z is how far ALONG the rod it sits
-//     * X and Y are how far OFF the centre line
-//
-// So bending is: swap the straight rod for a curved one, walk Z metres
-// along it, re-hang the X/Y offset off the frame there. Nothing else
-// changes, which is why this survives any topology.
-//
-// The curve is one cubic bezier, root to socket:
-//
+// Baked in plug space, +Z base to tip: Z is distance ALONG the rod, X/Y the
+// offset from it. Bending walks Z along a curve and re-hangs X/Y off the
+// frame there, so any topology survives.
+// One cubic bezier, root to socket:
 //     p0 = plug root                   p3 = socket
 //     p1 = p0 + plugForward * handle   p2 = p3 - socketForward * handle
-//
-// The handle length is what makes it feel physical. Far off, the handles
-// stretch enormously and drag the curve straight along the plug's own
-// forward. As the socket nears they shorten toward half the gap and the
-// curve becomes an S-bend meeting it head-on. Approach, engagement and
-// alignment all fall out of that one interpolation.
-//
-// Range is in plug lengths, not metres: full bend by 1.2, gone by 1.6.
-//
-// The walk needs ARC LENGTH, never the bezier t. They are not
-// proportional, and t bunches the mesh where the curve bends hardest.
-//
-// The frame's up comes from parallel transport. Recomputing it from a
-// fixed world axis makes the plug spin on its own axis as it bends.
-//
-// Two behaviours at the end of the curve:
-//
-//   * OVERRUN, a vertex past the curve carries straight on. Without it a
-//     plug longer than the gap piles up at the socket.
-//   * HOLE COLLAPSE, past a hole the X/Y offsets scale toward zero, so
-//     the tip tapers instead of poking out the far side.
-//
-// The result is a lerp against the original vertex by the baked active
-// weight. That weight is a MASK FALLOFF, genuinely fractional near the
-// base. Multiply it, never threshold it, or the mesh tears off the body.
-//
+// Long handles far off keep the plug straight; near, they shrink toward half
+// the gap and the curve meets the socket head-on. Range in plug lengths:
+// full bend by 1.2, gone by 1.6.
+// Walk ARC LENGTH, never bezier t (t bunches the mesh at the bend). Up comes
+// from parallel transport; a fixed world axis spins the plug as it bends.
+// Past the curve: OVERRUN carries straight on (else it piles up at the
+// socket); past a hole the X/Y offsets collapse so the tip tapers.
+// The active weight is a fractional MASK FALLOFF: multiply, never threshold,
+// or the mesh tears off the body.
 #ifndef YAPS_DEFORM_INCLUDED
 #define YAPS_DEFORM_INCLUDED
 
@@ -145,12 +119,9 @@ YapsVertex YapsReadBaked(uint vertexId)
     baked.tangent = YapsReadFloat3(at + 6);
     baked.active = YapsReadFloat(at + 9);
 
-    // Blendshapes. The vertex arriving here has them applied, but the
-    // bake is the REST pose, so on a plug with a length or girth slider
-    // the two describe different meshes. Add back what each contributed.
-    //
-    // Blocks of nine floats a vertex follow the base block, which is why
-    // the vertex count has to be on the material.
+    // The incoming vertex has blendshapes applied but the bake is the REST
+    // pose, so add each shape back. Nine floats a vertex per block after the
+    // base block, hence the vertex count on the material.
     uint shapeCount = (uint) max(_YAPS_ShapeCount, 0);
     if (shapeCount > 0)
     {
@@ -170,10 +141,8 @@ YapsVertex YapsReadBaked(uint vertexId)
         }
     }
 
-    // Baked vectors carry the plug's own scale, seen anywhere from 0.38
-    // to 30 in real content. Nothing here wants their length, only their
-    // direction, so normalise and stop tracking scale. Dividing by a
-    // recorded factor only works while that scale is uniform.
+    // Baked vectors carry plug scale (0.38 to 30 seen). Only direction is
+    // wanted, and dividing by a factor fails on non-uniform scale.
     baked.normal = YapsSafeNormalize(baked.normal, float3(0, 0, 1));
     baked.tangent = YapsSafeNormalize(baked.tangent, float3(1, 0, 0));
 
@@ -183,19 +152,10 @@ YapsVertex YapsReadBaked(uint vertexId)
 }
 
 // --- recovering the plug's own frame ---------------------------------
-//
-// The curve starts at the plug. Where the plug is its own object,
-// unity_ObjectToWorld IS that frame. On a real avatar it is not: the
-// renderer's transform is the avatar root and a bone carries the plug.
-//
-// So recover the frame from the vertex. Skinning hands over a position,
-// normal and tangent already in renderer space, and the bake holds the
-// same three in plug space. Two independent directions pin a rotation
-// completely, and the position gives the translation.
-//
-// No extra uniforms, and it follows the bone for free. Its limit is
-// vertices blended across several bones, which is the base of the shaft,
-// where the mask weight is already feathering the deform out.
+// On a skinned avatar the renderer's transform is the avatar root, not the
+// plug. The skinned normal and tangent against the baked ones pin the
+// rotation, the position the translation. No uniforms, follows the bone.
+// Weak only on multi-bone vertices at the base, where the mask fades anyway.
 
 struct YapsBasis
 {
@@ -249,18 +209,15 @@ struct YapsRoot
     float recovered;
 };
 
-// The rod's start, where the plug is and where it points. Shared with the
-// readout overlay, which must report the frame the deform bends from: two
-// hand-kept copies are one fix away from a readout that lies. Hands baked
-// back scaled into world units.
+// Shared with the readout overlay so it reports the very frame the deform
+// uses. Returns baked scaled into world units.
 YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal, float3 tangent)
 {
     YapsRoot root;
     root.recovered = 0;
 
-    // The plug scaled by its bones, which the skinned vertex already is
-    // and the bake is not. 1 when nothing scales it. Before the recovery,
-    // so a scaled vertex still lands on its own root.
+    // Bone scale, already in the skinned vertex but not the bake. Before
+    // the recovery, so a scaled vertex lands on its own root.
     baked.position *= float3(max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeGirth, 0.0001), max(_YAPS_BakeScale, 0.0001));
 
     float3 rootLocal = float3(0, 0, 0);
@@ -269,8 +226,6 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
 
     if (_YAPS_FrameFromVertex > 0.5)
     {
-        // Skinned mesh: the renderer's transform is the avatar root, so
-        // ask the vertex where its bone has put the plug.
         YapsBasis basis = YapsBuildBasis(baked.normal, baked.tangent, normal, tangent);
         root.recovered = basis.valid ? 2 : 1;
         if (basis.valid)
@@ -287,26 +242,12 @@ YapsRoot YapsRecoverRoot(inout YapsVertex baked, float3 position, float3 normal,
     root.up = YapsPerpendicular(root.forward,
         mul((float3x3) unity_ObjectToWorld, upLocal));
 
-    // THE SCALE THE PLUG IS ACTUALLY DRAWN AT.
-    //
-    // Everything after this compares baked measurements against WORLD
-    // distances. The bake is in renderer units, so the two agree only at
-    // 1x. Read from the matrix, so a plug that is its own object follows
-    // whatever scales it: the height slider on the avatar root, a world's
-    // own scaling or an author's transform.
-    //
-    // Left unhandled, a scaled avatar engaged at the wrong distance and
-    // kept its baked GIRTH while its length followed the body, since the
-    // offsets are added to unit world vectors. A 2x avatar wore a
-    // half-thickness plug.
-    //
-    // NOT PROVEN FOR A SKINNED PLUG. A skinned mesh is drawn with a matrix
-    // that is not its renderer's transform (measured for rotation), and
-    // whether it carries the root's scale was never checked in game. If
-    // not, this reads 1 there and the height slider is not followed.
-    //
-    // AFTER the frame recovery above, which works in object space and
-    // needs the baked numbers exactly as baked.
+    // The drawn scale: the bake is in renderer units, compared below against
+    // world distances. Unhandled, a 2x avatar engaged at the wrong distance
+    // and wore a half-thickness plug.
+    // NOT PROVEN FOR A SKINNED PLUG: its draw matrix is not the renderer's
+    // transform, and whether it carries root scale was never checked in game.
+    // After the recovery, which needs the numbers as baked.
     float yapsScale = length(mul((float3x3) unity_ObjectToWorld, float3(0, 0, 1)));
     baked.position *= yapsScale;
     root.worldLength = _YAPS_Length * _YAPS_BakeScale * yapsScale;
@@ -332,26 +273,17 @@ inline float3 YapsBezierTangent(float3 p0, float3 p1, float3 p2, float3 p3, floa
          + 3 * t * t * (p3 - p2);
 }
 
-// Curve length as the mean of chord and control net. The two bracket the
-// true length, and the average is within about a percent here.
-//
-// A walk would be exact, but the chain needs a length for EVERY segment on
-// EVERY vertex just to pick one. Four walks to choose one walk is the
-// wrong trade.
+// Mean of chord and control net: they bracket the length, within about 1%.
+// A walk per segment per vertex just to pick one is the wrong trade.
 inline float YapsCurveLength(float3 p0, float3 p1, float3 p2, float3 p3)
 {
     float net = length(p1 - p0) + length(p2 - p1) + length(p3 - p2);
     return (length(p3 - p0) + net) * 0.5;
 }
 
-// Walk `distance` metres of arc along the curve. Returns the frame there
-// and what distance was left when the curve ran out.
-//
-// startForward: where the PLUG points, for a curve with no direction of
-// its own. A socket pushed onto the root collapses all four control
-// points, so every tangent is zero. The fallback then ran out at WORLD
-// forward, and a ring, which never clamps the remainder, extended every
-// vertex along that axis. The plug flattened into a line.
+// Walk wantedLength of arc; leftOver is what remained past the end.
+// startForward covers a socket on the root, where every tangent is zero:
+// a world-forward fallback flattened the plug into a line through a ring.
 YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
                    float wantedLength, float3 startUp, float3 startForward,
                    out float leftOver)
@@ -385,8 +317,7 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
 
         if (wantedLength <= travelled)
         {
-            // Land between this sample and the last. Interpolating t by
-            // the distance fraction is fine across a step this small.
+            // Lerping t by distance is fine across a step this small.
             float fraction = saturate((wantedLength - previousTravelled)
                 / max(travelled - previousTravelled, 1e-6));
             float landedT = lerp(previousT, t, fraction);
@@ -403,8 +334,6 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
         carriedUp = up;
     }
 
-    // Ran off the end: report the shortfall so the caller can extend
-    // straight ahead, or collapse the tip if the socket is a hole.
     leftOver = max(wantedLength - travelled, 0);
     frame.position = p3;
     frame.forward = YapsSafeNormalize(YapsBezierTangent(p0, p1, p2, p3, 1), frame.forward);
@@ -414,40 +343,25 @@ YapsFrame YapsWalk(float3 p0, float3 p1, float3 p2, float3 p3,
 
 // --- the shape at rest ----------------------------------------------
 
-// What the plug does on its own, in its frame, world units. idle is how far
-// it is from engaged: 1 with no socket, 0 fully engaged.
+// In plug frame, world units. idle: 1 with no socket, 0 fully engaged.
 void YapsRestShape(inout YapsVertex v, float idle, float worldLength)
 {
-    // IDLE SHRINK, from TPS. A plug nobody is using goes soft. Without it
-    // a plug is at full mast the entire time nothing is happening.
-    //
-    // Applied to the BAKED position, before the walk, so length and girth
-    // shrink together and the taper and overrun scale with it.
-    //
-    // Both default to 1, so older conversions are unchanged. Driven by the
-    // SHAPE of the approach, not the channel's flag, so it eases in.
+    // IDLE SHRINK, from TPS. On the baked position before the walk, so
+    // taper and overrun scale with it. Driven by approach, so it eases in.
     v.position.z *= lerp(1, max(_YAPS_IdleLength, 0.01), idle);
     v.position.xy *= lerp(1, max(_YAPS_IdleWidth, 0.01), idle);
 
-    // CURVATURE and RECURVATURE, from DPS. A bend along the whole length,
-    // and a second of the opposite sign near the tip, so a shaft can sweep
-    // up and then hook.
-    //
-    // A rotation about the plug's x axis by an angle growing along the
-    // shaft: a bend, not a shear, so the shaft keeps its length and its
-    // normals turn with it. The knob is total turn at the tip, in radians.
-    // Recurvature squares the fraction so it gathers at the tip.
-    //
-    // BEFORE the walk, so the curve carries a shaft that already has its
-    // resting shape. That is why it composes with everything after it.
+    // CURVATURE and RECURVATURE, from DPS. A rotation about x growing along
+    // the shaft: a bend, not a shear, so length holds and normals turn.
+    // Recurvature squares the fraction to gather at the tip. Before the walk,
+    // so it composes with everything after.
     if (abs(_YAPS_Curvature) > 1e-4 || abs(_YAPS_ReCurvature) > 1e-4)
     {
         float t = saturate(v.position.z / max(worldLength, 0.0001));
         float turn = _YAPS_Curvature * t - _YAPS_ReCurvature * t * t;
         float s, c;
         sincos(turn, s, c);
-        // Rotate in the y/z plane, x is the bend axis. Position and both
-        // directions turn together or the lighting lies about the shape.
+        // Directions turn with the position or the lighting lies.
         float2 yz = v.position.yz;
         v.position.yz = float2(yz.x * c - yz.y * s, yz.x * s + yz.y * c);
         float2 nyz = v.normal.yz;
@@ -456,10 +370,8 @@ void YapsRestShape(inout YapsVertex v, float idle, float worldLength)
         v.tangent.yz = float2(tyz.x * c - tyz.y * s, tyz.x * s + tyz.y * c);
     }
 
-    // WRIGGLE, from DPS, only while IDLE, so it never fights the pumping.
-    // Scaled by how far ALONG the shaft a vertex sits, so the base stays
-    // welded to the body. A uniform offset slides the whole plug out of
-    // its owner.
+    // WRIGGLE, from DPS, idle only so it never fights the pumping. Scaled
+    // along the shaft, so the base stays welded to the body.
     if (_YAPS_WriggleStrength > 0)
     {
         float along = saturate(v.position.z / max(worldLength, 0.0001));
@@ -473,20 +385,14 @@ void YapsRestShape(inout YapsVertex v, float idle, float worldLength)
 #ifdef YAPS_DUPLICATE
 // --- the second copy (DUPLICATE SPIKE) -------------------------------
 
-// Every test below answers per vertex, from the root that vertex recovers.
-// Weighted as their originals, a bent plug spread the roots by up to 119 mm
-// and near an edge a triangle hid one corner at a time, a wedge to the eye.
-// So the copy is built on ONE point, the bake's origin, wholly on the root's
-// bone, with the root's own forward and up for tangent and normal: every copy
-// vertex skins the same numbers, reads that point as its root bit for bit,
-// and every test answers once for the whole copy. Its shape comes from its
-// original's bake entry alone, and a viewer without the deform sees a point.
+// The copy is built on ONE point (the bake origin, on the root's bone, root
+// axes as tangent and normal), so every test answers once for the whole
+// copy. Weighted as their originals, a bent plug spread the roots by up to
+// 119 mm and triangles hid one corner at a time. Without the deform: a point.
 
-// Hidden, every vertex of the copy goes to one point a metre behind the eye,
-// with one normal and one tangent. Its triangles have no area, an offset a
-// host adds along either stays on one line, and a host that opens one anyway
-// opens it behind the camera. A point near the plug was the alternative: a
-// host widening outlines from vertex colour opens it in view.
+// Hidden: every vertex to one point a metre behind the eye, one normal and
+// tangent, so no area and any host offset opens it behind the camera. A
+// point near the plug failed: outline hosts opened it in view.
 void YapsCopyHide(inout float3 position, inout float3 normal, inout float3 tangent)
 {
     float3 back = UNITY_MATRIX_V[2].xyz;
@@ -495,9 +401,8 @@ void YapsCopyHide(inout float3 position, inout float3 normal, inout float3 tange
     tangent = mul((float3x3) unity_WorldToObject, UNITY_MATRIX_V[0].xyz);
 }
 
-// The chain past the hole that ends the first copy's path, as a path of its
-// own. Atlas only: no other tier hands over more than one socket. False when
-// nothing live is left or it is out of reach.
+// The chain past the first path's hole, as its own path. Atlas only: no
+// other tier gives more than one socket.
 bool YapsCopyPath(inout YapsSocket socket, float3 root, float3 forward, float len)
 {
     YapsChain c = socket.chain;
@@ -558,13 +463,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     bool copy2 = _YAPS_CopyStart > 0 && vertexId >= (uint) _YAPS_CopyStart
               && vertexId < (uint) max(_YAPS_VertexCount, 0);
 #endif
-    // Off is the identity, so answer it before anything is read. A socket's
-    // material carries the plug half switched off over a bake that still
-    // marks its vertices active, and every one of them ran the whole resolve
-    // for an answer the enabled test threw away. The views still answer.
+    // Off before any read: a socket material carries a disabled plug half
+    // over active vertices, which all ran the full resolve for nothing.
 #ifdef YAPS_DUPLICATE
-    // Hidden through a fade too, so a toggle on its way out is one plug and
-    // the copy reads nothing for it.
+    // Hidden through a fade too, so a fading toggle is one plug.
     if (copy2 && _YAPS_Enabled < 1) { YapsCopyHide(position, normal, tangent); return; }
 #endif
     if (_YAPS_Enabled <= 0 && _YAPS_Debug < 0.5) return;
@@ -572,9 +474,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     YapsVertex baked = YapsReadBaked(vertexId);
 #ifdef YAPS_DUPLICATE
-    // An inactive copy waits for the copy's answer: drawn, it stays on the
-    // copy's point; hidden, it goes with the rest. Returned here, it stayed
-    // while the copy hid, a triangle from the base to the eye.
+    // An inactive copy vertex must hide with the copy, or a triangle runs
+    // from the base to the eye.
     if (baked.active <= 0 && !copy2) return;
 #else
     if (baked.active <= 0) return;
@@ -585,11 +486,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 originalTangent = tangent;
 
     YapsRoot root = YapsRecoverRoot(baked, originalPosition, originalNormal, originalTangent);
-    // No frame, no deform. The renderer's own frame is the avatar root,
-    // so falling back to it bent the vertex from the world origin. A host
-    // with no tangent input hands over zero here, never a stand-in. The
-    // builder copies no corner without a frame of its own, so for the copy
-    // this answers for the whole host, never one vertex.
+    // No frame, no deform: falling back to the renderer's frame bent from
+    // the world origin. A host with no tangent input gives zero here.
     if (root.recovered > 0.5 && root.recovered < 1.5) { YAPS_COPY_HIDE return; }
 
     float3 rootWorld = root.position;
@@ -609,30 +507,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 #endif
 #endif
 
-    // Everything platform-specific happens in here. A plug only ever
-    // bends toward a SOCKET, never toward a body.
-    //
     // The recovered frame, never the renderer's: a bone carries the plug.
     YapsSocket socket = YapsResolveSocket(rootWorld, rootForward, rootUp, worldLength);
 
-    // THE "RESOLVED BY" VIEW.
-    //
-    // A plug bending near a socket does not say WHO bent it, and a stray
-    // marker light reads exactly like a working atlas.
-    //
-    // It cannot be a colour. The patcher edits a host shader's VERTEX
-    // stage and nothing else, so there is no fragment left to paint in.
-    // Every host shader shares where the vertices go, so the answer is
-    // given as LENGTH:
-    //
-    //     a quarter    nobody resolved it
-    //     a half       the editor's preview
-    //     three parts  a marker light
-    //     full         the screen atlas
-    //
-    // Straight, unbent and unengaged, so length is the only thing moving.
-    // Before the enabled test on purpose: "nobody" is an answer, and an
-    // early return would hide the most important case.
+    // DEBUG VIEWS, answered as plug LENGTH (only the vertex stage is
+    // patched, so no colour). Resolved by: 1/4 nobody, 1/2 editor preview,
+    // 3/4 marker light, full atlas. Straight and unbent, so length is the
+    // only signal. Before the enabled test: "nobody" is an answer.
     if (_YAPS_Debug >= 0.5)
     {
         float shown;
@@ -644,17 +525,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         }
         else if (_YAPS_Debug >= 5.5)
         {
-            // WHICH TARGET this camera draws into, and whether the atlas
-            // could have been on it. Every other view describes the plug.
-            // This one describes the CAMERA, because the same plug answers
-            // differently in the view, a mirror and the self portrait.
-            //
-            // A tenth: the target is too small, so nothing was painted.
-            // Four tenths: the grab is a different size from this target,
-            // so the plug is reading somebody else's screen.
-            // Seven tenths: right target, and not one cell reported.
-            // Writer and reader address different pixels.
-            // Full: the transport is on this camera.
+            // The CAMERA, since view, mirror and self portrait differ.
+            // 0.1 target too small; 0.4 grab size differs (another screen);
+            // 0.7 right target, no cell reported (addressing mismatch);
+            // full: transport works here.
             float2 grabPx = _YAPS_Atlas_TexelSize.zw;
             bool sameTarget = all(abs(grabPx - _ScreenParams.xy) < 1.5);
             shown = !YapsAtlasFits() ? 0.10
@@ -663,44 +537,22 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         }
         else if (_YAPS_Debug >= 4.5)
         {
-            // WHAT THE ATLAS READ, before anything was decoded from it.
-            // Every other view describes an answer. This one describes the
-            // raw material, because "nothing resolved" has two opposite
-            // causes needing opposite fixes.
-            //
-            // FOUR STEPS, never a ratio. One socket occupies one cell of
-            // the twenty-seven read, so a ratio put a working transport
-            // three percent of plug length from a dead one.
-            //
-            // A tenth: no cell reported. Nothing published within reach,
-            // the grab is empty, or reader and writer address different
-            // pixels.
-            // A third: a cell reported but no payload matched its tag. The
-            // slot was somebody else's, or the tag does not survive.
-            // Two thirds: a payload matched and the kind test or reach
-            // threw it away. The transport is healthy, the geometry is not.
-            // Full: a socket came back.
+            // Raw atlas taps, since "nothing resolved" has opposite causes.
+            // Steps, never a ratio: one socket is 1 cell of 27, so a ratio
+            // put working and dead 3% apart.
+            // 0.1 no cell reported (nothing in reach, empty grab, addressing);
+            // 0.33 no payload matched its tag; 0.66 matched but kind or reach
+            // threw it away (geometry, not transport); full: a socket.
             shown = socket.atlasHeaders < 0.5 ? 0.10
                   : (socket.atlasHits < 0.5 ? 0.33
                   : (socket.tier < 2.5 ? 0.66 : 1.0));
         }
         else if (_YAPS_Debug >= 3.5)
         {
-            // THE SOCKET'S FACING, against the plug's own forward. Full
-            // means it faces the way the plug points, a little over half is
-            // square across, a tenth is straight back.
-            //
-            // Against the frame recovered for THIS vertex, the only one a
-            // skinned plug has. On a plug spanning several bones each vertex
-            // recovers its own, so the shaft can give several answers at
-            // once. The channel published one frame for the whole plug; it
-            // is gone.
-            //
-            // A zero forward is an honest "nothing believed", and sits mid
-            // scale so it cannot be taken for either end.
-            // A floor, because zero is a correct reading that looked like a
-            // catastrophe: a socket facing straight back scores 0 and the
-            // plug collapsed to nothing.
+            // Socket facing vs plug forward: full same way, about half
+            // square across, 0.1 straight back (a floor, as 0 looked like a
+            // collapse). Per vertex frame, so a multi-bone plug can give
+            // several answers. No forward sits mid scale.
             float3 face = socket.forward;
             float facing = dot(face, face) > 1e-6
                 ? saturate(dot(normalize(face), rootForward) * 0.5 + 0.5)
@@ -709,27 +561,15 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         }
         else if (_YAPS_Debug >= 2.5)
         {
-            // ENGAGEMENT, the switch itself. Who found the socket and how
-            // far off it is can both be steady while THIS collapses, and
-            // then the deform stops dead and the plug springs back, which
-            // is the whole appearance of a pop.
-            //
-            // A tenth at zero, so "not engaged" is a visible stub.
+            // ENGAGEMENT: it can collapse while tier and gap hold steady,
+            // which is what a pop looks like. 0.1 floor keeps a stub.
             shown = lerp(0.1, 1.0, saturate(socket.engaged));
         }
         else
         {
-            // GAP TO THE SOCKET, as a fraction of plug length. It answers
-            // whether the socket being aimed at MOVES: two lights of the
-            // same tier swapping places are invisible to the view above,
-            // since both read as a marker light.
-            //
-            // Smooth shortening is the geometry behaving. A JUMP is a
-            // different answer, and the frame it jumps on is the one to
-            // explain.
-            //
-            // Full length when nobody resolved. Zero would read as "the
-            // socket is exactly on the root", the opposite of nothing.
+            // GAP to the socket in plug lengths: a JUMP shows two same-tier
+            // lights swapping. Full when unresolved; zero would mean "on
+            // the root".
             shown = socket.tier < 0.5
                 ? 1.0
                 : saturate(length(socket.position - rootWorld) / max(worldLength, 1e-4));
@@ -749,9 +589,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 #ifdef YAPS_DUP_DUMP
     yapsDump = socket;
 #endif
-    // Nested, never "copy2 && !YapsCopyPath(...)": HLSL does not short-circuit,
-    // so the call ran on the first copy too and its inout shift sent the first
-    // copy down the second's path.
+    // Nested: HLSL does not short-circuit, and the inout call on the first
+    // copy sent it down the second's path.
     if (copy2)
     {
         if (!YapsCopyPath(socket, rootWorld, rootForward, worldLength))
@@ -762,17 +601,14 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
 #endif
 
-    // THE SHAPE AT REST holds with no socket in reach. It used to sit behind
-    // the return below, so a plug with nothing near stayed full size, still
-    // and straight, and the knobs showed only between 1.2 and 1.6 lengths.
-    // Added as a DELTA to the drawn vertex, so at its defaults the plug is
-    // exactly as drawn, and the bend below fades into this, not the mesh.
+    // THE SHAPE AT REST, before the no-socket return, or the knobs show
+    // only between 1.2 and 1.6 lengths. A DELTA on the drawn vertex, so the
+    // defaults leave it as drawn and the bend fades into this.
     YapsVertex rest = baked;
     YapsRestShape(rest, 1, worldLength);
     float restWeight = baked.active * saturate(_YAPS_Enabled);
 #ifdef YAPS_DUPLICATE
-    // The copy rests on its point, so it grows out of the root as it engages
-    // rather than standing up beside the first as a second straight shaft.
+    // The copy rests on its point and grows out of the root as it engages.
     if (copy2) restWeight = 0;
 #endif
     float3 restRight = cross(rootUp, rootForward);
@@ -804,9 +640,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 toSocket = socketWorld - rootWorld;
     float gap = length(toSocket);
 
-    // MINIMUM SOCKET DISTANCE, from TPS. A socket against the root asks
-    // the curve to reach behind where the shaft begins, and the bezier
-    // answers with a hairpin. Hold it off at a floor instead.
+    // MINIMUM SOCKET DISTANCE, from TPS: a socket on the root hairpins.
     float minimumGap = max(_YAPS_MinimumSocketDistance, 0) * worldLength;
     if (gap < minimumGap && gap > 1e-5)
     {
@@ -815,18 +649,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         gap = minimumGap;
     }
 
-    // A resolved socket may arrive without an axis: a root light can turn
-    // up without its front. Aiming along the approach is the honest
-    // fallback, a straight arrival rather than an invented direction.
+    // A root light can arrive without its front: aim along the approach.
     float3 socketForward = dot(socket.forward, socket.forward) > 1e-6
         ? normalize(socket.forward)
         : YapsSafeNormalize(toSocket, rootForward);
 
-    // You enter a hole from the side you are standing on. A socket facing
-    // away would make the curve loop round and arrive from behind, a
-    // visible hairpin, so the axis is flipped to meet the approach. A
-    // converter inherits the original avatar's convention and cannot
-    // dictate one, so the deform must not depend on it.
+    // Flip to meet the approach, or a socket facing away hairpins. Converted
+    // avatars keep their original convention, so never depend on it.
     if (dot(socketForward, toSocket) < 0)
     {
         socketForward = -socketForward;
@@ -834,8 +663,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     float engage = 1 - YapsRamp(gap, worldLength * 1.2, worldLength * 1.6);
 #ifdef YAPS_DUPLICATE
-    // Unengaged the copy sits on its point, which a host widening outlines
-    // from vertex colour opens in view.
+    // Unengaged, an outline host would open the copy's point in view.
     if (copy2 && engage <= 0)
     {
         YapsCopyHide(position, normal, tangent);
@@ -843,14 +671,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
 #endif
 
-    // THE SWEEP. Short of full engagement the curve aims at the socket
-    // turned back toward the plug's own forward, about the root, by the part
-    // not yet engaged, so the bend grows evenly as the socket comes in.
-    // Straightness used to come from a root handle five lengths long, which
-    // only pushed the curve's turn out past the tip: when the turn reached
-    // it, the tip whipped round, up to eighteen times as far as the socket
-    // moved, just inside 1.3 lengths. The whole path turns, chain included,
-    // and at full engagement nothing moves.
+    // THE SWEEP. Short of full engagement the target turns back toward the
+    // plug's forward by the unengaged part, so the bend grows evenly. A five
+    // length root handle failed: the tip whipped up to 18x as far as the
+    // socket moved, just inside 1.3 lengths.
     float3 aimAt = YapsSafeNormalize(toSocket, rootForward);
     float3 sweepAxis = cross(aimAt, rootForward);
     float sweepSin = length(sweepAxis);
@@ -860,32 +684,24 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     socketForward = YapsTurn(socketForward, sweepAxis, sweep);
     toSocket = socketWorld - rootWorld;
 
-    // Idle shrink, the resting bend and wriggle, eased out as it engages.
     YapsRestShape(baked, 1 - engage, worldLength);
 
-    // PUMPING, from TPS. Motion the plug makes alone, so it is not a rigid
-    // prop between events. Only while ENGAGED, so it never fights the
-    // wriggle, and scaled ALONG the shaft so the base stays welded.
+    // PUMPING, from TPS. Engaged only, so it never fights the wriggle;
+    // scaled along the shaft so the base stays welded.
     float along = saturate(baked.position.z / max(worldLength, 0.0001));
 
     if (_YAPS_PumpStrength > 0)
     {
         float t = _Time.y * max(_YAPS_PumpSpeed, 0);
-        // How much of the shaft takes part. Width 1 is one stroke, still
-        // zero at the base so it stays welded. Small widths throw only the
-        // tip. A power of `along` shapes it: 1 linear, 0.25 quartic.
+        // along^(1/width): 1 linear, 0.25 quartic, throwing only the tip.
         float width = clamp(_YAPS_PumpWidth, 0.05, 1);
         float share = pow(along, 1 / width);
         baked.position.z += sin(t) * _YAPS_PumpStrength * worldLength * share * engage;
     }
 
-    // Neither handle is stretched. The sweep holds the shaft straight out of
-    // range now; both ends pulled out once inflated the curve into a loop
-    // far longer than the plug, and a 0.6 m plug made a 1.8 m curve and
-    // aimed off into space.
-    //
-    // BEZIER SMOOTHNESS, from TPS. Scales both handles: below 1 sharper,
-    // above 1 a wider arc. 1 is the law the deform has always used.
+    // Neither handle is stretched: the sweep holds it straight. Stretched
+    // handles turned a 0.6 m plug into a 1.8 m loop aimed into space.
+    // BEZIER SMOOTHNESS, from TPS: below 1 sharper, above 1 wider.
     float smoothness = max(_YAPS_BezierSmoothness, 0.05);
 
     float zAlong = max(baked.position.z, 0);
@@ -893,9 +709,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float approachHandle = gap * 0.5 * smoothness;
     float rootHandle = approachHandle;
 
-    // ENTRANCE STIFFNESS, from DPS. The root handle is held longer along
-    // the plug's own forward, so the base stays put and only the far part
-    // turns. 0 bends evenly from the root, 1 holds a full length rigid.
+    // ENTRANCE STIFFNESS, from DPS: 0 bends evenly, 1 holds a full length.
     rootHandle = max(rootHandle, saturate(_YAPS_EntranceStiffness) * worldLength * engage);
 
     float3 p0 = rootWorld;
@@ -903,53 +717,33 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     float3 p2 = socketWorld - socketForward * approachHandle;
     float3 p3 = socketWorld;
 
-    // BEZIER START's straight run, here so the chain measures link 0 on the
-    // same curve its vertices are walked on below.
+    // Here so the chain measures link 0 on the curve the walk uses.
     float straightStart = saturate(_YAPS_BezierStart) * worldLength;
     float3 startWorld = rootWorld + rootForward * straightStart;
     float3 sp1 = startWorld + rootForward * max(rootHandle - straightStart, worldLength * 0.1);
 
-    // Where along the shaft the socket has hold of this vertex. Squeeze
-    // and bulge measure from it, and on a chain it is this vertex's OWN
-    // socket, not the first on the path.
+    // Squeeze and bulge measure from this vertex's OWN socket on a chain.
     float gripAt = gap;
     float linkKind = socket.isHole;
     int link = 0;
 
-    // THE CHAIN. A plug resolved through the atlas gets an ORDERED LIST
-    // of sockets rather than a winner, each owning a stretch of the shaft.
-    // The shaft passes through all of them: a ring mid-shaft and a hole at
-    // the tip is one path with two bends, not a choice, and picking a
-    // winner is what made a plug flip between them.
-    //
-    // A vertex is only ever inside ONE link, so the walk stays a single
-    // cubic. Its segment LEAVES the previous socket along that socket's
-    // own forward, which keeps the joint smooth instead of kinked.
-    //
-    // MEASURED ON THE CURVE. The resolver orders by CHORD, the right thing
-    // to sort by and the wrong thing to hand a shaft: a curve is longer
-    // than its chord, so a vertex given the chord stops short while the
-    // next segment's first vertex starts on the socket. That is a step, a
-    // ring of mesh torn open at every joint. Each segment is remeasured
-    // here, where the handles that shape it are known.
-    //
-    // Everything the root owns stays on segment 0: the pullout handle, the
-    // straight start, the stiffness. Past the first socket the shaft is
-    // carried by sockets, so both ends get the same plain handle.
+    // THE CHAIN: each socket owns a stretch, one cubic per vertex, leaving
+    // the previous socket along its forward so joints stay smooth.
+    // Remeasured on the CURVE: the resolver's chord is shorter, which tore a
+    // ring of mesh open at every joint. Root-owned handles (pullout, straight
+    // start, stiffness) stay on segment 0.
     if (socket.chain.count > 1)
     {
         float3 fromWorld = rootWorld;
         float3 fromForward = rootForward;
         float travelled = 0;
 
-        // A cascade, not a search, and no index computed from data: the
-        // arrays only stay in registers while every subscript is a
-        // literal. Same rule that shaped the resolver's sort.
+        // A cascade, not a search: literal subscripts keep the arrays in
+        // registers.
         [unroll] for (int c = 0; c < YAPS_CHAIN_MAX; c++)
         {
-            // Link 0 is the socket as settled above: held off the root by the
-            // minimum gap, its axis guarded and turned to meet the approach.
-            // Rebuilt from the raw entry, it lost all three.
+            // Link 0 as settled above (minimum gap, guarded and flipped axis),
+            // not rebuilt from the raw entry.
             float3 toWorld = c == 0 ? socketWorld
                 : rootWorld + YapsTurn(socket.chain.position[c] - rootWorld, sweepAxis, sweep);
             float3 toForward = c == 0 ? socketForward
@@ -962,12 +756,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             float3 q2 = toWorld - toForward * approach;
             float3 q3 = toWorld;
 
-            // Dead entries get a range nothing falls inside rather than a
-            // branch, for the unrolling reason above.
+            // Dead entries get an unreachable range rather than a branch.
             bool live = c < socket.chain.count;
-            // Link 0 with a straight start is walked as the straight run and
-            // then startWorld..q3, so it is measured that way. Measured on
-            // q0..q3 it ended short of or past the socket: a step at the joint.
+            // Measured as walked (straight run, then startWorld..q3), or the
+            // joint steps.
             float segment = !live ? 1e6
                 : (c == 0 && straightStart > 1e-5
                     ? straightStart + YapsCurveLength(startWorld, sp1, q2, q3)
@@ -990,11 +782,8 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         }
     }
 
-    // BEZIER START and SMOOTH START, from TPS. The first fraction of the
-    // shaft is held straight before any bend, and SmoothStart eases the
-    // join rather than letting it kink. The curve's START moves along the
-    // plug's forward, and the walk is asked for the distance PAST it. A
-    // vertex inside the straight part is not walked at all.
+    // BEZIER START and SMOOTH START, from TPS: the curve starts past the
+    // straight run; vertices inside it are not walked.
     float straight = link > 0 ? 0 : straightStart;
     float ease = max(_YAPS_SmoothStart, 0) * worldLength;
     float leftOver;
@@ -1003,7 +792,6 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     {
         if (zAlong <= straight)
         {
-            // In the straight part. On the plug's own axis, no walk.
             frame.position = rootWorld + rootForward * zAlong;
             frame.forward = rootForward;
             frame.up = rootUp;
@@ -1012,9 +800,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         else
         {
             frame = YapsWalk(startWorld, sp1, p2, p3, zAlong - straight, rootUp, rootForward, leftOver);
-            // The join: blend the walked frame back toward the straight
-            // one over the ease length, so the shaft bends into the curve
-            // instead of breaking at a point.
+            // Ease the join so it bends, not breaks.
             if (ease > 1e-5)
             {
                 float k = saturate((zAlong - straight) / ease);
@@ -1031,15 +817,10 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
         frame = YapsWalk(p0, p1, p2, p3, zAlong, rootUp, rootForward, leftOver);
     }
 
-    // THE PORTAL (spike). A path ending in a hole that publishes an exit cuts
-    // the shaft there. A band either side of the cut collapses to a point
-    // inside each body, and what is left over comes out of the exit.
-    //
-    // Every gate term is plug-wide here, so the whole shaft takes one branch
-    // and no triangle spans the room. A portal implies the atlas tier and a
-    // hole as the last link, so neither is asked. Each of engaged and engage
-    // is at most 1, so their product at 0.999 asks both. Nested rather than
-    // one &&: HLSL runs both sides, and the read belongs to this branch alone.
+    // THE PORTAL (spike). A hole with a published exit cuts the shaft; a
+    // band either side collapses to a point, the rest comes out the exit.
+    // Every gate term is plug-wide, so no triangle spans the room. Nested:
+    // HLSL runs both sides of &&, and the read belongs here alone.
     bool portalled = false;
     bool collapsed = false;
 #if PORTAL_STAGE == 1
@@ -1058,16 +839,14 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
             // Attribution only: the cut replaced by a token use.
             frame.position += (exitAt + exitFwd) * 1e-7;
 #else
-            // The margin covers the pump, which moves a vertex up to its
-            // strength in lengths.
+            // Margin covers the pump (up to its strength in lengths).
             float w = _YAPS_PortalSpan * worldLength * (1 + max(_YAPS_PumpStrength, 0));
             float3 PA = p3 + frame.forward * w;
             float3 PB = exitAt - exitFwd * w;
             collapsed = leftOver < 2 * w;
             portalled = !collapsed;
-            // The band rides the main path below as a point on line AB with
-            // no offsets, its normal and tangent along AB, so a host offset
-            // along either stays on the line and the band has no area.
+            // The band: a point on AB, normal and tangent along AB, so host
+            // offsets stay on the line and it has no area.
             frame.position = collapsed ? (leftOver < w ? PA : PB) : exitAt;
             frame.forward = collapsed ? YapsSafeNormalize(PB - PA, exitFwd) : exitFwd;
             // Roll from the arrival, approximate.
@@ -1084,51 +863,29 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
     }
 #endif
 
-    // Past the end of the curve. A hole swallows the remainder and tapers
-    // the tip, a ring lets it carry straight on through.
     float radius = 1;
-    // The link this vertex is inside, which past the first is not the one
-    // socket.isHole names. Only the last link can leave anything over.
+    // This vertex's link, not socket.isHole. Only the last leaves remainder.
     bool isHole = linkKind > 0.5;
     if (leftOver > 0 && isHole && !portalled)
     {
-        // How far past the hole a vertex travels before narrowing, and
-        // before it closes. Fractions of plug length, so big and small
-        // plugs taper the same proportion of themselves.
         float taperFrom = worldLength * _YAPS_TaperStart;
         float taperTo = worldLength * max(_YAPS_TaperEnd, _YAPS_TaperStart + 0.001);
 
-        // CLAMP FIRST. Without it a socket closer than the plug is long
-        // sends every vertex past it flying forward by its own excess,
-        // and with the radius already at zero they collapse onto a line
-        // and render as a flat twisted ribbon. Nothing goes more than a
-        // tenth of a length past a hole.
+        // CLAMP FIRST, or vertices past a near socket fly forward at zero
+        // radius and render as a flat twisted ribbon.
         leftOver = min(leftOver, taperTo);
         radius = 1 - YapsRamp(leftOver, taperFrom, taperTo);
     }
 
-    // OVERRUN, and it belongs to BOTH kinds. Its own tooltip is about
-    // rings, and it was read only inside the hole branch above, so a ring
-    // always carried on and the switch did nothing for the case it names.
-    //
-    // A ring gets no clamp either, since the clamp is the hole's taper
-    // distance. So a ring near the base sent every vertex past it its full
-    // remaining length at once, the same flat ribbon by another door.
+    // OVERRUN applies to BOTH kinds, rings above all: a ring has no clamp,
+    // so one near the base threw every vertex past it into a flat ribbon.
     if (_YAPS_Overrun < 0.5 && !portalled)
     {
         leftOver = 0;
     }
-    // SQUEEZE and BULGE, both measured from the entry, the point level
-    // with the socket. Baked z == gap is in the opening, less is outside,
-    // more is through.
-    //
-    // Squeeze narrows where the socket grips, bulge swells just short of
-    // the opening. Both make an entry read as tight rather than as a rod
-    // sliding through a hoop.
-    //
-    // Only while engaged, and faded by engagement, so an idle plug is
-    // never pinched by a socket that is not there.
-    // Out of a portal the grip is the exit's mouth.
+    // SQUEEZE and BULGE from the entry: negative outside, positive through.
+    // Faded by engagement so an idle plug is never pinched. Out of a portal
+    // the grip is the exit's mouth.
     float entry = portalled ? leftOver : baked.position.z - gripAt;
     float grip = engage * step(0.5, enabled);
 
@@ -1142,8 +899,7 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     if (_YAPS_Bulge > 0)
     {
-        // Just OUTSIDE the opening: entry < 0. Swelling on the far side
-        // is the shaft growing inside what it entered.
+        // Outside only: swelling inside reads as the shaft growing in there.
         float reach = max(_YAPS_BulgeDistance, 0.001) * worldLength;
         float shape;
         if (_YAPS_BulgeFalloff > 0)
@@ -1167,16 +923,13 @@ void YapsDeform(inout float3 position, inout float3 normal, inout float3 tangent
 
     float3 right = cross(frame.up, frame.forward);
 
-    // Re-hang the vertex off the curve's frame, blended by how engaged
-    // the bend is and how much this vertex belongs to the shaft.
     float blend = YapsRamp(engage, 0, 0.2) * baked.active * enabled;
 
     float3 deformed = frame.position
         + right * (baked.position.x * radius)
         + frame.up * (baked.position.y * radius);
     float3 drawn = mul(unity_WorldToObject, float4(deformed, 1)).xyz;
-    // Assigned, never lerped, on the collapsed band: lerp(a, b, 1) can be an
-    // ulp off per vertex, and that is a sliver across the room.
+    // Assigned on the band: lerp(a, b, 1) can be an ulp off, a sliver.
     position = collapsed ? drawn : lerp(restPosition, drawn, blend);
     if (collapsed) blend = 1;
 

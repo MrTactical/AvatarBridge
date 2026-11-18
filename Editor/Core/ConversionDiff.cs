@@ -1,12 +1,6 @@
-// What moved between this conversion and the last one of the same avatar.
-// The output folder keeps a plain list of what the conversion produced, and
-// the next run compares against it, so reconverting on a new release or
-// after changing one setting says what it changed. The file is dot-named,
-// so Unity never imports it.
-//
-// Report details are left out on purpose: their wording improves between
-// releases without the conversion changing. Category and subject carry the
-// behaviour, the same rule the regression digests follow.
+// What changed since the last conversion of this avatar, from a dot-named list (never
+// imported) in the output folder. Details are left out: their wording changes between
+// releases without the conversion changing.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;

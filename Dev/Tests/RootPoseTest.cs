@@ -5,18 +5,13 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for root movement on transplanted Action poses; the SHIPPED 3.5.35
-    // design: keepPose keeps height AND rotation curves and bakes both into the pose
-    // (Unity's own AnimationClipSettings flags), because ChilloutVR's client owns the root and
-    // discards root motion; only the baked form is visible in game.
+    // Root movement on transplanted Action poses: keepPose keeps height and rotation curves and
+    // bakes both into the pose (AnimationClipSettings), because CVR owns the root and discards
+    // root motion; only the baked form shows in game.
     //
-    // This file replaces RootVerticalTest, which asserted an earlier vertical-only design,
-    // was never re-run after the bake landed, and sat in the repo NOT COMPILING; the blind
-    // harness covers Editor/ only, so a Tools/ test rots silently unless executed. Caught by a
-    // completion-verification pass, which is the reason this header explains itself.
-    //
-    // Both directions still matter: outside keepPose, a clip that ends displaced or turned
-    // must lose its root curves, or it walks the wearer around with no input.
+    // Without keepPose, a clip ending displaced or turned must lose its root curves, or it walks
+    // the wearer around with no input.
+    // The blind harness covers Editor/ only, so a test here rots silently unless run.
     public static class RootPoseTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Root pose kept on Action poses")]

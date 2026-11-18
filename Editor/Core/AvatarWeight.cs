@@ -1,13 +1,6 @@
-// What an avatar costs, measured against what ChilloutVR charges for it,
-// and then judged.
-//
-// Textures first, because that is where a heavy avatar is heavy and the
-// number nobody has. The judgement is texel density: how many texture
-// pixels land on how much real surface. A ring two centimetres across
-// wearing a 2K map is not a matter of taste, it is arithmetic, and the
-// card shows the arithmetic rather than asserting a rule.
-//
-// Nothing here writes to the avatar.
+// What an avatar costs in ChilloutVR, judged. Textures first, where heavy avatars are
+// heavy, by texel density: texture pixels per metre of real surface, shown as arithmetic
+// rather than a rule. Read only.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -21,9 +14,8 @@ namespace AvatarBridge
 {
     public static class AvatarWeight
     {
-        // Texels per metre of surface. A face at conversational distance is
-        // well served by one to two thousand; this is the point past which
-        // resolution stops reaching the eye and only reaches the card.
+        // Texels per metre. A face at talking distance needs 1000 to 2000; past this
+        // resolution only reaches the card, not the eye.
         public const float TargetDensity = 2000f;
 
         public class TextureUse
@@ -36,26 +28,20 @@ namespace AvatarBridge
             public bool Crunched;
             public bool Readable;
             public bool Compressed;
-            // Point filtered with no mips means a shader reads exact values,
-            // not colour. Compressing one rewrites the numbers.
+            // Point filtered, no mips: exact values a shader reads, which compression rewrites.
             public bool Data;
             public long Bytes;
-            // The source file. Only used to estimate what a CRUNCHED texture
-            // costs to download, since crunch is the one thing that breaks
-            // the tie between card size and download size.
+            // For a CRUNCHED texture's download size, the one case it differs from card size.
             public long DiskBytes;
             public int Materials;
 
-            // Lowest density among the surfaces using it, never the
-            // average: the use with the fewest texels per metre needs every
-            // one it has, so it decides. Highest let a button shrink a shirt.
+            // Lowest density among its surfaces decides; highest let a button shrink a shirt.
             public float Density;
             public float WorldArea;
             public int Suggested;
             // Only switched-off renderers use it, so stripping them frees it.
             public bool Dead;
-            // What the card advice gives back for this texture, counted once:
-            // the smallest size, compressed, or gone with its renderer.
+            // What the advice gives back, counted once: resized, compressed or stripped.
             public long Reclaim;
         }
 
@@ -108,8 +94,7 @@ namespace AvatarBridge
             public readonly List<string> Dead = new List<string>();
             // The same renderers, as found: a path can name a same-named sibling instead.
             public readonly List<Renderer> DeadRenderers = new List<Renderer>();
-            // Dead, but everything it draws is drawn by something visible
-            // too. Stripping frees the mesh and the draw call, no texture.
+            // Dead, but its textures are drawn elsewhere: stripping frees mesh and draw call only.
             public readonly List<string> DeadFreesNothing = new List<string>();
             public readonly List<Callout> Callouts = new List<Callout>();
             // Texture name to the material asset standing in the way.
@@ -142,9 +127,7 @@ namespace AvatarBridge
             var areas = new Dictionary<Material, Area>();
             var meshCache = new Dictionary<Mesh, MeshData>();
             var switched = SwitchedPaths(avatar, survey);
-            // Kept apart until every renderer has been read. Adding and
-            // removing as they go makes the answer depend on which renderer
-            // the loop reaches last.
+            // Kept apart until all renderers are read, or the answer depends on loop order.
             var deadMaterials = new HashSet<Material>();
             var liveMaterials = new HashSet<Material>();
 
@@ -159,8 +142,8 @@ namespace AvatarBridge
                     if (binding.Substring(cut + 2).StartsWith("blendShape.", System.StringComparison.Ordinal)) animated.Add(binding);
                 }
             }
-            // And what ChilloutVR drives itself: visemes, blink and face tracking. Read as unused, the
-            // shapes Native face tracking builds raised the warning by 28 on avatars where all of them run.
+            // And what CVR drives itself (visemes, blink, face tracking): missed, Native face
+            // tracking's shapes raised the warning by 28.
             void Driven(Renderer face, IEnumerable<string> names)
             {
                 if (face == null || names == null) return;
@@ -200,9 +183,7 @@ namespace AvatarBridge
                     AccumulateArea(r, mesh, areas, meshCache);
                 }
 
-                // Off in the scene and nothing in the animator can turn it
-                // on: it is carried, downloaded and never seen. With no
-                // controller read, nothing proves it is never switched on.
+                // Off and nothing can turn it on: downloaded, never seen. Needs a controller to prove.
                 bool dead = survey != null && survey.Controller != null && !Live(r, avatar.transform, switched);
                 if (dead) { report.Dead.Add(path); report.DeadRenderers.Add(r); }
 
@@ -230,13 +211,9 @@ namespace AvatarBridge
                 .ThenBy(t => t.Name, System.StringComparer.Ordinal)
                 .ThenBy(t => AssetDatabase.GetAssetPath(t.Texture), System.StringComparer.Ordinal));
             report.TextureBytes = report.Textures.Sum(t => t.Bytes);
-            // A crunched texture downloads at its packed size and still
-            // costs full size on the card, so the two figures only agree
-            // where crunch is absent.
+            // Crunched: packed size to download, full size on the card.
             report.DownloadBytes = report.Textures.Sum(t => t.Crunched ? t.DiskBytes : t.Bytes);
-            // Only what nothing visible is still using. A texture a live
-            // renderer shares costs the same whether the dead one goes or
-            // not, and a texture behind two dead renderers counts once.
+            // Only what nothing visible uses; a texture behind two dead renderers counts once.
             deadMaterials.ExceptWith(liveMaterials);
             var liveTextures = new HashSet<Texture>(liveMaterials.SelectMany(TexturesOf));
             foreach (var r2 in renderers)
@@ -254,8 +231,7 @@ namespace AvatarBridge
                 .ToList();
             foreach (var t in deadTextures) textures[t].Dead = true;
             report.DeadBytes = deadTextures.Sum(t => textures[t].Bytes);
-            // Nothing references them once the renderer goes, so they leave
-            // the download too, at the packed size where crunch applies.
+            // They leave the download too, at the packed size where crunched.
             report.DeadDownloadBytes = deadTextures.Sum(t => textures[t].Crunched
                 ? textures[t].DiskBytes : textures[t].Bytes);
 
@@ -310,13 +286,11 @@ namespace AvatarBridge
                                                "listed under heaviest textures with their density.", 1);
             }
 
-            // Data textures are left out. A YAPS bake packs float bytes into
-            // one, and the shader rebuilds the float from the exact pixel.
+            // Not data textures: a YAPS bake packs float bytes the shader rebuilds exactly.
             var uncompressed = r.Textures.Where(t => !t.Compressed && !t.Data && t.Bytes > 1048576).ToList();
             foreach (var t in uncompressed)
             {
-                // BC7 is a byte a pixel. Uncompressed is the format's own
-                // size, one for R8 and eight for RGBAHalf, not always four.
+                // BC7 is 1 byte a pixel; uncompressed varies (R8: 1, RGBAHalf: 8).
                 long perPixel = t.Texture != null ? GraphicsFormatUtility.GetBlockSize(t.Texture.graphicsFormat) : 4;
                 if (perPixel <= 1) continue;
                 long saved = t.Bytes - t.Bytes / perPixel;
@@ -348,8 +322,7 @@ namespace AvatarBridge
                 t.Reclaim = StripAdvised(r) && t.Dead ? t.Bytes : t.Bytes - (long)(t.Bytes * keeps[t]);
             }
 
-            // Worth saying even at nothing reclaimed. The textures are shared
-            // so none come back, and the mesh is still skinned every frame.
+            // Said even at nothing reclaimed: the mesh is still skinned every frame.
             if (r.DeadFreesNothing.Count > 0)
             {
                 Add(r, 0, $"{BridgeElements.Count(r.DeadFreesNothing.Count, "more renderer is", "more renderers are")} switched off with nothing to switch " +
@@ -386,14 +359,9 @@ namespace AvatarBridge
                           "overlapping pairs a frame.", 2);
             }
 
-            // ChilloutVR downloads an avatar only if it fits the viewer's
-            // limit, and the default is 100 MB. Past it most of the room sees
-            // a robot instead, with nothing said to anybody.
-            //
-            // The upload size is the CCK's to measure, not this tool's, and
-            // crunch separates the two: a crunched texture downloads small
-            // and still costs its full size on the card. So this speaks
-            // where the figure alone settles it.
+            // CVR's default download limit is 100 MB; past it most viewers silently see a robot.
+            // The CCK measures upload size and crunch separates it from card size, so this
+            // speaks only where the figure alone settles it.
             if (r.DownloadBytes > 100L * 1048576)
             {
                 Add(r, 0, $"About {Mb(r.DownloadBytes)} of texture to download, against a default limit of " +
@@ -439,8 +407,7 @@ namespace AvatarBridge
 
         static bool StripAdvised(Report r) => r.DeadBytes > 1048576 && r.Dead.Count > r.DeadFreesNothing.Count;
 
-        // The headline. Each texture once: the callouts overlap, and one
-        // texture oversized, uncompressed and dead summed past the total.
+        // Each texture once: overlapping callouts summed past the total.
         // Left alone stops a resize, not a strip.
         static long Reclaimable(Report r)
         {
@@ -448,8 +415,7 @@ namespace AvatarBridge
             return r.Textures.Sum(t => (strip && t.Dead) || !r.LeftAlone.ContainsKey(KeyOf(t.Texture, t.Name)) ? t.Reclaim : 0);
         }
 
-        // Two textures of one file name are common across packages, so the
-        // left-alone notes go by asset path and only show the name.
+        // By asset path: file names repeat across packages.
         internal static string KeyOf(Texture texture, string name)
         {
             string path = texture != null ? AssetDatabase.GetAssetPath(texture) : null;
@@ -463,9 +429,7 @@ namespace AvatarBridge
             $" Left alone though: {user} uses it too, and the size lives on the texture rather than on the " +
             "avatar, so shrinking it here would shrink it there.";
 
-        // What the optimiser has decided it will not touch, and who is in the
-        // way. Advice nothing will ever act on should say so rather than
-        // repeat itself every time the card is drawn.
+        // What the optimiser will not touch, and what is in the way.
         public static void NoteLeftAlone(Report r, IEnumerable<KeyValuePair<string, string>> shared)
         {
             if (r == null || shared == null) return;
@@ -476,17 +440,13 @@ namespace AvatarBridge
 
         internal static void Densities(Dictionary<Texture, TextureUse> textures, Dictionary<Material, Area> areas)
         {
-            // One surface per set of maps at one tiling, however many materials draw it. A pass
-            // that gives every slot its own copy of a material would otherwise leave each copy
-            // one slot's share of the area, and the texture covering a fraction of its surface.
+            // One surface per map set and tiling, or per-slot material copies each get a fraction of the area.
             var surfaces = new Dictionary<string, (List<Texture> maps, Vector2 scale, Area area)>();
             foreach (var pair in areas)
             {
                 var scale = pair.Key.HasProperty("_MainTex") ? pair.Key.mainTextureScale : Vector2.one;
-                // A data texture, a bake or a lookup, is read value by value and never spread
-                // over a surface. It has no density, and fewer texels would be fewer numbers,
-                // so it is never offered smaller, and the texture pass never resizes it. It is
-                // left out of the key too, so a bake one copy gained does not split the surface.
+                // A data texture has no density and is never resized. Out of the key too, so a
+                // bake one copy gained does not split the surface.
                 var maps = TexturesOf(pair.Key)
                     .Where(t => textures.TryGetValue(t, out var u) && !u.Data)
                     .Distinct()
@@ -522,12 +482,9 @@ namespace AvatarBridge
             {
                 if (use.Density <= 0f) continue;
                 int longest = Mathf.Max(use.Width, use.Height);
-                // Density scales with resolution, so the size that meets the
-                // target falls straight out, rounded down to a power of two.
+                // Density scales with resolution; round down to a power of two.
                 int wanted = Mathf.FloorToInt(longest * (TargetDensity / use.Density));
-                // Never advise below this. A tiny map on a tiny surface still
-                // gets looked at from ten centimetres away in VR, and the
-                // memory left on the table under 256 is not worth the row.
+                // Floor: VR looks from 10 cm away, and savings under 256 are not worth the row.
                 int size = 256;
                 while (size * 2 <= wanted && size < longest) size *= 2;
                 use.Suggested = size < longest ? size : 0;
@@ -536,8 +493,7 @@ namespace AvatarBridge
 
         static void AccumulateArea(Renderer r, Mesh mesh, Dictionary<Material, Area> areas, Dictionary<Mesh, MeshData> cache)
         {
-            // Read/Write Enabled is off on most shipped meshes and does not
-            // matter here: the editor holds the source data either way.
+            // Read/Write does not matter: the editor holds the source data either way.
             if (!cache.TryGetValue(mesh, out var data))
             {
                 data = new MeshData { Vertices = mesh.vertices, Uv = mesh.uv };
@@ -577,8 +533,7 @@ namespace AvatarBridge
 
         // ---- reachability ---------------------------------------------------
 
-        // Every object path some layer switches on or off, so a renderer that
-        // is off in the scene can be told apart from one a menu controls.
+        // Every path some layer switches, to tell a dead renderer from a menu-controlled one.
         static HashSet<string> SwitchedPaths(CVRAvatar avatar, AvatarSurvey.Model survey)
         {
             var paths = new HashSet<string>(System.StringComparer.Ordinal);
@@ -590,17 +545,13 @@ namespace AvatarBridge
                 string property = binding.Substring(cut + 2);
                 if (property == "m_IsActive" || property == "m_Enabled") paths.Add(binding.Substring(0, cut));
             }
-            // Native toggles and dropdowns switch their targets, or play their
-            // clips, from a layer the CCK builds itself, which this controller
-            // may not hold yet.
+            // Native toggles and dropdowns act from a CCK-built layer this controller may not hold yet.
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
             if (settings != null)
             {
                 foreach (var entry in settings) paths.UnionWith(AvatarSurvey.TargetPaths(entry));
             }
-            // An Animator on a child object runs its own controller, with paths
-            // from itself. Its layers never compete with the avatar's, so only
-            // what it switches is read, rebased onto the avatar.
+            // A child Animator's paths are relative to itself: rebased onto the avatar.
             foreach (var child in avatar.GetComponentsInChildren<Animator>(true))
             {
                 if (child.gameObject == avatar.gameObject || child.runtimeAnimatorController == null) continue;
@@ -639,8 +590,7 @@ namespace AvatarBridge
 
         // ---- measurement ----------------------------------------------------
 
-        // MagicaCloth is optional, so it is counted by name rather than by
-        // a reference that would not compile without the package.
+        // By name: MagicaCloth is optional and a reference would not compile without it.
         static void CountCloth(CVRAvatar avatar, Report report)
         {
             foreach (var c in avatar.GetComponentsInChildren<MonoBehaviour>(true))
@@ -652,8 +602,7 @@ namespace AvatarBridge
                     report.Cloth++;
                     report.ClothParticles += ParticlesUnder(c);
                     report.ClothMeshVertices += MeshClothVertices(c);
-                    // Solvers whose chains hang off one parent are the
-                    // merge candidates: one solver could hold every root.
+                    // Chains under one parent could share one solver.
                     var parent = c.transform.parent;
                     if (parent != null)
                     {
@@ -666,9 +615,7 @@ namespace AvatarBridge
             }
         }
 
-        // Simulated transforms, which is the number that costs, not the
-        // component count. Read by reflection: both solvers are optional
-        // packages, and each names its roots differently.
+        // Simulated transforms, the number that costs. Reflection: both solvers are optional.
         static int ParticlesUnder(MonoBehaviour solver)
         {
             var roots = new List<Transform>();
@@ -696,9 +643,7 @@ namespace AvatarBridge
             return count;
         }
 
-        // A MeshCloth has no roots: it simulates its source meshes' vertices,
-        // fewer once reduction merges near ones by rules only the package
-        // applies. So the count is a ceiling, and never called transforms.
+        // MeshCloth simulates vertices, fewer after the package's reduction: a ceiling, not transforms.
         static int MeshClothVertices(MonoBehaviour solver)
         {
             var data = solver.GetType().GetProperty("SerializeData")?.GetValue(solver);
@@ -716,11 +661,8 @@ namespace AvatarBridge
             return count;
         }
 
-        // Materials that could share one texture, if anybody ever wrote the
-        // pass: same shader, and nothing animates them apart.
-        //
-        // Named only. Atlasing rewrites UVs and merges materials, which
-        // breaks every per-slot material property a converted avatar has.
+        // Atlas candidates: same shader, nothing animates them apart. Named only: atlasing
+        // breaks every per-slot material property.
         static void FindAtlasCandidates(CVRAvatar avatar, HashSet<Material> materials, Report report)
         {
             var animated = new HashSet<string>(System.StringComparer.Ordinal);
@@ -808,14 +750,8 @@ namespace AvatarBridge
             return use;
         }
 
-        // What the card is spent on: the memory the graphics card holds.
-        //
-        // Profiler.GetRuntimeMemorySizeLong is not it. In the editor every
-        // texture also keeps a copy on the CPU side, so it answers twice the
-        // truth for all of them, which is worse than a rough number because
-        // it looks precise. Crunch does not appear here either: it is a
-        // download size, and a crunched texture unpacks to its plain DXT
-        // size the moment it is uploaded.
+        // GPU memory. Not Profiler.GetRuntimeMemorySizeLong: the editor keeps a CPU copy too,
+        // so it reads double. Crunch is download only; it unpacks to plain DXT on upload.
         internal static long GpuBytes(Texture tex)
         {
             var format = tex.graphicsFormat;
@@ -839,8 +775,7 @@ namespace AvatarBridge
             long block = GraphicsFormatUtility.GetBlockSize(format);
             if (!GraphicsFormatUtility.IsCompressedFormat(format)) return (long)width * height * block;
 
-            // Compressed formats store one block per 4x4 patch, and a patch is
-            // spent whole however little of it the last row or column uses.
+            // Blocks are 4x4 and a partial edge block costs a whole one.
             int wide = (width + 3) / 4;
             int tall = (height + 3) / 4;
             return (long)wide * tall * block;
@@ -864,12 +799,10 @@ namespace AvatarBridge
         internal static IEnumerable<Texture> TexturesOf(Material m)
         {
             if (m == null || m.shader == null) yield break;
-            // Asked by name, never by shader property index: scanning a whole project, a
-            // broken or recompiling shader reported more properties than it would hand out.
+            // By name, not index: a broken or recompiling shader reports more properties than it hands out.
             foreach (int id in m.GetTexturePropertyNameIDs())
             {
-                // The list keeps slots saved under any shader the material ever had, so a
-                // missing shader or an old one's leftovers would count as rendered.
+                // The list keeps slots from old shaders, which would count as rendered.
                 if (!m.HasTexture(id)) continue;
                 var tex = m.GetTexture(id);
                 if (tex != null) yield return tex;
@@ -942,10 +875,7 @@ namespace AvatarBridge
             return sb.ToString();
         }
 
-        // The conversion report's section. The advice is in the open; the
-        // full card folds away, because a reader who wants every texture
-        // will open it and one who does not should still see the sentence
-        // that matters.
+        // Report section: advice open, the full card folded.
         public static string Markdown(Report r)
         {
             var sb = new StringBuilder();
@@ -971,9 +901,7 @@ namespace AvatarBridge
             return sb.ToString();
         }
 
-        // `markdown` decides whether the sentence that matters is emphasised
-        // or plain. The window draws report rows as text, so asterisks meant
-        // for a document showed up in the inspector as asterisks.
+        // `markdown`: the window draws rows as plain text, where asterisks show literally.
         public static string Summary(Report r, bool markdown = false)
         {
             long saved = Reclaimable(r);

@@ -4,24 +4,11 @@
 //
 //   Tools > Avatar Bridge > Dev > Atlas > Screen atlas: rendezvous
 //
-// Two sockets and a plug, all draggable. Each socket publishes into a cell
-// derived from its own world position. The plug derives ITS cell, reads its
-// own and the neighbouring cells out of the grab, and reports what it found
-// and how far off it was. Nobody is told anything.
-//
-// Four things this has to settle, and only the first is obvious:
-//
-//   does the rendezvous work at all
-//   is the error about 0.24 mm rather than spike 2's 4 mm
-//   does it survive a CELL BOUNDARY, where socket and plug are centimetres
-//     apart in different cells
-//   does the occupancy flag survive the grab, or does an empty cell read as
-//     a socket sitting at the cell origin
-//
-// The neighbourhood is the real design question. Reading only your own cell
-// misses a socket a centimetre the other side of a boundary; reading 3x3x3
-// costs 27 taps. If 27 is too many the grid has to be coarser, which costs
-// precision. This measures which radius is actually needed.
+// Sockets publish into a cell hashed from their position; the plug reads its
+// own and neighbouring cells from the grab. Settles: does it work, is the
+// error ~0.24 mm (spike 2: 4 mm), does it survive a cell boundary, and does an
+// empty cell read empty. Own cell only misses a socket across a boundary;
+// 3x3x3 costs 27 taps, and fewer means a coarser, less precise grid.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using UnityEditor;
@@ -42,27 +29,19 @@ public class SpikeCell : EditorWindow
     int _radius = 1;
     bool _flipY = true;
 
-    // Cost measurement. A named grab runs once per frame per NAME, so the
-    // cost should scale with CAMERAS and not with sockets. Both halves are
-    // worth measuring rather than assuming: extra cameras to see the per
-    // camera slope, extra sockets to confirm the slope is flat.
+    // A named grab runs once per frame per name, so cost should scale with
+    // cameras, not sockets. Measure both.
     int _extraCameras = 0;
     int _extraSockets = 0;
     int _taps = 27;
     int _tapMeshes = 8;
     bool _tapsOnly = true;
 
-    // WHERE IN THE FRAME the atlas is drawn, which decides whether anyone
-    // can see it. Unity lets a material override its shader's queue, so this
-    // needs no new shaders: clear at base, writers at base+1, grabber at
-    // base+2, and the grab therefore happens before the scene paints over
-    // the region. Background is 1000 and Geometry is 2000, so a base of 1000
-    // puts the whole atlas before any opaque geometry.
+    // Material queue overrides: clear at base, writers +1, grabber +2, so the
+    // grab runs before the scene paints over it. 1000 = before opaque geometry (2000).
     int _queueBase = 1000;
     string _queueNote = "";
-    // Pixel-snapped mode: the atlas is placed in PIXELS rather than clip
-    // units, so cells land on exact pixel boundaries and the readback can
-    // hit their centres however small they are.
+    // Placed in pixels, so readback hits cell centres however small.
     bool _snap = true;
     int _cellPx = 2;
     const int OriginPx = 8;
@@ -92,12 +71,8 @@ public class SpikeCell : EditorWindow
         if (_phase == 0)
         {
             _onMs = avg;
-            // Toggling the whole root changes the SCENE, not the atlas: 40
-            // extra spheres cost about 7.5 ms whether they read the atlas
-            // sixty-four times or not at all, which is what the first run of
-            // this measured and I read as a tap cost. Tap mode holds every
-            // object in place and changes only the tap count, so the delta
-            // is the taps and nothing else.
+            // Toggling the root measures the scene: 40 spheres cost ~7.5 ms with
+            // or without taps. Tap mode changes only the tap count.
             if (_tapsOnly) SetTaps(0);
             else if (root != null) root.SetActive(false);
             _phase = 1;
@@ -143,10 +118,7 @@ public class SpikeCell : EditorWindow
 
         _cellSize = EditorGUILayout.Slider("Cell size, metres", _cellSize, 0.1f, 2f);
         _grid = EditorGUILayout.IntSlider("Cells across", _grid, 2, 16);
-        // Down to a pixel or two. The payload is read from the cell CENTRE, so
-        // one pixel is enough in principle; what breaks it is anything that
-        // blends neighbours, MSAA or a resolve, and how far off centre the
-        // readback lands when a cell is only a pixel wide.
+        // Read at the cell centre, so one pixel suffices unless MSAA or a resolve blends neighbours.
         _cellPixels = EditorGUILayout.Slider("Cell on screen", _cellPixels, 0.002f, 0.06f);
         _snap = EditorGUILayout.ToggleLeft("Snap the atlas to whole pixels", _snap);
         if (_snap) _cellPx = EditorGUILayout.IntSlider("Cell, pixels", _cellPx, 1, 16);
@@ -155,10 +127,7 @@ public class SpikeCell : EditorWindow
             shownPx + " px   atlas " + (shownPx * _grid) + " px across"
             + (_snap ? "   (snapped)" : "   (clip space, 1920 wide)"));
         _radius = EditorGUILayout.IntSlider("Neighbour radius", _radius, 0, 2);
-        // ReadPixels has y=0 at the BOTTOM; clip space +1 is the top. The
-        // reader shader compensates through _TexelSize.y and this did not,
-        // so the first run sampled the floor and every cell read as occupied
-        // because the screen is opaque.
+        // ReadPixels has y=0 at the bottom, clip +1 at the top; unflipped, it sampled the floor.
         using (new EditorGUI.DisabledScope(_snap))
             _flipY = EditorGUILayout.ToggleLeft(
                 _snap ? "Flip Y (not used when snapped)" : "Flip Y when reading back", _flipY);
@@ -215,9 +184,7 @@ public class SpikeCell : EditorWindow
         var root = new GameObject(Root);
         Undo.RegisterCreatedObjectUndo(root, "YAPS atlas rendezvous spike");
 
-        // Draws first and paints the whole atlas alpha 0, so an empty cell
-        // can be told from an occupied one. Without it the grab returns the
-        // opaque screen and every cell reads as a socket.
+        // Alpha 0 first, or the opaque screen reads as a socket in every cell.
         var clearShader = Shader.Find("YAPS/Spike Clear");
         if (clearShader != null)
         {
@@ -243,14 +210,8 @@ public class SpikeCell : EditorWindow
         DestroyImmediate(plug.GetComponent<Collider>());
         plug.GetComponent<MeshRenderer>().sharedMaterial = Asset("PlugMarker", reader);
 
-        // A DEDICATED grabber, scaled huge so no camera can cull it.
-        //
-        // A camera only grabs if something carrying the GrabPass renders in
-        // it. The plug marker is a small cube near the origin, so an extra
-        // camera looking from across the scene may simply not see it and
-        // never grab at all, which is why the first per-camera measurement
-        // was unverified. The shader writes clip space and ignores this
-        // object's transform, so scale changes nothing except the bounds.
+        // A dedicated grabber with huge bounds: a camera only grabs if a GrabPass
+        // renders in it. The shader ignores the transform.
         var grab = GameObject.CreatePrimitive(PrimitiveType.Quad);
         grab.name = "Grabber";
         grab.transform.SetParent(root.transform, false);
@@ -364,9 +325,7 @@ public class SpikeCell : EditorWindow
             // nothing to flip. The toggle only applies to clip-space mode.
             int py = _snap ? up2 : (_flipY ? dn2 : up2);
             Color got = shot.GetPixel(px, py);
-            // Alpha alone cannot be trusted: an empty cell holds whatever the
-            // screen had there, and the screen is opaque. Require the flag
-            // AND a payload that is not obviously scene colour.
+            // Alpha alone is not enough over an opaque screen; also reject scene colour.
             if (got.a < 0.5f) continue;
             Vector3 at = ((Vector3)c + new Vector3(got.r, got.g, got.b)) * _cellSize;
             float d = Vector3.Distance(at, me);
@@ -395,9 +354,7 @@ public class SpikeCell : EditorWindow
                 + (hits.Count > 0 ? "\n" + string.Join("\n", hits) : "");
     }
 
-    // Scans the whole grab for the two socket patches and says which
-    // orientation finds them. Guessing at a flip is how the first run wasted
-    // twenty-seven reads on the floor.
+    // Scans the grab for the socket patches and reports which orientation finds them.
     void Locate()
     {
         var tex = Shader.GetGlobalTexture("_YAPS_SpikeAtlas") as RenderTexture;
@@ -446,11 +403,8 @@ public class SpikeCell : EditorWindow
         return Vector3.Distance(new Vector3(c.r, c.g, c.b), want);
     }
 
-    // Drawing the atlas early and grabbing before the scene covers it is the
-    // only way it can be invisible: any pixel it writes IS on screen, so the
-    // scene has to paint over it afterwards. That works wherever opaque
-    // geometry covers those pixels and fails against open sky, which is what
-    // this is for finding out.
+    // The atlas is only hidden if the scene paints over it afterwards: works
+    // under opaque geometry, fails against open sky.
     void ApplyQueue()
     {
         Set("Clear", _queueBase);

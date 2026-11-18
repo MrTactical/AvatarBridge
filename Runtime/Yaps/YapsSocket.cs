@@ -71,14 +71,8 @@ namespace AvatarBridge.Yaps
                  "atlas only: by marker light, every plug answers.")]
         public List<string> tags = new List<string> { YapsTags.Shared };
 
-        // WHICH VERSION BUILT THIS, so a prop made months ago can say so.
-        //
-        // A prop is built once and never revisited: every fix ships to new
-        // ones and reaches no existing one, and nothing tells the owner. A
-        // prop carrying the half-size trigger boxes, or a channel that
-        // configured one material out of three, looks identical to a current
-        // one. The toolkit stamps this when it builds or bakes a socket and
-        // the inspector says so when it falls behind.
+        // Version that built or baked this. A prop is never rebuilt on its own, so
+        // the inspector uses this to say when it misses later fixes.
         [HideInInspector] public string builtBy = "";
 
         // The material the socket bake replaced on its own mesh, so Remove
@@ -86,18 +80,15 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Material bakedFrom;
 
-        // Where that material came off. Remove put it back on slot 0, which
-        // is the wrong slot on any socket baked into another one, and a mesh
-        // set back to None left nothing pointing at the renderer at all.
+        // Where it came off. Slot 0 is wrong for a socket baked into another one,
+        // and the mesh field may be None by then.
         [HideInInspector]
         public Renderer bakedRenderer;
         [HideInInspector]
         public int bakedSlot = -1;
 
-        // What the last build called this socket's reactions layer and its
-        // depth parameter. Names follow the bone, so they move when the
-        // socket does; without a record of the old ones a rebuild would
-        // leave the old layer behind and Remove would miss it.
+        // Last build's layer and parameter names. They follow the bone, so a moved
+        // socket needs the old names to clean up.
         [HideInInspector]
         public string builtLayer;
         [HideInInspector]
@@ -106,8 +97,7 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public string builtAnimations;
 
-        // Whether a build gives this socket an in-game readout. Drawn in
-        // the inspector's See it work card. Off unless asked for, as the plug's.
+        // Whether a build adds an in-game readout. Off unless asked for.
         [HideInInspector]
         public bool readout;
 
@@ -126,9 +116,8 @@ namespace AvatarBridge.Yaps
                  "only: to any other plug, by marker light, and to plugs built before 5.0, this is an ordinary hole.")]
         public YapsSocket portalExit;
 
-        // The exit's writer the last build made. It lives under the exit, so
-        // without this a rebuild aimed elsewhere, or Remove, would leave it
-        // publishing for an entrance that no longer leads there.
+        // The exit's writer from the last build. It lives under the exit, so a
+        // rebuild or Remove needs this to find it.
         [HideInInspector]
         public GameObject builtExit;
 
@@ -158,26 +147,17 @@ namespace AvatarBridge.Yaps
             }
             if (_previewing != null && _previewing != this) { _previewing.preview = false; _previewing.Release(); }
             _previewing = this;
-            // Play Mode stands the preview down so it cannot race whatever
-            // drives the material there, but on most avatars the plug mesh
-            // only APPEARS in Play Mode: it ships switched off and a toggle
-            // brings it in. That left no way at all to look at the bend.
+            // Off in Play Mode so it cannot race what drives the material there,
+            // unless asked: many plug meshes only appear in Play Mode via a toggle.
             if (UnityEngine.Application.isPlaying && !previewInPlayMode) return;
 
-            // Plugs fetched once per tick, and only once a YAPS renderer
-            // turns up: CarrierOf used to scan the scene per renderer, twice.
+            // Fetched lazily, once per tick, not per renderer.
             YapsPlug[] plugs = null;
 
-            // Inactive ones too. An avatar plug ships switched off and an
-            // erection clip activates it at runtime, so in edit mode the
-            // mesh is hidden. Skipping inactive objects here wrote no block
-            // at all and the shader read zeros, which decode to the far
-            // corner of the channel box and look exactly like a bad encode.
-            //
-            // The renderer's own block, never one slot's. A block on a slot
-            // replaces the renderer's for that slot, and the renderer's is
-            // where the Animator writes, so a per-slot preview hid every menu
-            // toggle on the plug for the rest of the session.
+            // Inactive ones too: plugs ship switched off, and an unwritten block
+            // reads as zeros, which look exactly like a bad encode.
+            // The renderer's block, never a slot's: a slot block replaces the
+            // renderer's one, where the Animator writes, hiding every menu toggle.
             foreach (var r in FindObjectsOfType<Renderer>(true))
             {
                 r.GetSharedMaterials(_mats);
@@ -201,9 +181,7 @@ namespace AvatarBridge.Yaps
                 if (kind == SocketKind.Ring && oneWay
                     && Vector3.Dot(transform.forward, origin - transform.position) < 0f) engaged = 0f;
                 r.GetPropertyBlock(Block);
-                // World space: the one route the shader still reads. The
-                // contact channel's own route, which this used to imitate,
-                // no longer bends a plug in game.
+                // World space: the only route the shader still reads.
                 Block.SetFloat("_YAPS_ChannelSpace", 0f);
                 Block.SetVector("_YAPS_SocketPos", transform.position);
                 Block.SetVector("_YAPS_SocketForward", transform.forward);
@@ -212,24 +190,9 @@ namespace AvatarBridge.Yaps
             }
         }
 
-        // Where the plug on this renderer actually STARTS.
-        //
-        // The preview used the renderer's own transform, which is right for
-        // a prop and wrong for every skinned plug: a skinned renderer sits
-        // at the avatar root, so a plug on the hips measured its distance
-        // to a socket from between the avatar's feet. That reads as far too
-        // far, the simulated channel never engages, and a marker light
-        // quietly carries the preview instead, so the editor showed the
-        // light path while appearing to show the channel.
-        //
-        // The bake leaves "YAPS Markers" on the plug at the frame origin it
-        // measured, which is exactly the point the shader bends from.
-        // The plug this renderer belongs to: its own, or the one CARRYING
-        // it. A collar swept in by an armature plug has no plug of its own,
-        // and falling back to its own bounds centre gave it its own gate,
-        // measured from the waist while the body's measured from the feet,
-        // so the collar engaged first and visibly bent before everything
-        // around it, in both preview routes. One plug, one origin, one gate.
+        // The plug this renderer belongs to: its own, or the one carrying it. A mesh
+        // swept in by an armature plug must share that plug's origin and gate, or it
+        // engages and bends before everything around it.
         static YapsPlug CarrierOf(Renderer r, YapsPlug[] plugs)
         {
             YapsPlug carried = null;
@@ -242,6 +205,10 @@ namespace AvatarBridge.Yaps
             return carried;
         }
 
+        // Where the plug starts. Not the renderer's transform: a skinned renderer
+        // sits at the avatar root, so the channel never engaged and a marker light
+        // carried the preview instead. "YAPS Markers" sits at the measured frame
+        // origin, the point the shader bends from.
         static Vector3 PlugOrigin(Renderer r, YapsPlug[] plugs)
         {
             var carrier = CarrierOf(r, plugs);
@@ -250,9 +217,8 @@ namespace AvatarBridge.Yaps
                 var markers = carrier.transform.Find("YAPS Markers");
                 return markers != null ? markers.position : carrier.transform.position;
             }
-            // No component to ask: a converted avatar keeps the bake and
-            // loses the authoring component. The bounds centre is nearer the
-            // truth than the avatar root, and never worse than it.
+            // A converted avatar keeps the bake but not the component. Bounds
+            // centre is never worse than the avatar root.
             return r is SkinnedMeshRenderer ? r.bounds.center : r.transform.position;
         }
 
@@ -276,11 +242,8 @@ namespace AvatarBridge.Yaps
             _isYaps.Clear();
         }
 
-        // Asking a material whether it carries the YAPS properties is not
-        // free: Poiyomi's custom drawers log "Failed to create material
-        // drawer" on every HasProperty, and this ran for every material on
-        // every renderer on every frame, which buried the console. The
-        // answer cannot change for a given material, so ask it once.
+        // Cached: Poiyomi's drawers log "Failed to create material drawer" on every
+        // HasProperty, which per material per frame buried the console.
         static readonly System.Collections.Generic.Dictionary<Material, bool> _isYaps =
             new System.Collections.Generic.Dictionary<Material, bool>();
 

@@ -7,17 +7,10 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for blendshapes a plug renderer simply holds.
-    //
-    // The bent path rebuilds each vertex from the bake, so a shape held at a
-    // fixed weight with no animation has to reach the bake one way or the
-    // other: as the material's starting weight when the shape is baked, or
-    // folded into the rest pose when it is not. Before, both were dropped
-    // and a part hidden by a shape at 100 reappeared mid-bend.
-    //
-    // A strip of vertices along +Z on one bone. "Held" pushes vertex 5 along
-    // x and is left out of the bake; "Baked" pushes vertex 6 along y and is
-    // baked. Held at 100 and 50.
+    // Blendshapes a plug renderer holds at a fixed weight. The bent path rebuilds vertices from the
+    // bake, so the weight must reach it: as the starting weight if baked, folded into the rest pose
+    // if not, or a part hidden by a shape at 100 reappears mid-bend.
+    // "Held" moves vertex 5 along x, unbaked; "Baked" moves vertex 6 along y. Held at 100 and 50.
     public static class YapsHeldShapeTest
     {
         const string Dir = "Assets/__YapsHeldShapeTest";

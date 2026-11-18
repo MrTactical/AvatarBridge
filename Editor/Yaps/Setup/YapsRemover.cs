@@ -148,9 +148,7 @@ namespace AvatarBridge
             }
             YapsShapeSim.Release(socket);
 
-            // The reactions layer and its parameter, in every controller.
-            // What it is called now, and what the last build called it: the
-            // names follow the bone, so they move when the socket does.
+            // Under its current and last-built names: names follow the bone.
             var controllers = ControllersOf(top);
             string layer = YapsSocketReactions.LayerName(socket);
             string parameter = YapsSocketReactions.Parameter(socket);
@@ -169,10 +167,8 @@ namespace AvatarBridge
             if (!string.IsNullOrEmpty(socket.builtAnimations) && socket.builtAnimations != played)
                 RemoveLayer(controllers, socket.builtAnimations, parameter);
             RemoveIfUnused(controllers, YapsSocketReactions.One);
-            // By name, once every layer is out. A second RemoveLayer on a layer
-            // already gone never reached the parameter, so the legacy one
-            // always stayed, and the last build's name could still be read by
-            // its animations layer when the reactions layer went.
+            // By name, once every layer is out: removing per layer left a
+            // parameter still read by the other layer, or never reached it.
             RemoveIfUnused(controllers, YapsSocketReactions.LegacyParameter(socket));
             if (!string.IsNullOrEmpty(socket.builtParameter)) RemoveIfUnused(controllers, socket.builtParameter);
 
@@ -186,10 +182,7 @@ namespace AvatarBridge
                 if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
-            // The bake on its own mesh: the material it replaced goes back, on
-            // the slot the bake recorded. Slot 0 was an assumption, and on a
-            // socket baked into any other slot it painted the socket's original
-            // over slot 0 and left the bake where it was.
+            // The original goes back on the recorded slot, never assumed 0.
             var baked = socket.bakedRenderer != null ? socket.bakedRenderer : socket.renderer;
             int bakedSlot = socket.bakedSlot >= 0 ? socket.bakedSlot : 0;
             if (baked != null && socket.bakedFrom != null)
@@ -261,9 +254,8 @@ namespace AvatarBridge
             var top = YapsNativeBuilder.AvatarRoot(plug.transform);
             var renderer = plug.Target;
             var done = new List<string>();
-            // Other plugs baked on the same mesh. Its menu toggle and size
-            // wiring are theirs too, and so are their slots: removing one plug
-            // used to un-bake every plug on the mesh.
+            // Other plugs on the mesh share its toggle, size wiring and slots,
+            // so those stay.
             var sharing = SharingOf(plug);
 
             Undo.IncrementCurrentGroup();
@@ -321,9 +313,8 @@ namespace AvatarBridge
                     done.Add($"\"{renderer.name}\" back on the mesh from before its second copy");
                 }
 
-                // The mesh from before this plug's slot split off, while that
-                // split is still the last one made on it. A later one moved
-                // more triangles off the same copy, so it stays.
+                // Only while this split is the last on the mesh; a later one
+                // moved more triangles off the same copy.
                 if (plug.splitFrom != null && renderer is SkinnedMeshRenderer skin && skin.sharedMesh != null
                     && skin.sharedMesh.subMeshCount == plug.splitFrom.subMeshCount + 1)
                 {
@@ -334,9 +325,8 @@ namespace AvatarBridge
                     done.Add($"\"{renderer.name}\" back on the mesh from before its slot split off");
                 }
 
-                // The plain mesh from before the bake widened its bounds on a copy,
-                // while that copy is still on it. Another plug on the mesh still
-                // bends past those bounds, so it keeps the copy and takes the record.
+                // The pre-bounds plain mesh, unless another plug still bends past
+                // those bounds: it keeps the copy and takes the record.
                 var filter = renderer.GetComponent<MeshFilter>();
                 if (plug.boundsFrom != null && filter != null && filter.sharedMesh != null
                     && AssetDatabase.GetAssetPath(filter.sharedMesh).EndsWith(" bounds.asset"))
@@ -369,10 +359,8 @@ namespace AvatarBridge
                 YapsDebugOverlayBuilder.Build(readoutOn, null);
             }
 
-            // The other meshes the bake reached, which kept their baked
-            // materials and went on bending with the plug gone. Only the slots
-            // it recorded there, each back on its own original: nothing else on
-            // them is the plug's, and the primary's original is none of theirs.
+            // Other meshes the bake reached, or they bend with the plug gone.
+            // Only recorded slots, each back on its own original.
             foreach (var mesh in YapsToggles.MeshesOf(plug).Where(m => m != renderer))
             {
                 var mats = mesh.sharedMaterials;
@@ -424,10 +412,7 @@ namespace AvatarBridge
                 done.Add($"the component on \"{name}\" and its markers");
             }
 
-            // The contact channel, when this was the last baked plug. It exists to
-            // carry plugs, so leaving it behind means the objects, layers and
-            // parameters sit there until someone happens to run Clean up leftovers,
-            // which is where this lived and nowhere else.
+            // The contact channel, when this was the last baked plug.
             if (avatar != null && !avatar.GetComponentsInChildren<YapsPlug>(true)
                     .Any(p2 => p2 != null && p2 != plug && p2.Target != null && BakedSlots(p2.Target).Any()))
             {
@@ -463,9 +448,7 @@ namespace AvatarBridge
             var avatar = top.GetComponentInChildren<CVRAvatar>(true);
             var sockets = top.GetComponentsInChildren<YapsSocket>(true);
             var plugs = top.GetComponentsInChildren<YapsPlug>(true);
-            // And what the last build called them: a renamed bone moves the
-            // names, and the layer plays on under the old one until the next
-            // Build, which honours it, as Remove does.
+            // And the last build's names: a renamed bone moves them.
             var liveLayers = new HashSet<string>(sockets.Select(YapsSocketReactions.LayerName)
                 .Concat(sockets.Select(YapsSocketReactions.AnimationsLayerName))
                 .Concat(sockets.Select(s => s.builtLayer))
@@ -512,11 +495,9 @@ namespace AvatarBridge
                     var t = e.toggleSettings;
                     if (t.useAnimationClip)
                     {
-                        // The toolkit's plug toggle whose plug is gone: its
-                        // clip aims at a path with no bake on it any more.
-                        // Both of a plug's toggles, deform and own sockets: the
-                        // second writes no _YAPS_Enabled, read as a null path,
-                        // and was swept as gone from every live plug.
+                        // A plug toggle aiming at a path with no bake. Both
+                        // toggles count: the own-sockets one writes no
+                        // _YAPS_Enabled and was swept from live plugs.
                         if (!Generated(t.animationClip)) continue;
                         var paths = AnimationUtility.GetCurveBindings(t.animationClip)
                             .Where(b => Switch(b))
@@ -549,8 +530,7 @@ namespace AvatarBridge
                 if (menu != null) done.Add(menu.TrimEnd('.'));
             }
 
-            // Tag choosers keyed on no plug's mesh: the build only walks live
-            // plugs, so a plug deleted by hand left its chooser for good.
+            // Tag choosers keyed on no plug's mesh: Build only walks live plugs.
             if (avatar != null)
             {
                 var keys = new HashSet<string>(plugs.Where(p => p != null && p.Target != null)
@@ -559,10 +539,8 @@ namespace AvatarBridge
                     done.Add($"tag chooser \"{chooser}\": its plug is gone");
             }
 
-            // The contact channel, when no plug on this avatar is baked any
-            // more. Its hosts sit under the plug, and its layers and
-            // parameters are named for the plug's index, so nothing else
-            // sweeps them: a plug removed by hand leaves all three behind.
+            // The contact channel, once no plug is baked: named by plug index,
+            // so nothing else sweeps it.
             if (avatar != null && !plugs.Any(p => p != null && p.Target != null && BakedSlots(p.Target).Any()))
             {
                 int cleared = YapsNativeChannel.Clear(avatar);
@@ -799,8 +777,7 @@ namespace AvatarBridge
         }
 
         // A plug's tag chooser: a dropdown, its "YAPS tags" layer and its Int.
-        // YapsTagMenu only walks live plugs, so no build takes a gone plug's
-        // chooser out, and its layer went on writing a restored material.
+        // No build removes a gone plug's chooser, and its layer kept writing.
         const string ChooserPrefix = "YAPS/Tags/";
         const string ChooserLayer = "YAPS tags ";
 
@@ -846,23 +823,16 @@ namespace AvatarBridge
             return list.Count;
         }
 
-        // A wired curve, on any material slot. The list is spelled slot 0's
-        // way and a curve on a second slot spells itself "material[1]._X",
-        // so Remove used to walk straight past one and leave it behind.
+        // On any slot: a second slot's curve reads "material[1]._X".
         static bool Wired(UnityEditor.EditorCurveBinding b)
         {
             return WiredProperties.Contains(YapsToggles.Bare(b.propertyName));
         }
 
-        // A slot another plug on the mesh still bends with: the material it
-        // last baked, a slot drawing its shaft, or a slot only it recorded. A
-        // record of this plug's for a slot kept that way goes to the plug
-        // keeping it, so its own Remove can still put the original back.
-        //
-        // The shaft test is the one that holds for a material baked in place
-        // (already on a YAPS shader): nothing is recorded, and a plug whose
-        // slot a later one took over has no readout source either.
-        // transfer: false for the confirmation, which must change nothing.
+        // A slot another plug still bends with (its last bake, its shaft, or
+        // only its record). This plug's record passes to it, so its Remove can
+        // restore. The shaft test covers materials baked in place, which have
+        // no record. transfer: false for the confirmation, which changes nothing.
         static bool KeptFor(YapsPlug plug, List<YapsPlug> sharing, Renderer renderer, int slot, bool transfer)
         {
             var material = renderer.sharedMaterials[slot];
@@ -911,12 +881,9 @@ namespace AvatarBridge
         static readonly System.Text.RegularExpressions.Regex CloneName =
             new System.Text.RegularExpressions.Regex(@"^(.+?)\s*(?:\(YAPS\)|_YAPS_)(?: .*)?$");
 
-        // The original a plug's clone was made from, traced by name.
-        //
-        // Matching only an exact " (YAPS)" or "_YAPS_" ending meant no clone
-        // whose file name carries its hash could find its way home, and Remove
-        // fell back to reverting the shader on a generated material and leaving
-        // it in the slot. how: what decided it, or why nothing did.
+        // The original a clone was made from, traced by name, including a
+        // hash suffix (exact endings alone left the clone in the slot).
+        // how: what decided it, or why nothing did.
         static Material OriginalOfSlot(Material clone, out string how)
         {
             how = null;
@@ -941,16 +908,10 @@ namespace AvatarBridge
             return null;
         }
 
-        // The slots Remove restores, each with what goes back in it (null: the
-        // deform goes off) and what decided it. Plan and RemovePlug both read
-        // it, so the dialog promises what Remove does.
-        //
-        // Each slot's OWN original first: a plug whose vertices span several
-        // materials replaced several, and the primary's in all of them paints
-        // the mesh with one of its parts. Keyed on the renderer too, since a
-        // plug spanning meshes has a slot 0 on each. Then the slot's clone
-        // traced home by name. bakedFrom is the PRIMARY's original, so it is
-        // only safe when one slot is left for it to belong to.
+        // Each slot and what goes back (null: deform off). Plan and RemovePlug
+        // both read it, so the dialog matches. Each slot's OWN original first,
+        // keyed by renderer too; then the clone traced by name. bakedFrom is
+        // the PRIMARY's, safe only when one slot is left.
         static List<(int slot, Material back, string how)> Restores(YapsPlug plug, List<YapsPlug> sharing,
             Renderer renderer, bool transfer)
         {

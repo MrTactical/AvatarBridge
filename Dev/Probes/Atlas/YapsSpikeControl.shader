@@ -1,10 +1,5 @@
-// The control. Identical to the writer in every way except that it has no
-// GrabPass anywhere in the file.
-//
-// A magenta quad in game means a shader failed, and "ChilloutVR rejects
-// GrabPass" and "custom shaders do not survive this upload at all" look
-// exactly the same from the outside. This one separates them: if the control
-// draws and the reader is pink, the GrabPass is the reason.
+// The writer with no GrabPass. If this draws and the reader is magenta, the
+// GrabPass was rejected, not custom shaders in general.
 Shader "YAPS/Spike Control"
 {
     Properties

@@ -175,8 +175,7 @@ namespace AvatarBridge
             _buildCounts = BridgeElements.Hint("Nothing to build yet.");
             build.Body.Add(_buildCounts);
 
-            // What it did, line by line, where the button is. A summary
-            // label was too easy to miss for work this large.
+            // Line by line, under the button: a summary label was easy to miss.
             _buildLog = new VisualElement();
             build.Body.Add(_buildLog);
             _pages.Add(build);
@@ -214,9 +213,8 @@ namespace AvatarBridge
             // Whether it is there at all, before any button: a tester could not tell.
             _squashState = BridgeElements.Notice(Tone.Info, "");
             squash.Body.Add(_squashState);
-            // One way in: the component, on the bone the parts hang from, walks parts, build,
-            // preview and feel in order. Three buttons opening three places read as three features.
-            // Strong, the card's own action: the page's one primary is Bake every plug and verify.
+            // One way in: the component walks parts, build, preview and feel in order (three
+            // buttons read as three features). Strong, not primary: that is Bake every plug.
             squash.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Set up squash", OpenSquash, null, ButtonKind.Strong)));
             squash.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Remove squash", RemoveSquash,
@@ -289,10 +287,8 @@ namespace AvatarBridge
             _propStatus = Status();
             tools.Body.Add(_propStatus);
 
-            // No button adds the channel any more: the plug's shader no longer
-            // reads it. Dropping one an older build added stays, shown only
-            // while the selection carries one. Its result lands in the props
-            // line above, since this section hides once the channel is gone.
+            // Only removes an older build's channel, shown while one exists. Its
+            // result lands in the props line, since this section then hides.
             _legacy = new VisualElement();
             _legacy.Add(BridgeElements.SubHeading("Legacy"));
             _legacy.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Drop the contact channel", () =>
@@ -442,9 +438,7 @@ namespace AvatarBridge
         void Pick(GameObject picked)
         {
             var top = picked != null ? YapsNativeBuilder.AvatarRoot(picked.transform).gameObject : null;
-            // Results about the last target say nothing about this one. Hidden, not
-            // cleared: Clear() takes the box's own text with it, and every later
-            // result showed as an empty box.
+            // Hidden, not cleared: Clear() removes the box's own text too.
             if (top != _target)
             {
                 _addStatus?.Hide();
@@ -575,8 +569,7 @@ namespace AvatarBridge
             // Empty, the notice below opens with the answer instead.
             _summary.EnableInClassList("ab-hidden", _scan.Total == 0);
             _build?.SetActive(_scan.Total > 0);
-            // Carried meshes are not plugs to bake: their carrier bakes them.
-            // Counting them promises a number the build will not do.
+            // Carried meshes are not counted: their carrier bakes them.
             int bakeable = _scan.Plugs.Count(p => p.CarriedBy == null);
             if (_buildCounts != null)
             {
@@ -598,10 +591,8 @@ namespace AvatarBridge
                         .Select(o => o.Name).ToList();
                     if (twins.Count > 0) f.Notes.Add("on the same spot as " + string.Join(", ", twins) + ", one too many?");
                 }
-                // A mesh another plug carries is not a plug. It gets a row, since it IS
-                // being changed and a change nobody can see is the one people add a
-                // second plug to fix, but a nested quiet one that says whose it is and
-                // offers none of the controls that would make it a peer.
+                // A carried mesh gets a quiet nested row saying whose it is, with
+                // no controls: hidden, people add a second plug to "fix" it.
                 if (f.CarriedBy != null)
                 {
                     var carried = BridgeElements.ReportRow(Tone.Muted, "Part of: " + f.Name,
@@ -613,8 +604,7 @@ namespace AvatarBridge
                     return;
                 }
 
-                // Nothing to fix but something to say stays green: working as
-                // designed must never wear the colour that means "you have a problem".
+                // Working as designed stays green, never the problem colour.
                 var tone = f.Notes.Count > 0 ? Tone.Warn : f.IsYapsAlready ? Tone.Good : Tone.Info;
                 string what = f.Kind == YapsScanner.Kind.Plug ? "Plug" : (f.IsHole ? "Hole" : "Ring");
                 var detail = new List<string>();
@@ -722,12 +712,8 @@ namespace AvatarBridge
             {
                 var plug = f.Root.GetComponent<YapsPlug>();
                 if (plug == null) return;
-                // The same door the inspector's Bake goes through, menu and channel
-                // included. Bake alone left the channel holding the frames of a
-                // previous build and the menu animator unrefreshed, so one plug came
-                // out differently depending on which button was pressed. BuildAll below
-                // does those two once for the whole avatar, which is why it can call
-                // the bare Bake.
+                // The inspector's door, menu and channel included, so both buttons
+                // agree. BuildAll does those once per avatar, so it calls bare Bake.
                 var o = YapsNativeBuilder.BakeAndRefreshMenu(plug);
                 if (!o.Ok) Debug.LogError("[YAPS] " + o.Message);
                 Say(_addStatus, o.Ok ? Tone.Good : Tone.Bad, o.Message, o.Notes);
@@ -786,11 +772,8 @@ namespace AvatarBridge
                 plug = Undo.AddComponent<YapsPlug>(go);
                 plug.renderer = renderer;
                 plug.rootBone = rootBone;
-                // Left on auto. Pinning it to the best-weighted slot here reads as
-                // helpful and is not: an explicit slot means "this one only", so a plug
-                // whose vertices span several materials silently bakes into one and
-                // tears along the seam. The bake finds every slot the chain reaches; a
-                // number is the author overriding that, not the tool guessing.
+                // Left on auto: an explicit slot means "this one only", and a plug
+                // spanning materials would bake one and tear at the seam.
                 plug.materialSlot = -1;
             }
             else if (rootBone != null && plug.renderer != renderer

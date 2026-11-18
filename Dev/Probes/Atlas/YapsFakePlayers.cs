@@ -1,21 +1,11 @@
 // Publishes fake CVR player hips, so own-body logic can be tested here.
 //
-// The resolver tells a wearer's own socket from somebody else's by asking
-// ChilloutVR for every player's hip: nearest player to the plug, nearest to
-// the socket, same person or not. Those globals are written by the client and
-// are ZERO in the editor, so YapsSameBodyAt takes its "claim nothing" exit and
-// no socket is ever rejected. Every own-body path therefore behaves in the
-// editor the way it behaves for a lone prop, and the only way to see the real
-// behaviour has been to upload.
-//
-// No component. The first version of this was a MonoBehaviour and could not be
-// added to a GameObject at all: it lives in the editor assembly, AddComponent
-// gave back nothing, and the null landed a line later. Shader globals are
-// global, so nothing has to sit in the scene to hold them.
-//
-// One hip per CVRAvatar in the scene, the wearer's own included. A wearer with
-// no hip of their own reads as somebody else and the ownership test never
-// fires, which is the failure that looks like a pass.
+// The client's player-hip globals are zero in the editor, so YapsSameBodyAt
+// claims nothing and own-body paths act as a lone prop.
+// No component: a MonoBehaviour in the editor assembly cannot be added
+// (AddComponent returns null), and globals need no scene object.
+// One hip per CVRAvatar, the wearer included: without its own hip the wearer
+// reads as somebody else and the test passes without firing.
 //
 //   Tools/Avatar Bridge/Dev/Atlas/Fake CVR player hips
 #if CVR_CCK_EXISTS && UNITY_EDITOR
@@ -31,9 +21,7 @@ namespace AvatarBridge.Regression
         const string MenuPath = "Tools/Avatar Bridge/Dev/Atlas/Fake CVR player hips";
         const string Pref = "AvatarBridge.FakePlayers";
 
-        // The array is bound at 255 because Unity locks a shader array's size
-        // at first bind and the shader declares it at the client's capacity.
-        // Binding a short array once makes every later bind silently wrong.
+        // Unity locks a shader array's size at first bind; a short one breaks every later bind.
         const int Capacity = 255;
 
         static readonly Vector4[] buffer = new Vector4[Capacity];
@@ -81,9 +69,7 @@ namespace AvatarBridge.Regression
                       "Own-body rejection now runs in the editor.");
         }
 
-        // Scanning the scene per frame is not free and the answer only changes
-        // when the hierarchy does, so the list is cached and the transforms are
-        // read fresh each publish.
+        // Cached per hierarchy change; transforms are read fresh each publish.
         static void Rescan()
         {
             avatars = Object.FindObjectsOfType<CVRAvatar>(true);
@@ -131,9 +117,7 @@ namespace AvatarBridge.Regression
                 var hip = animator.GetBoneTransform(HumanBodyBones.Hips);
                 if (hip != null) { return hip; }
             }
-            // A body with no humanoid rig still needs a position, and the root
-            // is nearer the truth than nothing: an absent hip reads as absent
-            // and the ownership test claims nothing.
+            // No humanoid rig: the root beats an absent hip, which claims nothing.
             return avatar.transform;
         }
     }

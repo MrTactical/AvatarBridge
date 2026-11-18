@@ -8,15 +8,10 @@ using UnityEngine.Rendering;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for what counts as a black marker light (audit YSH-13).
-    //
-    // A plug took a socket light as protocol only below 1e-4 a channel; the socket readers took a
-    // plug's tip light below 0.01 in length. A census of the projects' avatars found kits that
-    // author their lights 1/255 grey rather than black, scaled by intensity, which on a plug's tip
-    // is its length: one plug's tip went over the socket's bound, and grey sockets sat right at
-    // the plug's. So the lights are rendered for real and unity_LightColor read back, the shipped
-    // classifier is asked, and every reader must use one test that judges colour against the
-    // light's own intensity.
+    // What counts as a black marker light (audit YSH-13). Plugs took socket lights below 1e-4 a
+    // channel, sockets took tip lights below 0.01; kits author 1/255 grey scaled by intensity (on a
+    // tip, its length), which crossed both bounds. Lights are rendered for real, unity_LightColor
+    // read back, and every reader must judge colour against the light's own intensity.
     public static class MarkerLightColourTest
     {
         const string Dir = "Assets/__MarkerLightColourTest";

@@ -12,7 +12,7 @@ using VRC.SDK3.Avatars.Components;
 namespace AvatarBridge.Regression
 {
     // Native face tracking's built shapes on each avatar a list names, without converting it:
-    // the slots the CCK fills, what the old sideless fill added, and what the build adds now.
+    // the slots the CCK fills, what the sideless fill alone added (before), and what the build adds.
     // Every built left or right half is checked: its move lies on its own side of the face, and
     // the two halves of one source add back up to it. Nothing is saved; the meshes go to a scratch
     // folder deleted at the end.

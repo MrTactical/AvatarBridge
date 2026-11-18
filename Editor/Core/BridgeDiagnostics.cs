@@ -11,16 +11,8 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Runs last, and does two things the rest of the converter doesn't.
-    //
-    // **Validates.** Every check here is for something that breaks
-    // silently rather than erroring. CVR does not complain about any
-    // of these; it quietly does nothing.
-    //
-    // **Dumps.** Every bug diagnosed on this project so far started with someone grepping the
-    // generated .controller by hand: does anything read this parameter, what compares it, what
-    // do the drivers write. Those answers now go into the report itself, so a bug report is
-    // answerable without a round trip asking for the controller.
+    // Runs last. Validates what breaks silently (CVR quietly does nothing), and dumps who
+    // reads, compares and drives each parameter, so a bug report needs no controller attached.
     public static class BridgeDiagnostics
     {
         const string Category = "Diagnostics";
@@ -47,11 +39,8 @@ namespace AvatarBridge
             ctx.Report.Appendix = BuildAppendix(ctx, master, usage);
         }
 
-        // The OGB haptics parameters by their final names, for OSC toy
-        // apps. Local ones wear a "#" and OSCGoesBrrr's automatic
-        // detection skips those, but its manual avatar-parameter links
-        // read a parameter by exact name, "#" included, so the list is
-        // what a user pastes there. Synced ones cost sync and need no setup.
+        // OSCGoesBrrr's auto detection skips "#" local names, but its manual links take the
+        // exact name, "#" included, so this list is what a user pastes there.
         static void ReportOscHaptics(BridgeContext ctx, AnimatorController master)
         {
             var names = master.parameters
@@ -98,15 +87,9 @@ namespace AvatarBridge
                     "such parameter. ChilloutVR drops those transitions, so whatever they gate never happens.");
             }
 
-            // Declared but inert. Not broken, but it is how a dead menu entry or a half-stripped
-            // system shows up, and it costs sync bits if it's synced.
-            //
-            // Parameters CVR drives itself are excluded; flagging those
-            // fires on every conversion, and a check that always fires
-            // is a check people learn to scroll past.
-            //
-            // So are native toggles: the CCK builds the layer that reads them at upload, so
-            // nothing here can, and they are working rather than left over.
+            // Declared but inert: a dead menu entry or half-stripped system, costing sync if synced.
+            // CVR-driven parameters are excluded (a check that always fires gets ignored), and so
+            // are native toggles, whose reading layer the CCK builds at upload.
             var nativeToggles = new HashSet<string>();
             if (ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
                 && ctx.CvrAvatar.avatarSettings.settings != null)
@@ -377,9 +360,7 @@ namespace AvatarBridge
         static Dictionary<string, Usage> CollectUsage(AnimatorController master)
         {
             var map = new Dictionary<string, Usage>();
-            // Muscle curves bind like animated animator parameters.
-            // Requiring a declared name separates the two; an
-            // undeclared parameter write does nothing anyway.
+            // Muscle curves bind like parameters; a declared name tells them apart.
             var declaredNames = new HashSet<string>(master.parameters.Select(p => p.name));
             Usage For(string name)
             {
@@ -399,9 +380,7 @@ namespace AvatarBridge
             {
                 if (motion is BlendTree tree)
                 {
-                    // Count only the axis fields this blend type reads.
-                    // Direct trees read neither, 1D trees only X;
-                    // leftover names would read as live references.
+                    // Direct trees read neither axis, 1D only X; leftover names would read as live.
                     if (tree.blendType != BlendTreeType.Direct)
                     {
                         For(tree.blendParameter).BlendTrees++;
@@ -506,13 +485,9 @@ namespace AvatarBridge
             // so an unknown never manufactures a loop that isn't there.
             bool Satisfied(AnimatorCondition c)
             {
-                // A serialized default only describes a parameter NOTHING drives. ChilloutVR
-                // drives its core parameters on every copy, remote ones included, so reading
-                // their defaults here describes no machine that exists.
-                //
-                // IsLocal has an answer rather than an unknown: on a
-                // remote copy it is false by definition. Reading its
-                // declared default would invert every local/remote gate.
+                // CVR drives its core parameters on every copy, so their serialized defaults
+                // describe no real machine. IsLocal is false on a remote copy by definition;
+                // its declared default would invert every local/remote gate.
                 string bare = c.parameter.TrimStart('#');
                 if (bare == "IsLocal")
                 {
@@ -621,10 +596,7 @@ namespace AvatarBridge
                     }
                 });
 
-                // A cycle only matters if the layer can reach it at
-                // these values. VRCFury parks layers in a Remote Trap
-                // state on remotes; without a reachability check the
-                // defence reads as the bug.
+                // Only reachable cycles count: VRCFury's Remote Trap state would otherwise read as the bug.
                 var reachable = new HashSet<AnimatorState>();
                 var queue = new Queue<AnimatorState>();
                 void Reach(AnimatorState s)
@@ -658,9 +630,7 @@ namespace AvatarBridge
                 string found = selfLoop;
                 if (found == null && edges.Count > 0)
                 {
-                    // Depth-first cycle search. A cycle only counts with
-                    // at least one instant edge; otherwise the layer is
-                    // a sequence, not a thrash.
+                    // Needs an instant edge; otherwise it is a sequence, not a thrash.
                     var state = new Dictionary<AnimatorState, int>();   // 0 unseen, 1 on stack, 2 done
                     var stack = new List<AnimatorState>();
                     bool Visit(AnimatorState node)
@@ -772,10 +742,7 @@ namespace AvatarBridge
             "BaseCloth", "DynamicBone", "DynamicBoneCollider", "DynamicBoneColliderBase",
             "DynamicBonePlaneCollider", "MagicaBoneCloth", "MagicaBoneSpring", "MagicaMeshCloth",
             "MagicaMeshSpring", "MagicaRenderDeformer", "MagicaVirtualDeformer",
-            // MagicaCloth 2, which the client spells out as MagicaCloth2.MagicaCloth and friends.
-            // Matched here on the short name, like everything else in this set. Leaving these out
-            // put a false "ChilloutVR will delete this" on every avatar converted down
-            // AvatarBridge's primary physics path.
+            // MagicaCloth2 by short name; missing, every Magica conversion got a false "CVR will delete this".
             "MagicaCloth", "ColliderComponent", "MagicaCapsuleCollider", "MagicaPlaneCollider",
             "MagicaSphereCollider", "RectTransform",
             // Renderers and particles.
@@ -810,9 +777,7 @@ namespace AvatarBridge
                 var machines = new List<AnimatorStateMachine>();
                 CollectMachines(layer.stateMachine, machines);
 
-                // AnyState is an escape route from every state, except where it only targets the
-                // current one. From every state in the LAYER: Unity applies an AnyState transition
-                // layer-wide, whichever sub-machine stores it.
+                // Unity applies AnyState layer-wide, whichever sub-machine stores it.
                 var anyEscapes = machines
                     .SelectMany(m => m.anyStateTransitions ?? new AnimatorStateTransition[0])
                     .ToList();
@@ -963,9 +928,8 @@ namespace AvatarBridge
             ctx.Report.Error(Category, $"{BridgeElements.Count(doomed.Values.Sum(), "component", "components")} ChilloutVR will delete on load",
                 $"{Join(listed)}: not on ChilloutVR's avatar whitelist, so silently gone once loaded.");
 
-            // The grounders deserve their own note. They are the FinalIK components most likely to
-            // be on a converted avatar, the split between allowed and forbidden looks arbitrary,
-            // and the obvious substitution does not work.
+            // Grounders get their own note: the most common FinalIK parts, an arbitrary-looking
+            // allowed split, and the obvious substitute fails.
             var grounders = doomed.Keys.Where(n => n.StartsWith("Grounder")).ToList();
             if (grounders.Count > 0)
             {
@@ -980,9 +944,7 @@ namespace AvatarBridge
 
         internal static void CheckStereoShaders(BridgeContext ctx)
         {
-            // By path for this call only, to read each file once. The verdicts
-            // themselves are kept by content in ShaderSpiPatcher, so a shader the
-            // patch pass or an earlier avatar judged is not planned again, and a
+            // By path to read each file once; ShaderSpiPatcher keeps verdicts by content, so a
             // copy patched since is judged on its final text.
             var missingCache = new Dictionary<string, List<string>>();
             var offenders = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
@@ -1054,9 +1016,7 @@ namespace AvatarBridge
             }
         }
 
-        // The patcher's own plan, so the warning and the patch agree on
-        // what a shader includes, which passes it has and what each lacks.
-        // A surface shader's passes are generated with stereo and say nothing.
+        // The patcher's own plan, so warning and patch agree. Surface shader passes are generated with stereo.
         static List<string> StereoProblems(string path)
         {
             try
@@ -1080,9 +1040,7 @@ namespace AvatarBridge
             "IsFriend", "VelocityX", "VelocityY", "VelocityZ", "Swimming", "AFK"
         };
 
-        // Every parameter that spends sync bits, in the order the client spends
-        // them, and whether it still fit. The Avatar Tester's remote copy reads
-        // the same walk, so the two cannot disagree about what reaches others.
+        // In the client's spending order. The Avatar Tester's remote copy uses the same walk, so they agree.
         internal static IEnumerable<(AnimatorControllerParameter param, bool fits)> BudgetOrder(AnimatorController master)
             => BudgetWalk(master).Select(x => (x.param, x.fits));
 

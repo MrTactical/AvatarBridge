@@ -7,13 +7,10 @@
 //   grey    the atlas does not fit this view (under about 240 px)
 //   yellow  no owner yet: a remote copy before its first sync
 //
-// It sits beside YAPS/Atlas Exit Spike, same parent, identity local
-// transform, so its matrix is the writer's: the pose the entry must decode
-// to. The lookup is the scratch YapsPortalExit with the production
-// YAPS_ATLAS_LOAD, slice 0 in stereo, which is what a plug reads in both eyes.
-//
-// Corners in UV0 and every position zero, as the atlas writers, so a viewer
-// with custom shaders blocked draws nothing.
+// Same parent and identity transform as YAPS/Atlas Exit Spike, so its
+// matrix is the pose the entry must decode to. Production YAPS_ATLAS_LOAD,
+// slice 0 in stereo, as a plug reads in both eyes.
+// Corners in UV0, positions zero, so blocked custom shaders draw nothing.
 Shader "YAPS/Portal Spike Indicator"
 {
     Properties

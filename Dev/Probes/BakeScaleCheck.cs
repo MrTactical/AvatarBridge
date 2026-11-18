@@ -1,18 +1,10 @@
 // The scaled-bone check: proves the bake-scale mirror against a bone that
 // is NOT sitting at 1.
 //
-// _YAPS_BakeScale is 1 on the material, meaning "the size this was baked
-// at". The mirror used to copy a bone's m_LocalScale curve across as an
-// ABSOLUTE number, so any bone not at exactly 1 when it was baked had its
-// scale spent twice: once by the skinning, again by the shader. It showed
-// only in game, because the editor runs no animator and the static 1
-// stood, and it reached a user wearing an avatar.
-//
-// Every plug in the corpus sits at scale 1, which is the one value where
-// the old code was right, so 87 avatars passed green for weeks. This is
-// not a corpus scene: the digest records no curve values, so no baseline
-// could have moved even with a scaled bone in it. The numbers are asserted
-// directly instead.
+// _YAPS_BakeScale 1 = "the size it was baked at". Copying m_LocalScale as an
+// absolute applied a non-1 bone's scale twice (skinning, then shader); only
+// visible in game. Every corpus plug sits at 1, where that was right, and the
+// digest records no curve values, so the numbers are asserted here.
 //
 //   AvatarBridge > Spike > Check the bake-scale mirror
 //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.BakeScaleCheck.Run
@@ -56,9 +48,7 @@ namespace AvatarBridge.Dev
             }
         }
 
-        // A bone baked at 0.4 that a size slider takes to 1.2. At the bottom
-        // of that slider the plug is the size it was baked at, so the mirror
-        // must say 1; at the top it is three times that, not 1.2.
+        // Baked at 0.4, slider to 1.2: the mirror must say 1 at the bottom, 3 (not 1.2) at the top.
         static void ScaledBone()
         {
             Log.AppendLine("bone baked at 0.4, slider to 1.2");
@@ -76,16 +66,12 @@ namespace AvatarBridge.Dev
                 }
                 Near("at the bake pose", curve.Evaluate(0f), 1f);
                 Near("at the top of the slider", curve.Evaluate(1f), 3f);
-                // Tangents are a slope in the same units. Left undivided the
-                // curve sags between its keys while both keys still read
-                // correctly, which is the kind of wrong nobody spots.
+                // Undivided tangents sag between keys while the keys read right.
                 Near("halfway, so the tangents went too", curve.Evaluate(0.5f), 2f);
             }
         }
 
-        // The same rig at 1, which is where every avatar in the corpus sits
-        // and why this went unseen: the old code was right here, and this
-        // check exists to keep the fix from breaking it.
+        // At 1, where the old code was right: keeps the fix from breaking it.
         static void RestBone()
         {
             Log.AppendLine("bone baked at 1, slider to 2.5");
@@ -106,9 +92,7 @@ namespace AvatarBridge.Dev
             }
         }
 
-        // A child further down the chain, turned so its own length axis is
-        // not its root's. Its scale curve is in ITS space, so reading it
-        // with the root's axis takes the wrong number, or none at all.
+        // A child turned off the root's axis: its scale curve is in its own space.
         static void ChildAxis()
         {
             Log.AppendLine("child bone turned, its length axis is y where the root's is z");
@@ -246,10 +230,7 @@ namespace AvatarBridge.Dev
             Log.AppendLine("  FAIL " + what);
         }
 
-        // The least hierarchy the mirror needs: a root to measure paths
-        // from, a bone chain to read scales off, and a renderer to write
-        // onto. Hidden and not saved, so running this leaves whatever scene
-        // is open alone.
+        // Minimal root, bone chain and renderer; hidden and unsaved, so the open scene is untouched.
         class Rig : System.IDisposable
         {
             public readonly Transform Root, Bone, Child, Renderer;

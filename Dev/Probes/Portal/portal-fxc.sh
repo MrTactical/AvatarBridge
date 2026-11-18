@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
-# The S1 budget: the plug deform compiled from the shipped includes and from
-# the spike copies beside this script, judged on temps; listing length is
-# reported only.
+# The S1 budget: the plug deform from the shipped includes vs the spike
+# copies here, judged on temps (registers every host shader must find).
 #
 #   portal-fxc.sh [spike-dir]   YAPS_FXC_FLAGS=-DPORTAL_STAGE=n attributes a part
 #
-# Temps are registers the driver must find on every host shader. Lines were the
-# first gate and failed as a proxy: a divide is one listing line and a branch
-# skipped on most vertices counts in full, so the cost is gated on measured GPU
-# time (Dev/Probes/Perf/PortalDeformPerf) and lines are printed for the record.
+# Listing lines failed as a cost proxy (a divide is one line, a rarely taken
+# branch counts in full); cost is gated on GPU time
+# (Dev/Probes/Perf/PortalDeformPerf), lines printed for the record.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 FXC_SH="$HERE/../Hlsl/yaps-fxc.sh"

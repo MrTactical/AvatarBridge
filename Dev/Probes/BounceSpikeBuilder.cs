@@ -1,15 +1,11 @@
 // Builds the bounce spike's first rig: does a float render texture that a blitter rewrites from
 // itself every frame keep its state on a ChilloutVR avatar, and how often does it tick?
 //
-// A spring needs exactly that: last frame's state in, this frame's out. Two blitters each count
-// into their own 2x1 float texture, one run by a render controller (where the squash's providers
-// already run, so the real thing would sit there) and one left to the camera, as the control. A
-// billboard reads both back, so the answer is visible in game with no parser and no sync.
-//
-// Per texture, texel 0 holds four sums decayed by 0.99 a run (about a second of frames): runs,
-// unity_DeltaTime, and the steps of _Time.y between runs, with the last _Time.y seen. Runs over
-// time is the tick rate; summed frame times over time passed is runs per frame, 1 when it ticks
-// once a frame, 2 when twice, below 1 when it skips. Texel 1 is a wrapping counter for the sweep.
+// A spring needs last frame's state in. Two blitters count into 2x1 float textures: one under a
+// render controller (where the squash's providers run), one camera-driven as control. A
+// billboard shows both in game, no parser or sync.
+// Texel 0: sums decayed 0.99 per run (~1 s) of runs, unity_DeltaTime and _Time.y steps, plus the
+// last _Time.y. Runs per frame: 1 = once a frame, 2 = twice, <1 = skips. Texel 1: sweep counter.
 //
 //   -executeMethod AvatarBridge.Regression.BounceSpikeBuilder.Build
 //   -executeMethod AvatarBridge.Regression.BounceSpikeBuilder.Verify -bounceOut <dir>

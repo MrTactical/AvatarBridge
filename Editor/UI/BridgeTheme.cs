@@ -8,24 +8,11 @@ namespace AvatarBridge
     // (-info -good -warn -bad -muted); IMGUI and Handles read it through BridgeTheme.
     internal enum Tone { None, Info, Good, Warn, Bad, Muted }
 
-    // The window's colours and generated textures.
-    //
-    // The palette isn't invented. Both SDKs this tool sits between carry an identity colour, and
-    // they're the two ends of what AvatarBridge does:
-    //
-    //   VRChat     ; its SDK panel banner is blue; the accent through its stylesheets is #1778FF.
-    //   ChilloutVR ; the CCK's control-panel header is an orange gradient, #EE4408 to #822A10.
-    //
-    // So the banner runs left-to-right from one into the other, and the step badges sample points
-    // along that same ramp: step 1 sits in VRChat's blue, step 3 in ChilloutVR's orange. The
-    // window ends up being a picture of the crossing it performs.
-    //
-    // USS has no gradient support; not in 2022.3 and not in Unity 6; so every gradient here is
-    // a Texture2D generated once and handed to style.backgroundImage.
-    //
-    // UI Toolkit colours live in AvatarBridge.uss as tokens. The getters below are for IMGUI and
-    // Handles only: a colour sampled here and put into style.color keeps the old skin's value
-    // after a skin switch, where a USS class follows it.
+    // The window's colours and generated textures. The ramp runs from VRChat's SDK blue (#1778FF)
+    // to the CCK header orange (#EE4408 to #822A10); step badges sample along it.
+    // USS has no gradients (2022.3 or Unity 6), so each is a generated Texture2D.
+    // UI Toolkit colours are tokens in AvatarBridge.uss. The getters here are for IMGUI and
+    // Handles only: a sampled colour in style.color keeps the old skin's value after a switch.
     internal static class BridgeTheme
     {
         public static bool Dark => EditorGUIUtility.isProSkin;
@@ -115,14 +102,10 @@ namespace AvatarBridge
             }
         }
 
-        // Blue and orange are near-opposites, so interpolating straight between them drags the
-        // middle through desaturated grey-brown; the ramp sagged visibly in the banner. Passing
-        // through a plum keeps saturation up across the whole span, and it sits at the right
-        // luminance to look like one continuous crossing rather than two colours meeting.
+        // Blue straight to orange goes grey-brown in the middle; a plum stop keeps saturation up.
         static readonly Color BridgeMid = Hex(0x7A3B8C);
 
-        // Plum straight to orange lands on crimson halfway, close enough to the bad tone that a
-        // middle step badge read as an error. A rust stop keeps the warm half brown-orange.
+        // Plum to orange passes crimson, which read as an error; a rust stop avoids it.
         static readonly Color BridgeRust = Hex(0xA8481F);
 
         public static Color At(float t)
@@ -243,16 +226,12 @@ namespace AvatarBridge
                 return null;
             }
             bool dark = Dark || tinted;
-            // A caller may hand over a name that is already themed. Prefixing
-            // that again asks Unity for "d_d_Avatar Icon", which it answers
-            // with a console ERROR rather than an exception, so the catch
-            // below never saw it and every repaint logged one.
+            // An already themed name would become "d_d_...", which logs a console error every
+            // repaint instead of throwing.
             string bare = name.StartsWith("d_", System.StringComparison.Ordinal) ? name.Substring(2) : name;
             try
             {
-                // FindTexture, not IconContent: both resolve a built-in icon,
-                // and only IconContent shouts about a miss. A missing icon is
-                // a cosmetic matter and has no business filling a console.
+                // FindTexture, not IconContent: only IconContent logs a miss.
                 var icon = dark ? EditorGUIUtility.FindTexture("d_" + bare) : null;
                 if (icon == null) icon = EditorGUIUtility.FindTexture(bare);
                 // Type icons such as "Avatar Icon" live under Processed, where FindTexture never looks.

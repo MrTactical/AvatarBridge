@@ -8,11 +8,9 @@ namespace AvatarBridge
     //   <objectName>_IsGrabbed  (bool) ; any bone in that component is being grabbed
     //   <objectName>_Angle      (float). 0..1 normalised bend of the end bone
     //
-    // VRChat PhysBones expose the analogous _IsGrabbed / _Angle (plus _Stretch / _Squish /
-    // _IsPosed, which GrabbyBones does not provide). By naming the converted cloth object
-    // after the PhysBone's parameter, the avatar's existing grab-reactive FX logic is
-    // driven by GrabbyBones for anyone running the mod. The parameters are kept synced
-    // (not "#"-local) because GrabbyBones has the owner drive them and the game syncs them.
+    // Naming the cloth object after the PhysBone parameter lets the mod drive the existing
+    // _IsGrabbed / _Angle logic (_Stretch / _Squish / _IsPosed have no equivalent). Kept synced:
+    // the owner drives them.
     public static class GrabbyBonesSupport
     {
         static readonly HashSet<string> _usedNames = new HashSet<string>();

@@ -1,14 +1,8 @@
 // Where does a Unity RotationConstraint disagree with the VRChat one it replaced?
 //
-// Issue #6 reports that freezing rotation axes behaves differently between the
-// two. Guessing at the mechanism produced one wrong answer already, so this
-// asks both solvers the same question instead: it builds the same rig twice,
-// once with each component, sweeps the configuration space, and prints every
-// combination whose driven transform ends up somewhere different.
-//
-// Both solvers run in edit mode. VRChat's does because VRCConstraintManager
-// executes its jobs outside play mode by default, which is what makes a
-// side-by-side comparison possible without entering play.
+// Issue #6 (frozen rotation axes differ). Builds the same rig with each
+// component, sweeps the configurations, prints every mismatch. Both solve in
+// edit mode: VRCConstraintManager runs its jobs outside play mode by default.
 //
 //   -executeMethod AvatarBridge.Regression.ConstraintParityProbe.Run
 #if VRC_SDK_VRCSDK3 && UNITY_EDITOR
@@ -56,9 +50,7 @@ namespace AvatarBridge.Regression
             var weights = new[] { 1f, 0.5f, 0f };
             var sourceWeights = new[] { 1f, 0.5f };
             var parentEulers = new[] { Vector3.zero, new Vector3(0f, 90f, 0f) };
-            // VRChat's solver corrects the parent's rotation for lossy scale
-            // before it decomposes anything. Whether Unity's does is the
-            // question a uniformly scaled rig can never ask.
+            // VRChat corrects the parent rotation for lossy scale; only a non-uniform scale shows if Unity does.
             var parentScales = new[] { Vector3.one, new Vector3(1f, 0.5f, 1f) };
             var sourceCounts = new[] { 1, 2 };
 
@@ -124,12 +116,8 @@ namespace AvatarBridge.Regression
             EditorApplication.update += Tick;
         }
 
-        // The converter reads the axis flags BY NAME, and its reflection helper
-        // returns the fallback when a member does not resolve. The fallback for
-        // an axis flag is TRUE, so a renamed field would not fail: it would
-        // quietly convert every constraint as affecting all three axes, which
-        // is exactly what "freeze rotation axes doesn't work the same" looks
-        // like from the outside.
+        // Axis flags are read by name with fallback TRUE, so a renamed field
+        // silently affects all three axes, which looks exactly like issue #6.
         public static void RunNames()
         {
             var go = new GameObject("NameCheck");
@@ -156,11 +144,8 @@ namespace AvatarBridge.Regression
             EditorApplication.Exit(0);
         }
 
-        // Does a CHAIN of constraints keep up? VRChat sorts constraints by
-        // dependency before solving (VRCConstraintGrouper), so a constraint
-        // reading a bone another constraint writes sees this frame's value.
-        // Unity has no such sort, so the same chain can lag by a frame per
-        // link, which only shows while the source is moving.
+        // VRChat sorts constraints by dependency (VRCConstraintGrouper); Unity does
+        // not, so a chain may lag a frame per link while the source moves.
         static Transform chainSource;
         static readonly List<Case> chainCases = new List<Case>();
 
@@ -195,9 +180,7 @@ namespace AvatarBridge.Regression
             {
                 links.Add(new GameObject($"Link{i}").transform);
             }
-            // Creation order is what a solver with no dependency sort is left
-            // to fall back on, so building the chain leaf first is the case
-            // that separates "sorted" from "whatever order they registered".
+            // Leaf first separates "sorted" from "creation order".
             var order = reversed ? Enumerable.Range(0, 3).Reverse() : Enumerable.Range(0, 3);
             foreach (int i in order)
             {
@@ -278,9 +261,7 @@ namespace AvatarBridge.Regression
                 }
             }
 
-            // Two components that both did nothing agree perfectly, so the
-            // comparison means nothing until each is shown to have moved
-            // something.
+            // Two no-ops agree perfectly, so first show each moved something.
             int unityMoved = cases.Count(c => Quaternion.Angle(c.UnityDriven.localRotation,
                 Quaternion.Euler(c.Start)) > 0.1f);
             int vrcMoved = cases.Count(c => Quaternion.Angle(c.VrcDriven.localRotation,
@@ -297,9 +278,7 @@ namespace AvatarBridge.Regression
                 Debug.Log("PROBE MISMATCH " + line);
             }
 
-            // Which single setting the disagreements have in common. A factor
-            // present in every mismatch and absent from every match is the
-            // mechanism; one merely correlated is a lead.
+            // In every mismatch and no match = the mechanism; merely correlated = a lead.
             foreach (var factor in new[] { "axes=X ", "axes=Y ", "axes=Z ", "axes=XY", "axes=XZ",
                                            "axes=YZ", "axes=XYZ", "start=(0.0,0.0,0.0)", "w=0.5",
                                            "sw=0.5", "parent=(0.0,90.0,0.0)", "rest=(0.0,0.0,0.0)",

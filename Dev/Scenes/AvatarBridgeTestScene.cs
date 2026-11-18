@@ -1,15 +1,9 @@
-// Builds one scene holding every converted avatar, for eyeballing a whole corpus run at once .
-// DEVELOPMENT ONLY, never shipped in the .unitypackage.
+// One scene holding every converted avatar, to eyeball a whole corpus run. Development only.
+// A digest cannot catch a clean conversion that looks wrong (inside-out, missing material,
+// collapsed rig).
 //
-// A digest catches what changed between runs. It cannot catch an avatar that converted "cleanly"
-// and looks wrong: inside-out geometry, a missing material, a rig collapsed to the origin, a mesh
-// left at hip height. Those need eyes, and opening 54 scenes one at a time to use them is why
-// nobody does it.
-//
-// The scene is written INTO Assets/AvatarBridgeOutput/, which both the regression harness and the
-// scene-cleanup pass already exclude. That matters: it is full of CVRAvatars with no VRChat
-// descriptor, which is exactly the signature the cleanup pass deletes on sight. Anywhere else and
-// the next cleanup would quietly empty it.
+// Written into Assets/AvatarBridgeOutput/, which the harness and cleanup exclude: its CVRAvatars
+// with no VRChat descriptor are exactly what the cleanup deletes on sight.
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;

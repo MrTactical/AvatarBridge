@@ -1,14 +1,10 @@
-// The wearer's owner id, onto every renderer whose material can hold it, so
-// a plug can tell its own avatar's sockets from anybody else's at any
-// distance. The atlas carries the socket's copy; see yaps_atlas.cginc.
-// Then which of those own sockets each plug may enter: a number per socket
-// on its writer, a bit per number on the plug.
-//
-// ChilloutVR's parameter stream hands over a CRC32 of the wearer's user id,
-// but only on the wearer's own copy: the stream is a local component and is
-// destroyed on everybody else's. So the parameter SYNCS, and a remote copy
-// reads zero until its first sync, which the shaders take as unknown and
-// answer with the geometric guess they used before.
+// The wearer's owner id on every renderer that can hold it, so a plug can tell its
+// own avatar's sockets from others' (the atlas carries the socket's copy, see
+// yaps_atlas.cginc). Then which own sockets each plug may enter: a number per socket
+// writer, a bit per number on the plug.
+// The parameter stream gives CRC32 of the user id only on the wearer's copy (it is
+// destroyed on remote ones), so the parameter syncs; a remote copy reads 0 until
+// then, which the shaders treat as unknown and fall back to a geometric guess.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections;
@@ -34,12 +30,10 @@ namespace AvatarBridge
         // predates a name still serialises what the client reads.
         const int SeedOwner = 90000, AvatarAnimator = 2, Mod = 141, AvatarReference = 1;
 
-        // The client's Mod works on the id as an integer, and a float holds
-        // every integer below 2^24, so this keeps 24 bits of it whole.
+        // A float holds every integer below 2^24, so Mod keeps 24 bits whole.
         const float Modulus = 16777216f;
 
-        // Idempotent, like the lighthouse: run it after any plug or socket
-        // change. With nothing left carrying the property it takes itself out.
+        // Idempotent: run after any plug or socket change. Removes itself when unused.
         public static string Wire(GameObject root, AnimatorController controller)
         {
             if (root == null || controller == null) return null;
@@ -73,15 +67,9 @@ namespace AvatarBridge
         // Numbers the atlas carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
         public const int MaxSelfSockets = 15;
 
-        // Every socket of the avatar numbered on its atlas writer, each portal
-        // exit keyed by its entrance's number, and every plug told which of
-        // them it may enter, a bit per number. Materials only, nothing in the
-        // animator, so the inspector can run it on every click. Returns how
-        // many sockets were past the numbers.
-        //
-        // Numbered by hierarchy path, so the order holds from build to build;
-        // a plug's choices name sockets, not numbers, so a socket added in the
-        // middle renumbers the rest and every answer follows.
+        // Numbers sockets and tells each plug which it may enter. Materials only, so
+        // the inspector can run it on every click. Returns how many sockets went
+        // unnumbered. Plug choices name sockets, not numbers, so renumbering is safe.
         public static int ApplySelf(GameObject root)
         {
             if (root == null) return 0;
@@ -94,11 +82,8 @@ namespace AvatarBridge
             var told = new HashSet<Material>();
             foreach (var plug in root.GetComponentsInChildren<YapsPlug>(true))
             {
-                // A converted plug has a component too, adopted off its
-                // material, so its author's Self rules are where it starts.
-                // A default tick leaves the tags to judge, so the shader still
-                // applies them; one set by hand, or by tag rules, is chosen and
-                // skips them.
+                // A converted plug starts from its author's Self rules. A default
+                // tick leaves the tags to the shader; a chosen one skips them.
                 int start = byDefault, chosen = 0;
                 var own = MaterialsOf(plug);
                 var rules = RulesOf(own);
@@ -114,8 +99,7 @@ namespace AvatarBridge
                     if (told.Add(m)) SetMask(m, mask, chosen);
                 }
             }
-            // A plug with no component, its component stripped: its author's
-            // rules if the material kept any, else the default.
+            // Plugs without a component: rules kept on the material, else the default.
             foreach (var r in root.GetComponentsInChildren<Renderer>(true))
             {
                 foreach (var m in r.sharedMaterials)
@@ -130,14 +114,10 @@ namespace AvatarBridge
             return Math.Max(numbers.Count - MaxSelfSockets, 0);
         }
 
-        // Every socket under the root numbered on its atlas writer, in path
-        // order so the numbers hold from build to build. The number is also
-        // the socket's atlas bucket, (number - 1) mod 8 turned by its owner,
-        // so 9 to 15 each share a bucket with one of the first eight: each
-        // takes the free partner it sits farthest from at build. Sockets with
-        // no avatar carry no owner to turn them, so a root starts from an
-        // offset its name picks, or every separate object's first socket
-        // would share bucket one.
+        // In path order so numbers hold between builds. The number is also the atlas
+        // bucket, (number - 1) mod 8 turned by the owner, so 9 to 15 each share with
+        // the free partner farthest away. Without an avatar there is no owner to turn
+        // buckets, so a name-picked offset keeps separate props off bucket one.
         public static Dictionary<YapsSocket, int> NumberWriters(GameObject root, bool avatar)
         {
             var sockets = root.GetComponentsInChildren<YapsSocket>(true)
@@ -174,10 +154,8 @@ namespace AvatarBridge
             return numbers;
         }
 
-        // Each portal exit keyed by its entrance's number, here because every
-        // door that renumbers comes through. A writer no entrance leads to goes
-        // to 0, which publishes nothing: left keyed, it would send plugs out of
-        // whichever socket inherited the number, or out of an old exit.
+        // Here because every renumbering passes through. An orphaned exit goes to 0
+        // (publishes nothing), or plugs leave by whichever socket inherited its number.
         static void KeyExits(GameObject root, Dictionary<YapsSocket, int> numbers)
         {
             var keyed = new Dictionary<Renderer, int>();
@@ -205,11 +183,8 @@ namespace AvatarBridge
             return h;
         }
 
-        // A converted SPS plug's rules for its wearer's own sockets, kept on
-        // its material BY TAG NAME, so the ticks follow a renumbering: every
-        // later build works them out again from the sockets as they are.
-        // Override tags rather than properties because the shader never
-        // reads them, so nothing has to be declared or can go stale.
+        // A converted SPS plug's own-socket rules, by tag name so they survive
+        // renumbering. Override tags, not properties: the shader never reads them.
         const string AnswersKey = "YapsSelfAnswers";
         const string RefusesKey = "YapsSelfRefuses";
         const string HipsKey = "YapsSelfEntersHips";
@@ -251,11 +226,8 @@ namespace AvatarBridge
         // Numbers the relay carries, 1 to 15. Must match YAPS_ATLAS_SOCKETMAX.
         const int MaxRelays = 15;
 
-        // Each plug numbered among the avatar's on its materials and on the relay
-        // that hands its marker lights to its other passes, in hierarchy order
-        // like the sockets. Only a plug whose shader reads the number gets a
-        // relay, and a relay whose plug is gone goes with it. Wire picks the
-        // relays up, since their material carries the owner too.
+        // Numbers each plug, in hierarchy order, on its materials and on the relay
+        // that hands its marker lights to its other passes. Orphan relays go.
         internal static void Relays(GameObject root)
         {
             var keep = new HashSet<SkinnedMeshRenderer>();
@@ -278,14 +250,9 @@ namespace AvatarBridge
                 if (YapsAtlas.IsRelay(r.sharedMaterial) && !keep.Contains(r)) Undo.DestroyObjectImmediate(r.gameObject);
         }
 
-        // The materials this plug baked: its slot and the slots it recorded,
-        // on whichever mesh, and on its own mesh every slot wearing the same
-        // bake, which finds a converted plug's second slot no record names.
-        // Never the whole renderer: two plugs on one mesh each have a slot of
-        // their own, and the first plug's mask and rules went onto both.
-        // The whole renderer only when nothing is recorded, as before. Then the
-        // variants a toggle swaps into those slots, which sit on no renderer
-        // until it plays and so kept the shader's own-socket default.
+        // Its slot, recorded slots, and own-mesh slots wearing the same bake, plus
+        // toggle variants. Not the whole renderer (unless nothing is recorded): two
+        // plugs on one mesh would share one plug's mask.
         internal static List<Material> MaterialsOf(YapsPlug plug)
         {
             var found = SlotMaterialsOf(plug);
@@ -321,9 +288,8 @@ namespace AvatarBridge
             return found;
         }
 
-        // Self tag rules are the author's whole answer for their own sockets,
-        // as SPS reads them, so what they allow is chosen and skips the
-        // plug's other tags. Hip avoidance alone chooses nothing.
+        // As SPS reads them, Self tag rules are the whole answer, so their sockets
+        // are chosen and skip the plug's tags. Hip avoidance alone chooses nothing.
         static int RulesMask(SelfRules rules, Dictionary<YapsSocket, int> numbers,
                              Dictionary<Transform, HumanBodyBones> human, out int chosen)
         {
@@ -334,8 +300,7 @@ namespace AvatarBridge
             return mask;
         }
 
-        // The same test the shader runs on the tag word, on the words: a
-        // refused tag refuses, and a non-empty answer list must name one.
+        // The shader's tag test, on the words.
         static bool TagsPass(IEnumerable<string> socketTags, HashSet<string> answers, HashSet<string> refuses)
         {
             var tags = socketTags ?? Enumerable.Empty<string>();
@@ -350,10 +315,8 @@ namespace AvatarBridge
         static HashSet<string> Baked(IList<string> tags) =>
             Words(YapsTags.Listed(tags).Take(YapsTags.PlugSlots));
 
-        // Whether a plug may enter this socket of its wearer's when nobody has
-        // said: what its author's Self tag rules allow, if it kept any; else
-        // yes, unless it hangs off the hips or the plug's tags, as built,
-        // refuse it.
+        // Unset ticks: Self tag rules if kept, else yes unless on the hips or
+        // refused by the plug's built tags.
         public static bool EntersByDefault(YapsPlug plug, YapsSocket socket)
         {
             var avatar = socket != null ? socket.GetComponentInParent<CVRAvatar>(true) : null;
@@ -366,9 +329,8 @@ namespace AvatarBridge
                    && TagsPass(socket.tags, Baked(plug.answers), Baked(plug.refuses));
         }
 
-        // The first humanoid bone above the socket, climbed rather than
-        // measured. A thigh socket is the thigh's, though the hips are its
-        // grandparent. Nothing to go by counts as the hips: the safe side.
+        // First humanoid bone above, climbed not measured, so a thigh socket is the
+        // thigh's. No bone found counts as hips, the safe side.
         static bool OnHips(Transform socket, Dictionary<Transform, HumanBodyBones> human)
         {
             for (var at = socket; at != null; at = at.parent)
@@ -415,12 +377,9 @@ namespace AvatarBridge
             return note;
         }
 
-        // What Targets leaving out the CCK's own controller costs this avatar,
-        // or null. Every avatar-wide YAPS layer goes through Targets, so it is
-        // said here once. Apart from Wire's note, which callers report as done:
-        // this one is a failure. The CCK's default Base Controller is its own,
-        // and Create Controller copies the base over the generated one, so
-        // layers in the generated one alone go at the next press.
+        // What Targets skipping the CCK's own controller costs, or null. A failure,
+        // unlike Wire's note. Create Controller copies the base over the generated
+        // one, so layers in the generated one alone are lost on the next press.
         public static string SharedWarning(CVRAvatar avatar)
         {
             if (avatar == null) return null;
@@ -443,13 +402,9 @@ namespace AvatarBridge
             return null;
         }
 
-        // Every controller an avatar-wide layer goes into: the one ChilloutVR
-        // uploads and the base the CCK rebuilds it from, once each. After the
-        // CCK has generated Advanced Settings they are two files: a layer in
-        // the uploaded one alone is lost at the next generate, and one in the
-        // base alone does not ship until then. Never the CCK's own controller,
-        // the same guard the Toolkit's Height card applies; SharedWarning says
-        // what that leaves out.
+        // The uploaded controller and the base the CCK rebuilds it from: in one alone,
+        // a layer is lost at the next generate or does not ship until then. Never the
+        // CCK's own controller; SharedWarning says what that leaves out.
         public static List<AnimatorController> Targets(CVRAvatar avatar)
         {
             var list = new List<AnimatorController>();
@@ -461,14 +416,10 @@ namespace AvatarBridge
             return list;
         }
 
-        // The controller ChilloutVR will actually run for this avatar, by the
-        // rule the Toolkit reads it with.
         public static AnimatorController Shipped(CVRAvatar avatar) => AvatarSurvey.ShippedController(avatar);
 
-        // A direct blend tree weighted by the parameter itself, over a clip
-        // setting the property to 1, so the property comes out AS the id.
-        // Write defaults on, over a default of zero, so the tree is a plain
-        // sum and nothing of last frame's value is left in it.
+        // Direct tree weighted by the parameter over a clip writing 1, so the
+        // property comes out as the id. Write defaults on keeps it a plain sum.
         static void AddLayer(Transform root, AnimatorController controller, List<Renderer> targets)
         {
             var clip = new AnimationClip { name = LayerName };
@@ -485,8 +436,7 @@ namespace AvatarBridge
                 children = new[] { new ChildMotion { motion = clip, timeScale = 1f, directBlendParameter = Parameter } },
             };
             var machine = new AnimatorStateMachine { name = LayerName, hideFlags = HideFlags.HideInHierarchy };
-            // Built after the controller became an asset, so the parts embed
-            // themselves or serialise as nothing.
+            // Embedded, or they serialise as nothing.
             if (!string.IsNullOrEmpty(AssetDatabase.GetAssetPath(controller)))
             {
                 AssetDatabase.AddObjectToAsset(machine, controller);
@@ -504,9 +454,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(controller);
         }
 
-        // referenceType by hand. The CCK's inspector sets it only when it is
-        // opened, so a stream added from code stays World, and the client
-        // computes SeedOwner for an Avatar reference alone.
+        // referenceType by hand: the CCK inspector sets it only when opened, and the
+        // client computes SeedOwner only for an Avatar reference.
         static bool Stream(GameObject root)
         {
             var stream = root.GetComponent<CVRParameterStream>();
@@ -574,8 +523,7 @@ namespace AvatarBridge
         static bool RemoveLayer(AnimatorController controller)
         {
             var parts = Embedded(controller, controller.layers.Where(l => l.name == LayerName).Select(l => l.stateMachine));
-            // The tree and clip carry the layer's name, so the ones earlier
-            // builds left go too.
+            // By name, so leftovers from earlier builds go too.
             string path = AssetDatabase.GetAssetPath(controller);
             if (!string.IsNullOrEmpty(path))
                 parts.AddRange(AssetDatabase.LoadAllAssetsAtPath(path)
@@ -599,12 +547,9 @@ namespace AvatarBridge
             return true;
         }
 
-        // What YAPS layers embedded in the controller's own file: machines,
-        // states, transitions, behaviours and blend trees. Assigning
-        // controller.layers destroys none of it, so every rebuild left a dead
-        // copy behind. Read before the layers go, handed to DropUnreached
-        // after. Never clips: a layer may play the author's own, which can sit
-        // in the controller's file and are not YAPS's to destroy.
+        // Sub-objects the layers embedded in the controller file. Assigning
+        // controller.layers destroys none of them, so read before removal and pass
+        // to DropUnreached. Never clips: they may be the author's own.
         internal static List<UnityEngine.Object> Embedded(AnimatorController controller, IEnumerable<AnimatorStateMachine> machines)
         {
             string path = controller != null ? AssetDatabase.GetAssetPath(controller) : null;
@@ -614,8 +559,7 @@ namespace AvatarBridge
             return found.Where(o => o != null && !(o is AnimationClip) && AssetDatabase.GetAssetPath(o) == path).ToList();
         }
 
-        // Destroyed with undo, as RemoveLayer destroys a machine, and never a
-        // part the controller's remaining layers still reach.
+        // With undo, and never a part a remaining layer still reaches.
         internal static void DropUnreached(AnimatorController controller, List<UnityEngine.Object> parts)
         {
             if (controller == null || parts == null || parts.Count == 0) return;
@@ -661,21 +605,17 @@ namespace AvatarBridge
         }
     }
 
-    // No player in the editor, so every plug and socket read owner 0, which
-    // the shaders take as unknown: nothing was the wearer's own, and a plug
-    // bent into a socket on its own shaft that the game refuses. A stand-in
-    // per avatar makes the editor judge own sockets as the game does. Property
-    // blocks only, never saved or uploaded. Play Mode sets the parameter
-    // instead, since the owner layer animates the property there.
+    // The editor has no player, so owner read 0 (unknown) and plugs bent into
+    // sockets the game refuses. A per-avatar stand-in id, in property blocks only.
+    // Play Mode sets the parameter instead, as the owner layer animates it there.
     [InitializeOnLoad]
     static class YapsOwnerStandIn
     {
         const string Property = "_YAPS_Owner";
         static double _next;
         static MaterialPropertyBlock _block;
-        // HasProperty on a Poiyomi material logs a drawer error each call.
-        // Emptied with each closed scene, or it holds every material it ever
-        // saw, destroyed ones included.
+        // HasProperty on Poiyomi logs a drawer error per call. Cleared per closed
+        // scene so it does not hold destroyed materials.
         static readonly Dictionary<Material, bool> Carries = new Dictionary<Material, bool>();
         // Reused: this runs twice a second for as long as the editor is open.
         static readonly List<Renderer> Renderers = new List<Renderer>();
@@ -713,10 +653,8 @@ namespace AvatarBridge
                         continue;
                     }
                 }
-                // The renderer's own block, as the owner layer writes in game.
-                // A block on one slot replaces the renderer's for that slot,
-                // and the renderer's is where the Animator writes: per slot,
-                // this hid every menu toggle on every plug in the editor.
+                // The renderer's block: a slot block replaces it, and the Animator
+                // writes there, so per slot this hid every menu toggle.
                 avatar.GetComponentsInChildren(true, Renderers);
                 foreach (var r in Renderers)
                 {
@@ -726,8 +664,7 @@ namespace AvatarBridge
                     if (_block.GetFloat(Property) == id) continue;
                     _block.SetFloat(Property, id);
                     r.SetPropertyBlock(_block);
-                    // What an earlier build left on each slot, which would
-                    // still hide the renderer's block until the scene reloads.
+                    // Clear slot blocks an earlier build left; they hide the renderer's.
                     for (int slot = 0; slot < Mats.Count; slot++)
                     {
                         if (CarriesOwner(Mats[slot])) r.SetPropertyBlock(null, slot);

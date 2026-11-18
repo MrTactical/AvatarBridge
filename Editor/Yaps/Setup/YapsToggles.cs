@@ -13,11 +13,8 @@ namespace AvatarBridge
 {
     public static class YapsToggles
     {
-        // How many entries the toolkit added or removed, so a build knows
-        // whether the animator needs touching; and which, by machine name,
-        // so the layer of an added entry is written and a removed one's
-        // taken out. Each name keeps the count it was noted at and the
-        // avatar it was noted on.
+        // Entries added or removed, by machine name, with the count and avatar
+        // each was noted at, so a build writes or removes their layers.
         public static int Edits { get; private set; }
         static readonly List<(int at, CVRAvatar avatar, string machine)> _added = new List<(int, CVRAvatar, string)>();
         static readonly List<(int at, CVRAvatar avatar, string machine)> _removed = new List<(int, CVRAvatar, string)>();
@@ -40,19 +37,16 @@ namespace AvatarBridge
         // the note, or null when nothing changed.
         public static string RefreshMenuAnimator(CVRAvatar avatar, int editsBefore)
         {
-            // Only names noted since editsBefore, and the queue emptied on every
-            // return. A bake whose refresh found no avatar, or had no refresh,
-            // left its names here, and the next refresh on any avatar unwired
-            // them by name from that one.
+            // Only names since editsBefore, queue emptied on every return, or
+            // leftovers were unwired from the next avatar refreshed.
             var added = _added.Where(n => n.at > editsBefore).ToList();
             var removed = _removed.Where(n => n.at > editsBefore).ToList();
             _added.Clear();
             _removed.Clear();
             if (Edits == editsBefore) return null;
             var notes = new List<string>();
-            // Each name on the avatar it was noted on. A caller that misses an
-            // inactive avatar passes null, and dropping its names left a first
-            // build's layers unwritten and a removed entry's layer for good.
+            // On the avatar each was noted on: a null avatar (inactive) must not
+            // drop names, or layers stay unwritten or orphaned.
             CVRAvatar On(CVRAvatar noted) => ReferenceEquals(noted, null) ? avatar : noted;
             foreach (var (_, noted, machine) in added)
             {
@@ -80,11 +74,8 @@ namespace AvatarBridge
         static readonly string[] DefaultSocketNames =
             { "YAPS Hole", "YAPS Ring", "Hole", "Ring", "YAPS Socket", "BakedSpsSocket" };
 
-        // The bone a socket or plug hangs from: its parent, through a YAPS
-        // folder and through VRCFury's wrappers, and nothing when that is the
-        // avatar itself. A converted socket sits several wrappers deep, and a
-        // label built from a wrapper told the wearer nothing about which socket
-        // their menu was pointing at.
+        // The parent bone, through YAPS folders and VRCFury wrappers (a
+        // wrapper's name tells the wearer nothing); none when it is the avatar.
         public static string BoneOf(Transform t, CVRAvatar avatar)
         {
             var at = t != null ? t.parent : null;
@@ -105,13 +96,11 @@ namespace AvatarBridge
             string bone = YapsScanner.StripFuryId(
                 BoneOf(socket.transform, socket.GetComponentInParent<CVRAvatar>(true)));
             string kind = socket.kind == YapsSocket.SocketKind.Hole ? "hole" : "ring";
-            // The kind is always said: a menu row the wearer cannot tell
-            // hole from ring by is a menu row they have to test in game.
+            // Always say the kind, or the wearer tests it in game.
             if (string.IsNullOrEmpty(bone)) return $"{socket.name} ({kind})";
             if (DefaultSocketNames.Contains(YapsScanner.StripFuryId(socket.name))) return $"{bone} {kind}";
             if (!socket.name.Contains(bone)) return $"{socket.name} ({bone} {kind})";
-            // Already says both, as RenameToLabel writes it. The suffix again
-            // read "Hips hole (hole)" after the first build renamed the socket.
+            // Already says both (RenameToLabel), or it reads "Hips hole (hole)".
             return socket.name.EndsWith(" " + kind, System.StringComparison.OrdinalIgnoreCase)
                 ? socket.name
                 : $"{socket.name} ({kind})";
@@ -125,11 +114,8 @@ namespace AvatarBridge
             if (socket == null) return null;
             string bare = YapsScanner.StripFuryId(socket.name);
             if (!DefaultSocketNames.Contains(bare)) return null;
-            // Never a converted socket: the conversion's clips - the
-            // lighthouse, the wired toggles - animate paths through it,
-            // and ToggledBy only sees clips that switch the object itself.
-            // The conversion's rename makes BakedSpsSocket "YAPS Socket", and
-            // nothing else makes that name, so it marks a converted socket too.
+            // Never a converted socket ("YAPS Socket"): conversion clips
+            // animate paths through it, which ToggledBy cannot see.
             if (bare == "BakedSpsSocket" || bare == "YAPS Socket") return null;
             string label = LabelFor(socket);
             if (label == socket.name) return null;
@@ -144,9 +130,8 @@ namespace AvatarBridge
         static readonly string[] DefaultPlugNames =
             { "YAPS Plug", "BakedSpsPlug", "SPS Plug", "SPS", "Plug" };
 
-        // A converted plug's root is always the conversion's "YAPS Plug" under
-        // the author's wrappers, so a label from the root read the same for
-        // every plug on the avatar: menu rows nobody could tell apart.
+        // A converted plug's root is always "YAPS Plug", so a root label made
+        // every row identical.
         static Transform Owner(YapsPlug plug)
         {
             var at = plug.rootBone != null ? plug.rootBone : plug.transform;
@@ -239,22 +224,16 @@ namespace AvatarBridge
             var lighthouse = YapsLighthouse.OwnClips(avatar);
             foreach (var clip in ClipsOfAvatar(avatar, animator))
             {
-                // The lighthouse's clips live inside the controller, not in the
-                // generated folder, so Generated alone never caught them.
+                // The lighthouse's clips live in the controller, not the generated folder.
                 if (Generated(clip) || lighthouse.Contains(clip)) continue;
                 if (Switches(clip, paths, targetPath, deform)) return $"the animation \"{clip.name}\"";
             }
             return null;
         }
 
-        // Every clip any of the avatar's controllers plays, once each.
-        //
-        // avatar.overrides FIRST, because that is the one ChilloutVR uploads:
-        // it was missing here, so a deform already animated from the shipped
-        // controller read as not animated at all and YAPS built a toggle
-        // against it. The Animator's own slot holds a generated override that
-        // is not what ships, and avatarSettings holds the fallback. All of them
-        // are read anyway: a clip only has to be reachable to fire.
+        // avatar.overrides FIRST, the one ChilloutVR uploads; then the fallback
+        // and the Animator's generated slot. All are read: a clip only has to
+        // be reachable to fire.
         static IEnumerable<AnimationClip> ClipsOfAvatar(CVRAvatar avatar, Animator animator)
         {
             var seen = new HashSet<AnimationClip>();
@@ -321,10 +300,8 @@ namespace AvatarBridge
         {
             if (target == null || avatar == null) return null;
             var settings = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
-            // The toolkit's by what it SWITCHES, never by what it is called: the
-            // label follows the bone, so renaming the bone or moving the
-            // socket renames the entry, and matching on the name would add
-            // a second one instead of renaming the first.
+            // By what it SWITCHES, not its name: the label follows the bone, so
+            // name matching would add a second entry.
             var ours = settings?.FirstOrDefault(e => e != null
                 && e.type == CVRAdvancedSettingsEntry.SettingsType.Toggle && e.toggleSettings != null
                 && !e.toggleSettings.useAnimationClip
@@ -345,8 +322,7 @@ namespace AvatarBridge
             if (ours != null)
             {
                 string renamed = Rename(avatar, ours, label);
-                // Off by default. An older build defaulted it to the socket's own state, on, and a
-                // rebuild kept that, so every socket of the avatar opened at once in game.
+                // Off by default, or every socket opened at once in game.
                 string off = null;
                 if (ours.toggleSettings.defaultValue)
                 {
@@ -390,25 +366,14 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine})";
         }
 
-        // Does the AVATAR already drive the deform itself?
-        //
-        // ToggledBy answers "is the plug's mesh hidden by something", which is
-        // a different question and misses the one that matters: an author whose
-        // own animation already writes material._YAPS_Enabled from a slider of
-        // their own. YAPS then added a menu toggle writing the SAME property
-        // from its own layer. Two drivers, one property, and the toggle
-        // defaults OFF, so it won and the plug never deformed in play mode or
-        // in game. In edit mode no animator ran and the baked 1 stood, which is
-        // why it looked like the deform itself had broken.
-        //
-        // Generated clips are skipped: one is this toggle's own, and finding
-        // it would make the toggle stand down for itself.
+        // Does the AVATAR already write material._YAPS_Enabled? A second toggle
+        // on the same property, defaulting OFF, won and the plug never deformed
+        // in game (edit mode looked fine). Generated clips are skipped, or the
+        // toggle stands down for itself.
         static string DrivenByOwnClip(CVRAvatar avatar, string plugPath, string deform)
         {
-            // Through ClipsOfAvatar, not the Animator's own slot alone. An avatar
-            // whose deform is already animated from the shipped controller read as
-            // having no controller at all: this returned null, and the toggle was
-            // built anyway, straight into the two-drivers-one-property fight above.
+            // ClipsOfAvatar, not the Animator's slot alone, which missed the
+            // shipped controller.
             foreach (var clip in ClipsOfAvatar(avatar, avatar.GetComponent<Animator>()))
             {
                 if (clip == null || Generated(clip) || !YapsCurveMirror.UserOwned(clip)) continue;
@@ -423,10 +388,7 @@ namespace AvatarBridge
             return null;
         }
 
-        // A menu toggle for a plug's deform: two clips writing _YAPS_Enabled
-        // on its material, on and off, as an Advanced Settings toggle with
-        // its own animation. Not when anything already hides the plug's
-        // mesh: a hidden plug needs no second switch.
+        // Not when something already hides the plug's mesh.
         public static string EnsurePlugToggle(YapsPlug plug, CVRAvatar avatar, Material material, string label)
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
@@ -492,18 +454,10 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine}), on and off clips beside the bake";
         }
 
-        // Whether this plug will answer sockets on its own wearer. A separate
-        // row from the deform toggle because it answers a different question:
-        // not whether the plug bends, but whose sockets it bends toward.
-        //
-        // OFF by default, and that is the whole reason it exists. A hole ends
-        // the shaft, and a socket the wearer is wearing is nearly always
-        // nearer to their own plug than anybody else's, so on by default would
-        // end the chain at home and never reach the person in front of them.
-        //
-        // Only written where it can do something. Without the atlas, or on an
-        // avatar with no sockets of its own, it would sit in the menu changing
-        // nothing, and a dead menu row is worse than no row.
+        // Whether this plug answers its own wearer's sockets. OFF by default:
+        // the wearer's own socket is nearly always nearest, so the chain would
+        // end at home. Only written with the atlas and own sockets; otherwise
+        // it is a dead row.
         public static string EnsureSelfToggle(YapsPlug plug, CVRAvatar avatar, Material material, string label)
         {
             if (plug == null || avatar == null || material == null || plug.Target == null) return null;
@@ -521,7 +475,6 @@ namespace AvatarBridge
             {
                 if (ours == null) return null;
                 // An earlier build's row, once the sockets or the atlas went.
-                // Returning before the lookup left it in the menu for good.
                 Undo.RecordObject(avatar, "YAPS toggle");
                 settings.Remove(ours);
                 NoteRemoved(ours.machineName, avatar);
@@ -571,9 +524,8 @@ namespace AvatarBridge
             return $"{label}: menu toggle \"{label}\" added ({machine}), off by default";
         }
 
-        // The toolkit's own toggle for one plug's switch on its mesh. Two plugs on one mesh both
-        // write there, so the label comes first: a build from before each had its own switch wrote
-        // the shared one for both, and the property alone would hand one plug the other's row.
+        // Label first: older builds wrote one shared switch for two plugs, so
+        // the property alone would hand one plug the other's row.
         static CVRAdvancedSettingsEntry Ours(List<CVRAdvancedSettingsEntry> settings, string plugPath, string name, string own, string label)
         {
             var mine = settings?.Where(e => e != null
@@ -608,30 +560,16 @@ namespace AvatarBridge
         }
 
         // One constant curve per renderer whose materials declare the property.
-        //
-        // "material._X" is the only spelling Unity binds, and it writes the
-        // renderer's own property block, which every slot reads. From 4.6.0 a
-        // later slot was written as "material[1]._X", on the belief that the
-        // plain spelling reached the first material alone. Unity lists no
-        // such property and binds nothing to it, so every toggle on a plug
-        // whose material was not the mesh's first did nothing.
-        //
-        // A renderer none of whose slots declares it is skipped: a curve no
-        // material reads shows in the animation window as a missing curve,
-        // on every avatar that has one, and the author cannot act on it.
-        // The plug's own renderer is written anyway, so a plug whose material
-        // is assigned after the clip behaves as before.
-        //
-        // Every mesh of a plug, too: one spanning several renderers kept the
-        // others bending with the deform switched off, and answering sockets
-        // the rest of it had been told to leave. Slot 0 is the fallback on
-        // the plug's own renderer only, never on a mesh it merely reached.
+        // "material._X" is the only spelling Unity binds; it writes the
+        // property block every slot reads ("material[1]._X" binds nothing).
+        // Renderers that never declare it are skipped (a missing curve the
+        // author cannot fix), except the plug's own. Every mesh of the plug,
+        // or the others keep bending when switched off. Slot 0 fallback on
+        // the plug's own renderer only.
         public static AnimationClip Clip(string path, Renderer target, string property, float value, string assetPath) =>
             Clip(new List<(string, Renderer)> { (path, target) }, _ => property, new Vector4(value, 0, 0, 0), 1, assetPath);
 
-        // The same, for a vector property: four curves per slot, one per
-        // component. Unity has no single binding for a Vector4, so ".x" and
-        // its three siblings are the only way an animation reaches one.
+        // A Vector4 needs four curves: Unity has no single binding for one.
         public static AnimationClip Clip(string path, Renderer target, string property, Vector4 value, string assetPath) =>
             Clip(new List<(string, Renderer)> { (path, target) }, _ => property, value, 4, assetPath);
 
@@ -707,11 +645,8 @@ namespace AvatarBridge
             return "material." + property;
         }
 
-        // Every YAPS material curve the avatar can play that binds to
-        // nothing, as "clip: path property". Unity resolves a binding against
-        // the hierarchy; one it cannot resolve does nothing in game either,
-        // and nothing else says so: toggles on a later material slot were
-        // dead from 4.6.0 to 4.6.2 behind clean reports.
+        // Every YAPS material curve that binds to nothing, as "clip: path
+        // property". Unbound curves do nothing in game and nothing else says so.
         public static List<string> DeadBindings(GameObject root, UnityEditor.Animations.AnimatorController controller)
         {
             var dead = new List<string>();
@@ -741,11 +676,8 @@ namespace AvatarBridge
             return dead;
         }
 
-        // "material[2]._X" read as "material._X". Builds from 4.6.0 wrote the
-        // index for later slots, dead as it was, so anything hunting for a
-        // property has two spellings to match, and until then matched the
-        // first: a toggle on a second slot could be built twice and was
-        // never taken away again.
+        // "material[2]._X" read as "material._X": older builds wrote the dead
+        // indexed spelling, so lookups match both.
         public static string Bare(string propertyName)
         {
             if (propertyName == null
@@ -760,14 +692,11 @@ namespace AvatarBridge
             return Bare(b.propertyName) == "material." + property;
         }
 
-        // A parameter name from a label, unique among the entries. `mine`
-        // is the entry being named, so a rename does not collide with the
-        // name it already holds.
+        // Unique among entries; `mine` is excluded so a rename keeps its own name.
         static string MachineName(List<CVRAdvancedSettingsEntry> settings, string label,
             CVRAdvancedSettingsEntry mine = null)
         {
-            // Words joined without spaces, each capitalised: "Chest ring"
-            // becomes ChestRing rather than Chestring.
+            // "Chest ring" becomes ChestRing.
             var words = System.Text.RegularExpressions.Regex.Split(label ?? "", "[^a-zA-Z0-9_]+")
                 .Where(w => w.Length > 0)
                 .Select(w => char.ToUpperInvariant(w[0]) + w.Substring(1));

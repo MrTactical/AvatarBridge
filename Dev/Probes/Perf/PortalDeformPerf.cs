@@ -23,13 +23,9 @@
 // The cases of one content are timed render by render in turn, so clock
 // drift lands on all of them alike; the gate reads medians over repeats.
 //
-// Before timing, every case is checked: what the resolve and lookup
-// answered, where each deformed vertex ended up, and how far the decoded
-// exit is from the one written. A case that did not take the path it names
-// fails the run rather than timing the wrong thing. Partial must collapse
-// whole rings, between the walked ones and the portalled ones, each side
-// onto one point bit for bit, at the band's ends as the decoded hole and
-// exit put them.
+// Every case is checked before timing (resolve and lookup answers, each vertex's end, decoded
+// exit error), so a case on the wrong path fails instead of timing the wrong thing. Partial
+// must collapse whole rings each side onto one point bit for bit, at the decoded band ends.
 //
 // Gates, per variant and fill: none, keyless and miss each within
 // max(1 us, that case's baseline spread) of the baseline; portal and partial

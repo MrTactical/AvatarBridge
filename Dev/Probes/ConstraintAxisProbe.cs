@@ -1,14 +1,9 @@
 // What does Unity's RotationConstraint put on an axis it is NOT affecting?
 //
-// VRChat's own solver masks an unaffected axis to the driven transform's LIVE
-// local euler (VRCConstraintJob: val10 = CalculateEulerZXY(localRotation),
-// snapped to the previous frame's value within 0.01 degrees). Unity has no
-// such input, so it must substitute something else, and rotationAtRest is the
-// only candidate. If it does, a bone whose masked axes are animated converts
-// to one that snaps to rest on those axes, which is issue #6.
-//
-// Nothing about that is reasonable to assume. This builds the case and reads
-// the answer off the transform.
+// VRChat masks an unaffected axis to the LIVE local euler (VRCConstraintJob:
+// CalculateEulerZXY(localRotation), snapped within 0.01 deg). Unity's only
+// candidate is rotationAtRest; if used, animated masked axes snap to rest
+// (issue #6). Measured on the transform, not assumed.
 //
 //   -executeMethod AvatarBridge.Regression.ConstraintAxisProbe.Run
 #if UNITY_EDITOR
@@ -51,11 +46,7 @@ namespace AvatarBridge.Regression
 
         static void Tick()
         {
-            // Written once, in Run, and never again: if the constraint
-            // substitutes rest on the masked axis it overwrites the value on
-            // its first evaluation and nothing here puts it back. Re-asserting
-            // it each tick would make the read depend on whether the
-            // constraint ran before or after this callback.
+            // Value written once in Run: re-asserting it per tick would race the constraint.
             EditorApplication.QueuePlayerLoopUpdate();
             ticks++;
             if (ticks < 8)

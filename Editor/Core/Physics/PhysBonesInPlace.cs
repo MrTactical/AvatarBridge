@@ -10,9 +10,9 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
-    // The Toolkit's "PhysBones to cloth" card: the converter's physics pass alone, in place, on
-    // an avatar already on ChilloutVR that still carries PhysBones. Here rather than in the
-    // Toolkit, which the add-on's package ships without the physics, so it is handed in.
+    // The Toolkit's "PhysBones to cloth" card: the physics pass alone, in place, on an avatar
+    // already on ChilloutVR. Here, not in the Toolkit, since the add-on package ships without
+    // the physics.
     [InitializeOnLoad]
     static class PhysBonesInPlace
     {
@@ -21,8 +21,7 @@ namespace AvatarBridge
 
         static PhysBonesInPlace() => ToolkitPanel.ConvertPhysBones = Run;
 
-        // folder is asked only when a controller copy is written, so a run that rewires
-        // nothing makes no output folder.
+        // folder is asked only when a controller copy is written.
         internal static BridgeReport Run(GameObject target, BridgeSettings settings, System.Func<BridgeReport, string> folder)
         {
             var report = new BridgeReport();
@@ -181,9 +180,8 @@ namespace AvatarBridge
             return swapped.Count == 0 ? null : $"Its override controller swaps in {Sample(swapped)}, which this card does not rewire.";
         }
 
-        // Null once the avatar runs the rewired copy; otherwise why nothing was wired, with the
-        // copies and their rows gone. The rows wait in a quiet report, so a refusal leaves no
-        // console line describing a rewire that was thrown away.
+        // Null once the avatar runs the rewired copy, else why not. Rows wait in a quiet report,
+        // so a refusal logs nothing about a discarded rewire.
         static string RewireInCopy(BridgeContext ctx, AnimatorController shipped, AnimatorOverrideController over,
             System.Func<AnimationClip, bool> touches, System.Func<BridgeReport, string> folder)
         {
@@ -313,9 +311,8 @@ namespace AvatarBridge
             return copy;
         }
 
-        // Create Controller copies this override around the rebuilt controller as it is, so a swap
-        // keyed on a clip the base copy replaced is lost, and one swapping in a physics clip is
-        // never rewired.
+        // Create Controller copies this override as it is: a swap keyed on a replaced clip is lost,
+        // and one swapping in a physics clip is never rewired.
         static string BaseRefusal(AnimatorOverrideController over, System.Func<AnimationClip, bool> touches)
         {
             if (over == null) return null;
@@ -390,9 +387,8 @@ namespace AvatarBridge
             return mine;
         }
 
-        // Every slot that held the original, as Free wins wires its copy, but onto copies only:
-        // retargeting the user's own override would reach every avatar sharing it. False when no
-        // slot held it.
+        // Every slot that held the original, onto copies only: retargeting the user's override
+        // would reach every avatar sharing it. False when no slot held it.
         static bool Wire(GameObject target, Dictionary<Object, Object> swaps)
         {
             bool hit = false;

@@ -10,7 +10,7 @@ namespace AvatarBridge.Regression
 {
     // A soft body dropped its source's angle limit: the distance leash does nothing on a
     // BoneSpring, so the part swung unbounded, up past the chest on a forward walk where the
-    // PhysBone stopped at its limit. Breasts and a belly now carry the limit as an angle limit.
+    // PhysBone stopped at its limit. Breasts and a belly carry it as an angle limit.
     public static class SoftBodyLimitTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Soft body angle limit")]
@@ -59,7 +59,7 @@ namespace AvatarBridge.Regression
                 fail += Check($"a source with no limit gets none ({free.SerializeData.angleLimitConstraint.useAngleLimit})",
                     !free.SerializeData.angleLimitConstraint.useAngleLimit);
 
-                // Breasts and a belly keep it; thighs and a butt measured worse with it (Joe, 2026-10-25).
+                // Breasts and a belly keep it; thighs and a butt measured worse with it.
                 foreach (var (name, kept) in new[] { ("Belly", true), ("Thigh_L", false), ("Butt_L", false) })
                 {
                     var c = Convert(name, VRCPhysBoneBase.LimitType.Angle, 50f);

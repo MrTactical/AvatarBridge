@@ -17,14 +17,9 @@ namespace AvatarBridge
     using MagicaCloth2;
 #endif
 
-    // The Interaction lab card: moves the avatar the way a player would, lets a
-    // chain be dragged and let go, draws every chain at once with its settings,
-    // and carries an Inspector edit made in Play mode out of it on request.
-    // Other packages add their own sections below it through TesterSections.
-    // MagicaCloth2 and DynamicBone each sit behind their own define, so the
-    // card builds with either, both or neither. Members newer than a solver's
-    // first release are reached by name, so an older install still compiles
-    // and the control that needs them just does nothing.
+    // The Interaction lab card: moves the avatar, drags chains, draws them, and keeps Play-mode
+    // Inspector edits on request. Other packages add sections through TesterSections. Each solver
+    // sits behind its own define; newer members are reached by name so older installs compile.
     public partial class CckAnimatorTester
     {
         internal enum Moves { None, Walk, Run, Turn, Jump, Shake, Sit }
@@ -136,11 +131,8 @@ namespace AvatarBridge
                 if (change == PlayModeStateChange.EnteredEditMode) ApplyKept();
             };
 
-        // Each chain bone's local pose before Play, by full scene path and for
-        // every avatar, so one picked mid-Play is measured from its own.
-        // The swing bound is measured from where a bone hangs at rest, and
-        // Play mode has already moved them by the time anyone looks.
-        // Serialized, so the domain reload on entering Play keeps them.
+        // Each chain bone's local pose before Play, by scene path, for every avatar: the swing bound
+        // is measured from rest, and Play has moved the bones by then. Serialized to survive the reload.
         [SerializeField] List<string> _restPaths = new List<string>();
         [SerializeField] List<Vector3> _restPositions = new List<Vector3>();
         [SerializeField] List<Quaternion> _restRotations = new List<Quaternion>();
@@ -167,9 +159,8 @@ namespace AvatarBridge
             }
         }
 
-        // onBeforeRender fires only while a game camera renders, so with the
-        // Game view hidden behind a tab nothing moved and no grab pulled. The
-        // editor tick steps too; whichever comes first in a frame does it.
+        // onBeforeRender skips frames while the Game view is hidden, so the editor tick steps too;
+        // whichever comes first in a frame does it.
         partial void EnablePhysics()
         {
             Application.onBeforeRender += StepPhysics;
@@ -381,9 +372,8 @@ namespace AvatarBridge
             return i < 0 ? null : records.json[i].GetHashCode() == Hash(c) ? KeptWord : ChangedWord;
         }
 
-        // At the edit poll's 4 Hz. Values and classes only: rebuilding here would drop a field
-        // mid-edit. No panel check: the build calls this before the card is attached, so the
-        // first frame already shows Health and Stop. Refreshing a detached card is harmless.
+        // At the edit poll's 4 Hz. Values and classes only: a rebuild would drop a field mid-edit.
+        // No panel check: the build calls this before the card is attached.
         void RefreshPhysicsCard()
         {
             if (_physicsCard == null) return;
@@ -737,10 +727,8 @@ namespace AvatarBridge
 
         static string Json(Component c) => EnabledField.Replace(EditorJsonUtility.ToJson(Tunable(c)), "", 1);
 
-        // MagicaCloth2 takes new settings into its solver on SetParameterChange,
-        // DynamicBone into its particles on UpdateParameters. By name: neither
-        // is in every version. Each solver's OnValidate does the same for an
-        // Inspector edit in the versions here; this covers the rest.
+        // MagicaCloth2 SetParameterChange, DynamicBone UpdateParameters. By name: neither is in
+        // every version.
         static void Refresh(Component c)
         {
             foreach (var name in new[] { "SetParameterChange", "UpdateParameters" })
@@ -1046,12 +1034,9 @@ namespace AvatarBridge
             return free.Count > 0 ? free : bones;
         }
 
-        // The chain bone nearest the cursor, within a reach that does not steal
-        // clicks meant for the rest of the Scene view. Bones within a few
-        // pixels of the nearest go to the one nearer the camera, so a chain in
-        // front wins over one behind it. Measured from the nearest, never from
-        // the pick so far, or a row of close bones walks the pick off the cursor.
-        // A chain that is off cannot take a force, so it is never picked.
+        // Nearest chain bone within a reach that leaves Scene view clicks alone. Ties within a few
+        // pixels go to the one nearer the camera, measured from the nearest, not the pick so far,
+        // or a row of close bones walks the pick off the cursor. A chain that is off is never picked.
         static bool PickBone(CVRAvatar avatar, Vector2 mouse, out Component chain, out Transform bone)
         {
             const float reach = 24f, tie = 4f;
@@ -1112,8 +1097,8 @@ namespace AvatarBridge
 
 #if AVATARBRIDGE_MAGICA
         // MagicaCloth applies a pushed force only in a frame that runs a simulation step (90 Hz)
-        // and clears it at the end of every frame, so a one-frame fling at 300 fps was usually
-        // thrown away (measured, PhysicsTesterProbe). It is re-sent for a little over one step.
+        // and clears it every frame, so a one-frame fling at 300 fps was usually lost (measured).
+        // It is re-sent for a little over one step.
         MagicaCloth _flung;
         Vector3 _flungVelocity;
         float _flungUntil;
@@ -1307,12 +1292,9 @@ namespace AvatarBridge
             }
         }
 
-        // Object references travel as instance ids. A scene object keeps its id
-        // through Play mode, one made during it does not, and an id that finds
-        // nothing reads back as None. A Keep must never empty a root bone or
-        // collider list, so a reference the scene had and the record lost is
-        // put back. A slot cleared on purpose in Play mode comes back with it,
-        // the cheaper of the two mistakes.
+        // References travel as instance ids, and one made in Play mode reads back as None. A Keep
+        // must never empty a root bone or collider list, so a lost reference is put back, even one
+        // cleared on purpose: the cheaper mistake.
         static void Overwrite(Component target, string json)
         {
             var so = new SerializedObject(target);
@@ -1422,12 +1404,9 @@ namespace AvatarBridge
             public bool Broken;
         }
 
-        // A label at each chain with its settings and health, and what the
-        // solvers do not draw themselves: each bone's swing bound, and a
-        // DynamicBone's bones, radius and colliders.
-        // Every chain is named with its health; the full settings line is only for
-        // the chain under the cursor and the one selected, or a busy avatar turns
-        // the view into a wall of numbers.
+        // Each chain's health label, plus what the solvers do not draw: swing bounds, and a
+        // DynamicBone's bones, radius and colliders. Full settings only for the hovered and selected
+        // chains, or a busy avatar becomes a wall of numbers.
         Component _hover;
         readonly Dictionary<SceneView, List<(Vector2 point, Component chain)>> _rootsOnScreen =
             new Dictionary<SceneView, List<(Vector2, Component)>>();
@@ -1450,10 +1429,8 @@ namespace AvatarBridge
                 judged.Add((chain, at, health));
                 roots.Add((HandleUtility.WorldToGUIPoint(at), chain));
             }
-            // The spelled-out chains first, so they keep their place beside their
-            // root; then worst first, so a crowd leaves out the healthy and the
-            // switched off, never the chain in trouble. Stable, so ties keep
-            // hierarchy order.
+            // Spelled-out chains first, then worst first, so a crowd drops the healthy, never the
+            // chain in trouble. Stable, so ties keep hierarchy order.
             bool Detailed(Component c) => c != null && (c == _hover || c == _selectedChain);
             var placed = new List<Rect>();
             foreach (var (chain, at, health) in judged.OrderBy(j => Detailed(j.chain) ? 0 : 1).ThenBy(j => j.health.rank))

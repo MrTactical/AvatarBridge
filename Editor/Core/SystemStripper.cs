@@ -21,12 +21,8 @@ namespace AvatarBridge
         static readonly string[] GogoParamPrefixes = { "Go/" };
         static readonly string[] GogoNameHints = { "gogo", "go loco", "goloco" };
 
-        // Whether GoGo put this animator layer there, by the test RemoveLayers
-        // applies to a merged Base layer: named for GoGo, or referencing any
-        // Go/ parameter. The name alone never matches GoGo's own Base
-        // controller, whose layers are "Locomotion", "Poses" and "Smooth
-        // Float". The advisor asks this before converting, so its answer and
-        // the stripper's must be the same function.
+        // Whether GoGo put this layer there: named for GoGo, or referencing any Go/ parameter
+        // (GoGo's Base layers have generic names). The advisor calls this too, so they agree.
         internal static bool IsGogoLayer(AnimatorControllerLayer layer) =>
             layer != null && (IsGogoLayerName(layer.name)
                 || NamesGogoParameterFamily((layer.name ?? "").ToLowerInvariant())
@@ -43,13 +39,9 @@ namespace AvatarBridge
         // SPS audio add-on are contact-driven too: kept and made local like OGB.
         static readonly string[] YapsParamPrefixes = { "OGB", "TPS_", "SPS", "pcs/", "WH_" };
 
-        // The haptics stacks, told apart from the rest because each one is a
-        // CONTACT and ChilloutVR budgets contacts globally: ContactLimits
-        // .MaxPairsPerFrame is 512 overlapping pairs for the whole instance,
-        // and CollectPairsJob drops the rest silently. One converted avatar
-        // routinely carries a hundred of these, so two of them in one place
-        // can spend the room's budget and stop everyone's contacts, YAPS's
-        // own included. Local costs no sync bits; it was never free.
+        // The haptics stacks. Each is a contact, and ChilloutVR allows 512 overlapping pairs per
+        // frame for the whole instance (ContactLimits.MaxPairsPerFrame), dropping the rest
+        // silently. An avatar often carries a hundred, so two can stop everyone's contacts.
         // YapsSocketRebuilder carries a copy: it compiles without the VRChat SDK.
         static readonly string[] HapticsParamPrefixes = { "OGB", "pcs/", "WH_" };
         static readonly string[] HapticsPointerTypePrefixes = { "OGB", "PCS" };
@@ -124,11 +116,8 @@ namespace AvatarBridge
                 && GogoParamPrefixes.Any(g => p.name.StartsWith(g, StringComparison.OrdinalIgnoreCase)));
         }
 
-        // The strip rule for these settings: the parameter prefixes, and the hints
-        // RemoveLayers matches layer names against. Run, the menu converter's
-        // WillBeStripped and the test hook all read this one, because three
-        // hand-built copies had already drifted: the menu kept building controls
-        // for the haptics parameters Run then removed.
+        // The strip rule for these settings: parameter prefixes and layer name hints. Run,
+        // WillBeStripped and the test hook share it; separate copies drifted.
         static (List<string> paramPrefixes, List<string> layerHints) StripRule(BridgeContext ctx)
         {
             var prefixes = new List<string>();
@@ -144,21 +133,16 @@ namespace AvatarBridge
             }
             if (ctx.Settings.stripSpsSystems)
             {
-                // Converting keeps the depth parameters and makes them local,
-                // free but wearer-only: CVR runs a trigger on that machine alone.
-                // The layers that play a socket's reactions stay, since their
-                // parameters now do.
+                // Converting keeps the depth parameters as locals (CVR runs a trigger on the
+                // wearer's machine alone), so their reaction layers stay.
                 if (KeepingPenetration(ctx))
                 {
                     prefixes.AddRange(OtherSpsParamPrefixes);
                     hints.AddRange(OtherSpsLayerHints);
                     if (!ctx.Settings.keepHapticsContacts)
                     {
-                        // Stripped, not localised: a local contact still takes
-                        // its place in the instance's pair budget, and the
-                        // touch and frot stacks are most of what an avatar
-                        // spends. Their triggers go with their parameters,
-                        // through RemoveOrphanedCvrComponents.
+                        // Stripped, not localised: local contacts still spend the pair budget.
+                        // Triggers go via RemoveOrphanedCvrComponents.
                         prefixes.AddRange(HapticsParamPrefixes);
                     }
                 }
@@ -205,10 +189,8 @@ namespace AvatarBridge
                     "them and convert again.");
             }
 
-            // First, and unconditionally: this one isn't a preference about which VRChat add-ons
-            // you want kept, it's a workaround for a VRChat limit that breaks sync when carried
-            // into ChilloutVR. It also has to run ahead of the early return below, which fires
-            // when the user has turned every other stripper off.
+            // First and unconditional, ahead of the early return: a VRChat workaround that breaks
+            // sync in ChilloutVR, not a preference.
             StripParameterCompressor(ctx, master, vrcLayers);
 
             var (paramPrefixes, layerHints) = StripRule(ctx);
@@ -218,10 +200,7 @@ namespace AvatarBridge
                 {
                     ReportHapticsRemoved(ctx);
                 }
-                // OGB's haptics stay synced only on request: an OSC toy
-                // app reads them by their VRChat name, and a local
-                // parameter's "#" hides them. Their sync cost is the
-                // user's, and the budget check names it.
+                // OGB stays synced only on request: OSC toy apps read the VRChat name, which "#" hides.
                 ctx.ForceLocalPrefixes.AddRange(ctx.Settings.syncHapticsForOsc
                     ? YapsParamPrefixes.Where(p => p != "OGB")
                     : YapsParamPrefixes);
@@ -345,12 +324,9 @@ namespace AvatarBridge
                 int strippedRefs = refs.Count(isStripped);
                 bool referenceHit = strippedRefs > 0 && strippedRefs >= refs.Count * 0.6f;
 
-                // ...unless the layer is shared. VRCFury folds unrelated
-                // toggles into one Direct tree, so a majority of
-                // stripped references proves nothing about the rest.
-                // The majority heuristic never deletes a shared tree;
-                // PruneDirectBlendTrees takes branches out one at a
-                // time. A tree with zero survivors still goes whole.
+                // ...unless shared: VRCFury folds unrelated toggles into one Direct tree, so the
+                // majority test never deletes one. PruneDirectBlendTrees takes branches singly;
+                // a tree with zero survivors still goes whole.
                 if (referenceHit && strippedRefs < refs.Count && ContainsDirectBlendTree(layer.stateMachine))
                 {
                     ctx.Report.Converted(Category, $"Kept shared layer \"{layer.name}\" and pruned it instead",
@@ -360,11 +336,8 @@ namespace AvatarBridge
                     referenceHit = false;
                 }
 
-                // Locomotion replacements are all-or-nothing. GoGo's
-                // layers condition mostly on game-fed built-ins, so the
-                // majority test never fires for them. Any GoGo
-                // reference in a merged Base/Additive/Action layer
-                // disqualifies the layer; only GoGo puts Go/ there.
+                // GoGo's layers read mostly built-ins, so the majority test misses them. Any Go/
+                // reference in a merged Base/Additive/Action layer removes it; only GoGo puts one there.
                 bool locomotionHit = false;
                 if (strippedRefs > 0 &&
                     (layer.name.StartsWith("[Base]") || layer.name.StartsWith("[Additive]")
@@ -378,10 +351,9 @@ namespace AvatarBridge
                     });
                 }
 
-                // GoGo's flight layers condition mostly on the game's own parameters, so they
-                // never reach the share above, and their names have no GoGo hint. Their clips are
-                // GoGo's own go_ clips, which a creator's layer reading a Go/ value is not. The
-                // flight scale layer reads no Go/ value at all, so it has to play nothing else.
+                // GoGo's flight layers have no name hint and miss the share above; matched by
+                // their go_ clips. The flight scale layer reads no Go/ value, so it must play
+                // nothing else.
                 bool readsGo = refs.Any(r => isStripped(r) && r.TrimStart('#').StartsWith("Go/", StringComparison.OrdinalIgnoreCase));
                 bool gogoClipHit = !nameHit && !referenceHit && !locomotionHit && ctx.Settings.stripGogoLoco
                     && PlaysGogoClips(layer.stateMachine, readsGo ? 0.6f : 1f);
@@ -757,11 +729,8 @@ namespace AvatarBridge
             List<AnimatorControllerLayer> vrcLayers)
         {
             var declared = new HashSet<string>(master.parameters.Select(p => p.name));
-            // VRCFury names rotation slots by the type they carry:
-            // SyncDataBool0, SyncDataFloat3, SyncDataInt2, plus the
-            // SyncIndex window pointer. The pattern must match all of
-            // them, or an avatar with slots and no mirrors turns every
-            // parameter local.
+            // Rotation slots are named by type (SyncDataBool0, SyncDataFloat3, ...) plus SyncIndex.
+            // Miss one and an avatar with slots and no mirrors turns every parameter local.
             var slots = new System.Text.RegularExpressions.Regex(
                 @"^VF\d+_Sync(Index|Data(Bool|Float|Int|Num)?)\d*$");
             var mirror = new System.Text.RegularExpressions.Regex(@"^VF\d+_(.+)$");
@@ -824,21 +793,12 @@ namespace AvatarBridge
                 ctx.PreserveParameters.Add(real);
             }
 
-            // Mirrors are not always there. When the compressor is
-            // detected at all, every expression parameter that is not its
-            // own artefact is treated as really synced. "Not synced" is
-            // not trustworthy on a compressed avatar; de-syncing is
-            // what the compressor does. Restoring sync costs 32 bits;
-            // the other mistake costs the feature. VF-prefixed names
-            // are VRCFury's own working values and stay excluded. So are
-            // the built-ins: the compressor never touched those, and
-            // preserving one kept a frozen local synced and alive past
-            // the prune after its layers were stripped.
-            //
-            // Only expression parameters: the compressor only ever de-synced
-            // those. Taking every animator parameter also took dozens of
-            // clip-driven floats, which can never sync, and the budget check
-            // counted them until it reported an avatar thousands of bits over.
+            // Mirrors are not always there. With the compressor detected, every expression
+            // parameter that is not its artefact counts as synced: de-syncing is what it does,
+            // and a wrong guess costs 32 bits where the other costs the feature. VF-prefixed names
+            // and built-ins are excluded (a kept built-in survived the prune frozen).
+            // Expression parameters only: clip-driven floats never sync, and counting them put
+            // an avatar thousands of bits over budget.
             var furyOwn = new System.Text.RegularExpressions.Regex(@"^VF\d+_");
             var expressions = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
             var curveDriven = CvrParameterNames.CurveDriven(master);
@@ -861,17 +821,9 @@ namespace AvatarBridge
         }
 
 #if !AVATARBRIDGE_YAPS
-        // Without the add-on there is nothing to rebuild a penetration
-        // system into, so it is removed. Said out loud only where the avatar
-        // actually had one: silence reads as the converter having handled it,
-        // and the plug mesh still being there makes that easy to believe.
-        //
-        // Fury's components by type name, and the contact tags every system
-        // uses, which are the same prefixes the strip already works from.
-        //
-        // Looked for in the first pass and reported here. By now Fury's bake
-        // has taken its components and the strip has deleted the baked trees
-        // that carried the contacts, so a look this late finds nothing.
+        // Without the add-on a penetration system is removed, and reported where the avatar had
+        // one, since silence reads as handled. Found by Fury type name and contact tag prefixes.
+        // Looked for in the first pass: by now the bake and strip have removed the evidence.
         static BridgeContext penetrationFoundOn;
 
         static bool HadPenetration(BridgeContext ctx)
@@ -1086,11 +1038,8 @@ namespace AvatarBridge
             }
         }
 
-        // The component, and its object only when nothing is left there but
-        // a collider. Destroying the object outright would take a bone, and
-        // everything under it, wherever the source authored one of these on
-        // a bone. The converter's own hosts are a childless object holding a
-        // trigger collider, so they still go whole.
+        // The component, and its object only when nothing but a collider is left: one authored
+        // on a bone would take the bone and its children. The converter's own hosts still go whole.
         static void RemoveWithBareHost(BridgeContext ctx, Component component, HashSet<Transform> bones)
         {
             var host = component.gameObject;

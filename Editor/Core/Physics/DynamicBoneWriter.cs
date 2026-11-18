@@ -33,13 +33,8 @@ namespace AvatarBridge
         public static void Write(BridgeContext ctx, PhysBoneChainData data,
             Dictionary<VRCPhysBoneCollider, DynamicBoneColliderBase> colliderCache)
         {
-            // Collected under one object beside the avatar, the way the cloth
-            // writer does it. m_Root is what a DynamicBone simulates, so
-            // where the component itself lives does not matter to it.
-            //
-            // One object PER CHAIN, not one shared object: an animation
-            // binding names a path and a component TYPE, so two DynamicBones
-            // on the same GameObject could not be toggled apart.
+            // m_Root is what is simulated, so the host can live anywhere. One object per chain:
+            // a binding names path and type, so two on one object could not be toggled apart.
             var home = PhysBoneConverter.CollectionUnder(ctx, CollectionName);
             // GrabbyBones grabs DynamicBones too and names its parameters after the holder,
             // so the holder takes the PhysBone's parameter name, as the cloth writer does.
@@ -52,9 +47,7 @@ namespace AvatarBridge
             holder.transform.SetParent(home, false);
             var db = holder.AddComponent<DynamicBone>();
             db.m_Root = data.Root;
-            // An object toggle no longer carries this for free; the animator
-            // pass re-wires both object and component toggles onto the
-            // component through the registration below.
+            // The holder is off the source's path, so the animator pass re-wires toggles through this.
             ctx.ConvertedPhysicsChains.Add(new BridgeContext.ConvertedPhysicsChain
             {
                 Source = data.SourceGameObject,
@@ -100,10 +93,8 @@ namespace AvatarBridge
                 db.m_InertDistrib = new AnimationCurve(data.ImmobileCurve.keys);
             }
 
-            // PhysBone multiplies its radius by the bone's largest lossy scale
-            // (VRC.Dynamics PhysBoneManager), DynamicBone by its own object's x
-            // scale. The holder sits under the avatar root, so on an armature at
-            // scale 100 the raw number came out a hundred times thin.
+            // PhysBone scales radius by the bone's largest lossy scale, DynamicBone by its own x
+            // scale, so a scale-100 armature came out a hundred times thin.
             var rootScale = data.Root.lossyScale;
             float worldRadius = data.Radius *
                                 Mathf.Max(Mathf.Abs(rootScale.x), Mathf.Abs(rootScale.y), Mathf.Abs(rootScale.z));
@@ -150,10 +141,7 @@ namespace AvatarBridge
                 }
             }
 
-            // PhysBone reads Endpoint Position in the bone's own scaled units
-            // (measured), DynamicBone reads
-            // m_EndOffset in metres, so on an armature at scale 100 the tip
-            // came out a hundred times short.
+            // Endpoint Position is in the bone's scaled units (measured), m_EndOffset in metres.
             // ponytail: length only; DynamicBone turns the offset by its own
             // transform, not each leaf's, which one offset cannot match on a
             // chain whose leaves face apart.

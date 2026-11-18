@@ -1,25 +1,17 @@
 // A readout for a plug that will not behave, drawn on the plug itself.
 //
-// The plug's own debug view answers in LENGTH, because the patcher edits
-// a host shader's vertex stage and there is no fragment of ours to paint
-// in. That view can only say one thing at a time, and it straightens the
-// plug to say it, so the bend and the reason for the bend can never be
-// seen together. This is our own shader end to end, so it paints, and it
-// leaves the plug alone.
+// The patched plug's debug view can only answer in LENGTH (vertex stage
+// only) and straightens the plug to say it. This shader paints, so the bend
+// and its reason show together.
 //
-// IT RUNS ON THE PLUG'S RENDERER, as its own submesh and material slot,
-// and that is not a packaging detail. A separate renderer cannot see the
-// editor's preview or the enabled flag, which arrive as animated material
-// properties in this renderer's block alone, and it cannot recover the
-// frame the deform recovers, which comes from this renderer's skinned
-// vertices. The first version was a separate object and reported nobody
-// while the plug was bent round a socket. The four vertices here are
-// skinned exactly like one plug vertex, the anchor, so what arrives is
-// where the anchor is, and the bake says where it was: the same recovery
-// the deform runs, on the same numbers.
+// IT RUNS ON THE PLUG'S RENDERER, as its own submesh: the preview and
+// enabled flag live in this renderer's property block alone, and the frame
+// comes from its skinned vertices. A separate object reported nobody while
+// the plug was bent. The four vertices skin like the anchor vertex, so the
+// recovery is the deform's own, on the same numbers.
 //
-// Fourteen cells in two rows. The top row is the resolve, the bottom row is
-// the plug's own body. Each is a colour, never a fraction:
+// Fourteen cells in two rows, top the resolve, bottom the plug's body.
+// Each is a colour, never a fraction:
 //   top 1  who resolved it      grey nobody, cyan preview, amber light, green atlas
 //   top 2  bending              red not engaged, amber engaged but switched off, green bending
 //   top 3  gap to the socket    a bar, full width at a plug length away
@@ -37,21 +29,13 @@
 //   bot 6  refused by tags      dark nothing refused, amber refused, red refused and nearer
 //   bot 7  always dark, kept so the rows stay the same width
 //
-// AND TWO MARKERS, which is the part no cell can do. A shader sees one
-// vertex at a time, and every measurement it can make from one vertex is
-// in the avatar's world space, so an avatar that simply turned round moves
-// every number. Two points do not have that problem. The white marker is
-// drawn where the tip WOULD be with the bones at bake pose, from the base
-// anchor's recovered frame; the magenta one is drawn where a real tip
-// vertex actually arrives. Together on the tip means the bones are where
-// the bake left them, whatever else is happening. Apart means something
-// moved the BONES, which is cloth, an animation or a constraint, and no
-// amount of shader state can say so from one point.
+// TWO MARKERS do what no cell can: one vertex only sees world space, which
+// moves when the avatar turns. White is where the tip would be at bake pose,
+// from the anchor's frame; magenta is where a real tip vertex arrives.
+// Apart means the BONES moved (cloth, animation, constraint).
 //
-// Queue Overlay, long after the atlas finishes. The whole atlas
-// transaction runs in Background: clear at -946, writers at -945, grab at
-// -944. Drawing here cannot land in the grab and cannot corrupt what it
-// is reporting on. Do not move this queue forward.
+// Queue Overlay, after the atlas (clear -946, writers -945, grab -944), so
+// it never lands in the grab. Do not move it forward.
 Shader "YAPS/Debug Overlay"
 {
     Properties
@@ -63,11 +47,9 @@ Shader "YAPS/Debug Overlay"
         // so off has to cost nothing but the draw.
         _YAPS_ReadoutOn ("Readout shown", Range(0,1)) = 0
 
-        // MIRRORS THE PATCHED PLUG'S BLOCK, the whole of it. The builder
-        // copies the values across by name and reports any it could not,
-        // so a property added to YapsShaderPatcher.PropertyBlock and
-        // forgotten here is a warning in the report rather than a cell that
-        // quietly reads zero.
+        // MIRRORS YapsShaderPatcher.PropertyBlock in full. The builder copies
+        // by name and reports any it could not, so a forgotten one warns
+        // instead of reading zero.
         _YAPS_Bake ("YAPS baked data", 2D) = "black" {}
         _YAPS_VertexCount ("YAPS vertex count", Float) = 0
         _YAPS_Enabled ("YAPS enabled", Range(0,1)) = 1
@@ -150,14 +132,10 @@ Shader "YAPS/Debug Overlay"
 
         Pass
         {
-            // ForwardBase with the vertex-light variant, as the socket
-            // readout: the light tier reads unity_4Light*, which Unity fills
-            // here alone. Untagged, it read whatever the last forward draw
-            // left, and reported a light the plug never saw.
+            // ForwardBase: unity_4Light* is filled here alone. Untagged, it
+            // read the last forward draw's lights.
             Tags { "LightMode" = "ForwardBase" }
-            // Always visible: a readout hidden by the body it sits on is
-            // no readout. Never written to depth, so nothing downstream
-            // sorts against it.
+            // Always visible, never written to depth.
             ZTest Always
             ZWrite Off
             Cull Off
@@ -170,9 +148,8 @@ Shader "YAPS/Debug Overlay"
             #pragma multi_compile_instancing
 
             #include "UnityCG.cginc"
-            // The whole library, not yaps_resolve alone: the resolver's own
-            // helpers are declared in the deform unit after it includes the
-            // resolver, so taking the resolver by itself leaves them missing.
+            // The whole library: the resolver's helpers are declared in the
+            // deform unit, after it includes the resolver.
             #include "yaps_deform.cginc"
 
             float _YAPS_OverlaySize;
@@ -185,10 +162,8 @@ Shader "YAPS/Debug Overlay"
                 float4 vertex : POSITION;
                 float3 normal : NORMAL;
                 float4 tangent : TANGENT;
-                // uv0.xy is the corner, uv0.z says WHICH quad: 0 the strip,
-                // 1 the rest marker, 2 the live marker. The mesh builder
-                // writes it, and it is the only thing separating three quads
-                // that are otherwise identical vertices.
+                // uv0.xy the corner, uv0.z WHICH quad: 0 strip, 1 rest
+                // marker, 2 live marker. Nothing else tells them apart.
                 float4 uv : TEXCOORD0;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
             };
@@ -197,10 +172,8 @@ Shader "YAPS/Debug Overlay"
             {
                 float4 pos : SV_POSITION;
                 float2 uv : TEXCOORD0;
-                // The whole answer, resolved ONCE per vertex. The strip's
-                // four vertices are all the anchor, so all four resolve the
-                // same thing; 27 atlas cells per pixel is not a diagnostic,
-                // it is a frame rate bug.
+                // Resolved ONCE per vertex: 27 atlas cells per pixel would
+                // be a frame rate bug.
                 float4 read : TEXCOORD1;   // tier, engaged, gap fraction, headers
                 float4 read2 : TEXCOORD2;  // hits, atlas-on-this-camera step, frame recovery, refused distance
                 float4 read3 : TEXCOORD3;  // chain links, which quad, bake read, portal
@@ -214,8 +187,7 @@ Shader "YAPS/Debug Overlay"
                 UNITY_INITIALIZE_OUTPUT(v2f, o);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-                // Hidden: every corner at one point, so no triangle has area
-                // and nothing is read, resolved or shaded.
+                // Hidden: every corner at one point, so nothing is shaded.
                 if (_YAPS_ReadoutOn < 0.5)
                 {
                     return o;
@@ -223,29 +195,22 @@ Shader "YAPS/Debug Overlay"
 
                 float quad = v.uv.z;
 
-                // THE DEFORM'S OWN FRAME RECOVERY: the same YapsRecoverRoot
-                // call YapsDeform makes, so the readout reports the frame the
-                // plug really bends from. The strip and the rest marker are
-                // skinned like the anchor, so they arrive where the anchor
-                // arrives; the bake holds where the anchor was.
+                // The same YapsRecoverRoot call YapsDeform makes, so this is
+                // the frame the plug really bends from.
                 YapsVertex baked = YapsReadBaked((uint) max(_YAPS_AnchorVertex, 0));
                 // The raw base normal: YapsReadBaked normalises with a fallback, so its
                 // normal is never zero even when nothing was read.
                 float bakeRead = length(YapsReadFloat3(1 + (uint) max(_YAPS_AnchorVertex, 0) * 10 + 3)) > 0.001 ? 1.0 : 0.0;
                 YapsRoot root = YapsRecoverRoot(baked, v.vertex.xyz, v.normal, v.tangent.xyz);
-                // 0 the object's own axes, 1 the recovery refused, 2 recovered.
-                // A plain-mesh plug is 0 by design and is not a fault; 1 is,
-                // and the deform then leaves the vertex alone.
+                // 0 the object's axes (plain mesh, by design), 1 refused (a
+                // fault: the deform leaves the vertex alone), 2 recovered.
                 float recovered = root.recovered;
                 float3 rootWorld = root.position;
                 float3 rootForward = root.forward;
                 float3 rootUp = root.up;
                 float worldLength = root.worldLength;
 
-                // ONLY THE STRIP RESOLVES. A marker needs a place to sit, not
-                // an answer, and the atlas scan is 27 cells: running it for
-                // vertices whose result is thrown away is a frame rate bug
-                // wearing a diagnostic's clothes.
+                // ONLY THE STRIP RESOLVES: the 27-cell scan is wasted on markers.
                 YapsSocket socket = (YapsSocket) 0;
                 float gap = 1.0;
                 float target = 0.0;
@@ -258,23 +223,18 @@ Shader "YAPS/Debug Overlay"
                         ? 1.0
                         : saturate(length(socket.position - rootWorld) / max(worldLength, 1e-4));
 
-                    // WHICH TARGET this camera draws into. The same plug
-                    // answers differently in the view, a mirror and the self
-                    // portrait, and nothing else in here can say so.
+                    // The same plug answers differently in the view, a mirror
+                    // and the self portrait.
                     float2 grabPx = _YAPS_Atlas_TexelSize.zw;
                     bool sameTarget = all(abs(grabPx - _ScreenParams.xy) < 1.5);
                     target = !YapsAtlasFits() ? 0.0
                            : (!sameTarget ? 1.0
                            : (socket.atlasHeaders < 0.5 ? 2.0 : 3.0));
 
-                    // A socket found and turned down by this plug's tags.
-                    // 0 nothing refused, 1 refused, 2 refused and nearer than
-                    // whatever answered, which is the shape of "there is a
-                    // socket right there and it does nothing".
-                    // Zero is not a refusal at the origin, it is a chain
-                    // that never ran: the atlas is off, or too small to read.
-                    // Left ungated this cell was red on every plug that
-                    // resolved nothing, which is exactly when it is read.
+                    // Refused by tags: 0 none, 1 refused, 2 refused and nearer
+                    // than whatever answered. Zero distance means the chain
+                    // never ran (atlas off or too small); ungated, this cell
+                    // was red on every plug that resolved nothing.
                     float refusedD = socket.chain.refusedD;
                     float taken = socket.tier < 0.5 ? 1e9 : length(socket.position - rootWorld);
                     refused = (refusedD > 1e8 || refusedD <= 0.0)
@@ -303,14 +263,10 @@ Shader "YAPS/Debug Overlay"
                 o.read2 = float4(socket.atlasHits, target, recovered, refused);
                 o.read3 = float4(socket.chain.count, quad, bakeRead, portal);
 
-                // A VIEW-SPACE BILLBOARD off the recovered root, so it
-                // faces every eye, every mirror and the portrait camera
-                // without a script. The view matrix is per-eye, so
-                // single-pass instanced gets this right for free; a
-                // world-space facing would not.
-                //
-                // The markers billboard too, so neither can hide edge-on, and
-                // they take no lift: they have to sit where they mean.
+                // VIEW-SPACE BILLBOARD: faces every eye, mirror and portrait
+                // camera, per-eye under single-pass instanced, which a world
+                // facing would not. Markers billboard with no lift: they must
+                // sit where they mean.
                 float3 centre = quad < 0.5
                     ? rootWorld
                     : (quad < 1.5 ? rootWorld + rootForward * worldLength
@@ -329,19 +285,16 @@ Shader "YAPS/Debug Overlay"
                 return o;
             }
 
-            // Four steps, never a ratio. One socket occupies one cell of
-            // the twenty-seven read, so a ratio put a working transport a
-            // few percent from a dead one.
+            // Steps, never a ratio: one socket fills one of 27 cells, so a
+            // ratio put a working transport a few percent from a dead one.
             static const fixed3 YAPS_DEAD  = fixed3(0.10, 0.10, 0.10);
             static const fixed3 YAPS_NONE  = fixed3(0.45, 0.45, 0.45);
             static const fixed3 YAPS_BAD   = fixed3(0.85, 0.15, 0.10);
             static const fixed3 YAPS_HALF  = fixed3(0.95, 0.70, 0.10);
             static const fixed3 YAPS_GOOD  = fixed3(0.15, 0.80, 0.25);
 
-            // Tier 1 answering is a WORKING state, and it was painted in
-            // this readout's own fault colour. Every healthy answer read as
-            // a failure, which is worse than no readout at all. Red belongs
-            // to faults only. Tier 1 is the editor's preview from 4.5.1.
+            // Tier 1 (the editor preview) is a WORKING state. Red is for
+            // faults only.
             static const fixed3 YAPS_CHAN  = fixed3(0.20, 0.75, 0.85);
 
             // For the cells whose value is genuinely continuous.
@@ -352,12 +305,7 @@ Shader "YAPS/Debug Overlay"
                 float quad = i.read3.y;
                 if (quad > 0.5)
                 {
-                    // THE TWO MARKERS. White is where the tip would be with
-                    // the bones at bake pose; magenta is where a real tip
-                    // vertex actually arrives. Read them as a pair and
-                    // nothing else: apart means the BONES moved, and no cell
-                    // on the strip can see that, because every number a
-                    // shader takes from one vertex moves when the avatar does.
+                    // THE TWO MARKERS, see the header.
                     fixed3 m = quad < 1.5 ? fixed3(0.95, 0.95, 0.95) : fixed3(0.95, 0.15, 0.85);
                     float edge = max(abs(i.uv.x - 0.5), abs(i.uv.y - 0.5));
                     return fixed4(edge > 0.38 ? fixed3(0, 0, 0) : m, 1);
@@ -370,17 +318,13 @@ Shader "YAPS/Debug Overlay"
                 int row = (int) floor(rowF);
                 float withinY = frac(rowF);
 
-                // A dark gutter, so fourteen cells read as fourteen and not as
-                // one gradient. Without it two neighbouring greens merge.
+                // A dark gutter, or neighbouring greens merge.
                 if (withinX < 0.06 || withinX > 0.94 || withinY < 0.10 || withinY > 0.90)
                 {
                     return fixed4(0, 0, 0, 1);
                 }
 
-                // The top row keeps the six it always had, in the order it
-                // always had them. The bottom row is the new half; moving the
-                // old six would make every screenshot ever taken of this wrong.
-                // The seventh column came later still, so it numbers after both.
+                // Cell order is fixed so old screenshots stay readable.
                 int cell = column == 6 ? (row == 1 ? 12 : 13) : (row == 1 ? column : column + 6);
 
                 float tier = i.read.x;
@@ -399,28 +343,22 @@ Shader "YAPS/Debug Overlay"
 
                 if (cell == 0)
                 {
-                    // Three working transports, three tellable colours.
-                    // Grey is the only nothing here: a plug with no socket
-                    // in reach is not broken.
+                    // Grey is nothing in reach, not a fault.
                     c = tier < 0.5 ? YAPS_NONE
                       : (tier < 1.5 ? YAPS_CHAN
                       : (tier < 2.5 ? YAPS_HALF : YAPS_GOOD));
                 }
                 else if (cell == 1)
                 {
-                    // Engaged is the resolver's verdict; bending needs the
-                    // enabled flag as well, and that flag only exists in
-                    // this renderer's block. Amber is a plug that found its
-                    // socket while its toggle holds it off, which from the
-                    // outside looks exactly like nobody resolving it.
+                    // Bending also needs the enabled flag. Amber: found a
+                    // socket while its toggle holds it off, which otherwise
+                    // looks like nobody resolving it.
                     c = engaged < 0.5 ? YAPS_BAD
                       : (YAPS_ENABLED < 0.5 ? YAPS_HALF : YAPS_GOOD);
                 }
                 else if (cell == 2)
                 {
-                    // A BAR, not a colour. Distance is the one value here
-                    // that is genuinely continuous, and a jump in it means
-                    // a different socket was handed over on that frame.
+                    // A bar: a jump means a different socket took over.
                     c = withinX < saturate(gap) ? YAPS_BAR : YAPS_DEAD;
                 }
                 else if (cell == 3)
@@ -441,52 +379,39 @@ Shader "YAPS/Debug Overlay"
                 }
                 else if (cell == 6)
                 {
-                    // Grey is a plain-mesh plug, which takes the object's own
-                    // axes on purpose. Red is a skinned plug whose normals and
-                    // tangents would not give a rotation back, and that one is
-                    // silent everywhere else: the deform keeps running, around
-                    // an axis that is not the plug's.
+                    // Red is silent everywhere else: the deform keeps running
+                    // around an axis that is not the plug's.
                     c = recovered < 0.5 ? YAPS_NONE
                       : (recovered < 1.5 ? YAPS_BAD : YAPS_GOOD);
                 }
                 else if (cell == 7)
                 {
-                    // The readout hangs off one baked vertex. A re-bake that
-                    // moved it, or a material carrying another mesh's bake,
-                    // puts this outside the table, and everything above it is
-                    // then somebody else's numbers.
+                    // Red: a re-bake moved the anchor or the bake is another
+                    // mesh's, so every other cell is wrong too.
                     c = (_YAPS_AnchorVertex < 0 || _YAPS_AnchorVertex >= _YAPS_VertexCount)
                         ? YAPS_BAD : YAPS_GOOD;
                 }
                 else if (cell == 8)
                 {
-                    // Black: no bake on this material at all. Red: the row was
-                    // read and held nothing, which is a bake texture that did
-                    // not ship, or did not import as it was written.
+                    // Red: the bake texture did not ship or import as written.
                     c = _YAPS_VertexCount < 0.5 ? YAPS_DEAD
                       : (bakeRead < 0.5 ? YAPS_BAD : YAPS_GOOD);
                 }
                 else if (cell == 9)
                 {
-                    // The own-body rule, which is the quietest reason a plug
-                    // finds nothing. A plug that refuses its wearer's own
-                    // sockets, looking at one, reads exactly like a plug with
-                    // no socket in reach. Amber is refusing, green is allowing.
+                    // The quietest reason a plug finds nothing.
                     c = YAPS_SELF_ALLOW > 0.5 ? YAPS_GOOD : YAPS_HALF;
                 }
                 else if (cell == 10)
                 {
-                    // Only the atlas builds a chain. Dark means one socket
-                    // answered on its own, which is every other transport.
+                    // Only the atlas builds a chain.
                     c = links < 0.5 ? YAPS_DEAD
                       : (withinX < saturate(links / 4.0) ? YAPS_GOOD : YAPS_DEAD);
                 }
                 else if (cell == 12)
                 {
-                    // Grey is every ordinary hole, so it is not a fault. Red
-                    // is an exit that is there and a plug that cannot come
-                    // out of it: too coarse, no second copy to draw it, or
-                    // baked before portals.
+                    // Red: the plug cannot come out of the exit (too coarse,
+                    // no second copy, or baked before portals).
                     c = portal < 0.5 ? YAPS_DEAD
                       : (portal < 1.5 ? YAPS_HALF
                       : (portal < 2.5 ? YAPS_NONE
@@ -498,9 +423,8 @@ Shader "YAPS/Debug Overlay"
                 }
                 else
                 {
-                    // Red is the one that matters: a socket refused by this
-                    // plug's tags AND nearer than whatever did answer, which
-                    // from outside looks exactly like no socket being there.
+                    // Red: refused AND nearer than whatever answered, which
+                    // looks like no socket at all.
                     c = refused < 0.5 ? YAPS_DEAD
                       : (refused < 1.5 ? YAPS_HALF : YAPS_BAD);
                 }

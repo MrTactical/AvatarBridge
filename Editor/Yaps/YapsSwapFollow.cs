@@ -1,25 +1,8 @@
-// Make a material-swap animation follow the bake.
-//
-// Baking repoints a renderer's material slot at a patched copy carrying
-// the deform and the baked mesh data. That holds exactly until the
-// animator runs. An avatar that assigns a material to that same slot in
-// an animation, a skin picker, a body variant, a toggle, hands the slot
-// straight back to the material it was baked FROM, which has neither.
-//
-// The plug then straightens the instant play mode starts, and the tool
-// reports it as never baked, because from the material's side there is
-// nothing left to find. In edit mode the patched copy is still in the
-// slot, so the two states disagree and it reads as the bake coming
-// undone.
-//
-// Scoped to the renderer AND the slot that was actually repointed. The
-// original material is usually worn by other meshes as well, and those
-// have no bake of their own: handing them a plug's deform would bend
-// the wrong mesh.
-//
-// Shared because the bug is not the converter's. The native toolkit
-// replaces the same slot on the same kind of renderer, and an avatar
-// set up natively is MORE likely to have its toggles already built.
+// Makes material-swap animations follow the bake. A clip that assigns the slot's
+// original material hands back one with no deform, so the plug straightens in Play
+// Mode while edit mode still shows the bake: it reads as the bake coming undone.
+// Scoped to the repointed renderer AND slot: other meshes wearing the original have
+// no bake. Shared by the converter and the native toolkit.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -51,10 +34,7 @@ namespace AvatarBridge.Yaps
                                 out int slot) ? slot : -1;
         }
 
-        // The one that does the work. Everything else here just decides which
-        // clips to hand it. `skipped` names clips that matched but are not this tool's
-        // to edit, so the caller can say so rather than leaving a plug that
-        // half works.
+        // `skipped` names matched clips this tool may not edit, so the caller can say so.
         public static int RepointInClips(IEnumerable<AnimationClip> clips, string path,
                                          int slot, Material from, Material to,
                                          ICollection<string> skipped = null)
@@ -72,11 +52,8 @@ namespace AvatarBridge.Yaps
                 {
                     continue;
                 }
-                // NEVER a clip this tool does not own. A clip under Packages, or the CCK's,
-                // is shared with every project that has it: editing in place
-                // reaches the package file itself. The native path walks the
-                // user's LIVE controllers, so this is not hypothetical the way it
-                // was for the converter, whose clips are already its own clones.
+                // Never a package or CCK clip: editing in place reaches the package file.
+                // The native path walks live controllers, so this happens.
                 bool ours = YapsCurveMirror.UserOwned(clip);
                 foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
                 {
@@ -99,9 +76,7 @@ namespace AvatarBridge.Yaps
                         }
                         if (!ours)
                         {
-                            // Matched, and left alone. Silently skipping is
-                            // what produces a plug that works until somebody
-                            // presses the one toggle nobody thought to try.
+                            // Reported, not silent: it breaks the plug on that toggle.
                             skipped?.Add(clip.name);
                             break;
                         }
@@ -126,10 +101,8 @@ namespace AvatarBridge.Yaps
             return repointed;
         }
 
-        // Each key moved off a user's material remembers that material in the clip's importer, so
-        // a key whose copy was deleted by hand can still go back. Without it the way back runs
-        // through the copy's own mark, and a deleted copy takes that with it: the swap then puts
-        // a missing material in the slot, which draws pink in game.
+        // Remembers each key's original material in the clip's importer, so a key whose copy
+        // was deleted by hand can go back instead of drawing pink in game.
         sealed class Ledger
         {
             const string Head = "yaps-swap-originals\n";
@@ -235,9 +208,7 @@ namespace AvatarBridge.Yaps
             return count;
         }
 
-        // What animation paths in this avatar's clips are relative to. For a
-        // ChilloutVR avatar that is the CVRAvatar's own transform, which is
-        // also where the Animator sits.
+        // What animation paths are relative to.
         public static Transform AnimationRootOf(Transform any)
         {
             if (any == null) return null;
@@ -249,17 +220,9 @@ namespace AvatarBridge.Yaps
             return animator != null ? animator.transform : any.root;
         }
 
-        // EVERY clip this avatar could run, not just the Animator's.
-        //
-        // ChilloutVR uploads what avatar.overrides points at and falls back to
-        // avatarSettings.baseController; the Animator's own slot holds a
-        // generated override that is not what ships, and on an avatar never
-        // built it is often empty. Reading only that slot means finding nothing
-        // at all on an ordinary avatar, and doing nothing quietly.
-        //
-        // All three are read, because a clip only has to be REACHABLE to fire.
-        // Unfiltered: the caller decides what it may write to, and one caller
-        // wants to report the ones it must leave alone.
+        // Every clip the avatar could run. CVR ships avatar.overrides, else the base
+        // controller; the Animator's slot is often empty. All three are read, as a
+        // reachable clip fires. Unfiltered: callers decide what they may write.
         public static List<AnimationClip> RunnableClips(Transform any)
         {
             var root = AnimationRootOf(any);
@@ -287,19 +250,9 @@ namespace AvatarBridge.Yaps
         }
 
 
-        // Every OTHER material an animation can put in this slot, baked as well.
-        //
-        // Follow above repairs the swap that hands the slot back to what the bake
-        // replaced. It cannot help a second look: a skin variant, a glow version,
-        // an alternate the author toggles in was never the bake source, so nothing
-        // repoints it and the mesh wears a material with no deform for as long as
-        // that toggle is on. Nothing reports it either, because the slot the tool
-        // checks still holds the baked copy.
-        //
-        // The bake belongs to the MESH, not the material, so the same result goes
-        // into each variant and only the look differs. `primary` is the slot's
-        // finished material, every knob and flag already written: each variant
-        // copies it and is remembered on the plug.
+        // Bakes every OTHER material an animation can put in this slot (skin variants
+        // and the like), which Follow cannot repoint. The bake belongs to the mesh, so
+        // each variant copies `primary`, the slot's finished material.
         public static int FollowVariants(YapsPlug plug, Renderer renderer, int slot, YapsBaker.Result result,
                                          string dir, IEnumerable<AnimationClip> clips,
                                          BridgeReport report, Material primary, params Material[] known)
@@ -310,10 +263,8 @@ namespace AvatarBridge.Yaps
                                                                   AnimationRootOf(renderer.transform));
             var baked = BakeVariants(renderer, slot, result, dir, runnable, report, primary, known);
             foreach (var (_, copy) in baked) Remember(plug, renderer, slot, copy);
-            // A re-bake skips the variants it baked before, as already carrying a
-            // bake, and one baked before the plug kept this record is on no list.
-            // Any keyed here that wears this slot's bake texture is one of them,
-            // and every one is brought level with the new values.
+            // Variants baked earlier are skipped above; find them by bake texture so
+            // they get the new values too.
             var bake = primary != null && primary.HasProperty("_YAPS_Bake") ? primary.GetTexture("_YAPS_Bake") : null;
             if (bake != null)
             {
@@ -325,8 +276,7 @@ namespace AvatarBridge.Yaps
             }
             Refresh(plug);
             if (baked.Count == 0) return 0;
-            // Only a variant something now swaps in counts as followed. One
-            // whose swap sits in a package clip is baked and never worn.
+            // Followed only if something swaps it in (not a package clip).
             int repointed = 0, followed = 0;
             var skipped = new SortedSet<string>();
             foreach (var (variant, copy) in baked)
@@ -345,9 +295,7 @@ namespace AvatarBridge.Yaps
             return repointed;
         }
 
-        // The bake half alone, each variant with its baked copy, for a caller
-        // that keeps the pairs. The converter is one, and calls it only once
-        // its clips are its own copies, or repointing edits the author's.
+        // The bake half alone. The converter calls it only once its clips are its own copies.
         public static List<(Material variant, Material baked)> BakeVariants(
             Renderer renderer, int slot, YapsBaker.Result result, string dir,
             IEnumerable<AnimationClip> clips, BridgeReport report, Material primary, params Material[] known)
@@ -359,8 +307,7 @@ namespace AvatarBridge.Yaps
 
             string path = AnimationUtility.CalculateTransformPath(renderer.transform, root);
             var skip = new HashSet<Material>(known.Append(primary).Where(m => m != null));
-            // A material already carrying a bake is one of ours from an
-            // earlier run. Baking a baked material buries the original.
+            // Already baked: ours from an earlier run; rebaking buries the original.
             var variants = Keyed(clips, path, slot)
                 .Where(m => !m.HasProperty("_YAPS_Bake") && !skip.Contains(m)).ToList();
 
@@ -369,9 +316,8 @@ namespace AvatarBridge.Yaps
             {
                 var source = variant;
                 var legacy = YapsLegacyMap.Detect(source, out _);
-                // Raliv's DPS has no switch for its own deform, so its shader is never
-                // patched; Simple Lit carries the look instead, and YAPS Standard
-                // for Standard. Same rule the plug's own material follows.
+                // DPS without a deform switch is never patched; a fallback carries the
+                // look, as for the plug's own material.
                 var shader = legacy == YapsLegacyMap.Origin.DPS && !YapsNativeBuilder.HasDpsSwitch(source) ? null
                     : YapsShaderPatcher.Patch(source, report, out _, out _,
                                               allowSps: legacy == YapsLegacyMap.Origin.SPS,
@@ -391,9 +337,8 @@ namespace AvatarBridge.Yaps
                 {
                     YapsNativeBuilder.SwitchOffLegacyDeform(baked, legacy);
                 }
-                // The bake alone left the variant on the shader's defaults: no
-                // atlas, no tags, no own-socket ticks, stock curvature. Same mesh
-                // and slot, so the primary's bake fields are this one's too.
+                // The bake alone leaves shader defaults; same mesh and slot, so
+                // the primary's fields apply.
                 YapsNativeBuilder.CopyYapsProperties(primary, baked);
                 done.Add((variant, baked));
             }
@@ -437,8 +382,7 @@ namespace AvatarBridge.Yaps
             EditorUtility.SetDirty(plug);
         }
 
-        // Every remembered variant brought level with what its slot wears now,
-        // so a knob changed after the bake reaches the alternate look as well.
+        // So a knob changed after the bake reaches the variants too.
         public static void Refresh(YapsPlug plug)
         {
             if (plug == null) return;
@@ -455,12 +399,8 @@ namespace AvatarBridge.Yaps
             }
         }
 
-        // The native path: no merged controller to read, so the clips come off
-        // whatever the avatar or prop actually runs. All three sources, for the
-        // reason given above RunnableClips: a swap that fires from the wrong
-        // controller breaks the plug just the same. A caller following several
-        // slots passes RunnableClips once, since walking every controller per
-        // slot repeats the same answer.
+        // The native path: clips from RunnableClips. Callers following several slots
+        // pass them in once.
         public static int Follow(Renderer renderer, int slot, Material from, Material to,
                                  BridgeReport report = null, IList<AnimationClip> clips = null)
         {

@@ -1,12 +1,7 @@
 // Would the constraint guard have fired, on the SOURCE avatar?
 //
-// SkipConstraintDrivenChain refuses to simulate a chain whose bones a
-// constraint writes every frame. It fires on 25 corpus avatars and did not
-// fire on the one whose rig is made of constraints, so either the predicate
-// misses something or the constraints were not there yet when physics ran.
-//
-// This asks the source avatar the same question the guard asks, before any
-// conversion has touched anything.
+// SkipConstraintDrivenChain fired on 25 corpus avatars but not the one rigged
+// from constraints. Asks the guard's question of the unconverted source.
 //
 //   -executeMethod AvatarBridge.Regression.ConstraintTimingProbe.Run
 //   AVATARBRIDGE_SURVEY_SCENE = the source scene

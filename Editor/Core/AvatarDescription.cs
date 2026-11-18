@@ -9,20 +9,10 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Writes a store-listing description for the converted avatar, out of what the conversion
-    // actually produced.
-    //
-    // It is written to a file and offered on the clipboard rather than filled into the CCK's field
-    // directly, and that is not laziness; the CCK has nowhere durable to put one. `CVRAssetInfo`,
-    // the per-avatar component, carries no description; the Content Manager keeps it in Unity's
-    // `SessionState` under `CCK.Builder.Description`, which is lost on an editor restart, and
-    // `BuilderTab.SelectContent` calls `ClearFields()` whenever the chosen content changes; so a
-    // value written here would be wiped by the CCK itself the moment the user picked their avatar
-    // in the Builder tab. Reaching into another tool's session keys to lose the race anyway is
-    // worse than handing over text that is one click from pasted.
-    //
-    // Everything it claims is counted from the finished avatar, so it cannot drift from what was
-    // built. Lines that would read as zero are left out entirely rather than printed as "0".
+    // Store-listing description, counted from the finished avatar so it cannot drift.
+    // A file and the clipboard, not the CCK field: CVRAssetInfo has no description, and the
+    // Content Manager keeps it in SessionState (lost on restart), which
+    // BuilderTab.SelectContent clears the moment the user picks their avatar.
     public static class AvatarDescription
     {
         const string Category = "Store description";
@@ -62,11 +52,8 @@ namespace AvatarBridge
                             + ShortLink(BridgeLinks.Repo);
             string name = DisplayName(ctx.Target.name);
 
-            // Two blank lines first, deliberately. Whoever pastes this almost always has something
-            // of their own to say; who made the model, where it came from, what it costs; and a
-            // block of generated text starting hard against the top of the box invites them to
-            // either delete it or leave the listing sounding machine-written. The cursor lands in
-            // the gap, and ReservedForUser keeps room for what they type there.
+            // Two blank lines first: the user almost always adds their own text (creator,
+            // source, price), and ReservedForUser keeps room for it.
             const string gap = "\n\n";
 
             int budget = MaxLength - ReservedForUser - gap.Length - name.Length - credit.Length - 4;
@@ -95,8 +82,7 @@ namespace AvatarBridge
             sb.Append(credit);
 
             string text = sb.ToString();
-            // Belt and braces: never hand back something the box would truncate, whatever the
-            // arithmetic above did.
+            // Never hand back something the box would truncate.
             return text.Length <= MaxLength ? text : text.Substring(0, MaxLength).TrimEnd();
         }
 
@@ -109,10 +95,8 @@ namespace AvatarBridge
         {
             var lines = new List<string>();
 
-            // Order matters: Build() fills its budget from the top and drops whatever will not
-            // fit, so this is the marquee features first and the exhaustive counts after. A
-            // heavily-toggled avatar was spending the whole box on "3 sliders · 1 joystick" and
-            // never getting as far as saying it had face tracking at all.
+            // Order matters: Build() drops whatever does not fit, so marquee features go first,
+            // or a toggle-heavy avatar spends the box on counts and never mentions face tracking.
             CountMenu(ctx, out int toggles, out int sliders, out int puppets, out int colours);
             if (toggles > 0) lines.Add(Plural(toggles, "toggle"));
 
@@ -122,11 +106,8 @@ namespace AvatarBridge
                 lines.Add($"{Plural(chains, "physics chain")} ({physicsName})");
             }
 
-            // Checked against the avatar, never against the setting that asked for it. A mode can
-            // be selected and produce nothing; no compatible blendshapes, a mesh it couldn't read
-            //; and a listing that claims face tracking on an avatar without the component is a
-            // false advertisement written by this tool, under someone else's name. The setting is
-            // a request; only the component is evidence.
+            // Checked against the component, never the setting: a mode can produce nothing
+            // (no compatible blendshapes, an unreadable mesh), and the claim would be false.
             if (ctx.Target.GetComponentInChildren<CVRFaceTracking>(true) != null
                 || (FindDeep(ctx.Target.transform, "EyeTracking.L") != null
                     && FindDeep(ctx.Target.transform, "EyeTracking.R") != null))
@@ -134,24 +115,20 @@ namespace AvatarBridge
                 lines.Add("face tracking");
             }
 
-            // Triangle count above the softer features: it is the one number that decides whether
-            // someone can wear the avatar at all.
+            // Triangles first: the one number that decides whether someone can wear it.
             CountGeometry(ctx, out int triangles, out int materials, out int shapes);
             if (triangles > 0)
             {
                 lines.Add(Triangles(triangles));
             }
 
-            // Same rule: the scaler is claimed only if its menu control actually reached the
-            // avatar. Injection is skipped on rigs it can't measure.
+            // Same rule: injection is skipped on rigs it cannot measure.
             if (HasMenuEntry(ctx, "Height"))
             {
                 lines.Add("height slider");
             }
 
-            // Blink and lip sync are separate features on separate fields, and were being claimed
-            // together off the blink flag alone. Each is now only stated if its own switch is on
-            // AND it names a shape to drive; the flag can be set with an empty array.
+            // Each needs its own switch on AND a shape to drive; the flag can be set with an empty array.
             bool blinks = ctx.CvrAvatar != null && ctx.CvrAvatar.useBlinkBlendshapes
                           && HasAny(ctx.CvrAvatar.blinkBlendshape);
             bool lipSync = ctx.CvrAvatar != null && ctx.CvrAvatar.useVisemeLipsync

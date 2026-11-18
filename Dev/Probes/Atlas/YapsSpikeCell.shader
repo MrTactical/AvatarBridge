@@ -1,24 +1,16 @@
 // Spike 3: publish into a cell derived from WHERE THIS OBJECT IS.
 //
-// The rendezvous problem: a plug has to find a socket without being told
-// which cell to read, and the two cannot negotiate. Both derive the cell
-// from the same world coordinates instead, the way a spatial hash works in
-// a physics broadphase.
+// Plug and socket derive the same cell from world position, like a
+// broadphase spatial hash, so they never negotiate.
 //
 //   cell    = floor(worldPos / cellSize)          a 3D integer coordinate
 //   index   = hash(cell) % (N*N)                  a square on the screen
 //   payload = frac(worldPos / cellSize)           where it sits INSIDE the cell
 //
-// The payload is already normalised to 0..1 by construction, and it never
-// spans more than one cell, so precision is cellSize times the half-float
-// step: about 0.24 mm at half a metre. Range comes from how many cells
-// exist rather than from how big one is, which is the whole point. Spike 2
-// measured that a bigger box buys range only by losing precision.
-//
-// The hash is INTEGER, not the usual sin/frac float trick, because the two
-// sides must agree exactly and a float hash evaluated in double on the C#
-// side and in float on the GPU does not have to. Integer wrap is identical
-// everywhere, which is worth a pragma target 4.0.
+// Precision = cellSize x half-float step, ~0.24 mm at 0.5 m; range comes from
+// the cell count (spike 2: a bigger box trades precision for range).
+// Integer hash, not sin/frac: C# (double) and GPU (float) must agree exactly.
+// Worth target 4.0.
 Shader "YAPS/Spike Cell"
 {
     Properties
@@ -88,15 +80,9 @@ Shader "YAPS/Spike Cell"
                 float2 p;
                 if (_CellPx > 0.5)
                 {
-                    // SNAPPED TO WHOLE PIXELS.
-                    //
-                    // Clip space knows nothing about where pixel boundaries
-                    // are, so a cell 0.002 wide is 1.92 px at 1920 and every
-                    // cell drifts a fraction further than the last. It does
-                    // not matter at six pixels a cell and it is fatal at two:
-                    // measured, the cell at grid (0,4) read perfectly while
-                    // (6,7) read a neighbour, because the drift accumulates
-                    // with the grid index.
+                    // Snapped to whole pixels: in clip units a 0.002 cell is
+                    // 1.92 px at 1920 and drift accumulates with the index
+                    // (measured: (0,4) fine, (6,7) read a neighbour).
                     float2 originPx = float2(8, 8);
                     float2 cellPx = float2(_CellPx, _CellPx);
                     float2 atPx = originPx + float2(cx, cy) * cellPx + unit * cellPx;
@@ -115,10 +101,7 @@ Shader "YAPS/Spike Cell"
                 return o;
             }
 
-            // Alpha 1 is the occupancy flag. Whether it survives the grab is
-            // one of the things this spike is measuring: an empty cell holds
-            // whatever the screen had there, and a reader needs to tell an
-            // empty cell from a socket sitting at the cell's origin.
+            // Alpha 1 = occupied. Whether it survives the grab is under test.
             fixed4 frag (v2f i) : SV_Target { return i.payload; }
             ENDCG
         }

@@ -10,14 +10,8 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    // Detects VRChat face-tracking blendshapes (VRCFaceTracking / SRanipal or Unified
-    // Expressions naming) and wires up ChilloutVR's native CVRFaceTracking component.
-    //
-    // VRChat face tracking is driven by an OSC app writing blendshape parameters into the
-    // FX layer; that plumbing doesn't exist in CVR. But the *blendshapes themselves*
-    // (JawOpen, MouthClosed, TongueOut, ...) carry over on the mesh, and CVR reads them
-    // directly through CVRFaceTracking; no OSC, no per-shape animator layers. So if the
-    // mesh has the shapes, the avatar can switch to native CVR face tracking for free.
+    // VRChat's OSC-to-FX plumbing does not exist in CVR, but CVRFaceTracking reads SRanipal or
+    // Unified Expressions blendshapes straight off the mesh, so the shapes alone are enough.
     public static class FaceTrackingConverter
     {
         const string Category = "Face tracking";
@@ -92,11 +86,7 @@ namespace AvatarBridge
 
             if (!detected)
             {
-                // Says HOW CLOSE it got and on which mesh. "Nothing was detected" is where a
-                // report like this stops being useful: an avatar that scored nothing has no
-                // tracking shapes, and one that scored just under the bar has them under a naming
-                // scheme this could not read; the same sentence for two different problems, and
-                // no way to tell which from the outside.
+                // How close, and on which mesh: a zero score (no shapes) and a near miss (unread naming) differ.
                 string near = bestMesh != null
                     ? $"The closest was \"{bestMesh.name}\", which matched {bestScore} of the " +
                       $"tracking shape names: {DetectionThreshold} are needed to be sure. "
@@ -406,10 +396,8 @@ namespace AvatarBridge
                 }
             }
 
-            // The descriptor already named the face mesh, and it outranks any score: a scoring
-            // contest is only needed when nothing authoritative is available. Applied when the
-            // named mesh carries face-tracking shapes at all, so an avatar whose visemes and FT
-            // live on different meshes still resolves by score.
+            // The descriptor's face mesh outranks any score, if it has tracking shapes at all;
+            // visemes and FT on different meshes still resolve by score.
             if (named != null && named != mesh && named.sharedMesh != null && !IsDebugMesh(named, root.transform))
             {
                 var namedShapes = ShapeNames(named.sharedMesh);
@@ -526,10 +514,8 @@ namespace AvatarBridge
             ("Triturbo.FaceTrackingFramework.Installer.FaceTrackingInstaller", "Triturbo Face Tracking Framework"),
         };
 
-        // Where an avatar without tracking shapes should have found them. An installer that works
-        // on a copy leaves the original beside it, and the original is the one that gets
-        // converted; an add-on installed and never run looks the same from inside the avatar.
-        // Null when neither applies.
+        // Where missing shapes probably are: an installer's copy beside the converted original,
+        // or an add-on never run. Null when neither applies.
         internal static string WhereTheShapesAre(GameObject root, out GameObject copy)
         {
             copy = TrackedCopyOf(root);
@@ -580,10 +566,8 @@ namespace AvatarBridge
             return null;
         }
 
-        // Internal so the face mesh finder can share it. The panel carries every tracking
-        // shape, so it outscores the real face. It is usually named innocuously and betrayed by its parents
-        // instead (VRCFury - Face Tracking - UE Blendshapes/VF_UE_Debug/WorldObject/Window/FT_Debug).
-        // The walk stops below the avatar root: a scene parent named "Debug" is not the panel.
+        // A debug panel carries every tracking shape and outscores the face; its parents give it
+        // away (.../VF_UE_Debug/WorldObject/Window/FT_Debug). Stops below the avatar root.
         internal static bool IsDebugMesh(SkinnedMeshRenderer smr, Transform root)
         {
             for (var t = smr.transform; t != null && t != root; t = t.parent)

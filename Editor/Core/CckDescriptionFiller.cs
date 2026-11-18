@@ -6,29 +6,11 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    // Types the generated description into the CCK Content Manager's Description box.
-    //
-    // There is no supported route to this. ChilloutVR keeps no description on the avatar .
-    // `CVRAssetInfo` has no such field; and the Content Manager holds the value in Unity's
-    // `SessionState`, which `BuilderTab.SelectContent` wipes through `ClearFields()` every time
-    // the chosen content changes. Writing that key at conversion time loses the race against the
-    // user's own next click, so it is not attempted.
-    //
-    // What does work is the UI itself. The panel is a UI Toolkit window and the box is a
-    // `TextField` named `input-description` (CCK `ContentBuilder2.uxml`). Assigning its `value`
-    // fires the CCK's own `RegisterValueChangedCallback`, which sets `State.Description` exactly
-    // as typing would; so the value travels the CCK's normal path to upload with nothing here
-    // reaching into its internals.
-    //
-    // The costs are real and worth naming, since they decide the design:
-    //
-    //   * It depends on an element name inside someone else's UXML. A CCK release that renames
-    //     it breaks this, and the break is invisible unless it is reported; hence a result the
-    //     caller must show, and never a silent best-effort during conversion.
-    //   * It only works while the panel is open on the Builder tab. That makes it a button the
-    //     user presses when they are looking at the box, not a step in the conversion.
-    //   * It must never overwrite what someone has written. An empty box is an invitation; a
-    //     full one is a decision.
+    // Types the description into the CCK Content Manager's box. No supported route: CVRAssetInfo
+    // has no field, and the SessionState key is wiped by ClearFields() on every content change.
+    // Setting the `input-description` TextField (ContentBuilder2.uxml) fires the CCK's own
+    // change callback, as typing would. Depends on that element name, so the caller must show
+    // the result; works only with the Builder tab open; never overwrites a filled box.
     public static class CckDescriptionFiller
     {
         public enum Result

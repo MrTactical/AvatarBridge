@@ -6,18 +6,12 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the GoGo layer strip (task #12).
+    // GoGo layer strip (task #12). Installed through VRCFury, GoGo names layers after its
+    // parameters ("Go/Beyond"), which the word hints missed: 9 of 53 corpus avatars kept a live
+    // layer (weight 1, Override, reading CVR's Sitting/Grounded/AFK) that played GoGo's chair clip
+    // over the station pose.
     //
-    // GoGo Loco installed BY HAND names its layers "GoGo Loco ..." and the word hints catch it.
-    // Installed through a VRCFury prefab it names them after its parameters. "Go/Beyond"; which
-    // contains none of "gogo", "go loco" or "goloco", so the layer outlived a strip that had
-    // already neutered its parameters. Nine of fifty-three corpus avatars carried the survivor,
-    // and it was not inert: weight 1 on Override, transitions reading ChilloutVR's own Sitting /
-    // Grounded / AFK, playing GoGo's chair clip over the station pose the moment the wearer sat.
-    //
-    // The trap on the other side is over-matching. "Cargo/Rack" contains "go/" and has nothing to
-    // do with GoGo, so the match has to be anchored to a word start; that case is pinned here
-    // precisely because a substring test would look like it worked.
+    // Over-matching trap: "Cargo/Rack" contains "go/", so the match is anchored to a word start.
     public static class GogoLayerStripTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/GoGo layer strip")]

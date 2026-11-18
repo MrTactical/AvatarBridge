@@ -9,30 +9,17 @@ using VRC.SDK3.Avatars.ScriptableObjects;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for VRCFury parameter-compressor detection (task #16).
+    // VRCFury parameter-compressor detection (task #16). The compressor marks real parameters not
+    // synced and rotates them through slots; CVR syncs from the animator, so after stripping it the
+    // rename pass must treat them as synced, or every one gets the local "#" (seen: 131 of 170).
     //
-    // The compressor beats VRChat's 256-parameter limit by marking your real parameters NOT
-    // SYNCED and rotating copies of them through a couple of slots twice a second. ChilloutVR
-    // syncs straight from the animator, so conversion strips the compressor and must then tell
-    // the rename pass that those parameters are really synced after all; otherwise
-    // preserveParameterSyncState copies the compressor's lie and every one gets the local "#".
+    // Two routes: MIRRORS (VF<n>_<RealName>) and SLOTS (VF<n>_SyncIndex0, VF<n>_SyncDataBool0). The
+    // slot pattern wanted digits right after "Data" and missed SyncDataBool/Float/Int (2 of ~28
+    // found); mirrors hid it. So the case tested is slots with no mirrors, where every parameter
+    // went local.
     //
-    // Reported in the wild as "all parameters became local": 131 of 170, the entire wardrobe
-    // among them, with no "Removed VRCFury's parameter compressor" line in the report at all.
-    //
-    // Detection has two independent routes. MIRRORS (VF<n>_<RealName> shadowing a declared
-    // parameter) and SLOTS (VF<n>_SyncIndex0, VF<n>_SyncDataBool0). A normal compressed avatar
-    // has dozens of mirrors, so the pass succeeded on those and nobody noticed that the slot
-    // pattern demanded digits straight after "Data" and therefore missed every SyncDataBool,
-    // SyncDataFloat and SyncDataInt. On one real avatar it saw 2 slots out of ~28.
-    //
-    // So the case that matters here is SLOTS WITH NO MIRRORS. That is the shape where the miss
-    // stops being cosmetic: both lists come back empty, the pass returns before doing anything,
-    // and every parameter goes local.
-    //
-    // The restore takes expression parameters only. Taking every animator parameter also synced
-    // the floats clips drive, which never sync in ChilloutVR, and the budget check counted them:
-    // one avatar read 4856 of 3200 bits with 2016 of them clip-driven.
+    // The restore takes expression parameters only: all animator parameters also synced clip-driven
+    // floats, which never sync in CVR, and one avatar read 4856 of 3200 bits (2016 clip-driven).
     public static class CompressorSlotTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Parameter compressor slots")]

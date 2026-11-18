@@ -72,10 +72,8 @@ namespace AvatarBridge.Yaps
                  "Moved but still white, the tissue never heard of it; never moved, the game gave the probes no collider.")]
         public bool probeMarkers = false;
 
-        // Each part on the live tissue, by the name the build gives it: a preset filling eight knobs,
-        // each a share of how the build tunes that part, 1 as built. A part's first build guesses its
-        // preset from its name or the bone it rides. Drawn by the inspector's own card, live. New
-        // presets go after Custom: the enum is saved by its index.
+        // Per live tissue part: eight knobs as shares of the built tuning, 1 as built.
+        // New presets go at the end: the enum is saved by index.
         public enum Preset { Breasts, Butt, Thighs, Belly, Custom, Firm }
 
         [Serializable]
@@ -98,8 +96,7 @@ namespace AvatarBridge.Yaps
                  "squashes, so a press can show the skin through it.")]
         public List<Material> leaveAlone = new List<Material>();
 
-        // The regions, painted in the inspector's first step. None: the parts come from the
-        // picked bones, or else the bone names.
+        // Painted regions. None: parts come from the picked bones, or else bone names.
         [HideInInspector]
         public SkinnedMeshRenderer body;
 

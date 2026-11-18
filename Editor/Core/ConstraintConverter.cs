@@ -9,11 +9,8 @@ using UnityEngine.Animations;
 
 namespace AvatarBridge
 {
-    // VRC Constraints -> Unity constraints (which ChilloutVR runs natively).
-    //
-    // VRC constraints mirror Unity's, so sources/weights/offsets/rest values transfer
-    // almost 1:1. Access to the VRC components is via reflection so this file compiles
-    // against any VRChat SDK version; missing members degrade to report entries.
+    // VRC constraints to Unity constraints, almost 1:1. Reflection so any SDK version compiles;
+    // missing members become report entries.
     public static class ConstraintConverter
     {
         const string Category = "Constraints";
@@ -51,10 +48,7 @@ namespace AvatarBridge
             sourceIndex = new Dictionary<string, int>();
             sourceStandIns.Clear();
             reparented = AlignLocalSpaceRelays(ctx);
-            // VrcConstraintTypeNames below gates this loop deliberately, rather than sitting
-            // beside it as a list someone has to remember to update: AvatarAdvisor counts what
-            // this pass would convert, and a name in one place but not the other would have it
-            // promising a conversion that never happens (or staying quiet about one that does).
+            // One list shared with AvatarAdvisor, so its count matches what this pass converts.
             var realigned = reparented;
             foreach (var component in ctx.Target.GetComponentsInChildren<Component>(true))
             {
@@ -158,10 +152,8 @@ namespace AvatarBridge
             return animatedRotationPaths;
         }
 
-        // The merged controller directly as well as via the Animator. A controller that would
-        // crash Unity is deliberately never assigned to an Animator (see AnimatorMerger), and
-        // reading the clip list only through the component would silently skip every curve on
-        // exactly the avatars that need the most repair.
+        // Also the merged controller directly: one that would crash Unity is never assigned to
+        // the Animator (see AnimatorMerger), and those avatars need the most repair.
         static HashSet<AnimationClip> AllClips(BridgeContext ctx)
         {
             var controllers = new List<RuntimeAnimatorController>();
@@ -258,10 +250,7 @@ namespace AvatarBridge
                     {
                         continue;
                     }
-                    // Never write into the author's own asset: this runs
-                    // after self-containment, but it also reads every nested
-                    // Animator's controller, whose clips can still be the
-                    // author's files on disk.
+                    // Nested Animators' clips can still be the author's files, even after self-containment.
                     if (!mayRewrite)
                     {
                         protectedSources.Add(sourcePath);
@@ -298,20 +287,14 @@ namespace AvatarBridge
                         {
                             continue;
                         }
-                        // Two different situations. Object missing:
-                        // this conversion removed it. Object present but
-                        // constraint-less: nothing ever put one there,
-                        // usually a partial bake.
+                        // Missing: this conversion removed it. Present without a constraint: usually a partial bake.
                         if (ObjectExists(ctx, binding.path))
                         {
                             neverBuilt.Add(where);
                         }
                         else if (ElsewhereByName(ctx, binding.path, out string actualPath))
                         {
-                            // Same object, different parent. VRCFury
-                            // moves generated objects at upload time,
-                            // and a test-copy bake may not. Not this
-                            // conversion's bug; say so.
+                            // VRCFury moves generated objects at upload; a test-copy bake may not.
                             movedByBake.Add($"{where}: found at `{actualPath}`");
                         }
                         else
@@ -465,10 +448,7 @@ namespace AvatarBridge
                 case "Enabled":
                 case "m_Enabled": return "m_Enabled";
             }
-            // Per-source fields. The spelling in the wild is
-            // "Sources.source0.Weight": VRC's source list is a class
-            // with sixteen fixed fields, which is what makes them
-            // animatable. The array form never occurs.
+            // "Sources.source0.Weight": VRC's source list is sixteen fixed fields, so they are animatable.
             const string fieldPrefix = "Sources.source";
             int dot = vrcProperty.StartsWith(fieldPrefix, StringComparison.Ordinal)
                 ? vrcProperty.IndexOf('.', fieldPrefix.Length)
@@ -617,18 +597,13 @@ namespace AvatarBridge
                     continue;
                 }
 
-                // A bone whose parent a PhysBone moves, carrying bones of its own, cannot go: moved,
-                // its children stop following the chain. A physics add-on's cascade hangs every later
-                // stage off such a bone, and moving it parked them on a still part of the rig, 11 cm
-                // out of place at rest (Play-mode trace, 2026-10-07). When the source never changes
-                // its own rotation, a fixed copy of it under the bone's parent gives the same answer
-                // in world space, and nothing moves.
+                // A PhysBone-moved bone with children cannot move: they stop following the chain
+                // (measured 11 cm off at rest). If the source never rotates, a fixed copy under the
+                // bone's parent gives the same world answer.
                 if (constrained.childCount > 0 && Simulated(ctx, constrained.parent))
                 {
-                    // The bone's own parent stands in for the source, its offset measured from the
-                    // pose. A new object would land inside the simulated chain, and MagicaCloth2 takes
-                    // every transform under a root as a particle, so the copy would swing. Measured
-                    // only for one full-weight source, as ConvertRotation measures it.
+                    // Not a new object: MagicaCloth2 makes every transform under a root a particle,
+                    // so it would swing. One full-weight source only, as ConvertRotation.
                     var only = ReadSources(component);
                     bool measured = Get(component, "IsActive", true) && component.gameObject.activeInHierarchy
                         && Mathf.Approximately(Get(component, "GlobalWeight", 1f), 1f)
@@ -937,11 +912,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // A scale constraint asks a different question. VRChat
-                // copies localScale, Unity lossyScale; identical while
-                // every ancestor of the source is unit-scaled, the
-                // normal case. When the spaces provably coincide,
-                // there is nothing to warn about.
+                // VRChat copies localScale, Unity lossyScale: the same when every source ancestor is unit-scaled.
                 if (isScale && AncestorsAreUnitScaled(ctx, s.Transform))
                 {
                     continue;
@@ -1148,10 +1119,8 @@ namespace AvatarBridge
                 ReportMerged(ctx, vrc, "rotation");
                 return;
             }
-            // Measured from the live pose, which is VRChat's own solver
-            // output; the field is the fallback. Copying it trusts both
-            // engines to use the same space, which differently oriented
-            // bones break. World rotations, so re-parenting cannot bite.
+            // From the live pose (VRChat's solver output): the field assumes both engines share a space,
+            // which differently oriented bones break. World rotations survive re-parenting.
             var driven = DrivenBy(ctx, vrc);
             var rotSources = ReadSources(vrc);
             bool rotMeasured = Get(vrc, "IsActive", true)
@@ -1162,12 +1131,8 @@ namespace AvatarBridge
             unity.rotationOffset = rotMeasured
                 ? (Quaternion.Inverse(rotSources[0].Transform.rotation) * driven.rotation).eulerAngles
                 : Get(vrc, "RotationOffset", Vector3.zero);
-            // A bone AlignLocalSpaceRelays moved has a new parent, so
-            // the authored RotationAtRest no longer describes it.
-            // Its rest is where it sits now; the move preserved world
-            // rotation. A relocated constraint reads the target's rest
-            // for the same reason: the authored field describes whatever
-            // the VRC component was driving, which is the target.
+            // A bone AlignLocalSpaceRelays moved has a new parent, so authored RotationAtRest is stale;
+            // the move kept world rotation. A relocated constraint reads the target's rest likewise.
             unity.rotationAtRest = reparented.Contains(driven) || driven != vrc.transform
                 ? driven.localEulerAngles
                 : Get(vrc, "RotationAtRest", vrc.transform.localEulerAngles);
@@ -1320,12 +1285,8 @@ namespace AvatarBridge
             return e.StackTrace.Split('\n')[0].Trim();
         }
 
-        // Read by name, and the fallback for an axis flag has to be true:
-        // a constraint whose flags cannot be read must still drive something.
-        // That makes a renamed field silent in the worst way, though. It does
-        // not fail, it converts every constraint as affecting all three axes,
-        // and a frozen axis quietly starts moving. So a member that does not
-        // resolve is reported rather than assumed.
+        // Axis flags fall back to true so the constraint still drives something, but then a
+        // renamed field silently frees frozen axes. So an unresolved member is reported.
         static Axis AxesFrom(BridgeContext ctx, object vrc, string x, string y, string z)
         {
             Axis axes = Axis.None;

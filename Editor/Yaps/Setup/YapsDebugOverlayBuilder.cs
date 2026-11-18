@@ -1,43 +1,17 @@
-// The in-game readout for a plug that will not behave.
+// The in-game readout for a plug: fourteen cells (who resolved the socket, bend, atlas,
+// portal, bake and frame state) plus two markers for whether its bones moved. Unlike the
+// plug's debug view it does not straighten the plug.
 //
-// Fourteen cells painted by the readout's own shader, saying who resolved the
-// socket, whether the plug is bending, what the atlas saw, whether a portal
-// answered and what state the plug's own bake and frame are in, plus two
-// markers saying whether anything has moved its bones.
+// Drawn by the plug's own renderer, three quads in one extra submesh: animated material
+// properties land only in that renderer's block, and the frame comes from its skinned
+// vertices. A separate object read a bone matrix with no channel and reported nobody.
+// Strip and rest marker are skinned like the anchor vertex; the live marker like a vertex at
+// the shaft's far end, since only two points a shaft apart can see the bones move (one
+// vertex is world space). They sit past _YAPS_VertexCount, out of the plug material's reach.
 //
-// The plug's own debug view answers in LENGTH and straightens the plug to
-// do it, so the bend and the reason for the bend can never be read at the
-// same time. This leaves the plug alone and reports beside it.
-//
-// DRAWN BY THE PLUG'S OWN RENDERER, as three extra quads in one submesh
-// with one material slot. The first version was a separate
-// object beside the plug, and a separate renderer cannot see two things
-// the plug sees. The contact channel and the enabled flag arrive as
-// animated material properties, which land in the plug renderer's
-// property block and nowhere else; and the plug's frame is recovered
-// from its own skinned vertices. So that readout resolved from a bone
-// matrix with no channel, and reported nobody while the plug was bent
-// round a socket. A second opinion is not a readout.
-//
-// Sharing the renderer shares the block. The strip and the rest marker
-// are skinned exactly like one plug vertex, the anchor, so they land where
-// it lands and the shader recovers the frame the deform recovers, from the
-// same bake entry. The live marker is skinned like a vertex at the far end
-// of the shaft instead, and that pair is the only thing here that can see
-// the BONES move: one vertex can only be measured in world space, where an
-// avatar turning round moves every number, and two a shaft apart cannot be
-// fooled that way. The plug's own material never draws any of them: they
-// sit past _YAPS_VertexCount, in a submesh it does not own.
-//
-// Built, hidden, on each plug whose In-game readout tick is on; off by
-// default, as the CCK counts the slot on every built avatar. One synced menu toggle shows them all, so a helper
-// sees the plug as the wearer's own client resolves it. A plug on a prop
-// has no menu to show it, and gets none. Plugs sharing a mesh get one
-// submesh each, built together.
-//
-// Every socket of an avatar gets one too, a quad of its own beside its
-// atlas writer (YAPS/Socket Readout), on the same toggle, with the same
-// tick on the socket.
+// Built hidden where the In-game readout tick is on (off by default, the CCK counts the
+// slot). One synced toggle shows them all. Props get none, having no menu. Sockets get a
+// quad of their own beside the atlas writer (YAPS/Socket Readout) on the same toggle.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -89,13 +63,9 @@ namespace AvatarBridge
             Build(plug.readoutRenderer, report);
         }
 
-        // What a plug's readout is built from, kept on the plug so another
-        // plug baked into the same mesh can build it again without baking
-        // this one. Builds nothing: Build does, once every plug on the mesh
-        // is measured. Built one plug at a time, the next plug measured the
-        // last one's readout as part of itself and patched its slot into a
-        // copy of the plug, so a mesh with three plugs drew the plug three
-        // times and only the last readout worked.
+        // What a plug's readout is built from, kept on the plug so another plug on the mesh can
+        // rebuild it. Build runs once every plug is measured: one at a time, each plug measured
+        // the last readout as part of itself.
         public static void Record(YapsPlug record, YapsBaker.Result result, Material patched,
             string label, BridgeReport report)
         {
@@ -153,10 +123,8 @@ namespace AvatarBridge
             }
         }
 
-        // Every readout one mesh carries, built together on the mesh it had
-        // before any of them: a submesh and a material slot for each plug
-        // that asks for one and still owns its material. A plug on a prop
-        // has no menu to show it, and gets none. Safe to run again.
+        // Every readout on one mesh, built together on the pre-readout mesh: a submesh and slot
+        // per plug that asks and still owns its material. Safe to run again.
         public static void Build(Renderer renderer, BridgeReport report)
         {
             if (renderer == null)
@@ -290,11 +258,8 @@ namespace AvatarBridge
             EditorUtility.SetDirty(renderer);
         }
 
-        // Every readout off one mesh, whichever plug built it: the mesh
-        // they were built on back, and every readout slot dropped. Runs
-        // before every bake as well as every build: a bake taken over a
-        // readout counts its vertices as the plug's, and patches its slot
-        // as a plug material.
+        // Every readout off one mesh. Runs before every bake too: a bake over a readout counts its
+        // vertices and slot as the plug's.
         public static void Restore(Renderer renderer)
         {
             if (renderer == null)
@@ -379,22 +344,10 @@ namespace AvatarBridge
             return m.name.StartsWith(ObjectName, StringComparison.Ordinal);
         }
 
-        // The mesh with three more quads per plug, each plug's in a submesh
-        // of its own, every vertex a copy of one
-        // real plug vertex: position, normal, tangent, every uv but the
-        // first, bone weights and every blendshape delta. Skinned and shaped
-        // the same, they arrive in the vertex shader where that vertex
-        // arrives. The first uv carries the corner and WHICH quad instead;
-        // the shader billboards from there, so where they rest is irrelevant.
-        //
-        // Quad 0 and quad 1 copy the base anchor, so both recover the plug's
-        // frame from the same bake entry the deform uses. Quad 2 copies a
-        // vertex at the far end of the shaft, and copies nothing else from
-        // it: it is only ever asked where it arrives. That is the point of
-        // it. Everything a shader can measure from ONE vertex is in world
-        // space, so an avatar that turned round moves every number; two
-        // points a shaft apart do not have that problem, and the gap between
-        // them is the only thing here that can see the BONES move.
+        // Three quads per plug in its own submesh, each vertex a full copy of one plug vertex
+        // (all but uv0) so it skins and shapes the same. uv0 carries corner and quad index; the
+        // shader billboards from there. Quads 0 and 1 copy the anchor, sharing the deform's bake
+        // entry. Quad 2 copies a shaft-end vertex position only, to see the bones move.
         static Mesh WithReadout(Mesh source, List<YapsPlug> plugs, out string why)
         {
             why = null;
@@ -612,10 +565,8 @@ namespace AvatarBridge
             return Path.GetDirectoryName(path)?.Replace('\\', '/');
         }
 
-        // Every _YAPS_ value the plug has, and anything the readout shader
-        // cannot hold reported, so a cell that reads zero for want of a
-        // property says so. The animated ones arrive through the renderer's
-        // block at runtime regardless.
+        // Every _YAPS_ value, reporting any the readout shader lacks so a zero cell says why.
+        // Animated ones arrive through the renderer's block regardless.
         static void Copy(Material from, Material to, string label, BridgeReport report)
         {
             if (from == null || to == null)
@@ -740,10 +691,8 @@ namespace AvatarBridge
             return $"readout toggle \"{MenuLabel}\" for {BridgeElements.Count(targets.Count, "readout", "readouts")}, off by default, synced (1 bit)";
         }
 
-        // A socket's readout, beside its atlas writer under the same parent,
-        // so a rebuild or a remove of the socket takes it with the writer.
-        // Positions all zero and the corners in UV0, like the writer: with
-        // custom shaders off the stand-in shader draws nothing.
+        // A socket's readout beside its atlas writer, so rebuild or remove takes both. Zero
+        // positions, corners in UV0: with custom shaders off the stand-in draws nothing.
         public static GameObject AddSocketReadout(Transform parent)
         {
             var shader = Shader.Find(SocketShaderName);

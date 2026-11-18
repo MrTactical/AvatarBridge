@@ -6,26 +6,15 @@
 //   Tools/Avatar Bridge/Dev/Portal/Portal spike: remove
 //   -executeMethod AvatarBridge.Regression.PortalSpikeBuilder.Verify
 //
-// The build adds three things to the avatar:
-//   - an entrance Hole through the production socket door, the window's Add
-//     a hole then Build, so it is a plain protocol-9 hole;
-//   - YAPS/Atlas Exit Spike under the exit, keyed by the owner and the
-//     entrance's production number;
-//   - YAPS/Portal Spike Indicator beside it, a square that reads the
-//     directory back in every view (colours in the shader).
-// Both spike renderers declare _YAPS_Owner, so YapsOwner.Wire puts them on
-// the owner layer and a remote copy writes and reads its real, synced owner.
-//
-// Renumbering does not follow the key; that is phase 6, inside NumberWriters.
-// Run the build last, and again after any socket is added, moved or renamed.
-//
-// Needs, together in one folder, the scratch Dev/Probes/Portal/yaps_atlas.cginc,
-// YapsAtlasExitSpike.shader and PortalSpikeIndicator.shader.
-//
-// Verify builds a plain hole and the spike on two identical synthetic avatars
-// and compares everything but the spike's own two objects, then renders the
-// spike through the real grab: main view, HDR, a mirror camera, the 240 px
-// floor and a 200 px view, plus controls that must not read green.
+// Adds an entrance Hole (plain protocol-9, via the production door), YAPS/Atlas
+// Exit Spike under the exit keyed by owner and entrance number, and an
+// indicator square that reads the directory back. Both declare _YAPS_Owner, so
+// YapsOwner.Wire puts them on the owner layer with the synced owner.
+// Renumbering does not follow the key (phase 6): rebuild after any socket change.
+// Needs the scratch Dev/Probes/Portal/yaps_atlas.cginc and both spike shaders in one folder.
+// Verify builds hole vs spike on two identical synthetic avatars, diffs all but
+// the spike's objects, then renders through the real grab (main, HDR, mirror,
+// 240 px floor, 200 px) with controls that must not read green.
 #if CVR_CCK_EXISTS && UNITY_EDITOR && AVATARBRIDGE_YAPS
 using System;
 using System.Collections.Generic;
@@ -355,10 +344,8 @@ namespace AvatarBridge.Regression
 
         // --- the comparison ---------------------------------------------------
 
-        // Every object, component and serialized field under the root, then
-        // every asset they reach that the build writes, by path and name, never
-        // by instance id, so two builds compare line for line. Clips go by
-        // binding, sorted, so the owner curves the spike adds drop out as lines.
+        // By path and name, never instance id, so two builds diff line for line.
+        // Clips by sorted binding, so the spike's owner curves show as lines.
         static List<string> Dump(GameObject root)
         {
             var lines = new List<string>();

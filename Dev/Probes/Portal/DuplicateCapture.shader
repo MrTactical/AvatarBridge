@@ -2,12 +2,11 @@
 // DuplicateSpike. Dev only. The bare include is swapped by the probe for the
 // project's copy, as PortalBandCapture's is.
 //
-// One pass, so a camera drawing a points-topology renderer through it draws
-// nothing else: each vertex to its own pixel, its world position, and its id
-// plus 100 in alpha. _DupDump swaps the position for what the resolver handed
-// the first copy: 1 chain entry id % 4, 2 its kind with the count and tier,
-// 3 engagement with the atlas hits and headers, 4 the socket aimed at, 5 the
-// vertex's own recovered root. Without YAPS_DUPLICATE only positions.
+// One pass: each vertex to its own pixel, world position, id + 100 in alpha.
+// _DupDump swaps the position for the first copy's resolve: 1 chain entry
+// id % 4, 2 its kind with count and tier, 3 engagement with atlas hits and
+// headers, 4 the socket aimed at, 5 the recovered root. Without
+// YAPS_DUPLICATE only positions.
 Shader "Hidden/DuplicateCapture"
 {
     SubShader

@@ -1,8 +1,5 @@
-// The corpus run as a page a tester can read. Parses the digest
-// folders the harness writes and renders one self-contained HTML
-// file: what needs eyes first, then what changed, then what held.
-// No Unity types on purpose, so the same file compiles standalone
-// under mono and inside the corpus project.
+// Renders a corpus run's digest folders as one self-contained HTML page.
+// No Unity types, so it also compiles standalone under mono.
 //
 //   mono csc.exe /out:rep.exe RegressionReport.cs
 //   mono rep.exe <baselineDir> <currentDir> <out.html> [runLabel]

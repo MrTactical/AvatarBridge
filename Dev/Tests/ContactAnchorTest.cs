@@ -7,14 +7,9 @@ using VRC.SDK3.Dynamics.Contact.Components;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for where converted contacts are anchored.
-    //
-    // VRChat positions a contact's shape relative to rootTransform when set; the
-    // component itself often lives elsewhere. The converter used to ignore the override and
-    // parent the pointer/trigger under the component's own object, so head-pat receivers and
-    // every VRCFury-baked contact using the override converted mis-anchored; found by a
-    // completion-verification pass, not a tester, which is why this asserts both the set and
-    // unset cases.
+    // Where converted contacts are anchored. VRChat places a contact relative to rootTransform
+    // when set; ignoring it mis-anchored head-pat receivers and every VRCFury-baked contact that
+    // uses it. Asserts both the set and unset cases.
     public static class ContactAnchorTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Contact anchoring")]

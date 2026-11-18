@@ -1,17 +1,10 @@
-// One-time cleanup for a project that has been converted in repeatedly. DEVELOPMENT ONLY,
-// never shipped in the .unitypackage.
+// One-off cleanup of scenes converted in repeatedly. Development only, never shipped.
 //
-// Converting leaves the converted avatar in the scene and switches the source off. Save the
-// scene and both marks persist; convert again another day and the output assets are regenerated,
-// so the copy still sitting in the scene points at controllers that no longer exist. That is
-// what "Missing (Runtime Animator Controller)" in the Inspector means, and this project had 29
-// of 48 controller references across its scenes already dangling that way.
+// A converted copy left in a saved scene points at controllers a later conversion regenerated:
+// "Missing (Runtime Animator Controller)". 29 of 48 references here dangled that way. The
+// harness resets this in memory only; this fixes the scenes on disk.
 //
-// The regression harness resets this in memory on every run, which is right for a test; the
-// scene files must not change underneath it. This is the other half: a deliberate, one-off pass
-// that fixes the scenes on disk so manual inspection stops turning up week-old corpses.
-//
-// UNLIKE the harness, this SAVES. Run the dry run first.
+// Unlike the harness, this SAVES. Run the dry run first.
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;

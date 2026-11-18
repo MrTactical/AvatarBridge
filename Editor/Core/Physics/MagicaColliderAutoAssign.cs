@@ -9,23 +9,11 @@ namespace AvatarBridge
     // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
     using MagicaCloth2;
 
-    // Optionally lends each cloth the colliders it plausibly bumps into.
-    //
-    // Both systems keep explicit per-chain collider lists, and AvatarBridge copies each one
-    // faithfully; so a tail whose author never wired the leg colliders keeps passing through
-    // the leg, exactly as it did in VRChat. This pass goes beyond that, handing a chain any of
-    // the avatar's OWN converted colliders that it could reach.
-    //
-    // The trap is the one that sank the generated-body-collider experiment: give a chain a
-    // collider it already lives inside and the solver hurls it out. Thigh jiggle sits
-    // permanently within the hip capsule, so proximity alone is not enough. The rule that
-    // separates the two cases is REST POSITION; a chain that starts outside a collider can
-    // only ever collide with it, while a chain that starts inside one would be ejected. So a
-    // collider is only offered when every bone of the chain begins outside it.
-    //
-    // Everything here is measured against the converted collider as MagicaCloth2 reads it,
-    // since mesh fitting can grow and slide it away from the PhysBone collider's shape, and
-    // only ever adds to a list; no geometry invented.
+    // Optional: hands each cloth the avatar's own converted colliders it could reach, beyond
+    // the per-chain lists copied from the source.
+    // Trap: a chain given a collider it rests inside gets ejected (thigh jiggle sits inside the
+    // hip capsule), so a collider is offered only when every bone starts outside it.
+    // Measured against the collider as MagicaCloth2 reads it, since mesh fitting can move it.
     public static class MagicaColliderAutoAssign
     {
         const string Category = "PhysBones -> MagicaCloth2";
@@ -151,10 +139,8 @@ namespace AvatarBridge
                 }
                 clearance = Mathf.Min(clearance, distance);
 
-                // The chain hangs off a fixed root, so a bone can never leave the sphere of that
-                // radius around it. Anything nearer than that is genuinely within reach; and
-                // this is a hard geometric bound, not a tuned guess. Per-bone parent distance
-                // would badly understate it, since every joint above a bone rotates as well.
+                // Hard bound: a bone never leaves this sphere around the fixed root. Per-bone
+                // parent distance understates it, since every joint above rotates too.
                 if (distance <= Vector3.Distance(bones[i].position, origin))
                 {
                     reachable = true;

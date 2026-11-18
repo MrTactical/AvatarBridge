@@ -21,12 +21,8 @@ namespace AvatarBridge
         public static readonly Color PlugColour = new Color(0.55f, 0.85f, 0.35f);
         public static readonly Color BadColour = new Color(0.95f, 0.30f, 0.30f);
 
-        // A bound control for one field, with the system tags it came from to its right. The
-        // [Tooltip] stays on hover; printed under every control it buried the knobs.
-        //
-        // Built here rather than through BridgeElements.Bound: that hands a [Range] to
-        // PropertyField, and these sliders must keep their number box. So the classes are added by
-        // hand, the one place in this file that does.
+        // A bound control for one field, its system tags to the right, [Tooltip] on hover. Not
+        // BridgeElements.Bound: that hands a [Range] to PropertyField, losing the number box.
         public static VisualElement Field(SerializedProperty p, System.Reflection.FieldInfo field, string label = null,
             string from = null)
         {
@@ -153,13 +149,8 @@ namespace AvatarBridge
             }
         }
 
-        // The material properties an animation may drive, by the name the
-        // Animation window wants after "Material.".
-        //
-        // Why this component has no enable checkbox, and what to animate
-        // instead. The enabled field is serialised on every Behaviour whether
-        // or not it means anything, and this one does not, so animating it off
-        // a slider does nothing at all.
+        // The material properties an animation may drive, by the name after "Material.". The
+        // component's enabled flag means nothing, so animating it does nothing.
         public const string InertComponentNote =
             "Setup data, stripped at upload: animating its Enabled field does nothing.";
 
@@ -249,15 +240,8 @@ namespace AvatarBridge
 
         public const string SocketName = "YAPS Preview Socket";
 
-        // The mirror of DropTestPlug, for the other end.
-        //
-        // Preview has always been socket-driven: a socket drops a plug and
-        // watches it bend in. A plug had nothing to bend TOWARD, so its own
-        // inspector could only ever show it straight, which reads as broken.
-        //
-        // The socket is built by the same code the universal prefabs are, and
-        // is placed one plug length along the plug's own measured forward, the
-        // position the plug is actually reaching for.
+        // The mirror of DropTestPlug: preview is socket-driven, so a plug needs a socket to bend
+        // toward. Built like the universal prefabs, one plug length along the measured forward.
         public static void DropTestSocket(YapsPlug plug, YapsSocket.SocketKind kind = YapsSocket.SocketKind.Hole)
         {
             if (plug == null) return;
@@ -269,33 +253,23 @@ namespace AvatarBridge
                     "Tools ▸ Avatar Bridge ▸ YAPS ▸ Setup, then preview.", "OK");
                 return;
             }
-            // WITH lights, like a real socket. It was built without them so a light
-            // could not answer in place of the contact channel while the channel
-            // was being debugged. That made the preview show the fallback route
-            // instead of the one a user gets, so a plug looked worse in the editor
-            // than it does in game. Turn its lights off by hand to isolate the
-            // channel.
+            // With lights, like a real socket, so the preview shows the route a user gets. Turn
+            // them off by hand to isolate the contact channel.
             var go = YapsSocketBuilder.BuildPreviewSocket(SocketName, kind);
             if (go == null) return;
             go.transform.SetPositionAndRotation(origin + forward * length, Quaternion.LookRotation(-forward, up));
             Undo.RegisterCreatedObjectUndo(go, "YAPS preview socket");
             EditorGUIUtility.PingObject(go);
-            // Switching preview ON is what makes it do anything: the socket's own
-            // PreviewTick writes _YAPS_SocketPos/Forward/Up into every plug
-            // material near it, and Tick only calls it for a socket whose preview
-            // is set. Placing the socket and leaving that off gives a socket that
-            // sits there while the plug stays straight.
-            //
-            // spawnPlugIfNone: false, the plug being looked at IS the plug.
+            // Preview on is required: only then does PreviewTick write _YAPS_SocketPos/Forward/Up
+            // into nearby plug materials. spawnPlugIfNone: false, this is the plug.
             var socket = go.GetComponent<YapsSocket>();
             if (socket != null) Set(socket, true, spawnPlugIfNone: false);
             SceneView.RepaintAll();
         }
 
-        // One with no plug to place it by: beside the first baked plug, just past its tip, a
-        // little above the axis, entrance facing the base, so the plug bends in at once. Else in
-        // front of the scene camera. The window and the tester both drop it here, under the one
-        // name, so either can take it away.
+        // With no plug given: just past the first baked plug's tip, slightly above the axis,
+        // facing the base so it bends in at once; else before the scene camera. One name, so
+        // either caller can remove it.
         public static void DropTestSocket(YapsSocket.SocketKind kind)
         {
             RemoveTestSocket();
@@ -335,16 +309,12 @@ namespace AvatarBridge
             var existing = GameObject.Find(SocketName);
             if (existing != null)
             {
-                // Preview off BEFORE it is destroyed: that is what writes the
-                // cleared flags back into every plug material this socket had
-                // engaged. Destroying it first leaves the plug bent toward a
-                // socket that is no longer there.
+                // Preview off before destroying: that writes the cleared flags back, or the plug
+                // stays bent toward a missing socket.
                 var socket = existing.GetComponent<YapsSocket>();
                 if (socket != null) Set(socket, false, spawnPlugIfNone: false);
-                // Set destroys the preview socket itself, so by here it is usually
-                // gone. Handing Unity a destroyed object throws ArgumentNullException
-                // on objectToUndo. The null check is Unity's overloaded ==, which
-                // reports a destroyed object as null, which is what is wanted.
+                // Set usually destroyed it already; Undo throws on a destroyed object, and Unity's
+                // == reports one as null.
                 if (existing != null) Undo.DestroyObjectImmediate(existing);
             }
             SceneView.RepaintAll();
@@ -371,9 +341,7 @@ namespace AvatarBridge
             socket.PreviewTick();
             _searched = double.NegativeInfinity;
             Animate(on);
-            // A socket the toolkit dropped exists only to be previewed against, so
-            // switching its preview off is asking for it to go rather than
-            // to sit there inert. Last, because PreviewTick above still
+            // A dropped test socket goes when its preview is switched off. Last: PreviewTick above
             // needs it alive to write the cleared flags back.
             if (!on && socket.gameObject.name == SocketName)
             {
@@ -393,10 +361,8 @@ namespace AvatarBridge
 
         static void Tick()
         {
-            // Update fires every editor frame, too often to search the scene
-            // and work out routes each time. Both are done again four times a
-            // second and whenever a preview starts; the plugs' frames are
-            // still read every tick.
+            // Scene search and routes refresh four times a second and on preview start, not every
+            // editor frame; plug frames are still read every tick.
             double now = EditorApplication.timeSinceStartup;
             if (now - _searched > 0.25)
             {
@@ -835,13 +801,8 @@ namespace AvatarBridge
             body.Add(BridgeElements.Notice(Tone.Info,
                 YapsInspectorStyle.InertComponentNote + " " + YapsInspectorStyle.SocketSwitchNote));
 
-            // BUILT BY AN OLDER TOOLKIT?
-            //
-            // A prop is built once and never revisited, so every fix ships to new
-            // ones and reaches no existing one, and the two look identical from the
-            // outside. A socket carrying half-size trigger boxes, or a channel that
-            // configured one material out of three, gives no sign of it. The stamp
-            // is written when the socket is baked or its prop is built.
+            // Built by an older toolkit? Fixes never reach an existing prop and it looks the same,
+            // so the bake or build writes a stamp.
             if (!string.IsNullOrEmpty(socket.builtBy) && socket.builtBy != BridgeDefines.Version)
             {
                 body.Add(BridgeElements.Notice(Tone.Warn,
@@ -1190,10 +1151,7 @@ namespace AvatarBridge
             see.Body.Add(BridgeElements.ButtonRow(previewButton, dropButton));
             if (YapsPreview.Paused(socket)) see.Body.Add(BridgeElements.Hint(YapsPreview.PausedLine));
 
-            // The plug mesh on most avatars only exists in Play Mode: it ships
-            // switched off and a toggle brings it in. So the one state where you
-            // can SEE a plug was the one state the preview refused to run in, and
-            // every editor bend came from a marker light instead.
+            // Runs in Play Mode too: most plugs ship off and only show once a toggle brings them in.
             see.Body.Add(BridgeElements.Bind("Keep previewing in Play Mode",
                 "For a plug that only appears in Play Mode, or to see the bend on a posed avatar.",
                 socket.previewInPlayMode, on =>
@@ -1251,10 +1209,8 @@ namespace AvatarBridge
                 var opensHow = new BridgeElements.Card("How it opens");
                 opensHow.Body.Add(BridgeElements.Hint(
                     "Baked ranges, as fractions of the plug's length. Edits the material directly; the next build overwrites them."));
-                // One range per baked shape, named after the shape when the
-                // component knows it, else by its slot. Named from the rows the
-                // bake kept: it skips shapes the mesh lacks and repeats, so row i
-                // is not always baked shape i.
+                // One range per baked shape, named from the bake's kept rows: it skips missing and
+                // repeated shapes, so row i is not always shape i.
                 int baked = bakedMat.HasProperty("_YAPS_ShapeCount") ? Mathf.RoundToInt(bakedMat.GetFloat("_YAPS_ShapeCount")) : 0;
                 var shapeMesh = socket.renderer.sharedMesh;
                 var kept = socket.shapes
@@ -1359,10 +1315,8 @@ namespace AvatarBridge
             return false;
         }
 
-        // The avatar or prop, as every other "which avatar" answer: the first
-        // Animator up stopped at an accessory carrying one of its own, and
-        // the socket's shape list lost the body. Before conversion there is
-        // neither, and the first Animator up is still the avatar.
+        // The avatar or prop, not the first Animator up: an accessory may carry its own. Before
+        // conversion, the first Animator up.
         internal static Transform AvatarRootOf(Transform t)
         {
             var root = YapsNativeBuilder.AvatarRoot(t);
@@ -1593,10 +1547,7 @@ namespace AvatarBridge
             }
             else
             {
-                // Both kinds, because they are not the same test: a hole
-                // closes around the shaft and stops it, a ring slides along
-                // it. A plug that looks right entering one can be wrong in
-                // the other.
+                // Both kinds: a hole stops the shaft, a ring slides along it.
                 var row = new List<VisualElement>();
                 foreach (var kind in new[] { YapsSocket.SocketKind.Hole, YapsSocket.SocketKind.Ring })
                 {
@@ -1776,9 +1727,7 @@ namespace AvatarBridge
             var colour = YapsInspectorStyle.PlugColour; colour.a = selected ? 1f : 0.7f;
             Handles.color = colour;
 
-            // Handles draw in world metres, so the length has to be in them
-            // too. A rig whose mesh is modelled small and scaled up by its
-            // bones has a large lossyScale and a perfectly ordinary plug.
+            // Handles draw in world metres; a small mesh scaled up by bones has a large lossyScale.
             // This plug's own bake: two plugs on one mesh drew the first one's.
             var mat = BakedMaterials(plug, renderer).FirstOrDefault();
             float length = mat != null ? YapsNativeBuilder.WorldLength(renderer, mat) : 0f;

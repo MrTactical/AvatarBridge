@@ -37,17 +37,12 @@ namespace AvatarBridge
             var animator = ctx.TargetAnimator;
             bool autoView = AvatarFeatureDetect.CckAutoViewPosition(ctx.Target, animator, out var viewAuto);
 
-            // The author's viewpoint wins when there is one. Auto reads
-            // the eye bones, which are not always where the eyes are.
-            // Copied, not scaled: VRChat's value is authored at shipping
-            // size, already the world-metre offset CVR stores.
+            // Author's viewpoint first: Auto reads eye bones, not always where the eyes are.
+            // Not scaled: VRChat's value is already the world-metre offset CVR stores.
             bool haveAuthored = vrc.ViewPosition != Vector3.zero;
             var authored = vrc.ViewPosition;
 
-            // ...but only when it is anywhere near the head. A viewpoint
-            // is where the player's eyes go, not a matter of taste.
-            // When the authored value fails the head check and Auto
-            // passes it, Auto wins.
+            // ...if near the head; otherwise Auto wins when it passes.
             bool authoredIsWrong = false;
             string autoOverrideNote = null;
             if (haveAuthored && autoView
@@ -90,12 +85,8 @@ namespace AvatarBridge
                 ? authored
                 : autoView ? viewAuto : AvatarFeatureDetect.EstimateViewPosition(ctx.Target, animator);
 
-            // ...unless the humanoid rig is a DECOY and none of the above is looking at the
-            // avatar at all. See AvatarFeatureDetect.DecoyRigAnchors: on a quadruped whose
-            // humanoid map points at a hidden stand-in skeleton, the author's VRChat viewpoint,
-            // the CCK's Auto button and the local estimate all agree with each other and all sit on
-            // the stand-in. The 5 cm gate keeps this silent on every rig where the relay exists
-            // but changes nothing, so an ordinary avatar's conversion is untouched.
+            // ...unless the humanoid rig is a decoy stand-in (AvatarFeatureDetect.DecoyRigAnchors),
+            // where every estimate sits on the stand-in. The 5 cm gate leaves ordinary rigs untouched.
             bool decoyRig = AvatarFeatureDetect.DecoyRigPlacement(ctx.Target, animator,
                                 out var decoyView, out var decoyVoice, out var visibleHead, out string decoyDetail)
                             && Vector3.Distance(decoyView, humanoidView) > 0.05f;
@@ -143,10 +134,7 @@ namespace AvatarBridge
             bool faceMeshDetected = false;
             if (targetFace == null)
             {
-                // Plenty of avatars never set a viseme mesh (no lip sync, or jaw-bone lip
-                // sync). Detect the face mesh anyway: blink, face tracking and viseme
-                // detection all bind through bodyMesh, so leaving it null silently costs
-                // the avatar all three.
+                // No viseme mesh set is common; blink, face tracking and visemes all bind through bodyMesh.
                 targetFace = AvatarFeatureDetect.FindFaceMesh(ctx.Target);
                 faceMeshDetected = targetFace != null;
             }
@@ -199,10 +187,7 @@ namespace AvatarBridge
             // A check that passes on the wrong skeleton is worth nothing.
             AvatarFeatureDetect.HumanoidDeformShare(ctx.Target, animator, out int mappedBones, out int deformingBones);
 
-            // Last line of defence, skeleton-free: a viewpoint outside
-            // the renderer bounds is not on the avatar. Only runs when
-            // the rig drives no geometry and the current answer is
-            // demonstrably off the body.
+            // Skeleton-free fallback, only when the rig drives no geometry and the viewpoint is outside the renderer bounds.
             if (!decoyRig && mappedBones > 0 && deformingBones == 0
                 && AvatarFeatureDetect.RescueViewpointOffBody(ctx.Target, animator,
                     cvrAvatar.viewPosition, out var rescued, out string rescueDetail))
@@ -213,10 +198,7 @@ namespace AvatarBridge
                     $"{Vec(before)} was on a hidden stand-in skeleton. Re-placed from the eye markers on the " +
                     $"body, {rescueDetail}, at {Vec(rescued)}. Check it with the CVRAvatar gizmo.");
 
-                // The voice rides the same invisible skeleton and would otherwise be left on it.
-                // Placed with the viewpoint rather than guessed at: on a rig whose humanoid jaw is
-                // part of the stand-in there is nothing better to measure from, and a voice coming
-                // from the avatar's face beats one coming from thin air beside it.
+                // The voice would stay on the stand-in skeleton; the viewpoint is the best face position there is.
                 if (AvatarFeatureDetect.PointIsOffBody(ctx.Target, animator, cvrAvatar.voicePosition))
                 {
                     var voiceBefore = cvrAvatar.voicePosition;
@@ -556,12 +538,8 @@ namespace AvatarBridge
                         continue;
                     }
                     string shape = binding.propertyName.Substring(prefix.Length);
-                    // "blink" anywhere in the name, which covers vrc.Blink, Blink L/R, EyeBlink
-                    // and the handful of naming schemes avatars actually use. Deliberately loose:
-                    // a false positive costs the client's blink on an avatar that has its own,
-                    // while a false negative is two systems fighting.
-                    //
-                    // Held at zero is not blinking: it is a reset, and the merge skips it the same way.
+                    // Loose on purpose: a false positive costs the client blink, a false negative is
+                    // two systems fighting. Held at zero is a reset, not blinking (the merge agrees).
                     if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0
                         && AnimationUtility.GetEditorCurve(clip, binding) is AnimationCurve curve
                         && curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
@@ -588,10 +566,7 @@ namespace AvatarBridge
                 return false;
             }
 
-            // An avatar that blinks itself gets the native blink, but
-            // the decision defers to the merge: the blinking layer
-            // names the shape, not a name match here. Native blink
-            // stays off here so the two never overlap.
+            // Off here: the merge decides, since the blinking layer names the shape, so the two never overlap.
             if (AnimatedBlinkShape(ctx, out _, out _))
             {
                 cvrAvatar.useBlinkBlendshapes = false;

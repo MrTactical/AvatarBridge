@@ -32,30 +32,11 @@ namespace AvatarBridge
         public UnityEngine.Object[] Targets;
     }
 
-    // Reads an avatar and says which settings its own contents decide.
-    //
-    // The point is a division of labour, not cleverness. Most of the options in this window
-    // have a right answer that the avatar itself gives away; an avatar with no PhysBones does
-    // not need a physics target, one whose face mesh carries fifty Unified Expressions shapes
-    // wants ChilloutVR's native face tracking, one whose shaders never declare stereo will lose
-    // an eye in VR. Those are measurements, and asking a user to make them by reading tooltips
-    // is asking them to do arithmetic the tool can do. What is left over is genuinely theirs:
-    // whether the toe physics were deliberate, whether a rigid prop is rigid on purpose,
-    // whether to accept a patched shader that compiles but has not been looked at in VR.
-    //
-    // Two rules this must keep:
-    //
-    // Every check asks the CONVERTER'S question, through the converter's own code; hence
-    // FaceTrackingConverter.DetectShapes, ShaderSpiPatcher.DeclaresStereo,
-    // SystemStripper.AvatarUsesGogo and ConstraintConverter.VrcConstraintTypeNames being
-    // reachable from here. A second opinion assembled out of this file's own guesses would
-    // recommend a box and then convert as if it had not been ticked, which is worse than
-    // saying nothing.
-    //
-    // And it reads the avatar AS IT SITS IN THE SCENE. VRCFury and Modular Avatar add most of
-    // their content during the bake, so on those avatars every count here is a floor and the
-    // analysis says so out loud rather than quietly recommending "no physics" to someone whose
-    // baked outfit brings twenty PhysBones.
+    // Says which settings the avatar's own contents decide; judgement calls stay the user's.
+    // Every check goes through the converter's own code (DetectShapes, DeclaresStereo,
+    // AvatarUsesGogo, VrcConstraintTypeNames): a separate guess would recommend a box and then
+    // convert as if it were unticked. Reads the scene, pre-bake: on VRCFury and Modular Avatar
+    // avatars every count is a floor, and the advice says so.
     public static class AvatarAdvisor
     {
         public static List<Advice> Analyse(VRCAvatarDescriptor descriptor, BridgeSettings settings)
@@ -122,9 +103,7 @@ namespace AvatarBridge
 
             if (physBones.Length == 0)
             {
-                // Deliberately NOT recommending "None" on a baker's avatar. The commonest shape
-                // among baked avatars is a base body with no PhysBones of its own whose hair and
-                // clothing; every chain it has; arrive during the bake.
+                // Never "None" on a baker's avatar: hair and clothing chains usually arrive in the bake.
                 advice.Add(new Advice
                 {
                     Kind = baked ? AdviceKind.Manual : AdviceKind.Change,
@@ -244,8 +223,7 @@ namespace AvatarBridge
         static void FaceTracking(List<Advice> advice, GameObject root, VRCAvatarDescriptor descriptor,
             BridgeSettings settings)
         {
-            // No CVRAvatar exists yet, so the descriptor-named mesh that outranks scoring during
-            // conversion is not available here; the scoring pass is the same one either way.
+            // No CVRAvatar yet, so no descriptor-named mesh; the scoring pass is the same.
             bool hasShapes = FaceTrackingConverter.DetectShapes(root, null,
                 out var mesh, out bool unified, out int score);
 
@@ -254,9 +232,8 @@ namespace AvatarBridge
                 string where = $"{score} face-tracking blendshapes on \"{mesh.name}\" " +
                                $"({(unified ? "Unified Expressions" : "Legacy / SRanipal")} naming)";
                 int rig = OwnRigParameters(root, descriptor, out int bits);
-                // A rig that syncs through binary bits cannot run here: VRChat lists those bits to
-                // the tracking app as bools while the animator holds them as floats, as ChilloutVR
-                // lists them, so the app never sends them; and as floats they cost 32 bits each.
+                // Binary-bit rigs cannot run here: CVR lists the bits to the app as floats, so the
+                // app never sends them, and as floats they cost 32 bits each.
                 if (bits > 0 && settings.faceTrackingMode == FaceTrackingMode.None)
                 {
                     advice.Add(new Advice
@@ -308,9 +285,7 @@ namespace AvatarBridge
                         Targets = new UnityEngine.Object[] { mesh.gameObject },
                     });
                 }
-                // Native is the better default for the shapes, but a rig somebody paid for is
-                // usually the point of the add-on, and either set-up mode replaces it. So the
-                // choice is shown, and left out of Apply all.
+                // Native is better, but either mode replaces a paid-for rig, so not in Apply all.
                 if (rig > 0 && bits == 0)
                 {
                     string mode = settings.faceTrackingMode == FaceTrackingMode.Native
@@ -402,17 +377,13 @@ namespace AvatarBridge
                               "Base, Additive and Action must all be ticked or the avatar has no " +
                               "locomotion at all. Poses will not lock movement and the viewpoint stays " +
                               "at standing height in floor poses: neither has an equivalent here.",
-                    // Puts the way back one press away. Keeping GoGo stays a choice; this is a
-                    // Manual, so the apply-everything button still leaves it alone.
+                    // A Manual, so Apply all leaves it alone.
                     Apply = s => s.stripGogoLoco = true,
                 });
         }
 
-        // Which optional layer settings are decided by the slot being
-        // EMPTY. Ticked with nothing in the slot converts nothing either
-        // way, so this is about the box telling the truth: these persist
-        // across avatars, and a tick left from the last one reads as
-        // "this avatar has an Action layer" to the next person to look.
+        // Layer settings decided by the slot being EMPTY. They persist across
+        // avatars, and a stale tick reads as "this avatar has an Action layer".
         internal static readonly (VRCAvatarDescriptor.AnimLayerType Type, string Setting)[] OptionalLayers =
         {
             (VRCAvatarDescriptor.AnimLayerType.Base, "Base / locomotion"),
@@ -441,9 +412,7 @@ namespace AvatarBridge
             }
         }
 
-        // A slot the avatar fills itself: assigned, not the descriptor's
-        // own default, and holding something. A missing reference and an
-        // empty controller both count as absent.
+        // Assigned, not the default, and not empty.
         internal static bool SuppliesOwnLayer(VRCAvatarDescriptor descriptor,
             VRCAvatarDescriptor.AnimLayerType type)
             => descriptor != null && CustomLayer(descriptor, type) != null;
@@ -454,12 +423,8 @@ namespace AvatarBridge
             => VRCFuryBaker.HasFuryComponents(root)
                || ModularAvatarBaker.HasModularAvatarComponents(root);
 
-        // What picking an avatar does before any advice is read: an optional
-        // layer ticked from the last avatar is unticked when this one has
-        // nothing in the slot. Returns the setting names it unticked.
-        //
-        // Here rather than in the window so every caller shares one
-        // definition of what Apply all does.
+        // On picking an avatar, unticks layers whose slot is empty; returns their names.
+        // Here, not in the window, so every caller shares one definition.
         internal static List<string> MatchOptionalLayers(VRCAvatarDescriptor avatar, BridgeSettings settings)
         {
             var unticked = new List<string>();
@@ -478,15 +443,13 @@ namespace AvatarBridge
             return unticked;
         }
 
-        // Which rows Apply all takes: anything with a fix that is not the
-        // user's own call. Shared for the same reason.
+        // Rows Apply all takes: a fix that is not the user's own call.
         internal static bool IsRecommendation(Advice a) => a.Apply != null && a.Kind != AdviceKind.Manual;
 
         static void Layers(List<Advice> advice, VRCAvatarDescriptor descriptor, BridgeSettings settings,
             bool baked)
         {
-            // Off, empty, and a baker may fill it. One row per layer, manual, so
-            // apply-everything leaves them alone.
+            // Off, empty, and a baker may fill it. Manual, so Apply all leaves them alone.
             if (baked)
             {
                 foreach (var (type, setting) in OptionalLayers)
@@ -519,9 +482,7 @@ namespace AvatarBridge
                 }
                 if (baked)
                 {
-                    // Left ticked on purpose. The slot is empty in the
-                    // scene and the baker may still fill it, and being
-                    // ticked for a layer that never arrives costs nothing.
+                    // Left ticked: the baker may fill it, and a tick for nothing costs nothing.
                     advice.Add(new Advice
                     {
                         Kind = AdviceKind.Confirm,
@@ -545,12 +506,8 @@ namespace AvatarBridge
                 });
             }
 
-            // Action and Additive are reported but never RECOMMENDED, because neither is a clear
-            // win: Action takes full body control and its emote triggers have no ChilloutVR
-            // equivalent, so states can be unreachable, and a misfire is very visible. Saying
-            // nothing was the worse failure though; an avatar with a custom Action controller
-            // sitting there unmentioned reads as "checked, nothing here", which is how a copter
-            // avatar's whole Action layer went unnoticed.
+            // Reported, never RECOMMENDED: Action takes full body control and its emote triggers
+            // have no CVR equivalent. Silence was worse: a whole Action layer went unnoticed.
             var actionLayer = CustomLayer(descriptor, VRCAvatarDescriptor.AnimLayerType.Action);
             if (actionLayer != null && !settings.convertActionLayer)
             {
@@ -565,9 +522,7 @@ namespace AvatarBridge
                               "FULL BODY control, VRChat's emote triggers have no ChilloutVR " +
                               "equivalent so some states may be unreachable, and a misfire is very " +
                               "visible. Turn it on if this avatar's emotes are the point of it.",
-                    // Gives the row its own "Turn on" button. Safe to attach on a Manual: the
-                    // apply-everything button filters on IsRecommendation, which excludes them,
-                    // so this can only ever be pressed deliberately.
+                    // Its own "Turn on" button; Apply all filters on IsRecommendation, so Manuals are safe.
                     Apply = s => s.convertActionLayer = true,
                 });
             }
@@ -594,12 +549,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // VRChat's stock controller copied into the slot passes as custom, but
-            // every clip is a proxy_ placeholder the VRChat client swaps at runtime.
-            // Merged, they play literally over ChilloutVR's own locomotion.
-            // Empty layers are skipped: a stateless add-on slot beside GoGo's
-            // Locomotion has no clips, so it failed the test and let the stock
-            // layer through as "the avatar's own".
+            // A copied stock controller passes as custom, but its proxy_ clips are VRChat runtime
+            // placeholders that would play over CVR locomotion. Empty layers are skipped, or a
+            // stateless add-on layer fails the test and lets the stock one through.
             var filled = baseLayer.layers.Where(HasStates).ToArray();
             if (filled.Length > 0 && filled.All(AnimatorMerger.IsProxyOnlyLayer))
             {
@@ -626,9 +578,7 @@ namespace AvatarBridge
                 return;
             }
 
-            // Exempt only when what is in Base really is GoGo; VRCFury can merge
-            // its own content in beside it. The layers say so themselves, so
-            // this does not wait on the expression parameters naming GoGo too.
+            // Exempt only when Base really is GoGo; VRCFury can merge content beside it.
             if (settings.stripGogoLoco && !HasContentGogoDidNotPutThere(baseLayer))
             {
                 return;
@@ -647,9 +597,7 @@ namespace AvatarBridge
             });
         }
 
-        // A layer GoGo did not name, with something actually in it. An empty
-        // one is not content: VRCFury and friends leave placeholders behind,
-        // and advising a merge for the sake of an empty layer is noise.
+        // A non-GoGo layer with something in it; bakers leave empty placeholders behind.
         static bool HasContentGogoDidNotPutThere(AnimatorController controller)
         {
             if (controller == null)
@@ -698,8 +646,7 @@ namespace AvatarBridge
             var checkedShaders = new HashSet<Shader>();
             var missing = new List<string>();
             var offenders = new List<UnityEngine.Object>();
-            // The materials a toggle swaps in as well as the ones worn at rest: the
-            // patcher reaches both, and a swap-only one-eyed shader never raised this.
+            // Swapped-in materials too: the patcher reaches both.
             var materials = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials)
                 .Concat(SwappedMaterials(root.GetComponent<VRCAvatarDescriptor>())).ToList();
             // Planned on the thread pool first; the loop below then reads cached verdicts.
@@ -711,14 +658,12 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // A null source is an engine shader with nothing on disk to read; Unity's own
-                // ship stereo-correct, so they are not counted against the avatar.
+                // Null source: a built-in shader, already stereo-correct.
                 string source = ShaderSpiPatcher.SourcePathOf(shader);
                 if (source != null && !ShaderSpiPatcher.DeclaresStereo(source))
                 {
                     missing.Add(shader.name);
-                    // The shader asset, not the renderer: one shader is usually worn by
-                    // several meshes, and the thing to go and look at is the shader.
+                    // The shader, not the renderer: one shader usually covers several meshes.
                     offenders.Add(shader);
                 }
             }
@@ -852,9 +797,8 @@ namespace AvatarBridge
                 .Select(p => p.name);
         }
 
-        // Face-tracking parameters the avatar's own rig uses: its expression parameters and those
-        // of every controller a component hands over, the descriptor's and a merge component's
-        // alike, so a rig an add-on merges in at bake time is counted before the bake.
+        // Face-tracking parameters of the avatar's own rig, including controllers a merge
+        // component hands over, so a rig merged at bake time is counted before the bake.
         static int OwnRigParameters(GameObject root, VRCAvatarDescriptor descriptor) => OwnRigParameters(root, descriptor, out _);
 
         // bits: of those, the binary sync bits a VRCFaceTracking rig sends its values to others with.

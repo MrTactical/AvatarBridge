@@ -200,10 +200,8 @@ ENDCG } } }";
             EditorApplication.update += check;
         }
 
-        // The editor never passes an imported shader through the hook, only one compiled at run time
-        // (the canaries above, against the same shader saved as an asset). So -sfRuntime compiles each
-        // squash material's shader again from its source once Play mode starts, and swaps it in for
-        // the run. The materials are the test scene's own and get their shader back on quitting.
+        // Only run-time compiled shaders pass the hook in the editor (canaries vs the same shader as
+        // an asset). The materials get their shader back on quitting.
         static void Recompile()
         {
             var swapped = new System.Collections.Generic.Dictionary<Material, Shader>();

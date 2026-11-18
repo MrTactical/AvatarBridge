@@ -1,22 +1,10 @@
 // Clears the atlas before anyone writes into it.
 //
-// Without this there is no way to tell an empty cell from an occupied one.
-// A grab captures whatever the screen had at those pixels, the screen is
-// opaque, so alpha reads 1 everywhere and every cell looks occupied. Spike 3
-// measured exactly that: twenty-seven cells all reporting a hit, all decoding
-// the floor.
-//
-// One quad covering the whole atlas rect, painting alpha 0. A socket's patch
-// then writes alpha 1 over it and an empty cell keeps the 0. Costs one quad
-// per atlas however many sockets exist.
-//
-// Queue is Overlay-200 against the writers' Overlay-100, so ordering comes
-// from the QUEUE rather than from distance. That matters because the clear
-// and the writers live on different avatars and Unity sorts within a queue by
-// distance, which nobody controls. Across queues it is deterministic.
-//
-// If nobody in the room draws a clear, cells degrade to unreliable rather
-// than to wrong, which is the right direction for a fallback transport.
+// Paints the rect alpha 0, or the opaque screen reads alpha 1 and every cell
+// looks occupied (spike 3: all 27 cells decoded the floor).
+// Overlay-200 vs the writers' Overlay-100: they sit on different avatars and
+// Unity sorts within a queue by distance; across queues is deterministic.
+// No clear in the room degrades cells to unreliable, not wrong.
 Shader "YAPS/Spike Clear"
 {
     Properties
@@ -33,11 +21,7 @@ Shader "YAPS/Spike Clear"
         ZTest Always ZWrite Off Cull Off
         Pass
         {
-            // ONLY the alpha channel. Painting RGB as well is what made the
-            // atlas a visible black square: the clear covers the whole rect,
-            // so it is by far the most conspicuous part of the system. With
-            // the colour masked off the rect keeps whatever the scene drew
-            // there and still reads alpha 0, which is all occupancy needs.
+            // Alpha only: painting RGB made the atlas a visible black square.
             ColorMask A
 
             CGPROGRAM
@@ -64,10 +48,7 @@ Shader "YAPS/Spike Clear"
                 float2 p;
                 if (_SpanPxX > 0.5)
                 {
-                    // PIXELS, matching the snapped atlas. The clip-space path
-                    // below lands somewhere else entirely once the atlas is
-                    // eight pixels wide, which would leave every cell reading
-                    // the opaque screen and therefore occupied.
+                    // Pixels, matching the snapped atlas; the clip-space path misses it.
                     float2 atPx = unit * float2(_SpanPxX, _SpanPxY);
                     p = atPx / _ScreenParams.xy * 2.0 - 1.0;
                     p.y = -p.y;

@@ -1,9 +1,8 @@
 // A shader whose vertex function sits in an include written from the project
 // root ("Assets/..."), as Unity allows, and whose name follows Shader with no
-// space. The SPI patcher must read that include, patch its copy, point the
-// copied shader at the copied include, and rename the copy. It used to look
-// only beside the shader and refuse the lot, leaving it drawing in one eye,
-// and a copy it did make of a no-space shader kept the original's name.
+// space. The SPI patcher must patch a copy of that include, point the copied
+// shader at it, and rename the copy. Looking only beside the shader refused
+// it (drawn in one eye), and a no-space name kept the original's name.
 //
 // Run: -executeMethod AvatarBridge.Regression.SpiIncludeProbe.Run [-spiShader "<name>"]
 // The optional shader is patched too and only has to come out as its (SPI) copy.

@@ -5,14 +5,10 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Deep-copies animator controller content so AvatarBridge never mutates the user's
-    // original VRChat controllers. Animation clips are shared by reference: a rename clones a
-    // clip before rewriting it, and the passes that edit clips run on the conversion's own
-    // copies, made by AnimationSelfContainer.
-    //
-    // Usage: create one instance per source controller, call CloneLayer() for each layer.
-    // State/state-machine cross references (transition destinations) are resolved from
-    // the internal maps, so all layers of one controller must be cloned by one instance.
+    // Deep-copies controller content so the user's controllers are never mutated. Clips are
+    // shared by reference: a rename clones first, and clip edits run on AnimationSelfContainer's
+    // copies. Transition targets resolve from internal maps, so one instance clones all layers
+    // of one controller.
     public class AnimatorDeepCopier
     {
         readonly Dictionary<AnimatorState, AnimatorState> _stateMap = new Dictionary<AnimatorState, AnimatorState>();
@@ -141,24 +137,11 @@ namespace AvatarBridge
                     hideFlags = HideFlags.HideInHierarchy
                 };
 
-                // Order matters here, and getting it wrong is silent and destructive.
-                //
-                // Two separate hazards, both to do with min/max threshold:
-                //
-                // A new BlendTree starts with useAutomaticThresholds = true, and while that is set
-                // Unity redistributes every child's threshold across minThreshold..max as children
-                // are assigned. So the flag has to be cleared *before* the children land.
-                //
-                // Worse, Unity clamps child thresholds into [minThreshold, maxThreshold] when
-                // those are assigned; and min/max are meaningless in manual mode, so authors
-                // leave them anywhere. VRCFury emits its manual trees with min = max = 0. Copying
-                // that faithfully crushed every child threshold to 0, which turned a 1D tree into
-                // one that plays all of its clips at once: on one avatar a tail-scale tree
-                // held both extremes at full weight and the tail swallowed the avatar.
-                //
-                // So min/max are only copied when they actually mean something; that is, when
-                // the author used automatic thresholds. In manual mode the children's own
-                // thresholds are the whole truth, and writing min/max can only damage them.
+                // Order matters, and a mistake is silent. A new tree has automatic thresholds on,
+                // which redistributes children as they are assigned, so clear it first. Assigning
+                // min/max clamps child thresholds, and VRCFury's manual trees have min = max = 0,
+                // which crushed every threshold to 0 and played all clips at once. So min/max are
+                // copied only for automatic trees.
                 dst.useAutomaticThresholds = false;
                 if (tree.useAutomaticThresholds)
                 {

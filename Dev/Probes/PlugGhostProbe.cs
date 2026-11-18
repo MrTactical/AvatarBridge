@@ -13,12 +13,10 @@
 //   ghost  an opaque box behind the socket entrance as the receiving body:
 //          pixels where the depth texture changes with the plug on while the
 //          colour does not.
-// Both should be 0 past a two-pixel edge. The sun's shadow on a floor is
-// reported, never failed: a light's shadow map is drawn after the frame's
-// grabs but bound to the texture the atlas name held when the frame began, and
-// the pool trades grab textures between names whenever a frame has two. YAPS
-// has two of its own, so the shadow reads the wrong picture. PNGs of each
-// frame with -ghostOut.
+// Both should be 0 past a two-pixel edge. Floor shadow is reported, never
+// failed: the shadow map binds the texture the atlas name held at frame
+// start, and with two YAPS grabs the pool swaps them, so it reads the wrong
+// picture. PNGs with -ghostOut.
 using System;
 using System.Collections.Generic;
 using System.IO;

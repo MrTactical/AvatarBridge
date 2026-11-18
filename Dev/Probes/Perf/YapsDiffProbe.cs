@@ -12,12 +12,10 @@
 // Exit code 0 when no vertex moves 0.01 mm apart and no normal 0.001: float rounding from
 // reordered arithmetic measured 0.002 mm. No -quit: it exits.
 //
-// -ydWild [-ydCap 1.5] instead feeds the skinned slot buffer and spoils it: frozen where the body
-// stood a moment ago and turned since, the first rest slot right and the rest wherever, or one
-// slot huge or NaN. Each copy's worst move is logged in reaches of the vertex's own parts, and
-// the run passes when the new copy never moves a vertex past the cap and never writes a NaN.
-// The client can bind a buffer nothing skinned in the wearer's view, and remote copies blew up
-// along metres-long streaks.
+// -ydWild [-ydCap 1.5] instead spoils the skinned slot buffer (stale and turned, partly right,
+// one slot huge or NaN). Passes when the new copy never moves a vertex past the cap (in reaches
+// of its parts) and writes no NaN. The client can bind a buffer nothing skinned, and remote
+// copies blew up in metres-long streaks.
 using System;
 using System.IO;
 using System.Linq;

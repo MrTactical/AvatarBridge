@@ -11,22 +11,15 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    // Shared state for one run, passed through every pass.
-    //
-    // Only the VRChat-conversion half needs the VRChat SDK, so the descriptor (and the
-    // source->target lookup built on it) is gated: the CVR-side passes; face tracking,
-    // the scaler, blendshape work; run identically in Setup mode, where there is no
-    // VRChat avatar at all, just a humanoid being prepared for ChilloutVR.
+    // Shared state for one run. The descriptor is SDK-gated: CVR-side passes also run in
+    // Setup mode, where there is no VRChat avatar.
     public class BridgeContext
     {
         public BridgeSettings Settings;
         public BridgeReport Report;
 
-        // One entry per converted physics chain: the GameObject the source PhysBone lived on,
-        // the object now hosting the generated physics, and the generated component itself.
-        // AnimatorMerger uses this to re-wire toggle animations; a hair-swap that activated
-        // the original PhysBone's object must also activate the MagicaCloth holder, which
-        // lives at the avatar root on its own path and would otherwise stay off forever.
+        // AnimatorMerger re-wires toggles with this: the cloth holder lives at the avatar
+        // root on its own path and would stay off forever when the source object is toggled on.
         public class ConvertedPhysicsChain
         {
             public UnityEngine.GameObject Source;
@@ -38,14 +31,11 @@ namespace AvatarBridge
         public System.Collections.Generic.List<ConvertedPhysicsChain> ConvertedPhysicsChains =
             new System.Collections.Generic.List<ConvertedPhysicsChain>();
 
-        // A chain on bones no mesh is skinned to: a helper rig that drives
-        // the avatar's real bones through constraints rather than moving
-        // anything itself. Recorded when physics skips it, because the
-        // constraints that say WHICH real bone it drives do not exist until
-        // several passes later.
+        // A chain on unskinned bones that drives real bones through constraints. Recorded
+        // when physics skips it: the constraints naming the driven bone exist only passes later.
         public class HelperRigChain
         {
-            public Transform Root;                  // the helper chain's root
+            public Transform Root;
             public float Pull, Spring, Stiffness, Gravity, Immobile;
             public bool IsAdvancedIntegration;
         }
@@ -56,9 +46,8 @@ namespace AvatarBridge
 #if VRC_SDK_VRCSDK3
         public VRCAvatarDescriptor SourceDescriptor;
 
-        // Every object path the source had before any pass renamed or
-        // deleted one. A baked copy or an in-place run converts the source
-        // itself, so its live hierarchy cannot say what was there.
+        // Paths before any pass renamed or deleted one. A baked copy or in-place run
+        // converts the source itself, so its live hierarchy cannot say what was there.
         public HashSet<string> SourcePaths;
 
         public void SnapshotSourcePaths()
@@ -72,9 +61,8 @@ namespace AvatarBridge
         public bool ResolvedInSource(string path) =>
             SourcePaths != null && !string.IsNullOrEmpty(path) && SourcePaths.Contains(path);
 
-        // Roots of the trees a pass deleted on purpose with the system they
-        // served. Their curves are dead by design: neither a loss to report
-        // nor a path to repair onto whatever shares the name.
+        // Trees deleted on purpose: their curves are dead by design, neither a loss to
+        // report nor a path to repair onto whatever shares the name.
         public List<string> RemovedPaths = new List<string>();
 
         public bool RemovedOnPurpose(string path) =>
@@ -89,71 +77,55 @@ namespace AvatarBridge
 
         public string OutputDir;
 
-        // Set by the ChilloutVR Toolkit: an avatar being checked or fixed
-        // in place, never converted. Texts that name the converter's
-        // options or its origin read differently.
+        // Toolkit: checked or fixed in place, never converted, so texts naming converter options change.
         public bool Standalone;
 
-        // Parameter bookkeeping, filled by ParameterMenuConverter / ContactsConverter and
-        // consumed by the animator rename pass.
+        // Filled by ParameterMenuConverter / ContactsConverter, read by the rename pass.
         public HashSet<string> PreserveParameters = new HashSet<string>();
         public HashSet<string> ImpulseParameters = new HashSet<string>();
         public HashSet<string> ContactParameters = new HashSet<string>();
 
-        // Parameters whose ping-pong pair the merger rewired into a plain
-        // toggle. A contact still drives some of them, and its emulated
-        // pulse advanced the pair one step, which the rewired pair reads as
-        // on for a frame and off again. HoldUnlatchedContacts reads this and
-        // turns those pulses into hold-while-touching.
+        // Ping-pong pairs rewired into plain toggles. A contact pulse on one reads as on for
+        // one frame, so HoldUnlatchedContacts turns it into hold-while-touching.
         public HashSet<string> UnlatchedParameters = new HashSet<string>();
         public List<string> ParameterOrder = new List<string>();
 
         public Dictionary<(string path, bool sender), List<string>> ContactHosts =
             new Dictionary<(string, bool), List<string>>();
-        // Hosts of contacts and colliders whose component shipped switched off. A native toggle
-        // must not wake these with their object, as it does hosts off only because the object is.
+        // Hosts whose component shipped disabled: a native toggle must not wake them with their object.
         public HashSet<string> DisabledHosts = new HashSet<string>();
 
-        // Zones whose growth one slider owns: the scale pass animates
-        // each zone in step with that slider's blendshape curves.
+        // Zones animated in step with the one slider that grows them.
         public List<(string zonePath, string shapeKey, float growth, float reach, string reportPath)>
             ZoneSliderGrowth = new List<(string, string, float, float, string)>();
 
-        // One entry per plug the YAPS pass converted, so the channel pass
-        // knows which renderers and materials it is wiring to.
         public class YapsPlug
         {
             public Transform Root;
             public Renderer Renderer;
             public Material Material;
             public int MaterialSlot;
-            // EVERY material the plug's triangles use, Material included, on
-            // every mesh. A knob that decides how the plug resolves has to
-            // reach all of them or half the plug answers a different way.
+            // Every material the plug uses on every mesh: a knob missing one leaves half the plug behaving differently.
             public System.Collections.Generic.List<Material> Materials =
                 new System.Collections.Generic.List<Material>();
             // Renderer's slots, the first of Materials in the same order.
             public System.Collections.Generic.List<int> MaterialSlots =
                 new System.Collections.Generic.List<int>();
-            // The other meshes baked on this plug's frame.
             public System.Collections.Generic.List<YapsPlugMesh> Extras =
                 new System.Collections.Generic.List<YapsPlugMesh>();
             public float Length;
             public System.Collections.Generic.List<string> Shapes = new System.Collections.Generic.List<string>();
             public System.Collections.Generic.List<string> MovingShapes = new System.Collections.Generic.List<string>();
-            // The bone a size animation scales: the level the plug's mesh was
-            // found at when it is a bone, else the first bone beneath it.
+            // Bone a size animation scales: the mesh's level if a bone, else the first bone below.
             public Transform ChainRoot;
 
-            // Measured from the mesh in world space. The plug object can sit
-            // elsewhere; a contact box placed there lands short.
+            // From the mesh, not the plug object, which can sit elsewhere and leave a contact box short.
             public UnityEngine.Vector3 Origin;
             public UnityEngine.Quaternion Rotation;
             public float Radius;
         }
 
-        // One more mesh of a plug, with the shapes its own bake measured, so
-        // size curves reach it as well as the primary.
+        // Extra plug mesh with its own measured shapes, so size curves reach it too.
         public class YapsPlugMesh
         {
             public Renderer Renderer;
@@ -164,20 +136,16 @@ namespace AvatarBridge
 
         public List<YapsPlug> YapsPlugs = new List<YapsPlug>();
 
-        // Every plug and socket material replaced on a renderer slot, so
-        // the animation that swaps that slot can be made to follow. Keyed by
-        // the renderer and slot the swap happened on, because the original
-        // material is usually worn by other meshes too and they must keep it.
+        // So slot-swap animations can follow. Keyed by renderer and slot: other meshes
+        // usually wear the original material and must keep it.
         public Dictionary<(Renderer renderer, int slot), (Material from, Material to)>
             YapsMaterialSwaps = new Dictionary<(Renderer, int), (Material, Material)>();
 
-        // Alternate materials the animator swaps onto a plug slot, baked and
-        // repointed once the clips are the conversion's own copies.
+        // Repointed once the clips are the conversion's own copies.
         public List<(Renderer renderer, int slot, Material from, Material to)>
             YapsVariantSwaps = new List<(Renderer, int, Material, Material)>();
 
-        // Textures the slim pass left alone because another avatar shares them,
-        // texture name to the avatar sharing it, so the weight report skips them.
+        // Texture name to the avatar sharing it, so the weight report skips them.
         public Dictionary<string, string> SlimLeftAlone;
 
         public Dictionary<string, List<string>> PhysicsColliderHosts =
@@ -185,18 +153,15 @@ namespace AvatarBridge
 
         public Dictionary<string, string> ForcedRenames = new Dictionary<string, string>();
 
-        // Each parameter the merger renamed, by its new name: the old name and why.
-        // Null means the merger did not run.
+        // New name to old name and why. Null: the merger did not run.
         public Dictionary<string, string> RenamedFrom;
 
         public HashSet<string> AutoExposedParameters = new HashSet<string>();
 
-        // Prefixes forced "#" local. A contact-driven parameter must be local:
-        // a synced twin gets the stream written back over it.
+        // Contact-driven parameters must be local: a synced twin gets the stream written back over it.
         public List<string> ForceLocalPrefixes = new List<string>();
 
-        // The same rule by shape, for names a prefix cannot catch. VRCFury
-        // stamps a per-component id; the shape after it is what is stable.
+        // Same rule by shape: VRCFury stamps a per-component id, the shape after it is stable.
         // Toggles and modes under the same id do not match and stay synced.
         public List<System.Text.RegularExpressions.Regex> ForceLocalPatterns =
             new List<System.Text.RegularExpressions.Regex>();
@@ -253,12 +218,7 @@ namespace AvatarBridge
             return path;
         }
 
-        // Resolves a path the way the animator does: whole path against each
-        // object, so a name containing a slash still matches. Plain Find
-        // first, then a greedy longest-name walk.
-        // Every asset a serialised file points at.
-        //
-        // One matcher, because two once disagreed: the report called a
+        // One matcher for all callers: two once disagreed, the report called a
         // controller fine while the crash guard refused to assign it.
         public static IEnumerable<string> ReferencedGuids(string yaml)
         {
@@ -270,10 +230,7 @@ namespace AvatarBridge
             }
         }
 
-        // What a controller really is, through any overrides.
-        //
-        // An avatar runs an override controller wrapping the base, and
-        // anything reading layers or parameters wants the base.
+        // The base under any override controllers, which is what layer and parameter readers want.
         public static UnityEditor.Animations.AnimatorController Underlying(RuntimeAnimatorController runtime)
         {
             for (int guard = 0; runtime != null && guard < 8; guard++)

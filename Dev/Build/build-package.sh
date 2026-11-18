@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
 # Builds the release packages from the working tree.
-# Version comes from BridgeDefines.cs. Package and tool always agree.
-#
-# Two products, one repo. The public package is the converter and the
-# Toolkit; the penetration system is the separate 18+ add-on, and no public
-# build carries a byte of it. Paths and GUIDs are shared, so a project with
-# both ends up with one folder rather than two copies of everything.
+# Version comes from BridgeDefines.cs.
+# Public = converter + Toolkit; the penetration system is the 18+ add-on only.
+# Both share paths and GUIDs, so a project with both has one folder.
 #
 # Usage:
 #   build-package.sh            public build -> AvatarBridge-<version>-public.unitypackage
@@ -15,17 +12,10 @@
 #                               public contents, for select testers; a tag is spent once built
 #   build-package.sh --yaps --test TAG       -> YAPS-<version>-adult-test-TAG.unitypackage
 #
-# A release (public or --yaps, without --test) is built from a commit: it
-# refuses uncommitted changes unless --dirty is passed, and refuses a version
-# that is already tagged.
-#
-# Every mode is labelled. Never infer contents from a missing suffix.
-# Packages built before 2026-08-01 have no suffix and are all public.
-# They keep those names; GitHub released them under those names.
-#
-# Public builds prune Dev/ and Regression/. That is what ships.
-# Dev builds carry the add-on too, and the harness under Editor/DevTools/,
-# since the harness exercises both. Never release a dev build.
+# A release (public or --yaps, no --test) refuses uncommitted changes unless
+# --dirty, and refuses an already tagged version.
+# Packages before 2026-08-01 have no suffix and are all public.
+# Dev builds carry the add-on and the harness (Editor/DevTools/). Never release one.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -35,8 +25,7 @@ STAGE="$(mktemp -d)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$STAGE" "$WORK"' EXIT
 
-# Every argument is read. Only the first used to be, so a misspelt flag built
-# the public package and "--yaps --test" took the release name.
+# Every argument is read: reading only the first let a misspelt flag build public.
 MODE="public" TAG="" DEV=0 DIRTY=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -69,10 +58,8 @@ else
   OUT="$REPO/AvatarBridge-$VERSION-public.unitypackage"
 fi
 
-# Every name THIS mode could already occupy. The full package and the YAPS
-# one ship together at the same version, so they do not block each other;
-# each only refuses to overwrite itself. Packages before 2026-08-01 shipped
-# with no suffix, and ~300 of those exist.
+# Names THIS mode could occupy, incl. the pre-2026-08-01 unsuffixed ones.
+# Public and YAPS ship at the same version, so they never block each other.
 case "$MODE${TAG:+-test}" in
   public) taken_names=("$REPO/AvatarBridge-$VERSION.unitypackage" \
                        "$REPO/AvatarBridge-$VERSION-public.unitypackage") ;;
@@ -114,34 +101,20 @@ guid_of() { sed -n 's/^guid: \([0-9a-f]*\).*/\1/p' "$1" | head -1; }
 # What the YAPS package carries, shared with compile-check.sh.
 . "$REPO/Dev/Build/yaps-files.sh"
 
-# Would the YAPS package compile on its own?
-#
-# It ships a hand-written subset of Editor/Core and the whole of
-# Editor/Toolkit, so a card added to the Toolkit can reach a Core type the
-# list has never heard of. The package then fails on import with CS0246
-# while the full package is perfectly fine, which is exactly how 4.1.0 and
-# 4.1.1 shipped broken for anyone installing YAPS on its own.
-#
-# Comments are stripped first, because half of Core is named in prose and
-# every one of those would be a false alarm. Plain string literals go too: a
-# type named in one is a reflection lookup, never a compile dependency. Only
-# namespace-level public and internal types count, so a private nested enum
-# that happens to share a name with somebody's field is not one either.
-#
-# This is a closure check, not a compiler: it catches a shipped file
-# referencing a type that stayed behind. For the real thing, compile the
-# package's own file list against the CCK with no VRChat SDK defined, and
-# use MonoBleedingEdge/bin/mono.exe with lib/mono/4.5/csc.exe, since the
-# Roslyn csc under lib/mono/msbuild fails to start and prints no "error CS"
-# lines, which reads as a clean compile.
-# Strings before comments, so a URL's "//" no longer cuts the rest of its line.
+# Would the YAPS package compile on its own? It ships a hand-picked subset of
+# Editor/Core, so a Toolkit file can reach a Core type left behind: CS0246 on
+# import (how 4.1.0 and 4.1.1 shipped broken).
+# Closure check, not a compiler. Comments and plain strings are stripped
+# (prose and reflection names are false alarms); only namespace-level
+# public/internal types count. For a real compile use MonoBleedingEdge mono
+# with lib/mono/4.5/csc.exe: the Roslyn csc under msbuild fails silently.
+# Strings before comments, so a URL's "//" does not cut its line.
 # An interpolated string keeps its text, since its holes are code.
 strip_comments() { sed -E 's/(^|[^$])"[^"]*"/\1""/g; s://.*::' "$1" | awk '/\/\*/{b=1} !b{print} /\*\//{b=0}'; }
 
 check_yaps_closure() { # $1 = newline-delimited list of shipped paths
   local shipped="$1" bad=0 t s hit
-  # Every shipped file stripped once, at its own path, so each type below
-  # costs one grep instead of a pass over the whole list.
+  # Strip once so each type below costs one grep.
   while IFS= read -r s; do
     case "$s" in *.cs) ;; *) continue ;; esac
     mkdir -p "$WORK/stripped/$(dirname "$s")"
@@ -152,8 +125,7 @@ check_yaps_closure() { # $1 = newline-delimited list of shipped paths
   # the windows at the Editor root stay behind too.
   find Editor -name '*.cs' | while IFS= read -r f; do
     grep -qxF "$f" "$shipped" && continue
-    # A file with no namespace-level type is ordinary, and grep says so
-    # by exiting 1. Under `set -e` with pipefail that would end the build.
+    # grep exits 1 on a file with no type; under set -e + pipefail that ends the build.
     { grep -ohE "^    (public|internal)( static| sealed| abstract| partial)* (class|struct|enum|interface) [A-Z][A-Za-z0-9_]*" "$f" || true; } \
       | awk '{print $NF}'
   done | sort -u > "$WORK/absent.txt"
@@ -198,8 +170,7 @@ printf '%s' "Assets/AvatarBridge" > "$STAGE/$ROOT_GUID/pathname"
 count=0 missing=0
 cd "$REPO"
 
-# Built once: the closure check reads the same list the packer walks, so the
-# two can never disagree about what ships.
+# One list for both the closure check and the packer, so they never disagree.
 if [ "$MODE" = "yaps" ]; then
   yaps_files > "$WORK/yaps.list"
   tr '\0' '\n' < "$WORK/yaps.list" > "$WORK/yaps.txt"
@@ -211,9 +182,7 @@ while IFS= read -r -d '' path; do
     .*) continue ;;                      # repo plumbing
     *.unitypackage|*.unitypackage.superseded-*|*.meta) continue ;;   # prior builds; metas ride with their asset
   esac
-  # Anything git ignores is not part of the package: probe output lands in
-  # the repo root by design, and a build must not stop for it, let alone
-  # ship it. survey.md was the one that found this.
+  # Ignored files never ship: probe output lands in the repo root by design.
   if git check-ignore -q -- "$rel" 2>/dev/null; then continue; fi
   meta="$rel.meta"
   if [ ! -f "$meta" ]; then
@@ -223,8 +192,7 @@ while IFS= read -r -d '' path; do
   g="$(guid_of "$meta")"
   if [ -z "$g" ]; then echo "  !! no guid in $meta" >&2; missing=$((missing+1)); continue; fi
 
-  # The YAPS package explains itself in its own words, at the same path and
-  # the same GUID, so installing the full package later just replaces it.
+  # Own README at the same path and GUID, so the public package replaces it.
   src="$rel"
   if [ "$MODE" = "yaps" ] && [ "$rel" = "README.md" ]; then src="Dev/Build/README-yaps.md"; fi
 
@@ -235,10 +203,9 @@ while IFS= read -r -d '' path; do
   fi
   count=$((count+1))
 done < <(if [ "$MODE" = "yaps" ]; then cat "$WORK/yaps.list"; else
-  # Editor/Yaps and Runtime are the add-on, and the add-on is its own 18+
-  # download. YapsMarks stays behind: the survey meets the materials it
-  # names on any avatar converted while the add-on was installed. A dev
-  # build keeps them, because the harness it carries uses add-on types.
+  # Editor/Yaps and Runtime are the add-on. YapsMarks stays: the survey meets
+  # its materials on avatars converted with the add-on. Dev keeps all, the
+  # harness uses add-on types.
   addon=(-o -path './Editor/Yaps' -o -path './Runtime')
   if [ "$MODE" = "dev" ]; then addon=(); fi
   find . -mindepth 1 \
@@ -256,11 +223,8 @@ if [ "$missing" -gt 0 ]; then
 fi
 
 # ---- dev extras -------------------------------------------------------------------------
-# Remapped from Dev/ to Editor/DevTools/. Unity only
-# compiles editor scripts under an "Editor" folder.
-#
-# Metas are synthesized, not committed. The GUID is an md5 of the
-# destination path, so it stays stable across rebuilds.
+# Dev/ goes to Editor/DevTools/: Unity only compiles editor scripts under "Editor".
+# Metas are synthesized; GUID = md5 of the destination path, stable across rebuilds.
 if [ "$MODE" = "dev" ]; then
   devguid() { printf '%s' "$1" | md5sum | cut -c1-32; }
 

@@ -1,9 +1,7 @@
-// A vertex shader cannot read a blendshape weight or a bone's scale, and
-// the plug's bake is its rest pose. So every clip that changes the plug's
-// size writes the same change onto the plug's material as well: a shape
-// curve onto its shape weight, the root bone's scale onto the bake scale.
-// The converter runs this on its own clip copies; the toolkit on the
-// avatar's own clips, and says so.
+// A vertex shader cannot read a blendshape weight or a bone's scale, and the
+// bake is the rest pose, so clips that resize the plug also write the change
+// onto its material. The converter runs this on clip copies, the toolkit on
+// the avatar's own clips.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -25,10 +23,8 @@ namespace AvatarBridge
                  : "_YAPS_ShapeWeights4";
         }
 
-        // One curve on the renderer, which every slot declaring the property
-        // reads. Builds from 4.6.0 wrote "material[1]._X" for a later slot,
-        // which Unity binds to nothing, so a size curve never reached a plug
-        // whose material was not first; those go.
+        // One curve on the renderer reaches every slot. "material[1]._X"
+        // binds to nothing in Unity, so those stale curves are removed.
         static void SetOnSlots(AnimationClip clip, string rendererPath, Renderer renderer, string property,
             string component, AnimationCurve curve)
         {
@@ -54,10 +50,9 @@ namespace AvatarBridge
         static string ScaleName(int lane) => lane > 0 ? "_YAPS_BakeScale2" : "_YAPS_BakeScale";
         static string GirthName(int lane) => lane > 0 ? "_YAPS_BakeGirth2" : "_YAPS_BakeGirth";
 
-        // A build from before lanes wrote the second plug's curve under the
-        // first plug's name, where it still drives the first. Only a curve
-        // equal to the one this plug writes now can be its own, and only where
-        // the first plug does not write that same curve there itself.
+        // Older builds wrote the second plug's curve under the first plug's
+        // name. Only a curve equal to this plug's own, where the first plug
+        // does not write it, is taken as stale.
         static bool PurgeOwnLegacy(AnimationClip clip, string rendererPath, string property, string component,
             AnimationCurve now)
         {
@@ -127,9 +122,7 @@ namespace AvatarBridge
             return written;
         }
 
-        // Which of a bone's local axes runs along the shaft: the bake's
-        // forward, taken into the bone's space, and its dominant axis.
-        // 0 x, 1 y, 2 z.
+        // The bone's local axis along the shaft: 0 x, 1 y, 2 z.
         public static int AlongAxis(Transform bone, Quaternion bakeRotation)
         {
             if (bone == null) return 2;
@@ -138,21 +131,10 @@ namespace AvatarBridge
             return ax >= ay && ax >= az ? 0 : ay >= az ? 1 : 2;
         }
 
-        // The chain root's scale curves become the bake scale (its length axis)
-        // and the bake girth (a radial axis) on the material. One bone per
-        // clip, the first that has a scale curve. Bones are given as their path
-        // from the animator root together with the transform itself, because
-        // what the shader wants is a RATIO to the pose the bake measured, not
-        // the bone's raw scale.
-        //
-        // The material carries 1 for "the size it was baked at". A bone's
-        // m_LocalScale curve carries an absolute number, so copying it straight
-        // across told the truth only for a bone sitting at exactly 1 when it
-        // was baked. Every other rig had its bone scale applied a second time,
-        // on top of the skinning that had already applied it: a bone baked at
-        // 0.4 drew a plug squashed to 40 percent in game, while the editor,
-        // where no animator runs, kept the baked size. Dividing by the bake
-        // pose makes the two agree by construction.
+        // The root's scale curves become bake scale (length axis) and girth
+        // (radial axis), one bone per clip. Written as a RATIO to the baked
+        // pose: copied raw, a bone baked at 0.4 was scaled twice and drew the
+        // plug at 40 percent in game while the editor looked right.
         public static int MirrorBoneScale(IEnumerable<AnimationClip> clips,
             IDictionary<string, Transform> bones, string rendererPath, Renderer renderer,
             Quaternion bakeRotation, int lane = 0, bool purgeLegacy = false)
@@ -236,9 +218,7 @@ namespace AvatarBridge
             return written;
         }
 
-        // The same curve read against the size the bake measured, so that 1
-        // means "as baked". Tangents are a slope in the same units, so they
-        // are divided with the values or the curve kinks between keys.
+        // 1 means "as baked". Tangents are divided too or the curve kinks.
         static AnimationCurve AsRatio(AnimationCurve curve, float atBake)
         {
             // Signed: a mirrored bone animates from -1, and dividing by the
@@ -247,9 +227,8 @@ namespace AvatarBridge
             return Scaled(curve, Mathf.Abs(divisor - 1f) > 1e-4f ? 1f / divisor : 1f);
         }
 
-        // Values and tangents together, on a copy of the keys so the weighted
-        // tangents come along: rebuilding each Keyframe from four numbers
-        // dropped them and changed the easing.
+        // On a copy of the keys: rebuilding each Keyframe from four numbers
+        // dropped the weighted tangents and changed the easing.
         static AnimationCurve Scaled(AnimationCurve curve, float factor)
         {
             var keys = curve.keys;
@@ -262,19 +241,11 @@ namespace AvatarBridge
             return new AnimationCurve(keys);
         }
 
-        // WHOSE "enabled" this is, on the plug's own object.
-        //
-        // Matching the toolkit's own component alone missed the case that
-        // matters most: a vendor's clip animating the ORIGINAL system's plug
-        // component, which conversion replaced. The binding keeps pointing at a
-        // script guid no longer in the project, so the mirror ignored it and
-        // the author's own slider switched a plug on that had no way to hear
-        // it, on either transport, since the material gate never moved.
-        //
-        // A curve on the PLUG'S OWN transform saying "enabled" means the plug,
-        // whoever wrote it. A missing type (null) is the strongest signal of
-        // all: the component it named is gone, which is exactly what conversion
-        // does to the system this replaces.
+        // Any "enabled" on the plug's own object means the plug. Matching only
+        // the toolkit's component missed vendor clips animating the ORIGINAL
+        // plug component, which conversion removed, so the author's toggle
+        // never moved the material gate. A null type (missing script) is
+        // exactly that case.
         static bool MeansThePlug(Type type, Type ours)
         {
             if (type == ours || type == null) return true;
@@ -283,12 +254,9 @@ namespace AvatarBridge
                 || n.IndexOf("Penetrator", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
-        // A curve on the COMPONENT's own Enabled field, mirrored onto the
-        // material property that does the work. Animating the component is
-        // the obvious thing to reach for and can never work: ChilloutVR
-        // strips the component at upload, and the deform lives in the
-        // material. The original curve is left where it is, since a field
-        // bound to a component that is not there costs nothing.
+        // Animating the component can never work: ChilloutVR strips it at
+        // upload and the deform lives in the material. The original curve
+        // stays, since it costs nothing.
         public static int MirrorEnabled(IEnumerable<AnimationClip> clips, string componentPath, Type componentType,
             string rendererPath, Renderer renderer, string property)
         {
@@ -326,7 +294,6 @@ namespace AvatarBridge
             return written;
         }
 
-        // Every clip an animator plays, once each.
         public static IEnumerable<AnimationClip> ClipsOf(RuntimeAnimatorController controller)
         {
             if (controller == null)

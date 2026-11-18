@@ -6,12 +6,8 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Where users go for help, and the environment blob that makes a bug report useful.
-    //
-    // Nearly every bug in this tool has been diagnosed from a conversion report or a log,
-    // so the goal here is that a report arrives complete the first time: the issue opens
-    // pre-filled with versions and detected packages, and the user is told which log to
-    // attach for the kind of failure they hit.
+    // Help links and a pre-filled bug report (versions, detected packages, which log to attach),
+    // since nearly every bug is diagnosed from a report or a log.
     public static class BridgeLinks
     {
         public const string Repo = "https://github.com/MrTactical/AvatarBridge";
@@ -27,9 +23,7 @@ namespace AvatarBridge
         public static bool HasAvatarBridge =>
             AppDomain.CurrentDomain.GetAssemblies()
                 .Any(a => a.GetType("AvatarBridge.AvatarBridgeWindow", false) != null);
-        // Anchor must match a real heading in README.md, or the button silently drops the user at
-        // the top of the repo page; which is what it did for a long time, pointing at an
-        // "#install-troubleshooting" section that never existed.
+        // Anchor must match a real README heading, or the button silently lands at the page top.
         public const string Troubleshooting = Repo + "#troubleshooting";
 
         public const string DiscordUser = "mrtactical";

@@ -1,96 +1,47 @@
-// Plays a scene holding the shader squash test and films the press sources: the part at rest,
-// then one arm bent so the hand lies across the nearest part, filmed with every source on, with
-// the arms off, and with the bone push off too. Per frame, how far each part's follow sits off
-// its rest and the press that makes, to see whether settled cloth reads as a press.
+// Films the squash press sources on a test scene: the part at rest, then one arm bent across the
+// nearest part with every source on, arms off, and bone push off. Logs per frame each follow's
+// offset from rest and the press it makes, to see whether settled cloth reads as a press.
 //
-// -executeMethod AvatarBridge.Regression.SquashPlayProbe.Run -spScene <scene> -spOut <dir> [-spOther]
+// -executeMethod AvatarBridge.Regression.SquashPlayProbe.Run -spScene <scene> -spOut <dir> [flags]
 //
-// -spOther leaves the arms alone and presses with another player's hand instead, through the
-// client's player globals: one shot per hand shape (open, fist, pointing, two fingers), the palm
-// again as a third client lays the arrays out, then the wrist sunk in. -spPart 1 presses the
-// pair's second part instead of the one nearest the left hand (the shader filter cut every part
-// loop after its first part, so only a press on a later part shows it).
-//
-// -spVideo films one continuous run instead, three views a frame at 30 fps into <dir>/frames,
-// with segments.tsv naming each segment's first frame: the avatar hopping, a plug parting the pair,
-// another player's hand in each shape,
-// pokes round the part, quick and deep, two players at once, hands between, squeezing and
-// grabbing, a hand from below, the own arm, then the pair pulse. Other players' hands are drawn
-// as glass capsules the size the shader presses with.
-//
-// -spCost times the view rendered with the squash off, on with nobody near, with 64 players far
-// off and with 64 players' hands on the part, alone and among nine copies of the avatar, into
-// <dir>/cost.tsv.
-//
-// -spJump sweeps the own arm across the pair at five depths and heights instead, and reads back
-// every vertex's squash move each frame, into <dir>/jump.tsv: the largest change in one frame, and
-// which vertex. The read runs the project's own yaps_dent.cginc, not the patched copy, so an edit
-// to it is measured without rebuilding the avatar. A snap is a change far past the arm's own step.
-// The same sweep is read again with one stage at a time taken out of a copy of it, into
-// jump_<stage>.tsv, so whichever copy loses a snap names where it comes from. Other copies read
-// a value out in place of the move, as each vertex's share of it: the press, the bend, the
-// shares, the dent's move, and the flatten's lines, amounts and pushes. -spJumpVertex N logs one
-// vertex's move in every copy each frame, into jump_vertex.tsv.
-//
-// -spLook draws the pair with the project's own yaps_dent.cginc too, lit from the camera over a
-// lightened texture so a black garment still shows its shape, from the front, from above and
-// close: at rest, then squeezed together from outside at two strengths, into
-// <dir>/look_<name>.png. For judging the shape where the pair meets. Each shot is drawn again as
-// the part shares in colour (_shares), as zebra stripes on the shader's normals (_zebra) and on
-// the triangles themselves (_zebra_mesh): a kink in a stripe is a crease, and with the skinning
-// alone, the squash left out (_raw). -spMeet turns the pair's
-// contact on first. -spPreview squeezes with the inspector preview's hands instead (0, 0.5, 1, 1).
-// -spSwing turns each part about the bone it hangs from instead, the cloth stopped, across any gap between them and
-// on into an overlap: one into a still partner by 0.3 and 0.6 reaches, then both, half each, by
-// 0.6 and 1.2.
-// -spHand swings the pair to just touching the same way, then presses the first part from its
-// outer side with another player's open hand, 0.4 and 0.8 reaches in, bending it into the other.
-// Deeper presses less: a press stops at the hand's line, which by then nears the part's centre.
-//
-// -spDrag moves the first part's chain root into the other over two seconds, as the Move tool
-// does in Play mode, then holds it. Each frame after the cloth, into <dir>/drag.tsv: where each
-// follow sits off its rest along the pair's line and the lead the pair squash reads from that,
-// with shots from the front and above. -spDragBoth moves both chain roots, half as far each.
-// -spDragName <object> drags that object instead, found by name under the avatar, and -spMoveTool
-// sets it between frames as the Move tool's handle does, not at the start of the frame's Update.
-// -spGrab pulls with the Avatar Tester's grab instead: the cloth component named by -spDragName
-// pushed each frame toward where the first part's follow bone would be, dragged. -spPush runs the
-// Avatar Tester's squash preview and moves its Push one in from 0 to 1 instead. -spDragPair 1
-// drags the second pair, shot from behind. -spDragScale f moves it f times as far.
-// With -spLook each shot is drawn again in the look shader, every layer tinted its own colour, so
-// one coming through another shows, and the squashed layers each alone (_look, _look_<layer>).
-// At the drag's end every squashed layer's edges are read back, into tear.tsv: how many the
-// squash stretches past two and three times, how many open by a centimetre, how many triangles
-// it turns over; tear_edges.tsv lists the worst with where they lie, their shares and how far
-// off the skin. -spLookStages draws and counts it again with each stage of the squash switched
-// off in turn, in memory, each squashed layer alone too (_look_<layer>_<stage>); the branch stage
-// colours the seam's choices in place of the shading. -spDent <file> draws and counts everything
-// with that include in place of the live one, in memory: an experiment needs no build.
-// -spSeamFilm <file>[,<file>] films the pair pressed into each other six ways in the look shader,
-// the live include beside each file's, every column drawn from the same frame; "," films the live
-// one alone. Mid hold it counts the tear and the volume the squash adds, as at the drag's end.
-// -spReference with it films only the hands' presses, with the pair as real tissue beside them
-// (SoftBodyReference), bare and clothed, and logs where each puts the volume. -spBasis adds the
-// bare tissue's answers to single presses summed for the same hands, as a bake would store them;
-// -spBasisCache <file> keeps those answers between runs, -spBare drops the clothed column.
-// -spDestroy <name> destroys the prefab copy's objects so named before Play.
-// -spPose <a,b> logs those bones' local moves at the drag's end against before Play.
-// -spPrefab <asset path> plays that converted prefab in place of the scene's own avatar, logging
-// each cloth's colliders; -spNoColliders <prefixes> takes colliders so named out of them first.
-// -spRootScale <s> resizes the avatar before Play, through a parent, with any of the above.
-// -spProp with -spVideo films a prop wearing the squash and the live tissue on its pair, the
-// scene's CVRSpawnable in place of an avatar: the prop shaken and hopped, slaps, a deep poke,
-// squeezes slow and fast, a grab, both lifted and dropped, a hand between them. Front, three
-// quarter and side, three point lit on grey; every aim, depth and frame measured on the pair's own skin.
-// -spEach adds a front shot per renderer, each drawn alone, at every shot.
-// -spRaw switches the squash off on copies of its materials, for skinning alone.
-// -spGrabTimes N pushes N times a frame with -spGrab, as mouse drag events can come.
-// -spNoContact switches off the converter's soft body spheres once a drag starts, on builds that
-// still put them on "SoftBodyContact" children.
-// -spRebuild builds the squash again on the played copy, into Assets/__SquashPlayRebuild, so the
-// real materials run the deployed code; clear that folder and the new patched shaders after.
-// -spSurface gives each part its own surface for the run, as a build with it would: measured from
-// a copy of the avatar and set on its squash materials in memory, put back on quitting.
+// -spOther       another player's hand via the player globals: each hand shape, the palm with a
+//                third client's array layout, then the wrist sunk in.
+// -spPart 1      press the second part (the shader filter once cut part loops after the first).
+// -spVideo       one continuous 30 fps run, three views, into <dir>/frames + segments.tsv.
+//                Other players' hands are drawn as glass capsules at the shader's press size.
+// -spCost        frame time: squash off, on idle, 64 players far, 64 hands on the part, alone and
+//                among nine copies, into cost.tsv.
+// -spJump        own arm swept across the pair at five depths; per vertex largest one-frame move
+//                into jump.tsv, read with the project's yaps_dent.cginc so edits need no rebuild.
+//                A snap is a change far past the arm's own step. Repeated per stage removed
+//                (jump_<stage>.tsv) to find a snap's source. -spJumpVertex N logs one vertex.
+// -spLook        camera-lit shots on a lightened texture (black garments still show shape), at
+//                rest and squeezed at two strengths, plus _shares, _zebra, _zebra_mesh (a kink in
+//                a stripe is a crease) and _raw. -spMeet turns contact on first; -spPreview uses
+//                the inspector preview's hands (0, 0.5, 1, 1).
+// -spSwing       each part turned about its bone, cloth stopped, into overlap: one by 0.3 and 0.6
+//                reaches, then both, half each, by 0.6 and 1.2.
+// -spHand        pair swung to touching, then an open hand presses 0.4 and 0.8 reaches. Deeper
+//                presses less: a press stops at the hand's line, near the part's centre by then.
+// -spDrag        first chain root into the other over 2 s as the Move tool does, then held, into
+//                drag.tsv. -spDragBoth half each; -spDragName <obj>; -spMoveTool sets it between
+//                frames like the handle; -spGrab uses the Avatar Tester's grab; -spPush its Push
+//                slider 0..1; -spDragPair 1 the second pair; -spDragScale f.
+//                With -spLook: per-layer tinted shots, and tear.tsv / tear_edges.tsv at the end
+//                (edges stretched past 2x and 3x, opened by 1 cm, flipped triangles).
+//                -spLookStages repeats with each stage off; -spDent <file> swaps the include in
+//                memory, no build needed.
+// -spSeamFilm <file>[,<file>]  the pair pressed six ways, live include beside each file, same
+//                frame per column; "," films live alone. Counts tear and added volume mid hold.
+//                -spReference adds real tissue (bare and clothed); -spBasis summed single-press
+//                answers as a bake stores them; -spBasisCache <file>; -spBare drops clothed.
+// -spDestroy <name>, -spPose <a,b>, -spPrefab <path>, -spNoColliders <prefixes>, -spRootScale <s>.
+// -spProp        with -spVideo, a CVRSpawnable prop wearing squash and tissue, three views,
+//                every aim measured on the pair's own skin.
+// -spEach per-renderer shots; -spRaw squash off; -spGrabTimes N (drag events can repeat);
+// -spNoContact old "SoftBodyContact" spheres off; -spRebuild rebuild into
+// Assets/__SquashPlayRebuild (clear it and the patched shaders after); -spSurface per-part
+// surfaces in memory, restored on quit.
 //
 // Batch, never -nographics: the frames are rendered.
 
@@ -1001,8 +952,7 @@ namespace AvatarBridge.Regression
                     foreach (var m in mats) m.SetFloat("_YAPS_SquashPulse", 0.3f * Mathf.Clamp01(Mathf.Min(u, 1f - u) / 0.1f));
                 } },
             };
-            // A seat gets its own shots (Joe, 2026-10-29): none of the plug, the pulse, the own hand or
-            // the shots between a pair that never parts.
+            // A seat gets its own shots: no plug, pulse, own hand or shots between a pair that never parts.
             Shot Named(params string[] any) => film.First(x => any.Any(a => x.name.StartsWith(a)));
             if (SessionState.GetInt(K + "seat", 0) == 1) film = Seat(root, smr);
             else if (Vector3.Dot(f, root.forward) < 0f)
@@ -1029,11 +979,9 @@ namespace AvatarBridge.Regression
                     float t = Mathf.Repeat(u * n, 1f);
                     return t > 0.45f && t < 0.55f ? Mathf.Sin(Mathf.PI * (t - 0.45f) / 0.1f) : 0f;
                 }
-                // The hands squeeze each cheek at its widest on the outside of its back half, level with its
-                // crown, where it stands out furthest behind, flat and fingers down, pushing straight in
-                // toward the other. Aimed at its bone's height they pressed the slope above its middle and
-                // pushed the seat down (Joe). The cheek is the skin the squash gives it at least half of,
-                // as the jelly's lattice is: its bones carry the small of the back as well.
+                // Hands squeeze each part at its widest, flat, fingers down, straight in toward the other.
+                // Aimed at the bone's height they pressed the slope above and pushed the seat down. The
+                // part is skin with share >= 0.5, as the jelly lattice uses: its bones also carry the back.
                 var cheekShares = YapsSquash.NamedShares(root, smr, out _, out _);
                 var bakedAt = body.sharedMesh.vertices;
                 var cheeks = Enumerable.Range(0, 2).Select(c => cheekShares == null ? new List<Vector3>() : Enumerable.Range(0, Mathf.Min(bakedAt.Length, cheekShares.Length))
@@ -1758,9 +1706,7 @@ namespace AvatarBridge.Regression
             { ("rest", 0f, 0f), ("squeeze_soft", 0.3f, 0.985f), ("squeeze_hard", 0.6f, 0.985f), ("squeeze_hard_half", 0.6f, 0.5f) };
         static readonly bool LookPreview = Environment.GetCommandLineArgs().Contains("-spPreview");
         static readonly bool Prop = Environment.GetCommandLineArgs().Contains("-spProp");
-        // -spSwing: the parts' own bones turned toward each other instead, as a spin swings them,
-        // across any gap and on into an overlap of so many reaches: by the first alone into a still
-        // partner, then by both, half each.
+        // -spSwing: overlap in reaches, and the first part's share of it.
         static readonly (string name, float overlap, float first)[] SwingShots =
             { ("rest", 0f, 1f), ("swing_one_soft", 0.3f, 1f), ("swing_one_hard", 0.6f, 1f), ("swing_both_hard", 0.6f, 0.5f), ("swing_both_deep", 1.2f, 0.5f) };
         static readonly bool LookSwing = Environment.GetCommandLineArgs().Contains("-spSwing");
@@ -2007,10 +1953,7 @@ namespace AvatarBridge.Regression
                 foreach (var m in provider.materials) m.SetFloat("_YAPS_SquashPulse", LookShots[lookAt].pulse);
         }
 
-        // -spSeamFilm <file>[,<file>]: the pair pressed into each other six ways, each eased in, held
-        // and let go, drawn from the front and from above in the look shader once with the live
-        // include and once with each file, side by side from the same frame, into <dir>/frames
-        // with segments.tsv. Comparing includes in separate runs would compare two cloth runs too.
+        // Includes are compared side by side in one run: separate runs would compare two cloth runs too.
         static readonly string SeamFilm = Arg("-spSeamFilm");
         static readonly (string name, int kind, float amount)[] SeamShots =
         {
@@ -2294,10 +2237,8 @@ namespace AvatarBridge.Regression
                     refs[k].Follow(mesh, c.at);
                 }
             }
-            // -spBasis: a column more, the bare tissue's answers to single presses summed for the
-            // hands each frame, as a bake would store and the shader add, beside it solving them.
-            // -spBasisBake "<cube divisor>,<substeps>,<frames>,<hold>[,<smoothing passes>[,<deeper depths>...]]": baked as a build would, on
-            // its own coarser tissue, to a quarter and a half of the reach, the cache unused.
+            // -spBasisBake "<cube divisor>,<substeps>,<frames>,<hold>[,<smoothing passes>[,<deeper depths>...]]":
+            // baked as a build would, on coarser tissue, to 1/4 and 1/2 reach, cache unused.
             var bake = Arg("-spBasisBake")?.Split(',').Select(x => float.Parse(x, CultureInfo.InvariantCulture)).ToArray();
             if (Environment.GetCommandLineArgs().Contains("-spBasis"))
             {
@@ -2516,11 +2457,9 @@ namespace AvatarBridge.Regression
             return best;
         }
 
-        // The basis summed for these hands. Each capsule presses each part toward it by how far it
-        // is in, shared over the five ways by the square of how near it points to each, which sums
-        // to one, the slanted ways taking their part of it; the deepest capsule each way counts, as a palm and its fingers press one dent. What both outsides are pressed alike is the squeeze;
-        // the rest each part's own. Each answer read at its depth, straight between the depths
-        // baked and on past the last.
+        // Depth shared over the five ways by squared alignment (sums to one); only the deepest capsule
+        // per way counts, since a palm and its fingers press one dent. Equal outside presses are the
+        // squeeze. Answers interpolate linearly between baked depths and extrapolate past the last.
         static Vector3[] Summed(IList<(Vector3 a, Vector3 b, float r)> hands)
         {
             var amount = new float[2, 5];
@@ -2529,11 +2468,9 @@ namespace AvatarBridge.Regression
             foreach (var (a, b, r) in hands)
                 for (int j = 0; j < 2; j++)
                 {
-                    // How far the capsule is in past the part's skin at rest, uncapped: capped, a
-                    // hand pushing the part ahead of it read as a touch. Square to the capsule, as
-                    // a palm presses along its normal: measured to its nearest end, a palm held
-                    // above the centre read as pressing from above. Each way's depth is taken on
-                    // that way's own line, as its answer was baked.
+                    // Depth uncapped: capped, a hand pushing the part ahead read as a touch. Measured
+                    // square to the capsule: to its nearest end, a palm above the centre read as
+                    // pressing from above. Each way's depth on its own line, as baked.
                     var ab = b - a;
                     var to = a + ab * Mathf.Clamp01(Vector3.Dot(partAt[j] - a, ab) / Mathf.Max(ab.sqrMagnitude, 1e-10f)) - partAt[j];
                     // Touching at all first, by the true distance: square to it, a palm lying under

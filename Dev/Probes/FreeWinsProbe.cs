@@ -1,9 +1,6 @@
-// Proves the free-wins pass removes what it claims and nothing else.
-//
-// A converted avatar has neither problem, because the converter already
-// removes both, so the target is dirtied on purpose first: one layer with
-// no states, one parameter nothing touches, and one parameter nothing
-// touches that the game writes, which must SURVIVE.
+// Proves the free-wins pass removes what it claims and nothing else. The converter already
+// cleans both, so the target is dirtied first: an empty layer, an untouched parameter, and an
+// untouched game-written parameter, which must SURVIVE.
 //
 //   -executeMethod AvatarBridge.Regression.FreeWinsProbe.RunBatch
 //   AVATARBRIDGE_SURVEY_SCENE = the scene or prefab to read
@@ -53,13 +50,8 @@ namespace AvatarBridge.Regression
                 return;
             }
 
-            // The avatar runs an override controller wrapping the base. That
-            // override is a shared project ASSET, not a scene object: writing
-            // to it edits the converted avatar itself, and the first version
-            // of this probe did exactly that, then deleted what it had pointed
-            // the asset at. Everything below works on copies, and the only
-            // thing assigned to anything real is on the scene instance, which
-            // is thrown away with the scene.
+            // The override is a shared project asset: writing to it edits the converted avatar
+            // (tried, and it broke the avatar). Work on copies; only the scene instance is assigned.
             var sharedOverride = animator.runtimeAnimatorController as AnimatorOverrideController;
 
             // Dirty a copy, so the corpus avatar's own controller is untouched.
@@ -69,9 +61,7 @@ namespace AvatarBridge.Regression
             dirty.AddLayer("ZZ_ProbeEmptyLayer");
             dirty.AddParameter("ZZ_ProbeJunk", AnimatorControllerParameterType.Float);
 
-            // A game-written name the controller does not already carry.
-            // Adding one it has gets silently renamed ("GestureLeft 0"), and
-            // then the guard under test is never the thing being tested.
+            // One the controller lacks: a duplicate is silently renamed ("GestureLeft 0").
             string[] candidates = { "AFK", "Swimming", "IsFriend", "CancelEmote", "VisemeLoudness", "Prone" };
             string gameDriven = candidates.FirstOrDefault(c => dirty.parameters.All(p => p.name != c));
             if (gameDriven == null)
@@ -132,12 +122,8 @@ namespace AvatarBridge.Regression
                       $"{gameDriven} kept={gameKept} layers lost={layersLost} parameters lost={paramsLost}");
             Debug.Log($"[FreeWins] report:\n{report.ToMarkdown(avatar.name)}");
 
-            // The game-driven guard cannot be reached through a real survey:
-            // MarkGameDriven gives those parameters a writer, so they are
-            // never flagged unused and never offered for removal. It is a
-            // second line of defence, so it gets tested as one, against a
-            // model that claims the thing the survey will not claim.
-            // Find reads the model's controller, so the pretend one names one.
+            // A real survey never flags game-driven parameters (MarkGameDriven gives them a
+            // writer), so the backup guard is tested against a pretend model that does.
             var pretend = new AvatarSurvey.Model { Controller = dirty };
             pretend.Findings.Add(new AvatarSurvey.Finding
             {

@@ -4,32 +4,15 @@
 //
 //   Tools > Avatar Bridge > Dev > Atlas > Screen atlas: plug and socket
 //
-// Spikes 1 to 3 proved the transport a piece at a time: a named GrabPass
-// survives a ChilloutVR upload, it carries a moving world position to about
-// a tenth of a millimetre, and two objects that have never heard of each
-// other can meet in a cell derived from where they both are. What none of
-// them showed is the thing the transport exists for. This one bends.
-//
-// Nothing here is wired. The plug holds no reference to a socket, no
-// contact pair is registered, no light is emitted, no animator parameter
-// moves and nothing syncs. Drag a socket near the plug and the plug bends
-// into it, because the socket drew two pixels and the plug read them.
-//
-// What to look for, in order:
-//
-//   grey plug            it found nothing. Either the atlas is not being
-//                        drawn (is the grabber on screen?) or the row order
-//                        is flipped: press "What is in the atlas".
-//   bends toward one     the rendezvous works.
-//   ROTATE a socket      the plug should swing to arrive along the socket's
-//                        own axis, not just aim at its centre. That is the
-//                        second pixel doing its job, and it is the thing the
-//                        light protocol cannot do at all.
-//   move the far socket  in closer, and the plug should switch to it.
-//
-// Deliberately NOT the shipping deform: a generated cylinder along local +Z
-// bent along a cubic, so that anything wrong is obviously the transport
-// rather than the bake.
+// Spikes 1-3 proved the transport (GrabPass survives upload, ~0.1 mm, cell
+// rendezvous). This one bends, with nothing wired: no references, contacts,
+// lights, parameters or sync.
+//   grey plug            found nothing: grabber off screen, or rows flipped
+//                        (press "What is in the atlas").
+//   ROTATE a socket      the plug should arrive along its axis: the second
+//                        pixel, which the light protocol cannot do.
+//   move the far socket  closer, and the plug should switch to it.
+// Not the shipping deform: a cylinder bent along a cubic, so faults are the transport's.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using ABI.CCK.Components;
@@ -48,19 +31,13 @@ public class SpikePlug : EditorWindow
     const int OriginPx = 8;
 
     float _cellBase = 0.02f;
-    // Four levels: cells from 2 cm to 1.28 m, plugs to about five metres.
-    // The guess that this is all anyone needs gets its test in game before
-    // six levels earn their extra rows of atlas.
+    // Four levels: cells 2 cm to 1.28 m, plugs to ~5 m. Test in game before adding rows.
     int _levels = 4;
     int _cellRadius = 2;   // cells out, NOT the plug radius above
     int _sockets = 3;
-    // 64, not 16. Sockets clash by hashing to a slot another cell owns, and
-    // the second home is the recovery, so what matters is clashing on BOTH:
-    // 256 slots loses about one socket in seven at 120 sockets, which is
-    // twenty people carrying six each, an ordinary instance. 4096 makes it
-    // one in twelve hundred. Costs no reads and no visible dots, since the
-    // clear writes alpha only and the dots follow the socket count. It costs
-    // WIDTH, and whether a mirror is that wide is the open question.
+    // 64, not 16: a socket is lost only when both homes clash. At 120 sockets
+    // 256 slots lose ~1 in 7, 4096 ~1 in 1200. Costs no reads, only width
+    // (is a mirror that wide? open question).
     int _grid = 64;
     int _slotPx = 1;
     float _reach = 1.6f;
@@ -71,9 +48,7 @@ public class SpikePlug : EditorWindow
     int _forceRow = 0;
     string _result = "";
 
-    // The level the plug will pick, and the cell size that comes with it.
-    // Same arithmetic as the shader: coverage wants a cell of about L/2r and
-    // the levels go up in fours.
+    // As the shader: cell ~ L/2r, levels go up in fours.
     float LevelSize(out int level)
     {
         float want = _length / Mathf.Max(2f * _cellRadius, 1f);
@@ -87,10 +62,7 @@ public class SpikePlug : EditorWindow
     void OnEnable() { EditorApplication.update += Tick; SceneView.duringSceneGui += OnScene; }
     void OnDisable() { EditorApplication.update -= Tick; SceneView.duringSceneGui -= OnScene; }
 
-    // Draws the two ceilings in the scene view, because "why is that socket
-    // ignored" has two completely different answers and they look identical
-    // from outside: it is outside the box the plug can READ, or it is inside
-    // the box and past the end of the CHAIN the plug can cover.
+    // An ignored socket is either outside the read box or past the chain's end; both look the same.
     void OnScene(SceneView sv)
     {
         var root = GameObject.Find(Root);
@@ -102,10 +74,7 @@ public class SpikePlug : EditorWindow
         float len = plug.TransformVector(Vector3.forward).magnitude;
         float cell = Mathf.Max(LevelSize(), 0.0001f);
 
-        // The neighbourhood, exactly as the shader hashes it: a cube of
-        // (2r+1) cells centred on the cell the shaft MIDPOINT falls in. Note
-        // it is anchored to the cell, not to the plug, so it shifts in steps
-        // as the plug moves and is never quite centred on it.
+        // (2r+1)^3 cells around the shaft midpoint's cell, so it moves in steps.
         Vector3 m = at0 + axis * (len * 0.5f);
         var c = new Vector3Int(Mathf.FloorToInt(m.x / cell),
                                Mathf.FloorToInt(m.y / cell),
@@ -117,25 +86,17 @@ public class SpikePlug : EditorWindow
         Handles.Label(centre + Vector3.up * (span * 0.5f + 0.02f),
                       "what the plug can read: " + span.ToString("F2") + " m");
 
-        // The chain, in the shader's own order: nearest to the root first,
-        // then cumulative chord length. A socket sitting past the plug's own
-        // length is found and simply never reached.
+        // Shader order: nearest the root first. A socket past the length is found but never reached.
         var socks = new List<Transform>();
         foreach (Transform t in root.transform)
             if (t.name.StartsWith("Socket")) socks.Add(t);
         socks.Sort((a, b) => Vector3.Distance(a.position, at0)
                      .CompareTo(Vector3.Distance(b.position, at0)));
 
-        // Which grid slot each socket hashes to. Two on one slot means the
-        // second to draw overwrites the first and the loser is dropped by
-        // the tag check, silently, for as long as it stays in that cell.
-        // It presents as a DEADZONE exactly one cell across, which is how
-        // this was found: socket B stopped working between y 1.26 and 1.44,
-        // the bounds of a single cell at eighteen centimetres.
-        // Buckets moved this. Two sockets in one CELL used to lose one of
-        // them; now a cell holds eight octants, so they only fight when they
-        // are in the same octant too. The old cell-only test cried wolf on
-        // every socket once the cell grew larger than the spacing.
+        // Two sockets on one slot: the later draw wins, the loser is silently
+        // dropped by the tag check, a deadzone one cell across (found as a gap
+        // from y 1.26 to 1.44 at 18 cm cells). With octant buckets they only
+        // fight in the same octant.
         var seen = new Dictionary<string, int>();
         foreach (var t in socks)
         {
@@ -154,9 +115,7 @@ public class SpikePlug : EditorWindow
             float h = span * 0.5f;
             bool inBox = Mathf.Abs(d.x) <= h && Mathf.Abs(d.y) <= h && Mathf.Abs(d.z) <= h;
             arc += Vector3.Distance(t.position, prev);
-            // A hole approached through its back is dropped by the resolver,
-            // which is correct and looks exactly like every other reason a
-            // socket does not bend, so it gets said out loud.
+            // A hole approached from behind is dropped, correctly; say so.
             bool hole = t.name.Length > 0 && ((t.name[t.name.Length - 1] - 'A') % 2) == 1;
             bool backwards = hole && Vector3.Dot(t.forward, t.position - at0) > 0;
             string why = backwards ? "HOLE approached from behind, skipped"
@@ -192,26 +151,18 @@ public class SpikePlug : EditorWindow
             + " m, four times a step. A socket publishes to every level and a plug reads one.");
         _cellRadius = EditorGUILayout.IntSlider("Neighbour radius, cells", _cellRadius, 0, 3);
         int cells = (2 * _cellRadius + 1) * (2 * _cellRadius + 1) * (2 * _cellRadius + 1);
-        // The number actually asked for, and it comes from the
-        // NEIGHBOURHOOD rather than from the length of the list.
-        // Buckets change the bound. Coverage still wants cell >= L/2r, but
-        // an OCTANT separates sockets half a cell apart rather than a whole
-        // one, so spacing L/(N+1) >= cell/2 gives N <= 4r-1 instead of 2r-1.
+        // From the neighbourhood: cell >= L/2r, and octants separate at half a
+        // cell, so spacing L/(N+1) >= cell/2 gives N <= 4r-1.
         int ceiling = Mathf.Min(4 * _cellRadius - 1, 8);
         if (ceiling < 1) ceiling = 1;
-        // Two different ceilings, and the useful one is the smaller.
-        // 2r+1 assumes sockets landing exactly on cell boundaries at the
-        // very root and the very tip; with the cell fitted to the plug the
-        // spacing that actually separates them gives 2r-1.
+        // 2r+1 assumes sockets exactly on boundaries at root and tip; real spacing gives 2r-1.
         int lvlNow; float cellNow = LevelSize(out lvlNow);
         EditorGUILayout.LabelField("  ceiling",
             ceiling + " sockets, on level " + lvlNow + " at " + cellNow.ToString("F3") + " m");
         EditorGUILayout.LabelField("  reads",
             cells + " headers a vertex, plus one per socket actually found");
         _sockets = EditorGUILayout.IntSlider("Sockets to build", _sockets, 1, ceiling);
-        // Sockets in the SAME cell is the one clash double hashing cannot
-        // help with: two homes are a property of the CELL, so two sockets in
-        // one cell share both. Buckets are the fix and are not built.
+        // Same-cell sockets share both homes, so double hashing cannot help.
         float spacing = _length / (_sockets + 1);
         if (spacing < cellNow * 0.5f)
             EditorGUILayout.HelpBox(
@@ -226,19 +177,12 @@ public class SpikePlug : EditorWindow
         EditorGUILayout.LabelField("  atlas",
             AtlasWidth() + " x " + AtlasHeight() + " px, " + Columns() + " columns"
             + "   (a cell is 17 slots: a header, then eight octants of position and facing)");
-        // The writer places pixels from _ScreenParams, so the rect has to FIT
-        // every camera that carries the atlas. A mirror renders into its own
-        // texture and is routinely smaller than the main view; the in-game
-        // mirror test passed at grid 16, which is 280 px, and says nothing
-        // about a wider one. Unverified, so it is stated rather than guarded:
-        // inventing a threshold here would assert a mirror size nobody has
-        // measured.
+        // The rect must fit every camera (mirrors are smaller). Only grid 16
+        // (280 px) passed in game, so stated, not guarded.
         EditorGUILayout.LabelField("  needs a camera",
             "at least " + AtlasWidth() + " x " + AtlasHeight() + " px, MIRRORS INCLUDED");
 
-        // Precision follows the cell, so it scales with the plug: a ten
-        // metre plug at radius 2 resolves to about a millimetre, which is
-        // proportionally the same as a twenty centimetre one at 0.02 mm.
+        // Scales with the plug: 10 m at radius 2 ~ 1 mm, 20 cm ~ 0.02 mm.
         EditorGUILayout.LabelField("  precision",
             (LevelSize() * 0.000488f * 1000f).ToString("F3") + " mm   (the cell times a half-float step)");
         EditorGUILayout.LabelField("  a read sees",
@@ -298,9 +242,7 @@ public class SpikePlug : EditorWindow
         Remove();
         var sockShader = Shader.Find("YAPS/Spike Socket");
         var plugShader = Shader.Find("YAPS/Spike Plug");
-        // The SHIPPED grab, not the spike's own. The spike is the only thing
-        // that exercises it until a patched plug declares it reads the atlas,
-        // so pointing the rig at it is what keeps it honest.
+        // The shipped grab, so the spike keeps it honest.
         var readShader = Shader.Find("YAPS/Atlas Grab");
         var clearShader = Shader.Find("YAPS/Spike Clear");
         if (sockShader == null || plugShader == null || readShader == null || clearShader == null)
@@ -312,45 +254,27 @@ public class SpikePlug : EditorWindow
         var root = new GameObject(Root);
         Undo.RegisterCreatedObjectUndo(root, "YAPS atlas plug spike");
 
-        // Draws first and paints the atlas rect alpha 0, so an empty cell can
-        // be told from an occupied one. Without it the grab returns the
-        // opaque screen and every cell reads as a socket at the cell origin.
-        // Scaled huge for the same reason as the grabber: it draws in clip
-        // space and ignores its transform, but a one-metre quad at the
-        // origin can still be frustum-culled, and a clear that does not draw
-        // leaves every cell reading the opaque screen as occupied.
+        // Alpha 0 first, or the opaque screen reads as a socket in every cell.
+        // Huge bounds so it is never frustum-culled.
         var clear = Quad(root, "Clear", 200f);
         var cm = Asset("Clear", clearShader);
         cm.renderQueue = _queueBase;
         clear.GetComponent<MeshRenderer>().sharedMaterial = cm;
 
-        // THREE, spaced off the CELL SIZE rather than hardcoded, because
-        // the two are not independent. One cell holds one socket, so sockets
-        // closer than a cell cannot both exist; and a plug only threads what
-        // fits within its own length of chain. Placing them by hand is how
-        // two of them ended up in one cell and only two of the three showed.
-        //
-        // The plug below is turned ninety degrees, so its shaft runs along
-        // world +X from its root.
+        // Spaced off the cell size: hand placement put two in one cell.
+        // The plug's shaft runs along world +X.
         Vector3 from = new Vector3(-0.18f, 1.15f, 0f);
         for (int i = 0; i < _sockets; i++)
         {
             float along = _length * (i + 1) / (_sockets + 1);
             var at = from + new Vector3(along, 0.01f * (i % 2), 0.02f * (i % 3));
-            // Facing BACK down the shaft. A socket pointing the way the plug
-            // travels is entered through its back, and the cubic ties itself
-            // in a hairpin to arrive that way.
-            // Alternating, so both behaviours are on screen at once. Rotate
-            // one 180 degrees and watch the difference: a RING flips to meet
-            // the plug and keeps working, a HOLE is being approached through
-            // its back and drops out of the chain entirely.
+            // Facing back down the shaft, or the cubic hairpins. Alternating
+            // kinds: rotated 180, a ring flips to meet the plug, a hole drops out.
             Socket(root.transform, sockShader, "Socket " + (char)('A' + i), at,
                    Quaternion.Euler(0, 270 + (i - 1) * 10, (i - 1) * 8), i % 2);
         }
 
-        // The plug. An ORDINARY mesh, never skinned: Unity skins into world
-        // space and hands a SkinnedMeshRenderer an identity matrix, so a
-        // skinned plug could not work out where its own root is.
+        // Never skinned: a skinned renderer gets an identity matrix, so it cannot find its root.
         var plug = new GameObject(PlugName);
         plug.transform.SetParent(root.transform, false);
         plug.transform.position = new Vector3(-0.18f, 1.15f, 0f);
@@ -361,9 +285,7 @@ public class SpikePlug : EditorWindow
         plug.AddComponent<MeshRenderer>().sharedMaterial = pm;
         plug.transform.localScale = Vector3.one * _length;
 
-        // A DEDICATED grabber, scaled huge so no camera can cull it. A camera
-        // only grabs if something carrying the GrabPass renders in it, and a
-        // small object near the origin can simply be off screen.
+        // Huge bounds: a camera only grabs if a GrabPass renders in it.
         var grab = Quad(root, "Grabber", 200f);
         var gm = Asset("Grabber", readShader);
         gm.renderQueue = _queueBase + 2;
@@ -386,13 +308,8 @@ public class SpikePlug : EditorWindow
 
     GameObject Socket(Transform parent, Shader shader, string name, Vector3 at, Quaternion rot, int kind)
     {
-        // The writer draws in CLIP space and ignores this object's transform,
-        // so its own mesh is never seen. It still needs a real MeshRenderer
-        // with a real matrix, because the matrix is the payload.
-        //
-        // TWO quads, not one: the shader sends the second to this cell's
-        // other slot, so a socket that loses a slot clash is still readable
-        // from its second home.
+        // Draws in clip space, but needs a real renderer: the matrix is the payload.
+        // Two quads: the second goes to the cell's other home, surviving a clash.
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         go.transform.position = at;
@@ -404,10 +321,7 @@ public class SpikePlug : EditorWindow
         m.SetFloat("_Kind", kind);
         go.GetComponent<MeshRenderer>().sharedMaterial = m;
 
-        // Something to look at, and something that shows which way the socket
-        // FACES. A ring around the parent's local +Z, plus a stub along it:
-        // the built-in cylinder runs along its own +Y, so the child is turned
-        // ninety degrees to line the two up.
+        // Ring and stub show the facing (+Z); the built-in cylinder runs along +Y, so turned 90.
         var ring = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         ring.name = "Mouth";
         ring.transform.SetParent(go.transform, false);
@@ -462,25 +376,16 @@ public class SpikePlug : EditorWindow
         var c = Load("Clear");
         if (c != null)
         {
-            // Covers the whole snapped rect with room to spare. Clearing a
-            // few unused pixels costs nothing; missing one leaves a cell
-            // reading the opaque screen, which reads as occupied.
+            // Room to spare: a missed pixel reads the opaque screen as occupied.
             c.SetFloat("_SpanPxX", AtlasWidth() + 4);
             c.SetFloat("_SpanPxY", AtlasHeight() + 4);
         }
     }
 
-    // The atlas folds its slots into COLUMNS, and the grid is not that
-    // number. They were the same for no reason, which made the rect a wide
-    // strip 1088 px across at grid 64, and any camera narrower than that
-    // clips the right-hand columns. A clipped slot reads as the opaque
-    // screen rather than as absent, so a socket hashing there vanishes
-    // until it moves cell. That is what the editor showed on 2026-09-03: a
-    // bend dropping out every few centimetres, cured by widening the view.
-    //
-    // Snapped to a DIVISOR of the grid so every level holds whole rows, and
-    // set on both shaders from here so there is one derivation rather than
-    // two that have to agree.
+    // Columns != grid: at grid 64 one row was 1088 px, narrower cameras
+    // clipped slots, and a socket hashing there vanished (bend dropping out
+    // every few cm). A divisor of the grid, so levels hold whole rows; set on
+    // both shaders from here.
     int Columns()
     {
         int total = _grid * _grid;
@@ -495,16 +400,11 @@ public class SpikePlug : EditorWindow
 
     int AtlasHeight() => OriginPx + _levels * Mathf.Max(_grid * _grid / Columns(), 1) * _slotPx;
 
-    // A cylinder along local +Z with a rounded tip, generated because the
-    // built-in cylinder has two rings of vertices and therefore cannot bend
-    // at all. Radius and length are baked at one unit and scaled by the
-    // transform, so the same mesh serves any size.
+    // Generated: the built-in cylinder has two vertex rings and cannot bend.
     Mesh Shaft()
     {
         const int rings = 48, segs = 18;
-        // Regenerated every build rather than cached: the radius is baked
-        // into the vertices, so a cached mesh would silently ignore the
-        // slider that appears to control it.
+        // Not cached: the radius is baked into the vertices.
         string path = Dir + "/SpikeShaft.asset";
 
         var verts = new List<Vector3>();
@@ -557,21 +457,11 @@ public class SpikePlug : EditorWindow
         return mesh;
     }
 
-    // A unit quad per (level, home), flagged by z. The socket shader reads
-    // that flag to decide which level it is publishing to and which of the
-    // cell's two homes it is filling.
-    //
-    // The bounds are deliberately huge. The shader ignores the transform and
-    // writes clip space, but Unity still culls by BOUNDS, and a socket
-    // culled out of frame stops publishing entirely.
+    // One quad per (level, home), flagged by z. Huge bounds: Unity culls by
+    // bounds, and a culled socket stops publishing.
     Mesh LevelQuads()
     {
-        // Cached, unlike the shaft: this mesh has no parameters, and
-        // recreating it per socket would delete the asset the previous two
-        // are pointing at.
-        // One quad per (level, home). The socket shader reads z to work out
-        // which level it is publishing to and which of that cell's two homes
-        // it is filling, and both passes place the same quads differently.
+        // Cached: recreating it per socket deletes the asset earlier sockets use.
         string path = Dir + "/SpikeSocketQuads.asset";
         int quads = _levels * 2;
         var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
@@ -624,9 +514,7 @@ public class SpikePlug : EditorWindow
         return m;
     }
 
-    // The same arithmetic the shaders do, done on the CPU, so a grey plug can
-    // be told apart from a plug that read the wrong row. Guessing at a flip
-    // is how spike 3 spent a run reading the floor.
+    // The shaders' arithmetic on the CPU: tells a grey plug from a wrong-row read.
     void Inspect()
     {
         var tex = Shader.GetGlobalTexture("_YAPS_Atlas") as RenderTexture;
@@ -666,11 +554,8 @@ public class SpikePlug : EditorWindow
             lines.Add("   row " + dn + "   pos " + Fmt(shot.GetPixel(px, dn))
                       + "  fwd " + Fmt(shot.GetPixel(px + _slotPx, dn)));
         }
-        // Did the CLEAR run? A cell no socket hashes to has to read alpha 0.
-        // If it reads 1 the atlas is holding the opaque screen, every one of
-        // the plug's twenty-seven cells claims a socket, and it locks onto
-        // whichever piece of floor decodes nearest. That is indistinguishable
-        // from a row-order problem by eye, which is why it is measured.
+        // Did the clear run? An unused cell must read alpha 0, or the plug
+        // locks onto the floor, which looks like a row-order fault.
         var used = new HashSet<int>();
         foreach (Transform t in root.transform)
         {
@@ -693,9 +578,7 @@ public class SpikePlug : EditorWindow
             break;
         }
 
-        // Every shader, not just the clear. A magenta mesh says one of them
-        // failed and says nothing about which or why, and reading the error
-        // beats reading the source.
+        // Magenta does not say which shader failed or why.
         foreach (string n in new[] { "YAPS/Spike Clear", "YAPS/Spike Socket", "YAPS/Spike Plug" })
         {
             var sh = Shader.Find(n);
@@ -714,12 +597,8 @@ public class SpikePlug : EditorWindow
         Debug.Log("[SpikePlug] " + _result);
     }
 
-    // The shader's cell-to-slot arithmetic, so the scene view and the GPU
-    // agree about which sockets are fighting over a pixel.
-    // Cell plus octant, which is what a socket actually occupies. Two
-    // sockets sharing this are the last clash nothing fixes; sharing only the
-    // cell is fine, and sharing only a grid slot is what the second home and
-    // the tag are for.
+    // The shader's cell plus octant. Sharing this is the one clash nothing
+    // fixes; a shared slot alone is what the second home and tag handle.
     string Bucket(Vector3 at, float cell)
     {
         Vector3 sc = at / cell;
@@ -763,12 +642,9 @@ public class SpikePlug : EditorWindow
         _result = "";
     }
 
-    // The spike, worn. Everything travels as plain renderers on shared
-    // materials, so the upload needs no scripts, no animator layers and no
-    // menu entries; the CCK packs what the renderers reference. Sockets ride
-    // the hands and the head because in VR that makes the controller the
-    // socket gizmo: moving a hand is moving a socket, rotating the wrist is
-    // the arrival-axis test, and no toggles are needed at all.
+    // Plain renderers only, so the upload needs no scripts, layers or menu.
+    // Sockets on hands and head: in VR the controller is the gizmo, and a
+    // wrist twist is the arrival-axis test.
     void WearBuild()
     {
         var picked = Selection.activeGameObject;
@@ -786,9 +662,7 @@ public class SpikePlug : EditorWindow
 
         var sockShader = Shader.Find("YAPS/Spike Socket");
         var plugShader = Shader.Find("YAPS/Spike Plug");
-        // The SHIPPED grab, not the spike's own. The spike is the only thing
-        // that exercises it until a patched plug declares it reads the atlas,
-        // so pointing the rig at it is what keeps it honest.
+        // The shipped grab, so the spike keeps it honest.
         var readShader = Shader.Find("YAPS/Atlas Grab");
         var clearShader = Shader.Find("YAPS/Spike Clear");
         if (sockShader == null || plugShader == null || readShader == null || clearShader == null)
@@ -797,19 +671,12 @@ public class SpikePlug : EditorWindow
         WearRemove();
         Transform root = avatar.transform;
 
-        // A CONVERTED avatar already carries the shipped clear, grab and
-        // socket writers. Building the spike's beside them proves nothing:
-        // the spike clear covers the same rect and would mask a broken
-        // shipped one, and a spike socket rides a hand, which is the easiest
-        // thing to bring near the plug, so a bend could not be attributed.
-        // Reader only, then, and everything else under test is shipped.
+        // A converted avatar has the shipped clear, grab and writers; spike
+        // copies beside them would mask a broken one. Reader only then.
         bool shipped = root.Find("YAPS Atlas Clear") != null
                        || root.Find("YAPS Atlas Grab") != null;
 
-        // Clear and grabber under the avatar root. Both draw in clip space
-        // and ignore where they sit; the scale only exists to beat frustum
-        // culling, and it is countered so a scaled rig cannot shrink it back
-        // into cullable range.
+        // Scale only beats frustum culling; countered so a scaled rig cannot shrink it.
         if (!shipped)
         {
             var rig = new GameObject(WearPrefix + " Atlas");
@@ -827,10 +694,7 @@ public class SpikePlug : EditorWindow
             grab.GetComponent<MeshRenderer>().sharedMaterial = gm;
         }
 
-        // Facing the wearer's BACK, which is toward the oncoming plug. The
-        // ring would flip to meet it anyway; the hole on the right hand only
-        // opens facing the approach, so both start correct and a twist of
-        // the wrist shows the difference between the kinds live.
+        // Facing back, toward the plug: the hole only opens facing the approach.
         if (!shipped)
         {
             Quaternion facing = root.rotation * Quaternion.Euler(0, 180, 0);
@@ -839,10 +703,7 @@ public class SpikePlug : EditorWindow
             if (head != null) WearSocket(head, sockShader, 'C', 0, facing);
         }
 
-        // From the hips, along the avatar's forward. Never skinned: Unity
-        // skins into world space and hands the shader an identity matrix, so
-        // a skinned plug cannot find its own root. Parented to the bone it
-        // rides animation fine as a rigid child.
+        // From the hips, forward. Never skinned (identity matrix); a rigid child rides the bone.
         var plug = new GameObject(WearPrefix + " Plug");
         plug.transform.SetParent(hips, false);
         plug.transform.localScale = Counter(hips, _length);
@@ -876,9 +737,7 @@ public class SpikePlug : EditorWindow
         Socket(holder.transform, shader, "Socket " + letter, bone.position, facing, kind);
     }
 
-    // World-size a child no matter what the rig scaled its parent to. Import
-    // scale hides here: a 0.01 armature would shrink a hand socket's gizmo
-    // to a hundredth, and a scaled clear quad back into cullable range.
+    // World size regardless of parent scale (a 0.01 armature shrinks it 100x).
     static Vector3 Counter(Transform parent, float world)
     {
         Vector3 s = parent.lossyScale;

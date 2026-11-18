@@ -123,9 +123,8 @@ namespace AvatarBridge
         {
             var regions = Regions;
             int pairs = regions != null ? regions.pairs.Count : 0;
-            // Nothing painted: what squashes now, coloured on the body, and one way on. Two
-            // buttons here, "Paint over them" and "Start empty", said nothing of what each did.
-            // The mesh and the brush come with the painting; up front they read as jobs left.
+            // Nothing painted: what squashes now, on the body, and one way on. Mesh and brush
+            // come with the painting; up front they read as jobs left.
             if (pairs == 0 && _w != null)
             {
                 if (!string.IsNullOrEmpty(_status)) into.Add(BridgeElements.Notice(_tone, _status));
@@ -185,8 +184,7 @@ namespace AvatarBridge
             _pair = Mathf.Clamp(_pair, 0, Mathf.Max(pairs - 1, 0));
             if (Single(_pair)) _side = 0;
 
-            // One pick and one button in sight; the rest folds away. All at one level it read
-            // like a cockpit.
+            // One pick and one button in sight; the rest folds away.
             var names = regions.pairs.Select((p, i) => $"{i + 1}. {p.name}{(Single(i) ? " (one side)" : "")}").ToArray();
             into.Add(BridgeElements.Popup("Part", "A pair that presses against each other, or one part alone, named after the bones they start from.", names, _pair, i => { _pair = i; if (Single(i)) _side = 0; Recolour(); Changed?.Invoke(); Rebuild(); }));
             // The brush's own controls sit in the Scene view beside the work, not here.
@@ -619,8 +617,7 @@ namespace AvatarBridge
         void OnScene(SceneView view)
         {
             if (_baked == null || _body == null || _w == null) return;
-            // Painting, or with nothing pressing it: over a press being tested, by the preview,
-            // the test hand or Play mode, the colours hid the very press.
+            // Only while painting or unpressed: over a press being tested the colours hid it.
             if (!_painting && (YapsSquashPreview.On != null || EditorApplication.isPlaying)) return;
             var e = Event.current;
             if (e.type == EventType.Repaint)

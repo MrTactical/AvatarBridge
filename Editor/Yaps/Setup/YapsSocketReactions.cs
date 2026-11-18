@@ -36,10 +36,8 @@ namespace AvatarBridge
 
         public static string AnimationsLayerName(YapsSocket socket) => "YAPS " + Unique(socket) + " animations";
 
-        // The label, with " 2" and on for a later socket in the hierarchy
-        // that shares it, the converter's numbering for its parameters. Two
-        // same-kind sockets on one bone shared one layer, one parameter and
-        // one set of clips, and removing either took the other's reactions.
+        // The label, " 2" and on for later sockets sharing it (the converter's
+        // numbering), or two sockets on one bone share one layer.
         static string Unique(YapsSocket socket)
         {
             string label = YapsToggles.LabelFor(socket);
@@ -55,9 +53,7 @@ namespace AvatarBridge
         // direct tree. Local, since every client already agrees on 1.
         public const string One = "#YAPS/One";
 
-        // The controllers this socket's layers go into, the one ChilloutVR
-        // uploads and the base the CCK rebuilds it from, or the line saying
-        // why there are none.
+        // The uploaded controller and its CCK base, or why there are none.
         static List<AnimatorController> Targets(YapsSocket socket, out Animator animator, out CVRAvatar avatar,
                                                 out string failure)
         {
@@ -94,18 +90,11 @@ namespace AvatarBridge
                 || (!string.IsNullOrEmpty(socket.builtAnimations) && l.name == socket.builtAnimations)));
         }
 
-        // The author's own clips, blended in by the same synced depth the
-        // shapes use: one layer per socket, a direct tree holding a 1D tree
-        // per clip, from an empty clip at its start to the clip at start +
-        // fade. Direct, so each clip keeps its own range in one layer. Write
-        // defaults on, so with no plug in the clip's bindings sit at rest,
-        // which is why the inspector says to animate what nothing else does.
-        //
-        // A layer of its own rather than a branch of the reactions layer:
-        // shapes can open in the shader and build no layer at all, and a clip
-        // always needs the animator. The depth parameter and its trigger are
-        // shared with the reactions, and moving the depth to another route
-        // later changes nothing here.
+        // The author's clips by the same synced depth: a direct tree of 1D
+        // trees, empty at start to the clip at start + fade, so each keeps its
+        // range. Write defaults on, so bindings rest with no plug in (hence
+        // "animate what nothing else does"). Its own layer: shader-opened
+        // shapes build no reactions layer, but clips need the animator.
         public static string BuildAnimations(YapsSocket socket)
         {
             if (socket == null) return null;
@@ -229,10 +218,9 @@ namespace AvatarBridge
             if (avatar == null) return "";
             try
             {
-                // (current overrides, after autogeneration): two totals for
-                // the same avatar, not two halves. The CCK gates on the
-                // second, so this does too, less the floats a clip drives: the
-                // CCK counts them and the client never syncs them.
+                // (current overrides, after autogeneration): two totals, not
+                // halves. The CCK gates on the second, less clip-driven floats,
+                // which it counts and the client never syncs.
                 var usage = avatar.GetParameterSyncUsage();
                 int used = usage.Item2;
                 if (avatar.avatarSettings?.baseController is AnimatorController based)
@@ -329,15 +317,10 @@ namespace AvatarBridge
             return Controllers(socket).Any(c => c.layers.Any(l => l.name == layerName || (!string.IsNullOrEmpty(socket.builtLayer) && l.name == socket.builtLayer)));
         }
 
-        // Builds or rebuilds the reactions for one socket. Returns what
-        // happened, or null when the socket has nothing to react with.
-        // Strength lives in the clips, so changing it rebuilds. The layer
-        // stays at full weight: a partial one creeps to full in game,
-        // blending against its own last frame.
-        // No shapes left to drive: the layer it was built as goes, and the
-        // depth parameter and its contact go with it unless something else
-        // still reads them. A converted avatar's own depth animations are
-        // exactly that something, so the contact is not ours to assume.
+        // Null when the socket has nothing to react with. Strength lives in
+        // the clips: a partial layer weight creeps to full in game. With no
+        // shapes left the layer goes, and the parameter and contact too unless
+        // something still reads them (a converted avatar's depth animations).
         public static string Clear(YapsSocket socket)
         {
             if (socket == null) return null;
@@ -399,17 +382,10 @@ namespace AvatarBridge
             return string.Join(", ", done);
         }
 
-        // Every name the depth contact may write: this build's, the last
-        // build's, and the ones its trigger writes. A converted socket's
-        // trigger writes the converter's name, "#" when local or numbered
-        // for a second socket on the bone, and its author's layers read
-        // that; asking for the bare name alone found nothing reading it and
-        // deleted the contact they ran on.
-        //
-        // Never another socket's current name. Two sockets that swap places
-        // in the hierarchy swap names too, and the old one, still read by
-        // the other socket's layer, kept both contacts writing both
-        // parameters for good.
+        // This build's, the last build's and the trigger's names: a converted
+        // trigger writes the converter's name ("#" or numbered), which the
+        // author's layers read. Never another socket's current name: swapped
+        // sockets kept both contacts writing both parameters.
         static List<string> NamesOf(YapsSocket socket, Transform host)
         {
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
@@ -428,12 +404,8 @@ namespace AvatarBridge
                 .Select(t => t.settingName).Distinct().ToList();
         }
 
-        // The names besides this build's that the contact keeps writing
-        // because a controller reads them: on a rebuilt conversion, the
-        // converter's name its author's repointed layers read. Replacing
-        // the trigger with the synced name alone silenced those layers.
-        // The reader may also be this socket's own layer not rebuilt yet
-        // after a rename, so the note does not say whose layer it is.
+        // Other names still read by a controller (the converter's, or this
+        // socket's layer before a rename rebuild), so the note names no owner.
         static List<string> AlsoRead(YapsSocket socket, string parameter, List<AnimatorController> controllers) =>
             NamesOf(socket, socket.transform.Find(HostName))
                 .Where(n => n != parameter && controllers.Any(c => YapsRemover.ParameterUsed(c, n))).ToList();
@@ -519,9 +491,7 @@ namespace AvatarBridge
                 foreach (var s in stages)
                 {
                     float opening = Mathf.Clamp01((depth - s.startsAt) / Mathf.Max(0.01f, s.fadeOver));
-                    // Strength scales how far the shape opens, in the CLIP. A layer at
-                    // partial weight blends against what earlier layers wrote, and
-                    // nothing else writes these shapes, so it creeps to full instead.
+                    // Strength in the CLIP: a partial layer weight creeps to full.
                     float weight = Mathf.Lerp(floor[s.blendshape], 100f, opening * Mathf.Clamp01(socket.shapePower));
                     clip.SetCurve(rendererPath, typeof(SkinnedMeshRenderer), "blendShape." + s.blendshape,
                         AnimationCurve.Constant(0f, 1f / 60f, weight));
@@ -552,9 +522,7 @@ namespace AvatarBridge
                     cleared++;
                 }
 
-                // What the last build called it, if the bone or the name has
-                // moved since: the layer is replaced where it stands rather
-                // than added a second time under the new name.
+                // The last build's name, so a rename replaces rather than duplicates.
                 var layers = controller.layers.ToList();
                 int existing = layers.FindIndex(l => l.name == layerName);
                 if (existing < 0 && !string.IsNullOrEmpty(socket.builtLayer) && socket.builtLayer != layerName)
@@ -607,11 +575,9 @@ namespace AvatarBridge
             return note;
         }
 
-        // The channel without the generated reaction layer: trigger plus
-        // parameter, for rebuilt conversions where the reactions are the
-        // author's own layers and only the wire is generated. The trigger is a box
-        // behind the socket plane, one reach deep, read by Set From Position on
-        // Z: 0 at the plane, 1 a reach in.
+        // Trigger and parameter only, for conversions whose reactions are the
+        // author's layers. A box one reach deep behind the plane, Set From
+        // Position on Z: 0 at the plane, 1 a reach in.
         public static string EnsureDepthChannel(YapsSocket socket, UnityEditor.Animations.AnimatorController controller,
             string parameter = null)
         {

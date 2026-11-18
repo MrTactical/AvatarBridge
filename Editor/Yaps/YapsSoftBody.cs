@@ -1,14 +1,9 @@
-// A pair as soft tissue, solved once at the build so the shader only adds up answers. XPBD on
-// tetrahedra: the chest voxelised from the body's own skin at rest, each cube five tetrahedra held
-// to their rest volume, so flesh pressed one way has to go another; the edges soft. Behind the
-// plane each part meets the body in, and wherever the skin carries no part, the tissue is held
-// still. The two parts are separate bodies that press and slide on each other.
-//
-// A palm presses the pair eleven ways, each to two depths: per part from outside, from the
-// partner's side, from the front, from above and from below, and both outsides at once. Every skin
-// vertex's move at each is kept, smoothed over its neighbours, with how its normal turned. Summed
-// in the shader from single presses, the moves came within a centimetre or two of the tissue
-// solved under the same hands, where the squash that grew a part to keep its volume never could.
+// A pair as soft tissue, solved once at build so the shader only sums answers. XPBD on the
+// chest voxelised from the skin at rest, five volume-keeping tetrahedra a cube; held still behind
+// each part's body plane and where no part is. The two parts press and slide on each other.
+// A palm presses eleven ways at two depths each (per part: outside, partner side, front, above,
+// below; and both outsides). Each vertex's smoothed move and normal turn is kept. Summed in the
+// shader they land within a cm or two of the full solve, which the volume-growing squash never did.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -61,13 +56,10 @@ namespace AvatarBridge
         int[] who, corner;
         Vector3[] within;
 
-        // The pair's answers for this skin, world space, per way and depth (way * depths + depth):
-        // each vertex's move, and its normal's change. Ways per part, the first then the second,
-        // by where the palm is: outside, on the partner's side, in front, along up, along down; then
-        // both outsides; then per part slanted, outside in front and in front from below. Null when
-        // the skin gives no tissue. With twins, each vertex's across the avatar's middle (-1 for
-        // none) and the pair's toward, the second part is not pressed: its answers are the first's
-        // at the twin, reflected along the toward as the shader flips a shared row.
+        // World-space answers per way and depth (way * depths + depth): move and normal change.
+        // Ways per part: outside, partner side, front, up, down; then both outsides; then per part
+        // slanted (outside-front, front-below). Null when no tissue. With twins (mirror vertex or -1)
+        // the second part is not pressed: its answers are the first's at the twin, reflected.
         internal static (Vector3[][] moves, Vector3[][] turns, string log) Bake(Vector3[] at, int[] tris, List<int[]> welds, Vector2[] share,
             Vector3 c0, Vector3 c1, float reach, Vector3 up, Vector3 outward, Vector3 below, System.Func<int, Vector3, float> extent,
             int[] twins = null, Vector3 middle = default)
@@ -254,10 +246,8 @@ namespace AvatarBridge
                 side.Add(s);
                 return p;
             }
-            // Five to a cube: one in the middle on four corners no two of which share an edge, and
-            // one at each other corner, alternating cube to cube so neighbours' faces split alike.
-            // Its mirror image is itself. Kuhn's six all lean on one long diagonal, so the tissue
-            // gave one way more than its mirror, and the answers changed with which way was up.
+            // Five to a cube, alternating so neighbour faces split alike: mirror symmetric. Kuhn's
+            // six lean on one diagonal, so the tissue gave one way more than its mirror.
             var tetList = new List<int>();
             var tetCube = new List<int>();
             for (int i = 0; i < nx; i++)
@@ -642,12 +632,9 @@ namespace AvatarBridge
             x[i3] = new Vector3(p3.x + g3x * s3, p3.y + g3y * s3, p3.z + g3z * s3);
         }
 
-        // Outer particles kept most of a cube apart: the two parts where they meet away from the
-        // middle plane, and a part against the body held still under it, so a part pushed down
-        // lands on the ribs and belly instead of sinking through the fold into them. Within a part
-        // only against held tissue, and never against what lay beside it at rest. The pairs near
-        // enough to touch are found once a frame, out to a cube past touching, as nothing moves a
-        // cube in a frame.
+        // Outer particles kept most of a cube apart: the two parts, and a part against held body
+        // tissue so it lands on the ribs instead of sinking through. Never against rest
+        // neighbours. Candidates found once a frame, a cube out, as nothing moves a cube a frame.
         readonly Dictionary<Vector3Int, List<int>> hash = new Dictionary<Vector3Int, List<int>>();
         int[] contacts = new int[0];
         int[][] contactBatches = new int[0][];

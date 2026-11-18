@@ -9,16 +9,9 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    // Grafts the avatar's own locomotion animations into CVR's
-    // Locomotion/Emotes layer, the one layer that can both assert a
-    // body pose and yield it. The structure is CVR's; the art is the
-    // avatar's.
-    //
-    // proxy_* children are skipped: those placeholders live in the
-    // VRChat client, and the CCK's own clips are their equivalent.
-    // Clips match by blend-tree position, not name; the classifier
-    // reads VRChat trees in m/s and CVR trees in normalized input.
-    // Source clips are referenced, never modified.
+    // Grafts the avatar's locomotion clips into CVR's Locomotion/Emotes layer, the one layer that
+    // can both assert and yield a body pose. proxy_* clips are skipped (the CCK's equal them).
+    // Matched by tree position: VRChat trees in m/s, CVR in normalized input. Sources never modified.
     internal static class LocomotionGrafter
     {
         const string Category = "Animator";
@@ -57,14 +50,8 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // An authored full-body pose owns its own HEIGHT and ORIENTATION; only travel
-                // across the floor belongs to the game. A transforming avatar folding down into a
-                // car lowers itself AND turns from upright to flat, and both are the animation.
-                //
-                // These survive because the clone also bakes them into
-                // the pose, putting them in the bones instead of the
-                // root. CVR discards root motion, so a curve left there
-                // plays in the editor and does nothing worn.
+                // A full-body pose owns its height and orientation; only floor travel is the game's.
+                // Baked into the bones: CVR discards root motion, so a root curve does nothing worn.
                 // Only Action-transplanted poses ask for this.
                 if (keepPose && (IsVertical(binding) || IsRotation(binding)))
                 {
@@ -95,10 +82,7 @@ namespace AvatarBridge
             }
             foreach (var binding in doomed)
             {
-                // Flattened to the first key's value, never deleted.
-                // A root curve carries the body's baseline as well as
-                // its travel; deleting it sinks the wearer into the
-                // floor. A constant curve holds the pose in place.
+                // Flattened, never deleted: the root curve also carries the baseline height.
                 var curve = AnimationUtility.GetEditorCurve(clip, binding);
                 float first = curve != null && curve.keys.Length > 0 ? curve.keys[0].value : 0f;
                 AnimationUtility.SetEditorCurve(clone, binding,
@@ -254,10 +238,7 @@ namespace AvatarBridge
                 GraftJumpAndFall(baseController, targets, grafts, ref proxiesSkipped);
             }
 
-            // Flight and swim poses ride CVR's own movement modes. The
-            // client answers flight itself and raises the Flying bool,
-            // so a VRChat flight system needs no speed logic converted,
-            // only its pose put where this platform shows it.
+            // The client raises Flying itself, so only the pose is converted, not speed logic.
             var poseSources = new List<AnimatorController>();
             if (baseController != null)
             {
@@ -360,10 +341,7 @@ namespace AvatarBridge
                         GraftTree(sourceTree, cvrTree, cvrStateName, grafts, ref proxiesSkipped);
                         break; // first velocity tree per stance wins; duplicates are copies of it
                     }
-                    // Pose-style stance states are not grafted. They are
-                    // VR tracking poses; the headset lowers the player
-                    // physically. Only real velocity trees carry
-                    // desktop locomotion.
+                    // Stance poses are VR-tracked (the headset lowers the player); only velocity trees are grafted.
                     if (state.motion is AnimationClip stock && IsVrchatStock(stock))
                     {
                         proxiesSkipped++;
@@ -395,10 +373,7 @@ namespace AvatarBridge
                     proxiesSkipped++;
                     continue;
                 }
-                // First pick per slot AND SIDE wins. Keying on the slot alone
-                // meant an author's left-strafe and right-strafe clips were
-                // the same pick, one of them thrown away before anything was
-                // placed.
+                // Per slot and side, or left and right strafe collide and one is lost.
                 if (!sourcePicks.ContainsKey((slot, side)))
                 {
                     sourcePicks[(slot, side)] = clip;
@@ -447,12 +422,8 @@ namespace AvatarBridge
             }
         }
 
-        // Which side of the avatar a child sits on. DirectionOf folds east
-        // into west on purpose, since CVR's slot set is direction-PAIR shaped and
-        // classification wants the pair, but the sign is thrown away there
-        // and something has to remember it, or a source with a real left and
-        // a real strafe clip has one of them written to both sides and the
-        // other never placed at all.
+        // DirectionOf folds east into west (CVR slots are pairs); this keeps the sign, or a real
+        // left and right clip become one written to both sides.
         enum Side { Centre, Left, Right }
 
         static Side SideOf(Vector2 position)
@@ -520,11 +491,8 @@ namespace AvatarBridge
             }
         }
 
-        // Child-driven, so every CCK position asks for the clip that belongs
-        // on ITS side. A source that authored one clip for both sides still
-        // fills both: when a side has no pick of its own it falls back to the
-        // other, which is what every symmetric avatar relies on and what this
-        // did for all of them before sides existed.
+        // Each CCK position asks for its own side; a side with no pick falls back to the other,
+        // which symmetric avatars rely on.
         static void ReplaceAll(BlendTree cvrTree, Dictionary<(Slot, Side), AnimationClip> picks,
             string label, List<string> grafts)
         {
@@ -726,10 +694,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // Scored, not first-match. A movement-mode pose is a
-                // state you can sit in: its clip loops or its name says
-                // idle or hover. Transition names count against.
-                // Nothing scores: the CCK's own pose stays.
+                // Scored: a pose loops or is named idle/hover; transition names count against. No score: CCK pose stays.
                 AnimatorState best = null;
                 int bestScore = 1; // require positive evidence, not just a token match
                 foreach (var source in sources)
@@ -787,10 +752,8 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------- GoGo emotes ----
 
-        // ChilloutVR's eight emote slots, filled from a stripped GoGo: the avatar's own GoGo
-        // emotes first, then the sit and lie poses GoGo ships and never plays itself. The
-        // client names each wheel entry after the clip overriding Emote1 to Emote8, so they
-        // go into the override controller, not the master.
+        // GoGo's emotes, then its sit and lie poses, into CVR's eight slots. Override controller, not
+        // master: the client names wheel entries after the clip overriding Emote1 to Emote8.
         static readonly List<KeyValuePair<AnimationClip, AnimationClip>> GogoEmotes
             = new List<KeyValuePair<AnimationClip, AnimationClip>>();
 

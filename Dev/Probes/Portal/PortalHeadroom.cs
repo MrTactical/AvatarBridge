@@ -4,25 +4,18 @@
 //       -portalShipped <Editor/Yaps> -portalIncludes <Dev/Probes/Portal>
 //       [-portalOnly Fur]   only families whose name contains it, for a quick check
 //
-// Takes the largest locked YAPS patch of each Poiyomi family in the project and
-// imports two copies: as patched, and with the inlined shipped includes swapped
-// for the spike copies. Both folders stay outside Assets, so the patcher's own
+// Imports the largest locked YAPS patch of each Poiyomi family twice: as
+// patched, and with the spike includes. Outside Assets, so the patcher's
 // search for yaps_deform never meets a second copy.
 //
-// PASS is the spike copy importing with no error, every stage of every pass
-// compiling for D3D with no keywords, the vertex stage also single-pass
-// instanced, and no message the baseline copy lacks: Poiyomi and the shipped
-// includes already warn, so a plain count is never zero. The vertex bytecode
-// says what the spike costs in Unity's own compile rather than fxc's listing;
-// the other stages' bytecode, equal or not, says whether it reaches them.
+// PASS: no import error, every stage of every pass compiles for D3D (vertex
+// also single-pass instanced), and no message the baseline lacks (Poiyomi
+// already warns). Vertex bytecode size is the spike's cost in Unity's own
+// compile.
+// Importer messages are reported, never judged: they depend on the shader
+// cache (36, 33, 1 and 0 for the same text across runs).
 //
-// Only the explicit compiles are compared. The importer's own messages depend
-// on what the shader cache already held: the same baseline text gave 36, 33,
-// 1 and 0 of them in different runs, so they are reported and never judged.
-// The variants it compiled are not all here; the spike's own code branches
-// only on stereo instancing.
-//
-// Locked shaders only, and headless: an unlocked Poiyomi Pro kills the editor
+// Locked shaders only, headless: an unlocked Poiyomi Pro kills the editor
 // mid-compile.
 using System;
 using System.Collections.Generic;

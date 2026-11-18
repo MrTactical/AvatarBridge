@@ -1,18 +1,11 @@
 # Sourced by build-package.sh and compile-check.sh. Paths are relative to the repo root.
 #
-# What the YAPS package carries: the penetration system whole, its setup
-# window, the Toolkit, and the Core files each needs.
-#
-# The conversion passes ride here too, and only here. No public build has
-# Editor/Yaps in it, so keeping a converted avatar's penetration means
-# installing the add-on beside the converter. They compile out where there
-# is no VRChat SDK, which is most projects this package lands in.
-#
-# The Core list is not guesswork. Compiling exactly these against the CCK
-# with no VRChat SDK is what settled it. Anything added to the tool that YAPS
-# reaches for will fail that compile, not this script, so check the closure
-# before editing this list. Destination paths and GUIDs are the public
-# package's, so installing both overlays rather than duplicates.
+# What the YAPS package carries: the penetration system, its window, the
+# Toolkit, the Core files they need, and the conversion passes (only here;
+# they compile out without the VRChat SDK).
+# The Core list was settled by compiling exactly these against the CCK with no
+# VRChat SDK; a new dependency fails that compile, not this script. Paths and
+# GUIDs match the public package, so installing both overlays.
 YAPS_CORE="BridgeContext BridgeReport BridgeSettings ShaderSpiPatcher \
 AnimatorAssetSaver AnimatorDeepCopier AvatarScalerInjector OutputAssetPaths AvatarDescription \
 AvatarHygiene BridgeDiagnostics CckDescriptionFiller CvrSetup AvatarFeatureDetect \

@@ -7,18 +7,9 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // How far the animator's blendshapes can grow the mesh around a
-    // point, as a ratio. The physics sizing asks the same question per
-    // chain inside the MagicaCloth writer; contact zones need the
-    // answer too, and this must compile without MagicaCloth2, so the
-    // measurement lives here.
-    //
-    // Two readings of every skinned mesh: the pose as saved, and the
-    // pose with every blendshape any selected controller animates
-    // pushed as far as its curves reach. Vertices are placed through
-    // the bind pose and the dominant bone's current matrix, the same
-    // trick the physics measurement uses, so the answer is in world
-    // units and does not move when the avatar does.
+    // How far animated blendshapes can grow the mesh around a point. Here, not in the MagicaCloth
+    // writer, so contacts can use it without MagicaCloth2. Reads the saved pose and every animated
+    // shape at full reach, placed via bind pose and dominant bone, so it is in world units.
     static class MeshGrowth
     {
         const int SampleTarget = 200000;
@@ -221,13 +212,8 @@ namespace AvatarBridge
 
         static Cache CacheOf(BridgeContext ctx) => Caches.GetValue(ctx, _ => new Cache());
 
-        // World metres the animator's blendshapes can push the surface
-        // around a point outward, 0 when they cannot. A ratio of far
-        // edges was tried first and read tiny: the vertices at the
-        // capture boundary are often on neighbouring surface that does
-        // not grow, so the ballooning vertices near the zone never
-        // moved the reading. Displacement per vertex is the honest
-        // measure of how far past the zone the body can get.
+        // Outward push in world metres. A ratio of far edges read tiny: boundary vertices are often
+        // on surface that does not grow. Per-vertex displacement measures it properly.
         internal static float Around(BridgeContext ctx, Vector3 worldCentre, float captureRadius)
             => Measure(ctx, worldCentre, captureRadius, null);
 
@@ -294,10 +280,7 @@ namespace AvatarBridge
                     continue;
                 }
 
-                // Once per bone, not per vertex: the same multiply on the same
-                // inputs, so the same bits, without a native getter per vertex.
-                // Per call, not per conversion: a pass between two calls may
-                // have moved a bone.
+                // Per bone (same bits, no native getter per vertex), per call (a pass may have moved a bone).
                 int boneCount = Mathf.Min(bones.Length, binds.Length);
                 var toWorlds = new Matrix4x4[boneCount];
                 var placed = new bool[boneCount];
@@ -373,10 +356,7 @@ namespace AvatarBridge
                     }
                     Matrix4x4 toWorld = toWorlds[weights[i].boneIndex0];
                     Vector3 atGrown = toWorld.MultiplyPoint3x4(grown[i]);
-                    // Outward only: distance from the zone growing. A
-                    // shape pulling the surface inward reads as zero,
-                    // the way a shrinking slider costs the physics
-                    // sizes nothing.
+                    // Outward only: inward shapes read zero, as in the physics sizes.
                     float delta = Mathf.Max(0f, Vector3.Distance(atGrown, worldCentre) - restDistance);
                     count++;
                     if (delta > 0f)
@@ -406,10 +386,7 @@ namespace AvatarBridge
             {
                 AttributeShapes(ctx, samples, perShape);
             }
-            // The far edge of the push, robust to a stray vertex. The
-            // median would under-read a shape that only grows one side
-            // of the body, which is what growth sliders do. A broken
-            // vertex sorts below zero, as it did in the full sorted list.
+            // Far edge, robust to a stray vertex. Not the median: growth sliders grow one side only.
             int at = Mathf.Clamp(Mathf.RoundToInt((count - 1) * 0.9f), 0, count - 1);
             return Remember(at < broken ? float.NaN : PercentileAboveZeros(deltas, count, 0.9f));
         }
@@ -605,10 +582,7 @@ namespace AvatarBridge
         internal static float ReachOf(BridgeContext ctx, string shapeKey)
             => Reach(ctx).TryGetValue(shapeKey, out float weight) ? weight : 0f;
 
-        // Shapes raised together in the same clip move together: one
-        // slider driving the body and its clothing is one group, not a
-        // contribution split against itself. Keyed to the same "path|
-        // shape" names as Reach.
+        // Shapes raised in the same clip form one group (body and clothing on one slider). "path|shape" keys, as Reach.
         internal static string GroupOf(BridgeContext ctx, string shapeKey)
         {
             Reach(ctx);

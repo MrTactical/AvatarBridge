@@ -1,8 +1,5 @@
-// Which parameter names ChilloutVR owns, and what a VRChat name becomes.
-// Naming knowledge, not conversion: the diagnostics and the menu pass ask
-// the same questions the merger does, and the toolkit ships without the
-// merger, so the answers live here rather than inside ten thousand lines
-// of it.
+// Which parameter names ChilloutVR owns, and what a VRChat name becomes. Separate from the
+// merger because the toolkit ships without it.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -18,58 +15,26 @@ namespace AvatarBridge
         {
             { "Viseme", "VisemeIdx" },
             { "Voice", "VisemeLoudness" },
-            // NOT Seated or InStation. Both used to become "Sitting", and
-            // "Sitting" is a parameter ChilloutVR DRIVES ITSELF.
-            //
-            // The merged VRChat Base layer sits above CVR's Locomotion/Emotes
-            // at full weight, so renaming onto Sitting handed CVR's own
-            // sitting signal to a layer that outranks CVR's sitting. The
-            // moment the game sat you down, the avatar's VRChat seated state
-            // fired as well and won, landing mid-blend, because those states
-            // are usually blend trees driven by parameters CVR never feeds.
-            // That is the "bicycle pose", confirmed in game 2026-08-28, and it
-            // is why sitting was the ONLY locomotion state that broke: no
-            // other CVR parameter has a VRChat name pointed at it.
-            //
-            // Nothing is lost by dropping it. The avatar's authored sit is
-            // already handled properly by LocomotionGrafter.GraftSitting,
-            // which takes the clip from VRChat's dedicated Sitting layer and
-            // grafts it INTO CVR's own sitting state, where it belongs.
-            //
-            // InStation was doubly wrong: it is true in ANY station, a
-            // rideable prop or a bed included, and it was already listed in
-            // KnownUnsupportedVrcParameters, so the two lists contradicted
-            // each other and the rename won.
+            // NOT Seated or InStation onto "Sitting", which CVR drives itself: the merged Base
+            // layer outranks CVR's and its seated blend tree fired mid-blend, the "bicycle pose"
+            // (confirmed in game). LocomotionGrafter.GraftSitting carries the authored sit instead.
+            // InStation is also true in any station (props, beds).
             { "IsOnFriendsList", "IsFriend" }
         };
 
-        // VRC built-ins with no CVR equivalent. Frozen "#" locals.
-        // Stream-fed names are live instead; see StreamFedParameters.
-        // AFK is absent on purpose: it syncs natively in CVR.
-        // VelocityMagnitude is here for the "#" prefix only.
-        // FeedVelocityMagnitude recomputes it every frame.
-        // The scale family is stream-fed or derived; see FeedScaleParameters.
-        //
-        // Here rather than in the merger because the survey reads it too, and
-        // the survey ships in the YAPS package where the merger does not.
+        // VRC built-ins with no CVR equivalent, frozen "#" locals. Stream-fed names are live
+        // (StreamFedParameters); AFK syncs natively in CVR. VelocityMagnitude is here only for the
+        // "#" prefix (FeedVelocityMagnitude recomputes it); scale family: see FeedScaleParameters.
         internal static readonly HashSet<string> NeverFedNames = new HashSet<string>
         {
             "Earmuffs", "AngularY",
             "AvatarVersion", "VelocityMagnitude", "GroundProximity", "InStation",
             "IsAnimatorEnabled",
-            // Seated is deliberately NOT fed, even though ChilloutVR knows
-            // perfectly well when you are sitting. Feeding it re-arms the
-            // VRChat Base layer's seated state, which outranks CVR's own and
-            // takes the body. See the rename table above for the whole story.
-            // The avatar's real sit pose reaches CVR through the grafter.
+            // Not Seated: it re-arms the Base layer's seated state over CVR's (see the rename table).
             "Seated"
         };
 
-        // Declared so a merged layer still binds, and never written by
-        // anything. The survey has to know: "nothing can switch it on" is
-        // true of these and is not a finding, it is this tool's own doing,
-        // and telling an author to go and fix it sends them after a
-        // parameter they never made.
+        // Declared so merged layers bind, never written. The survey must not report them as dead.
         internal static bool NeverFed(string name)
             => !string.IsNullOrEmpty(name) && NeverFedNames.Contains(name.TrimStart('#'));
 
@@ -83,30 +48,16 @@ namespace AvatarBridge
             "VelocityX", "VelocityY", "VelocityZ", "AFK"
         };
 
-        // The subset of Core that CVR's own Locomotion/Emotes layer runs on.
-        //
-        // These are the ones a rename must never target. A merged VRChat
-        // layer sits ABOVE that layer at full weight, so pointing a VRChat
-        // name at one of these hands CVR's own locomotion signal to a layer
-        // that outranks CVR's locomotion, and the two fire together with the
-        // merged one winning. Renaming onto VisemeIdx or IsFriend is fine by
-        // contrast: a layer reading those outranks nothing.
+        // CVR's Locomotion/Emotes inputs. Never a rename target: the merged layer above would
+        // win with CVR's own signal. VisemeIdx or IsFriend are fine, nothing is outranked.
         internal static readonly HashSet<string> LocomotionDriven = new HashSet<string>
         {
             "MovementX", "MovementY", "Grounded", "Emote", "CancelEmote",
             "Toggle", "Sitting", "Crouching", "Prone", "Flying", "Swimming"
         };
 
-        // What the tables must never say, checked at conversion.
-        //
-        // Seated and InStation were BOTH renamed onto Sitting for months.
-        // Sitting drives CVR's locomotion; InStation was simultaneously
-        // listed as unsupported by the merger, so two tables in two files
-        // contradicted each other and the rename quietly won. Nothing
-        // compared them, so nothing said so, and it surfaced as an avatar
-        // pedalling in a chair.
-        //
-        // Three rules, each one of which alone would have caught it.
+        // Table consistency, checked at conversion: two contradicting tables once renamed Seated
+        // onto Sitting unnoticed. Each rule alone would have caught it.
         internal static IEnumerable<string> Contradictions(IEnumerable<string> knownUnsupported)
         {
             var unsupported = new HashSet<string>(knownUnsupported ?? Enumerable.Empty<string>());

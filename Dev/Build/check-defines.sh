@@ -1,27 +1,13 @@
 #!/usr/bin/env bash
-# Compiles the project's editor assembly once per optional-dependency
-# combination, so a file guarded by one define can never again reference a
-# symbol that lives behind another.
-#
-# 4.3.1 shipped exactly that bug: DynamicBoneWriter called two helpers on
-# MagicaClothWriter, and a project with DynamicBone and no MagicaCloth2
-# could not compile at all. Every gate here, the corpus, the test project, the
-# editor sitting open, runs the both-installed combination, so nothing
-# caught it. A user did.
-#
-# No Unity launch and no domain reload: Unity leaves the exact compile
-# arguments for Assembly-CSharp-Editor in a response file, so this reuses
-# them and swaps only the -define: lines and its copy of this repo for the
-# repo itself. Seconds per combination.
-#
-# Runtime goes in as source as well, beside the project's prebuilt runtime
-# assembly (CS0436, the source wins). Linked alone, that dll is whatever
-# Unity last compiled, so editor code using a runtime member added since
-# failed here with "does not contain a definition for" while Unity built it.
-#
-# Twice over: with the add-on, then as the public package installs, which
-# prunes Editor/Yaps, Runtime and Dev. The commonest install is the SDK with
-# one physics package and no add-on, and the first pass never compiled it.
+# Compiles the editor assembly once per optional-dependency combination, so a
+# file behind one define cannot reference a symbol behind another. 4.3.1
+# shipped that: DynamicBone without MagicaCloth2 could not compile, and every
+# other gate runs with both installed.
+# No Unity launch: reuses Unity's Assembly-CSharp-Editor response file, swapping
+# the -define: lines and the deployed copy for the repo. Seconds per combination.
+# Runtime goes in as source beside the prebuilt runtime dll (CS0436, source
+# wins); that dll is whatever Unity last compiled, so new members read missing.
+# With the add-on, then as the public package (no Editor/Yaps, Runtime, Dev).
 #
 # Usage:
 #   check-defines.sh [project]     default: the corpus project
@@ -57,20 +43,15 @@ if [ ! -f "$MONO" ] || [ ! -f "$IKDASM" ]; then
   exit 2
 fi
 
-# Inside the project: csc runs with the project as its working directory
-# and resolves -out against it, and a Git Bash /tmp path is a drive root
-# Windows does not have.
+# Inside the project: csc resolves -out against it, and Git Bash /tmp is not a Windows path.
 WORK="$PROJ/Temp/define-gate"
 rm -rf "$WORK"; mkdir -p "$WORK"
 trap 'rm -rf "$WORK"' EXIT
 fail=0
 baseline=""
 
-# Unity's source list names the project's deployed copy as of the last time
-# Unity compiled it: the previous deploy, missing every file added since. In
-# the release order this runs before deploying, so it checked the last
-# release, not this one. The repo's own files go in instead, and the dev
-# harness under Editor/DevTools maps back to Dev by name, as deploy.sh does.
+# Unity's source list is the last deploy, which this runs before, so use the
+# repo's files. Editor/DevTools maps back to Dev by name, as deploy.sh does.
 sources="$WORK/sources.rsp"
 {
   find "$REPO/Editor" "$REPO/Runtime" -name '*.cs' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done
@@ -84,14 +65,13 @@ sources="$WORK/sources.rsp"
 # The public package: Editor without Editor/Yaps, no Runtime, no Dev harness.
 public="$WORK/sources-public.rsp"
 find "$REPO/Editor" -name '*.cs' -not -path '*/Editor/Yaps/*' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done > "$public"
-# Namespaces other packages declare at the top level. MagicaCloth 1's is MagicaCloth, the name of
-# MagicaCloth 2's component, and a global namespace beats a type from a file-level using: a user
-# with both installed could not compile the tool at all (5.0.0 rc2).
+# MagicaCloth 1's namespace is MagicaCloth, MC2's component name, and a global
+# namespace beats a using'd type: both installed could not compile (5.0.0 rc2).
 foreign="$WORK/foreign-namespaces.cs"
 echo 'namespace MagicaCloth { internal class AvatarBridgeForeignNamespace { } }' > "$foreign"
 echo "\"$(cygpath -w "$foreign")\"" | tee -a "$sources" >> "$public"
-# Project scripts built on this tool's types are dev spikes, never in a user's project. Without the
-# add-on they fail, and csc then writes no assembly for the read-back below.
+# Project scripts using this tool's types are dev spikes; without the add-on
+# they fail and csc writes no assembly for the read-back.
 spikes="$WORK/spikes.txt"
 grep '^"Assets/' "$RSP" | tr -d '"' | grep -v '^Assets/AvatarBridge/' | while read -r f; do
   case "$f" in *.cs) grep -qs "AvatarBridge" "$PROJ/$f" && echo "$f" ;; esac
@@ -103,11 +83,8 @@ for yaps in 1 0; do
     combo="$yaps$magica$dynbone"
     name="YAPS=$yaps MAGICA=$magica DYNBONE=$dynbone"
     out="$WORK/out-$combo.dll"
-    # The stock arguments, minus our three defines, its outputs and its copy
-    # of this repo, plus the combination under test and the repo's sources.
-    # Everything else, 300-odd references, langversion, is exactly what Unity
-    # itself used. -refout goes too: left in, it overwrote Unity's own ref
-    # assembly in Library.
+    # Unity's own arguments minus the three defines, outputs and deployed copy.
+    # -refout too: left in, it overwrote Unity's ref assembly in Library.
     grep -v "^-define:AVATARBRIDGE_MAGICA$\|^-define:AVATARBRIDGE_DYNBONE$\|^-define:AVATARBRIDGE_YAPS$\|^-out:\|^-refout:\|^\"Assets/AvatarBridge/" "$RSP" > "$WORK/args.rsp"
     if [ "$yaps" = 1 ]; then cat "$sources"; else cat "$public"; fi >> "$WORK/args.rsp"
     echo "-out:\"$out\"" >> "$WORK/args.rsp"
@@ -120,23 +97,19 @@ for yaps in 1 0; do
 
     log="$WORK/log-$combo.txt"
     ( cd "$PROJ" && "$DOTNET" "$CSC" "@$WORK/args.rsp" ) > "$log" 2>&1
-    # csc's exit code is unreliable through the wrapper; the errors are the
-    # answer. This project only: a project full of other assets' scripts is not
-    # this gate's business.
+    # csc's exit code is unreliable through the wrapper; count this repo's errors only,
+    # not other assets' scripts.
     ours="$(grep "error CS" "$log" | grep -iF -e "AvatarBridge" -e "$(cygpath -w "$REPO")" | sort -u)"
     any="$(grep -c "error CS" "$log")"
-    # Warnings too, but only the ones a combination adds over the full build
-    # (the first one run): code after a switch whose every case compiled out
-    # (CS0162) is a define mistake the full build cannot show. CS0436 is the
-    # runtime-as-source overlap described above.
+    # Warnings a combination adds over the full build (e.g. CS0162 after a
+    # switch whose cases all compiled out). CS0436 is the runtime-as-source overlap.
     warn="$(grep "warning CS" "$log" | grep -v "warning CS0436" | grep -iF "$(cygpath -w "$REPO")" | sort -u)"
     [ "$combo" = 111 ] && baseline="$warn"
     added="$(comm -13 <(printf '%s\n' "$baseline") <(printf '%s\n' "$warn") | sed '/^$/d')"
 
-    # The project's Assembly-CSharp.ref.dll holds its deployed Runtime, so a
-    # public build that reaches a Runtime type still compiles. Read it back:
-    # an AvatarBridge type bound out of Assembly-CSharp is one the user lacks.
-    # A compile with foreign errors writes no assembly, so it goes unread.
+    # Assembly-CSharp.ref.dll holds the deployed Runtime, so a public build
+    # reaching a Runtime type still compiles. A type bound out of it is one the
+    # user lacks. Foreign errors write no assembly, so it goes unread.
     leaked=""
     if [ "$yaps" = 0 ] && [ -z "$ours" ]; then
       if [ ! -f "$out" ]; then

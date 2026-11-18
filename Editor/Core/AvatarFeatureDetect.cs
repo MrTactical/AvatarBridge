@@ -23,10 +23,8 @@ namespace AvatarBridge
 
         // ------------------------------------------- face tracking parameters ----
 
-        // The stripper's rule, so the tester and the kept-rig report see what a face tracking
-        // mode would replace. Control flags are left out: the tester's neutral face would write
-        // 0 over an enable flag the rig rests at 1. A /Smoothed/ copy follows its source, so it
-        // is not counted or driven twice.
+        // The stripper's rule. Control flags are left out: a neutral face would write 0 over an
+        // enable flag resting at 1. A /Smoothed/ copy follows its source, so is not counted twice.
         public static bool IsFaceTrackingParameter(string name)
         {
             return !string.IsNullOrEmpty(name) && !name.Contains("/Smoothed/") &&
@@ -86,9 +84,7 @@ namespace AvatarBridge
             }
             combined = PlainestBlink(combineds);
 
-            // Prefer two shapes equal but for the side token. A mesh
-            // often carries several blink families, and independent
-            // picks can pair eyes from different ones.
+            // Prefer shapes equal but for the side token, or the eyes can pair across blink families.
             foreach (string candidateLeft in lefts)
             {
                 string stem = SideStem(candidateLeft, "left", 'l');
@@ -267,9 +263,7 @@ namespace AvatarBridge
 
         // ---------------------------------------------- the CCK's own Auto placement ----
 
-        // Blender's ".L"/".R" suffix convention included. Unmapped eye
-        // bones with those names otherwise fall through to the blind
-        // fallback, and Blender exports that suffix by default.
+        // Blender's default ".L"/".R" suffixes, or unmapped eye bones fall to the blind fallback.
         static readonly string[] LeftEyeNameVariants =
             { "LeftEye", "Left_Eye", "EyeLeft", "Eye_Left", "eye.L", "eye_L", "eyeL", "L_eye", "Eye.L.001" };
         static readonly string[] RightEyeNameVariants =
@@ -297,11 +291,8 @@ namespace AvatarBridge
             }
             else if (head != null)
             {
-                // Under the head first, then anywhere still near it.
-                // Eye bones are not always children of the head bone;
-                // rigs park them elsewhere whenever something else
-                // drives the eyes. NearHeadByNameVariants widens the
-                // net but only accepts bones within head distance.
+                // Under the head first, then anywhere near it: rigs that drive the eyes
+                // otherwise park eye bones elsewhere.
                 var namedLeft = FindChildByNameVariants(head, LeftEyeNameVariants);
                 var namedRight = FindChildByNameVariants(head, RightEyeNameVariants);
                 if (namedLeft == null || namedRight == null)
@@ -412,19 +403,13 @@ namespace AvatarBridge
                 return false;
             }
             var jaw = animator.GetBoneTransform(HumanBodyBones.Jaw);
-            // A mapped Jaw is only used if it is somewhere a jaw could
-            // be; the slot is optional and unvalidated. On failure
-            // return false so the caller reaches MouthLocator.
+            // The Jaw slot is optional and unvalidated, so only used if plausible.
             if (jaw != null && !JawIsBelievable(root, animator, jaw, out _))
             {
                 return false;
             }
-            // No jaw means only a head-bone guess. MouthLocator does
-            // better whenever visemes exist: an open-mouth shape's
-            // deltas are the mouth, measured. Hand the decision over.
-            //
-            // Found on an avatar with 15 viseme blendshapes whose voice still landed mid-face,
-            // because this path answered first and never mentioned the visemes existed.
+            // Without a jaw, MouthLocator beats a head-bone guess whenever visemes exist: an
+            // open-mouth shape's deltas are the mouth, measured. Answering here put a voice mid-face.
             if (jaw == null)
             {
                 return false;
@@ -479,13 +464,9 @@ namespace AvatarBridge
             var leftEyeBone = animator.GetBoneTransform(HumanBodyBones.LeftEye);
             var rightEyeBone = animator.GetBoneTransform(HumanBodyBones.RightEye);
 
-            // The decoy test. A constraint reading the head is not
-            // enough; ordinary rigs read the head for unrelated things.
-            // What distinguishes a decoy is invisible bones: the map
-            // points at stand-ins deforming no mesh. Being a decoy is a
-            // property of the whole rig, so the whole rig is measured.
-            // The threshold is loose; a true decoy scores zero and a
-            // real humanoid clears a fifth on its fingers alone.
+            // Decoy test: the humanoid map points at stand-ins deforming no mesh. A constraint
+            // reading the head proves nothing. Loose threshold: a decoy scores zero, a real
+            // humanoid clears a fifth on its fingers alone.
             if (headBone == null || humanoid.Count == 0)
             {
                 return false;
@@ -535,13 +516,9 @@ namespace AvatarBridge
                     }
                 }
             }
-            // Both relayed eyes, or nothing. A puppet rig can read the
-            // head as an input that swings the body; position and the
-            // constraint type cannot tell that from a relay. Relayed
-            // eyes can: an eye bone exists to aim eyeballs, so driving
-            // from one means reproducing a face. A decoy mapping no eye
-            // bones falls back to the authored viewpoint, the safe
-            // direction to fail in.
+            // Both relayed eyes, or nothing: a puppet rig can read the head to swing the body, but
+            // driving from an eye bone means reproducing a face. Failing falls back to the
+            // authored viewpoint, the safe direction.
             return leftEye != null && rightEye != null;
         }
 
@@ -605,10 +582,7 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Distance to the nearest deforming bone, not a bounding
-            // box. A quadruped's box is enormous and containment
-            // proves nothing. Deforming bones
-            // are where the body genuinely is.
+            // Nearest deforming bone, not a bounding box: a quadruped's box is enormous.
             var deforming = DeformingBones(root).Where(b => b != null).ToList();
             if (deforming.Count == 0)
             {
@@ -647,9 +621,8 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Left/right pairs first: a pair straddling the centreline is a face, and its midpoint
-            // is where the eyes are. Falling back to the centroid of whatever is left keeps a
-            // single-marker rig working rather than refusing.
+            // A left/right pair straddling the centreline is a face. The centroid fallback keeps
+            // single-marker rigs working.
             var left = candidates.Where(t => t.position.x < root.transform.position.x).ToList();
             var right = candidates.Where(t => t.position.x > root.transform.position.x).ToList();
             Vector3 world;
@@ -720,17 +693,15 @@ namespace AvatarBridge
             }
             visibleHead = head;
 
-            // The avatar's own size, so the fallback offsets below scale with it rather than
-            // assuming a human head. Taken off the humanoid rig because that is the one chain
-            // guaranteed to exist, and it is the right order of magnitude either way.
+            // Offsets scale with the avatar, not a human head; the humanoid chain always exists.
             var hips = animator.GetBoneTransform(HumanBodyBones.Hips);
             var headBone = animator.GetBoneTransform(HumanBodyBones.Head);
             float span = hips != null && headBone != null
                 ? Vector3.Distance(hips.position, headBone.position)
                 : 0f;
 
-            // DecoyRigAnchors guarantees both eyes; there is no head-only guess any more, because
-            // guessing a face from one relayed bone is what put a taur's viewpoint at its hips.
+            // DecoyRigAnchors guarantees both eyes; a face guessed from one relayed bone put a
+            // taur's viewpoint at its hips.
             Vector3 viewWorld = (leftEye.position + rightEye.position) / 2f;
             string viewFrom = $"midway between \"{leftEye.name}\" and \"{rightEye.name}\"";
 
@@ -787,8 +758,7 @@ namespace AvatarBridge
                 }
                 catch
                 {
-                    // Unreadable mesh: assume every listed bone deforms.
-                    // That only makes the check more cautious.
+                    // Unreadable mesh: assume every listed bone deforms, the cautious side.
                     foreach (var bone in bones)
                     {
                         if (bone != null)
@@ -862,12 +832,8 @@ namespace AvatarBridge
 
         static Vector3 OffsetFromBone(GameObject root, Transform bone, Vector3 offsetInMetres)
         {
-            // The AVATAR's orientation, not the bone's. A bone's local axes are whatever the
-            // rigger felt like: on one robot avatar the head bone's +Z pointed at the sky, so
-            // "6 cm forward" became "6 cm up" and the voice position sat above the eyes. The
-            // avatar root is the one transform whose forward really is forward. Passed in,
-            // not bone.root: that is the top of the scene, an organiser object when the
-            // avatar is converted in place under one.
+            // The AVATAR's orientation: bone axes are arbitrary (a head +Z pointing up put the
+            // voice above the eyes). Passed in, not bone.root, which may be an organiser object.
             return bone.position + root.transform.rotation * offsetInMetres;
         }
 
@@ -934,9 +900,7 @@ namespace AvatarBridge
                 {
                     return child;
                 }
-                // Every descendant, not just direct children. Eye bones
-                // routinely sit a few joints below the head. Safe to
-                // widen: exact name match, never a substring.
+                // Every descendant: eye bones sit a few joints down. Safe, as names match exactly.
                 foreach (Transform candidate in parent.GetComponentsInChildren<Transform>(true))
                 {
                     if (candidate != parent
@@ -983,8 +947,7 @@ namespace AvatarBridge
             return true;
         }
 
-        // How far from the head a point may sit and still count as on it. Every head check uses
-        // this one, so one rig is never judged by two standards.
+        // How far from the head still counts as on it; every head check shares it.
         internal static float HeadTolerance(Animator animator)
         {
             var head = animator != null && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Head) : null;

@@ -1,18 +1,12 @@
-// The squash in the YAPS-patched body shader: every layer over a soft part takes the same move,
-// worked out on the GPU from where the parts are. A material data provider writes each part's
-// follow (a plain child of the bone the cloth moves most, at the part's centre) into the
-// materials every frame, on every client, with nothing synced and no camera.
+// The squash in the patched body shader: every layer over a soft part takes the same GPU-side
+// move. A material data provider writes each part's follow (a child of the bone the cloth moves
+// most, at the part's centre) into the materials every frame on every client; nothing synced.
+// The YAPS Squash component's knobs write straight to the materials, so tuning needs no rebuild.
 //
-// How it feels comes from the avatar's YAPS Squash component, added on the first build. Its
-// knobs write straight to the materials, so tuning needs no rebuild.
-//
-// Three ways to say where the parts are. Regions painted with the squash region tool, when the
-// avatar carries them; else bones picked on the component, two to a pair; else bones found by
-// name (breast, boob, butt, booty, glute, one each side). With bones, each vertex's share is the
-// skin weight its part's bones carry. The squash's own dent takes the first two pairs; the jelly
-// put on over it takes any part, a pair or one side alone, four a body. Materials listed as left
-// alone are never copied. Measured at rest, in edit mode. A shader the patcher refuses is reported and its layer
-// left as it was.
+// Parts come from painted regions, else bones picked on the component, else bones found by name
+// (breast, boob, butt, booty, glute); a vertex's share is its skin weight on them. The squash's
+// dent takes the first two pairs; the jelly takes any part, up to four a body. Measured at rest
+// in edit mode. A shader the patcher refuses is reported and its layer left as it was.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -772,12 +766,9 @@ namespace AvatarBridge
             provider.transforms = slots;
             provider.shaderPropertyName = "_YAPS_SquashFollow";
 
-            // One vertex on each slot, skinned to it, so the slots come through skinning, after
-            // the cloth and the IK. Its triangles have no area, so it draws nothing. "[FPR]" keeps
-            // the client's first-person copy off it: that copy switches the wearer's renderers off
-            // for their own view and stops skinning them offscreen, so the buffer froze where a
-            // mirror or camera last saw it, and turning in place sliced the pair along a plane
-            // left behind.
+            // One zero-area vertex per slot, skinned to it, so slots come after cloth and IK.
+            // "[FPR]" keeps the client's first-person copy off it: that copy stops skinning the
+            // wearer's renderers offscreen, so the buffer froze and sliced the pair on turning.
             var skin = Child(host.transform, "skin [FPR]").gameObject.AddComponent<SkinnedMeshRenderer>();
             var skinBones = slots.Select(t => t == empty ? host.transform : t).ToArray();
             var mesh = new Mesh { name = "YAPS squash skin" };
@@ -1215,11 +1206,9 @@ namespace AvatarBridge
             return m;
         }
 
-        // Every swap an animation makes into a squashed slot pointed at a squashed look. A toggle
-        // handing the slot back to the original, or in an alternate, would leave that layer
-        // unsquashed over skin that is, and the skin comes through it. Alternates get a copy of
-        // their own with the slot's values, and both providers write into them too. Only clips
-        // the user owns are edited.
+        // Point every animated swap into a squashed slot at a squashed look, or that layer goes
+        // unsquashed and the skin pokes through. Alternates get their own copy, written by both
+        // providers. Only clips the user owns are edited.
         public static string FollowSwaps(Transform root, IList<AnimationClip> clips, string folder, BridgeReport report)
         {
             var host = root.Find(ShaderHostName);
@@ -1452,11 +1441,8 @@ namespace AvatarBridge
             return verts;
         }
 
-        // Each renderer's texture of its shares, in r, g, b, a. The skin is the painted body, or
-        // Body's pick; a layer riding bones of its own takes the skin's share where it lies, from
-        // the skin vertices within 3 cm, easing out by 4, or the skin would squash out from under it. Weighted by
-        // distance: the nearest one alone gave each layer vertex its own step, and a top came out
-        // in facets the skin under it did not have.
+        // Each renderer's shares as r, g, b, a. A layer on its own bones takes the skin's share
+        // from skin vertices within 3 cm, easing out by 4, distance-weighted (nearest-only faceted it).
         static List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> Shares(List<Skin> skins, Skin painted, string name, string folder, Func<SkinnedMeshRenderer, bool> keep = null)
         {
             var body = Spread(skins, painted);
@@ -1801,12 +1787,9 @@ namespace AvatarBridge
             return tex;
         }
 
-        // Per renderer, how much of each vertex the bones of each part's chain carry, from its own
-        // skin weights, the chain's root with them: a shunt moves the whole part, as a push on it
-        // does. Without the root, which the cloth holds still, a seat swung a tenth of its skin.
-        // By share instead, a layer bridging the gap between a pair, its share stepping from one
-        // part to the other across a centimetre or two, was pulled apart by the whole shunt. A
-        // part whose follow and rest ride one bone swings nothing, and is shunted by its share.
+        // Per renderer, each vertex's skin weight on each part's chain, root included: without the
+        // root (cloth holds it still) a seat swung a tenth of its skin. By share instead, a layer
+        // bridging a pair was torn apart. A part whose follow and rest share a bone uses its share.
         static Dictionary<SkinnedMeshRenderer, Texture2D> Swings(List<(SkinnedMeshRenderer smr, Texture2D own, Vector4[] shares)> shared,
             List<Skin> skins, Skin body, List<Part> parts, string name, string folder, List<string> log)
         {
@@ -2083,12 +2066,9 @@ namespace AvatarBridge
 
         internal const int SurfaceSize = 32;
 
-        // How far a part's skin reaches from its centre toward each direction of an octahedral grid
-        // in its frame, in follow units, so the squash meets the partner's real shape and not the
-        // ellipsoid of its six reaches, which missed skin by up to 13 cm toward the partner. Built
-        // from every other vertex and judged on the rest against that ellipsoid; null unless it is
-        // clearly closer, which leaves a part of a few dozen vertices, or one a line from its
-        // centre crosses twice, on the ellipsoid. Measured on six avatars, 2026-10-26.
+        // A part's skin reach per octahedral direction, in follow units: the six-reach ellipsoid
+        // missed skin by up to 13 cm toward the partner. Built from every other vertex, checked on
+        // the rest; null unless clearly closer (tiny or self-crossing parts stay on the ellipsoid).
         internal static float[] Surface(List<Vector3> points, Vector3 centre, Vector3 toward, Vector3 o, float[] reaches,
             float unit, out float mapOff, out float ellipsoidOff)
         {

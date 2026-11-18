@@ -8,25 +8,18 @@
 //       [-portalPoses 50]
 //       [-portalDump <dir>]                   each host's first corridor frame as a PNG
 //
-// The project's shipped props, atlas, resolve and deform are swapped for the
-// spike copies before Unity starts, so every host is patched by the production
-// patcher as 5.0 would patch it. The probe refuses to run when they are not
-// the copies it was pointed at.
+// The project's includes must already be the spike copies, so every host is
+// patched by the production patcher; the probe refuses otherwise.
 //
-// A synthetic plug, 97 rings of 25 vertices (the 25th a UV seam), its portal
-// span set by the baker's rule, goes into a hole and out of an exit 2 m away,
-// from 95% of its length short of the hole to 1%, each pose at _YAPS_Enabled
-// 0, 0.25, 0.5, 0.999 and 1, on an HDR camera reading a half atlas and an
-// 8-bit camera reading an 8-bit one. Hosts: Standard (refused, then on Simple
-// Lit as the converter does), YAPS Simple Lit, locked Poiyomi Toon 9.3 with
-// outlines four ways, and lilToon 1.7.3's opaque pass shader (its outline
-// passes) with outlines four ways and its own input switches on.
+// A plug of 97 rings of 25 vertices (25th a UV seam) goes into a hole and
+// out of an exit 2 m away, from 95% short to 1%, at _YAPS_Enabled 0, 0.25,
+// 0.5, 0.999 and 1, on HDR and 8-bit cameras. Hosts: Standard (refused, then
+// Simple Lit), YAPS Simple Lit, locked Poiyomi Toon 9.3 and lilToon 1.7.3's
+// opaque pass shader, each outline host four ways.
 //
-// Per render, a pixel the plug drew is a corridor pixel when its ray passes
-// near neither mouth. Per pose, the deform's own output through a capture
-// shader: the band's two ends bit for bit, every vertex out of the exit
-// against where the decoded exit puts it, and the seam's two copies of each
-// ring bit for bit.
+// A corridor pixel is one whose ray passes near neither mouth. Per pose,
+// through a capture shader: band ends bit for bit, exit vertices against
+// the decoded exit, seam copies bit for bit.
 //
 // Gates: 0 corridor pixels on every host; exit vertices within 0.5 mm; seams
 // 0.00 mm. Sanity, so a host that drew nothing cannot pass: pixels near the

@@ -8,13 +8,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for VRChat's GestureLeftWeight/RightWeight.
-    //
-    // VRChat fills the weight from whatever closes the fist: the grip on most controllers, the
-    // trigger on Index and Vive. The converter fed it from ChilloutVR's trigger stream on every
-    // controller, so a fist squeezed with the grip left the weight at 0. ChilloutVR already puts
-    // that per-controller squeeze into GestureLeft/Right, 0 to 1 while the fist closes, so the
-    // weight must follow that instead.
+    // GestureLeftWeight/RightWeight. VRChat fills it from whatever closes the fist (grip on most
+    // controllers, trigger on Index and Vive); fed from CVR's trigger stream, a grip fist read 0.
+    // CVR already puts that squeeze into GestureLeft/Right (0 to 1 while closing), so follow that.
     //
     // The tasks run through the CCK's own Execute, so the operators are the client's, not a copy.
     public static class GestureWeightFeedTest

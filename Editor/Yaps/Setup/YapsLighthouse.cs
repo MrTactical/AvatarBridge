@@ -1,9 +1,6 @@
-// One socket's marker pair lit at a time, chosen from the menu. A
-// disabled light never enters Unity's per-mesh ranking, so every
-// lit-capable socket carries a pair and exactly one competes for the
-// four vertex slots. Legacy DPS content sees one clean root and front
-// wherever the wearer points the lighthouse; contact readers never
-// needed the lights at all.
+// One socket's marker pair lit at a time, chosen from the menu. A disabled light never enters
+// Unity's per-mesh ranking, so exactly one pair competes for the four vertex slots and DPS
+// content sees one clean root and front. Contact readers never need the lights.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -52,9 +49,8 @@ namespace AvatarBridge
                 return removed ? "lighthouse removed: one socket needs no chooser" : null;
             }
 
-            // Row 0 is Off: nothing lit until the wearer chooses. A default
-            // that lit the first hole left toys working at a socket the
-            // wearer had not switched on and failing at the one they had.
+            // Row 0 is Off: lighting the first socket by default made toys follow a socket the
+            // wearer had not switched on.
             var labels = new List<string> { OffLabel };
             foreach (var s in sockets)
             {
@@ -79,11 +75,8 @@ namespace AvatarBridge
 
         const string OffLabel = "Off";
 
-        // This layer's clips, in every controller it is written to. They
-        // switch a socket on only because nothing else does, so they are not
-        // an owner: read as one, every socket built after the first lighthouse
-        // was left off the menu, and the lighthouse went on switching it
-        // because it had no toggle.
+        // This layer's clips in every controller. They are not a socket's owner: read as one,
+        // later sockets were left off the menu.
         public static HashSet<AnimationClip> OwnClips(CVRAvatar avatar)
         {
             var clips = new HashSet<AnimationClip>();
@@ -164,10 +157,7 @@ namespace AvatarBridge
                 controller.RemoveLayer(i);
                 removed = true;
             }
-            // RemoveLayer destroys the machine and its states but not the clips
-            // embedded beside them, so every Build left a dead set in the
-            // controller. Swept by name, which takes the sets older builds
-            // left too, and never one something still plays.
+            // RemoveLayer leaves the embedded clips behind. Swept by name, never one still played.
             string path = AssetDatabase.GetAssetPath(controller);
             if (string.IsNullOrEmpty(path)) return removed;
             var live = new HashSet<AnimationClip>(controller.animationClips);
@@ -180,18 +170,10 @@ namespace AvatarBridge
             return removed;
         }
 
-        // State 0 is Off: every pair dark, no socket touched. State i enables
-        // socket i's pair, disables every other pair, and switches socket i
-        // itself ON, so one choice is all a DPS toy needs. Other sockets' active
-        // state is left to their own toggles. Any-state transitions on the
-        // selector, so the order the wearer clicks in never matters.
-        //
-        // A SOCKET ITS OWN MENU CAN SWITCH IS NEVER FORCED ON HERE. This layer
-        // is added last and so outranks the toggle that owns the socket: the
-        // toggle's off clip writes 0, this writes 1, and the socket can never
-        // be switched off again while the selector points at it. The socket
-        // carries the atlas writer, so it keeps resolving plugs long after the
-        // wearer has turned it off. Light it and leave the switch alone.
+        // State 0 is Off. State i lights socket i's pair only and switches socket i on, so one
+        // choice is all a DPS toy needs. Any-state transitions, so click order never matters.
+        // A socket with its own menu toggle is never forced on: this layer is last and would
+        // outrank the toggle's off clip, leaving the socket resolving plugs after it is off.
         static void AddLayer(CVRAvatar avatar, AnimatorController controller, List<YapsSocket> sockets)
         {
             var owned = YapsSocketRebuilder.Switchable(controller);

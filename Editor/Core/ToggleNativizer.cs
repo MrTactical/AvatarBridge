@@ -11,13 +11,8 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Converts simple GameObject on/off toggles into NATIVE ChilloutVR menu toggles.
-    //
-    // VRCFury bakes each toggle as an FX layer (or blend tree) animating m_IsActive via
-    // a float parameter. In CVR the far better home is the CCK's own animator builder:
-    // a GameObjectToggle entry with explicit targets, generated at upload as a clean
-    // bool. This pass finds layers that do nothing but flip objects, moves their targets
-    // into the menu entry, deletes the layer and lets the parameter become a real bool.
+    // Turns layers that only flip objects into native CCK GameObjectToggle entries: targets move
+    // into the menu entry, the layer goes, and the parameter becomes a real bool.
     public static class ToggleNativizer
     {
         const string Category = "Native toggles";
@@ -47,14 +42,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // Asked once, before anything is mutated. The answer is a
-            // property of the installed CCK's type, so it is the same for
-            // every entry; asking it per entry meant a "no" could arrive
-            // after earlier layers had already been removed from vrcLayers,
-            // and the bail-out skipped the deferred cleanup that finishes
-            // them. Only the native style needs the list: the layer style
-            // writes no CCK targets, and a CCK without them must not stop
-            // its renames and branch expansion too.
+            // Asked once, before anything is mutated: per entry, a "no" could arrive after layers
+            // were already removed, skipping their cleanup. Only the native style needs it.
             bool useNativeTargets = ctx.Settings.toggleStyle == ToggleStyle.CvrNativeTargets;
             if (useNativeTargets && TargetsField() == null)
             {
@@ -133,10 +122,8 @@ namespace AvatarBridge
                 }
             }
 
-            // Branches still keyed to toggle menu entries animate more than plain object
-            // state (blendshapes, renderers, materials). Expand those into classic
-            // hand-authored-style On/Off toggle layers instead of leaving them buried in
-            // VRCFury's merged service tree.
+            // Branches that animate more than object state become plain On/Off layers instead
+            // of staying buried in VRCFury's service tree.
             var expandedLayers = new List<AnimatorControllerLayer>();
             var expandedParams = new HashSet<string>();
             foreach (var layer in vrcLayers)
@@ -650,10 +637,7 @@ namespace AvatarBridge
                         $"Toggle target \"{target.Path}\" not found on the avatar; skipped.");
                     continue;
                 }
-                // One parameter can drive two branches in two service trees.
-                // Different objects there are two real targets and both
-                // belong; the SAME object twice is one target written twice,
-                // which lands in the CCK's list twice and is reported twice.
+                // One parameter can drive two service trees; the same object twice is one target.
                 if (!_appliedTargets.Add($"{entry.machineName}|{target.Path}|{target.OnState}"))
                 {
                     continue;
@@ -733,11 +717,9 @@ namespace AvatarBridge
             }
         }
 
-        // The CCK builds a native toggle's clips from each target's path, and refreshes the
-        // path from the object only while its inspector list is drawn. Passes after the merge
-        // move and rename objects (the second head's contents, YAPS's renames), so a path
-        // written during the merge can name nothing by upload. Run once every object is final;
-        // the path is worked out exactly as the CCK's inspector does.
+        // The CCK builds toggle clips from each target's stored path and refreshes it only while
+        // the inspector list is drawn. Later passes move and rename objects, so run this last,
+        // computing the path as the CCK inspector does.
         internal static void RefreshTargetPaths(BridgeContext ctx)
         {
             var field = TargetsField();

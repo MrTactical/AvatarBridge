@@ -1,10 +1,8 @@
 // One dropdown per plug: which of the sockets it was built to answer it
 // will answer right now. SPS calls the same idea Change SPS Tag.
 //
-// A dropdown and a layer rather than a row per tag. Fifteen toggles would
-// be fifteen menu rows and fifteen parameters for a question with one
-// answer at a time, which is the objection that killed the per-socket
-// allow list.
+// A dropdown, not a row per tag: fifteen toggles and parameters for a
+// question with one answer at a time.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -22,9 +20,7 @@ namespace AvatarBridge
         const string LayerPrefix = "YAPS tags ";
         const string KeyPrefix = "YAPS/Tags/";
 
-        // Only a plug that lists more than one tag gets a chooser: with one
-        // tag there is nothing to choose between, and with none the plug
-        // already answers everything.
+        // Only plugs listing more than one tag get a chooser.
         public static string Build(CVRAvatar avatar, AnimatorController controller)
         {
             if (avatar == null || controller == null) return null;
@@ -66,9 +62,8 @@ namespace AvatarBridge
                           + tags.Count + " tags, \"As built\" by default");
             }
 
-            // A chooser keyed on no plug: its plug was deleted, or its mesh moved
-            // and the key moved with it. The loop above never reaches it, and it
-            // kept a menu row and a synced Int.
+            // A chooser keyed on no plug (deleted, or its mesh moved); the loop
+            // above never reaches it.
             var keys = controller.layers.Where(l => l.name.StartsWith(LayerPrefix))
                 .Select(l => l.name.Substring(LayerPrefix.Length))
                 .Concat(controller.parameters.Select(p => p.name));
@@ -97,9 +92,7 @@ namespace AvatarBridge
             return removed;
         }
 
-        // The author's list, normalised the way the bake normalises it, then
-        // capped. One call rather than two implementations: they disagreed,
-        // and the disagreement moved which sockets a plug answered.
+        // Normalised and capped by the bake's own call: two copies disagreed.
         static List<string> Listed(IList<string> tags)
         {
             var found = YapsTags.Listed(tags);
@@ -107,9 +100,7 @@ namespace AvatarBridge
             return found;
         }
 
-        // "handleft" reads as "Hand left" in a menu, and an author's own
-        // word keeps whatever shape they gave it. The string is the protocol,
-        // the label is for a person.
+        // "handleft" reads as "Hand left"; an author's own word keeps its shape.
         static string Pretty(string tag)
         {
             foreach (string known in YapsTags.Suggested)
@@ -128,9 +119,7 @@ namespace AvatarBridge
             return tag;
         }
 
-        // Keyed on the plug's path, not its label: a label follows the bone
-        // and can change, and a renamed entry would leave the old one behind
-        // driving a layer nothing removed.
+        // Keyed on the plug's path, not its label, which follows the bone.
         // The second plug on a shared mesh keys on "#1" too, so each gets its own chooser.
         internal static string Parameter(CVRAvatar avatar, YapsPlug plug)
         {
@@ -213,11 +202,9 @@ namespace AvatarBridge
             return removed;
         }
 
-        // State 0 restores what the bake wrote, so a wearer who never opens
-        // the menu gets the author's answer. State i narrows to one tag.
-        // The last state clears the include set, which answers anything the
-        // plug's refuse list does not deny: refusing always beats answering,
-        // so "Anything" can never reach a socket the author ruled out.
+        // State 0 restores the bake's list, state i narrows to one tag, the
+        // last clears it ("Anything"). Refusing always beats answering, so it
+        // never reaches a socket the author ruled out.
         static void AddLayer(CVRAvatar avatar, AnimatorController controller, YapsPlug plug,
             string parameter, List<string> tags)
         {
@@ -240,14 +227,11 @@ namespace AvatarBridge
                 AssetDatabase.AddObjectToAsset(machine, controller);
             }
 
-            // State 0 is the whole list the author wrote, state i narrows to
-            // one tag in the first slot, and the last clears every slot.
             var values = new List<Vector4> { Vector(tags) };
             values.AddRange(tags.Select(t => Vector(new List<string> { t })));
             values.Add(Vector4.zero);
 
-            // Every mesh of the plug, or the others keep answering as built
-            // and bend toward a socket the rest of it was told to leave.
+            // Every mesh of the plug, or the others keep answering as built.
             var targets = YapsToggles.Targets(plug, avatar.transform);
             for (int i = 0; i < values.Count; i++)
             {
@@ -278,9 +262,7 @@ namespace AvatarBridge
             EditorUtility.SetDirty(controller);
         }
 
-        // Patterns in a vector, matching what the bake wrote. Kept here rather
-        // than shared with the builder's copy because that one takes the
-        // author's raw list and this one takes a list already cleaned.
+        // Matches the bake; not shared, since the builder's takes the raw list.
         static Vector4 Vector(List<string> tags)
         {
             var v = Vector4.zero;

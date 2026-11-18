@@ -10,28 +10,20 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    // Orchestrates a full VRChat -> ChilloutVR avatar conversion. Each pass reads shared
-    // state from the BridgeContext. The order matters and lives in ContentPasses, where each
-    // pass says why it sits where it does.
+    // Pass order matters; ContentPasses says why each sits where it does.
     public static class BridgeConverter
     {
         public static BridgeReport Convert(VRCAvatarDescriptor descriptor, BridgeSettings settings)
         {
-            // A copy for this run: the window passes the object it saves to EditorPrefs, which are per
-            // user, so a choice settled below reached every project.
+            // A copy: the window's object is saved to per-user EditorPrefs, so changes below would reach every project.
             settings = JsonUtility.FromJson<BridgeSettings>(JsonUtility.ToJson(settings));
-            // Converting to YAPS implies stripping what it replaces. The
-            // window says so; a caller with the pair the other way round
-            // (older saved settings, a script) gets the same answer.
+            // Converting implies stripping, also for old saved settings or scripts.
             if (settings.convertYapsSystems && !settings.stripSpsSystems)
             {
                 settings.stripSpsSystems = true;
             }
 #if !AVATARBRIDGE_YAPS
-            // No add-on installed, so there is nothing to rebuild the
-            // penetration into and the choice collapses to removing it.
-            // Saved settings from a project that had the add-on say convert;
-            // honouring that would strip the system and build no replacement.
+            // No add-on: settings saved where it was installed would strip the system and build no replacement.
             settings.convertYapsSystems = false;
             settings.stripSpsSystems = true;
 #endif
@@ -44,25 +36,19 @@ namespace AvatarBridge
             };
 
             AnimatorMerger.ResetMaskCache();
-            // Per conversion, not per session: names must be stable run-over-run so reconverting
-            // replaces the previous output instead of parking a numbered copy beside it, while
-            // still colliding within one run, where two source controllers really can each bring
-            // their own "Angry".
+            // Per conversion: names stay stable across runs so reconverting replaces the output,
+            // but still collide within a run, where two controllers can each bring an "Angry".
             OutputAssetPaths.Reset();
 
-            // Format numbers the same way for everybody. The report is
-            // read on other machines, and comma decimals paste badly.
-            // Set once here so later additions are covered.
+            // The report is read on other machines, and comma decimals paste badly.
             var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
             System.Threading.Thread.CurrentThread.CurrentCulture =
                 System.Globalization.CultureInfo.InvariantCulture;
 
             try
             {
-                // Before anything is built or written, the output folder included: if the project
-                // has a baker installed that did not compile, every component it owns reads as
-                // absent and the conversion comes out quietly gutted. Stop here rather than spend
-                // the run producing it.
+                // Before anything is written: a baker that did not compile makes its components
+                // read as absent and the conversion comes out quietly gutted.
                 if (!BridgePreflight.Check(ctx))
                 {
                     report.Error("Conversion", "Stopped before converting",
@@ -80,16 +66,14 @@ namespace AvatarBridge
 
                 BridgePipeline.Execute(ctx, ContentPasses());
 
-                // Always. CVR deletes them on load, the CCK complains,
-                // and a lingering VRC descriptor reads as unconverted.
+                // CVR deletes them on load, the CCK complains, and a VRC descriptor reads as unconverted.
                 MiscConverter.DeleteVrcComponents(ctx);
 #if AVATARBRIDGE_YAPS
                 // On the finished avatar, as the YAPS window sees it when its Build is pressed.
                 YapsConverter.UpgradeLegacy(ctx);
 #endif
 
-                // Deactivate the original whenever the work happened on
-                // a separate object (clone or baked copy).
+                // Work happened on a clone or baked copy.
                 if (ctx.Target != descriptor.gameObject)
                 {
                     // Recorded, or Undo removes the copy and leaves the original hidden.
@@ -97,8 +81,7 @@ namespace AvatarBridge
                     descriptor.gameObject.SetActive(false);
                 }
 
-                // Belt and braces. AnimatorMerger refuses the crashing
-                // assignment itself; this nets later passes.
+                // AnimatorMerger refuses the crashing assignment itself; this nets later passes.
                 DetachCrashingController(ctx);
                 WarnFastPlayMode(ctx);
                 ReportSyncUsage(ctx);
@@ -111,9 +94,7 @@ namespace AvatarBridge
                 Debug.Log($"[AvatarBridge] After the passes (ms): save {saved}, report {clock.ElapsedMilliseconds - saved}");
                 RebindAnimators(ctx);
                 Selection.activeGameObject = ctx.Target;
-                // The window resolves report subjects against this to offer "Show". Selection
-                // would have done at a pinch, but it is whatever the user clicked last by the
-                // time they read the report.
+                // For the report's "Show": Selection is whatever was clicked last by read time.
                 report.ConvertedRoot = ctx.Target;
 
                 report.Converted("Conversion", "Finished",
@@ -129,16 +110,15 @@ namespace AvatarBridge
             {
                 System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
 #if AVATARBRIDGE_MAGICA
-                // The cloth writer's mesh caches; a run that throws before the
-                // helper-rig pass would otherwise keep them, and this avatar, alive.
+                // Cloth mesh caches: a run throwing before the helper-rig pass would keep them, and the avatar, alive.
                 MagicaClothWriter.ReleaseCaches();
 #endif
             }
             return report;
         }
 
-        // A run that threw never reaches BridgeFinish, and it is the run whose report most needs
-        // sending. The markdown alone: the diagnostics would read a half-converted avatar.
+        // A thrown run skips BridgeFinish but needs its report most. Markdown only: diagnostics
+        // would read a half-converted avatar.
         static void WriteFailureReport(BridgeContext ctx, VRCAvatarDescriptor descriptor)
         {
             if (string.IsNullOrEmpty(ctx.OutputDir))
@@ -164,16 +144,13 @@ namespace AvatarBridge
         {
             return new[]
                 {
-                    // Delete VRChat-only systems first, so nothing
-                    // downstream converts content about to be removed.
+                    // First, so nothing downstream converts content about to be removed.
                     Pass("Strip VRChat-only systems", SystemStripper.RemoveStrippedObjects),
-                    // Then rescue VRCFury-baked meshes out of its
-                    // volatile temp before anything else reads them.
+                    // VRCFury-baked meshes out of its volatile temp before anything reads them.
                     Pass("Rehome baked scene assets", SceneAssetRehomer.Run),
 
-                    // BEFORE the descriptor: the descriptor pass places Voice Position, and the
-                    // jaw bone is what it places it on. Unmapping a bogus jaw afterwards would
-                    // leave the voice already sitting in the avatar's hair.
+                    // Before the descriptor, which places Voice Position on the jaw: unmapping a
+                    // bogus jaw afterwards leaves the voice in the hair.
                     // Skeleton first: the jaw rebuild reads the rig this one leaves.
                     Pass("Humanoid rig skeleton", RigSkeletonSync.Run),
                     Pass("Humanoid rig", JawUnmapper.Run),
@@ -189,9 +166,7 @@ namespace AvatarBridge
                     Pass("Flatten VRCFury's second head", FuryHeadFlattener.Run),
                     Pass("Misc components", MiscConverter.Run),
                     Pass("Constraints", ConstraintConverter.Run),
-                    // After the constraints exist as Unity components
-                    // and transforms have stopped moving; this pass
-                    // reads live world poses.
+                    // After the constraints exist and transforms stop moving: reads live world poses.
                     Pass("Constraint scale relays", ConstraintScaleRelay.Run),
                     // After the constraints, because the relays reading from a
                     // dead helper rig do not exist until now.
@@ -203,23 +178,18 @@ namespace AvatarBridge
 #else
                     // After the SPI patch, so the deform lands on the stereo-fixed copy.
                     Pass("YAPS penetration system", YapsConverter.Run),
-                    // No socket channel pass. The shader stopped reading the
-                    // channel, which latched a plug bent toward a socket that
-                    // had gone, and building it would spend up to nine synced
-                    // floats a plug on nothing.
+                    // No socket channel pass: the shader does not read it (it latched plugs bent
+                    // toward departed sockets), and it would cost up to nine synced floats a plug.
 #endif
 
-                    // Last content pass before anything edits a clip.
-                    // The controller is final; every referenced clip is
-                    // pulled into the output folder. Everything below
-                    // edits owned copies.
+                    // Last before any clip edit: copies every clip into the output, so below edits owned copies.
                     Pass("Self-contain clips and masks", AnimationSelfContainer.Run,
                          PassTraits.MakesClipsOurs),
                     // The stereo patch's other half: swap curves in the
                     // clips, now that the clips are copies of this run's.
                     Pass("Repoint material swaps at stereo copies", ShaderSpiPatcher.RepointSwapClipsPass,
                          PassTraits.EditsClips),
-                    // The source's own clips are only repointed on our copies. First among the
+                    // Source clips are only repointed on owned copies. First among the
                     // path passes: the ones below recorded their paths after the head moved.
                     Pass("Repoint curves into the removed second head", FuryHeadFlattener.RepointOnOurCopies,
                          PassTraits.EditsClips),
@@ -248,9 +218,7 @@ namespace AvatarBridge
                     // scale curves written beside that slider's own.
                     Pass("Scale zones with their sliders", ContactsConverter.ScaleZonesWithSliders,
                          PassTraits.EditsClips),
-                    // After ownership settles: it writes into the clips that
-                    // drive the plug's own blendshapes, and editing a shared
-                    // clip would reach the package it came from.
+                    // After ownership settles: editing a shared clip would reach its source package.
 #if AVATARBRIDGE_YAPS
                     Pass("Mirror YAPS blendshape curves", YapsConverter.MirrorShapeCurves,
                          PassTraits.EditsClips),
@@ -262,8 +230,7 @@ namespace AvatarBridge
                     // switches, and strips their emission curves from the clips.
                     Pass("Enable animated particle emitters", MiscConverter.EnableAnimatedParticleEmitters,
                          PassTraits.EditsClips),
-                    // Animated PhysBone parameters have no retarget on
-                    // the Magica path; named as lost and removed.
+                    // Animated PhysBone parameters have no Magica retarget; reported lost and removed.
                     Pass("Report animated PhysBone properties",
                          PhysBoneConverter.ReportAnimatedPhysBoneProperties, PassTraits.EditsClips),
                     // The atlas objects went early; their curves go here,
@@ -272,26 +239,18 @@ namespace AvatarBridge
 #if AVATARBRIDGE_YAPS
                     Pass("Strip screen-atlas curves", YapsConverter.StripAtlasCurves,
                          PassTraits.EditsClips),
-                    // Also before the rename, and after every bake: a swap
-                    // recorded against a renderer needs that renderer's path
-                    // as the clips still spell it.
+                    // After every bake, before the rename: swaps need renderer paths as the clips still spell them.
                     Pass("Point material swaps at the baked material",
                          YapsConverter.RepointSwappedMaterials, PassTraits.EditsClips),
                     // After the bake's swaps point at the bake: the squash copies what the
                     // avatar ends up wearing and points those swaps on again.
                     Pass("Squash soft parts", YapsSquash.Run, PassTraits.EditsClips),
-                    // DEAD LAST among the passes that touch a clip. It
-                    // renames objects and rewrites every path naming them,
-                    // so anything running after it that wrote a path would
-                    // write the old one and address nothing.
+                    // Last clip pass: it renames objects and their paths, so a later path write would address nothing.
                     Pass("Rename YAPS objects", YapsRename.Run, PassTraits.EditsClips),
                     // Reads only, once every path is final.
                     Pass("Check YAPS curves bind", YapsConverter.CheckCurveBindings),
 #endif
-                    // Last thing that touches the animator: the masks that
-                    // list every transform by name must match the final
-                    // hierarchy, or a renamed object's transform curves are
-                    // silently dropped by every layer wearing one.
+                    // Last animator edit: masks list transforms by name, or renamed objects' curves are silently dropped.
                     Pass("Refresh transform masks", AnimatorMerger.RefreshRigMasks),
                     // Same reason: the CCK builds a native toggle's clips from
                     // the path written at the merge, and objects have moved since.
@@ -300,12 +259,9 @@ namespace AvatarBridge
                     // Once the hierarchy is final: it records each cloth's transforms as they stand.
                     Pass("Pin cloth start scale", MagicaClothWriter.PinStartScale),
 #endif
-                    // Judge the saved file's references only now, after
-                    // the self-container fixed what it was going to.
+                    // After the self-container fixed what it could.
                     Pass("Audit serialized references", AnimatorMerger.AuditSerializedReferences),
-                    // Dead last. It reads the finished avatar's weight, and
-                    // every pass above can still add a renderer or repoint a
-                    // material at a different texture.
+                    // Last: any pass above can still add a renderer or change a texture.
                     Pass("Texture sizes", AvatarSlimmer.SlimOnConvert),
                 };
         }
@@ -317,11 +273,8 @@ namespace AvatarBridge
         static string PrefabPath(BridgeContext ctx) =>
             $"{ctx.OutputDir}/{string.Concat(ctx.Target.name.Split(System.IO.Path.GetInvalidFileNameChars()))}.prefab";
 
-        // Every conversion is a new copy, and the CCK uploads a copy without an ID as a new avatar.
-        // The ID comes from earlier conversions of this source: the prefab in its output folder,
-        // which only this source writes, and copies of the same name in the open scenes, trusted
-        // only when no other avatar there shares the source's name. Two IDs is a choice left to the
-        // user. Saved into the prefab next, so deleting the old copy later loses nothing.
+        // The CCK uploads a copy without an ID as a new avatar. Taken from the source's output
+        // prefab, or a same-named scene copy if no other avatar shares the name. Two IDs: user's choice.
         static void KeepUploadId(BridgeContext ctx, GameObject source)
         {
             var info = ctx.Target.GetComponent<CVRAssetInfo>();
@@ -443,9 +396,8 @@ namespace AvatarBridge
                 int used = usage.Item2; // base controller + menu entries = actual sync
                 string cckNote = "In the CCK inspector this is the SECOND number of \"(0, N) of 3200\". The first is the " +
                     "override controller, which AvatarBridge doesn't use, so \"0\" there is expected, not a problem.";
-                // Not an Error: the CCK rounds bools up to whole bytes, counts floats a clip drives,
-                // which the client never syncs, and the client checks the budget before each
-                // parameter. The diagnostics entry counts the client's way and names any that won't.
+                // Not an Error: the CCK rounds bools to bytes and counts clip-driven floats the client
+                // never syncs. Diagnostics counts the client's way.
                 if (used > 3200)
                 {
                     ctx.Report.Warning("Sync", $"{used} of 3200 sync bits used, over the limit",
@@ -471,10 +423,7 @@ namespace AvatarBridge
             var missingPrefabs = new List<string>();
             foreach (var t in ctx.Target.GetComponentsInChildren<Transform>(true))
             {
-                // Unity renames a broken prefab instance to
-                // "<name> (Missing Prefab with guid: ...)", an empty
-                // shell where a sub-hierarchy used to be. Worth its
-                // own warning.
+                // A broken prefab instance is an empty shell named "(Missing Prefab with guid: ...)".
                 if (missingPrefabs.Count < 4 && t.name.Contains("(Missing Prefab"))
                 {
                     missingPrefabs.Add(t.name);
@@ -513,10 +462,7 @@ namespace AvatarBridge
         {
             var source = ctx.SourceDescriptor.gameObject;
 
-            // VRCFury avatars must be baked by VRCFury itself first, otherwise every
-            // Fury-driven feature (toggles, linked clothing, full controllers) is lost.
-            // Fury's bake also runs NDMF internally, so it covers avatars that use both
-            // VRCFury and Modular Avatar.
+            // Unbaked, every Fury feature is lost. Fury's bake runs NDMF too, covering MA as well.
             {
 #if AVATARBRIDGE_YAPS
                 // Flips the plugs' SPS flag off for the bake, so the plain shader comes back.
@@ -545,8 +491,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Modular Avatar / NDMF, for MA avatars that don't also use VRCFury (those are
-            // already handled above). NDMF's manual bake applies MA and hands back a copy.
+            // MA without VRCFury: NDMF's manual bake applies MA and returns a copy.
             {
                 var baked = ModularAvatarBaker.TryBake(ctx.SourceDescriptor, ctx.Report);
                 if (baked != null)
@@ -578,8 +523,7 @@ namespace AvatarBridge
         static void AdoptBakedCopy(BridgeContext ctx, GameObject baked, GameObject source)
         {
             var bakedDescriptor = baked.GetComponentInChildren<VRCAvatarDescriptor>(true);
-            // Read everything (menus, params, layers) from the baked data and convert the
-            // baked copy in place; the original stays untouched.
+            // Convert the baked copy in place; the original stays untouched.
             ctx.SourceDescriptor = bakedDescriptor;
             ctx.Target = bakedDescriptor.gameObject;
             ctx.Target.name = source.name + " (ChilloutVR)";

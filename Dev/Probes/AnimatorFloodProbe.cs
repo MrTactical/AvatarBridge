@@ -1,12 +1,10 @@
-// Add squash on an avatar whose controller the Animator window shows: which state machines
-// the build destroys, and whether the window is left holding them. The window itself is made
-// here and never drawn, since a batch Unity has no GUI to draw it in; a breadcrumb or graph
-// pointing at a destroyed state machine is what floods its OnGUI with MissingReferenceException.
+// Add squash while the Animator window shows the controller: which state machines the build
+// destroys, and whether the window still holds them (that floods its OnGUI with
+// MissingReferenceException). The window is made but never drawn: batch has no GUI.
 //
 // Run: Unity.exe -batchmode -projectPath <p> -executeMethod AvatarBridge.Regression.AnimatorFloodProbe.Run
 //        -floodPrefab <Assets/...prefab> -floodOut <dir> -quit
-// Add -floodPlay, and drop -quit, to build in Play mode instead, as the report had it. That run
-// also leaves Play mode and checks what the build left behind: Unity puts the scene back, so an
+// -floodPlay (no -quit) builds in Play mode, then leaves it: Unity restores the scene, so an
 // animation still switching to a squash copy the avatar no longer wears is a half-applied build.
 #if CVR_CCK_EXISTS && AVATARBRIDGE_YAPS
 using System;

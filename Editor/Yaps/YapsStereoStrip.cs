@@ -1,12 +1,8 @@
 // Drops the double-wide stereo variants of YAPS patches from a build.
 //
-// Unity compiles every variant of a shader three times for a bundle: mono, single-pass
-// instanced and double-wide. ChilloutVR always draws single-pass instanced, so the
-// double-wide third of a patch is compiled on the first upload and shipped in every
-// download, and never drawn. A patch's vertex variant costs seconds to compile, and an
-// avatar with many patches waited minutes on that third alone. Patches only ever ship to
-// ChilloutVR, so no other build loses anything; any other shader is left alone. The live
-// tissue's step loses every stereo copy, as it is only blitted.
+// ChilloutVR always draws single-pass instanced, so the double-wide copy Unity compiles
+// for a bundle is never drawn, and on an avatar with many patches it cost minutes of
+// compile. Patches only ship to ChilloutVR; other shaders are left alone.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -24,8 +20,8 @@ namespace AvatarBridge
 
         public int callbackOrder => 0;
 
-        // The live tissue's step is only ever blitted, never drawn into an eye, so it needs no
-        // stereo copy at all. Its skip_variants pragma does not reach the ones Unity adds itself.
+        // The live tissue step is only blitted, so it needs no stereo copy. Its
+        // skip_variants pragma misses the ones Unity adds itself.
         static readonly ShaderKeyword[] Stereo =
         {
             DoubleWide, new ShaderKeyword("STEREO_INSTANCING_ON"), new ShaderKeyword("STEREO_MULTIVIEW_ON"),

@@ -4,15 +4,9 @@
 //
 //   Tools > Avatar Bridge > Dev > Atlas > Screen atlas spike
 //
-// Builds two quads: one stamps a known value into a fixed corner of the
-// screen, the other grabs the screen and samples that corner back. If the
-// number comes back, the mechanism works and a socket could publish its
-// world position this way: no light slots, no contact pairs, no sync bits,
-// and nothing a viewer can switch off short of blocking the shader.
-//
-// Play Mode proves this half. Whether ChilloutVR's asset filter keeps a
-// GrabPass through an upload is a separate question and only an upload can
-// answer it.
+// One quad stamps a known value into a screen corner, another grabs it back.
+// If it survives, a socket can publish its position with no light slots,
+// contacts or sync bits. Whether CVR keeps a GrabPass needs an upload.
 using System.Linq;
 using UnityEditor;
 using UnityEditor.Animations;
@@ -25,10 +19,7 @@ public class SpikeAtlas : EditorWindow
 
     const string Root = "YAPS Atlas Spike";
     Color _value = new Color(0.25f, 0.50f, 0.75f, 1f);
-    // Above the mic icon rather than the top corner, and small. A VR
-    // headset's field of view is far narrower than the desktop window, so
-    // the top-left of the render target is off the edge of what anyone
-    // actually sees.
+    // Above the mic icon: a headset never shows the render target's top corner.
     Vector2 _corner = new Vector2(-0.95f, -0.45f);
     float _size = 0.02f;
     string _result = "";
@@ -71,12 +62,8 @@ public class SpikeAtlas : EditorWindow
         go.name = name;
         go.transform.SetParent(root.transform, false);
         DestroyImmediate(go.GetComponent<Collider>());
-        // SAVED AS AN ASSET, not made in the scene. A material created with
-        // new Material() lives inside the scene object, and the shader it
-        // points at is then a dependency of a scene object rather than of an
-        // asset. The GameObjects reached the upload and the shader did not,
-        // which is exactly what magenta means: Unity's error shader standing
-        // in for one that is not in the bundle.
+        // Saved as an asset: with a scene-only new Material() the shader missed
+        // the upload bundle and rendered magenta.
         const string dir = "Assets/YapsSpike";
         string path = dir + "/" + name + ".mat";
         var m = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -89,9 +76,7 @@ public class SpikeAtlas : EditorWindow
         m.SetFloat("_Size", _size);
         if (m.HasProperty("_SpikeValue"))
         {
-            // The control is deliberately a different colour. Set to the same
-            // value as the writer it proved nothing: three identical patches
-            // cannot show which one is which.
+            // A different colour, or identical patches cannot be told apart.
             m.SetVector("_SpikeValue",
                 name == "Control" ? new Vector4(1f, 0.5f, 0f, 1f) : (Vector4) _value);
         }
@@ -100,9 +85,7 @@ public class SpikeAtlas : EditorWindow
         go.GetComponent<MeshRenderer>().sharedMaterial = m;
     }
 
-    // The named GrabPass publishes a global texture. Reading it back turns
-    // "it looks right" into a number, which is the only way to see how much
-    // precision a channel actually carries.
+    // Reads the named GrabPass's global texture back to measure channel precision.
     void Read()
     {
         var tex = Shader.GetGlobalTexture("_YAPS_SpikeAtlas");
@@ -140,16 +123,9 @@ public class SpikeAtlas : EditorWindow
         Debug.Log("[AtlasSpike] " + _result);
     }
 
-    // The only question Play Mode cannot answer is whether ChilloutVR keeps
-    // a GrabPass through an upload. Parent the spike under the avatar and it
-    // ships with it: if the two patches still match in game, the transport
-    // is real.
-    //
-    // The quads are scaled up enormously on purpose. The vertex shader
-    // ignores their position entirely, so scale changes nothing about what is
-    // drawn, but a renderer whose BOUNDS are huge is never frustum culled.
-    // Otherwise the patch vanishes the moment the avatar leaves the view,
-    // which is exactly when a socket most needs to be publishing.
+    // Parents the spike under the avatar for the upload test: if the patches
+    // match in game, CVR keeps the GrabPass. Large bounds avoid frustum culling;
+    // the vertex shader ignores the transform.
     void Attach()
     {
         var root = GameObject.Find(Root);
@@ -163,15 +139,10 @@ public class SpikeAtlas : EditorWindow
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
         {
             if (t == root.transform) continue;
-            // Big enough that frustum culling never drops it, small enough
-            // that a FAILED shader is a patch rather than a wall: the error
-            // shader ignores the spike's vertex maths and draws the real geometry,
-            // and at 100 units that filled the whole view with magenta.
+            // Not 100: a failed shader draws the real geometry, and that filled the view with magenta.
             t.localScale = Vector3.one * 2f;
         }
-        // OFF by default, behind a menu toggle. Two bright patches welded to
-        // the corner of everyone's view is not something to ship by accident
-        // on an avatar that gets worn.
+        // Off by default, behind a menu toggle: the patches sit in everyone's view.
         root.SetActive(false);
         string entry = MenuToggle(avatar, root);
 
@@ -184,13 +155,8 @@ public class SpikeAtlas : EditorWindow
         Debug.Log("[AtlasSpike] " + _result);
     }
 
-    // The entry, the parameter and the layer, all written here.
-    //
-    // The CCK only generates a parameter and a layer for a settings entry
-    // when someone presses Create Animator, and that regenerates the whole
-    // controller from the base one, which throws away everything YAPS wrote
-    // into it. Writing the three pieces directly avoids the regeneration and
-    // the rebake that would have to follow it.
+    // Writes entry, parameter and layer directly: the CCK's Create Animator
+    // regenerates the controller and throws away what YAPS wrote.
     static string MenuToggle(ABI.CCK.Components.CVRAvatar avatar, GameObject target)
     {
         const string Name = "Atlas Spike";
@@ -222,9 +188,7 @@ public class SpikeAtlas : EditorWindow
 
         string path = AnimationUtility.CalculateTransformPath(target.transform, avatar.transform);
 
-        // Both directions as explicit clips. ChilloutVR does not restore
-        // Write Defaults, so a state that says nothing leaves the object
-        // wherever the last thing to touch it left it.
+        // Both directions explicit: CVR does not restore Write Defaults.
         var on = Clip(ac, Name + " on", path, 1f);
         var off = Clip(ac, Name + " off", path, 0f);
 

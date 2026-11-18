@@ -1,12 +1,9 @@
-// How VRChat's PhysBone reads Endpoint Position on a scaled bone: in the
-// bone's own scaled units, or in metres. Measured 2026-10-01: scaled units,
-// as MagicaClothWriter's "_End" bone already places it (Far turned 3.03
-// degrees, the angle a 10 m tip needs; Near 0.89, where a 0.1 m tip needs
-// about 11). The SDK only builds the tip at runtime, so this asks the
-// simulation: chains under a parent at scale 100, Endpoint Position 0.1, one
-// collider 5 m out that only a tip in scaled units reaches, one just past the
-// bone that any tip reaches. "Gravity" is no control: a bone pointing up has
-// gravity along its own axis and never turns.
+// PhysBone Endpoint Position on a scaled bone: scaled units, not metres
+// (measured 2026-10-01; Far turned 3.03 deg as a 10 m tip needs, Near 0.89
+// where 0.1 m needs ~11), as MagicaClothWriter's "_End" bone assumes.
+// The tip only exists at runtime: parent at scale 100, endpoint 0.1, one
+// collider 5 m out, one just past the bone. Gravity is no control: an upright
+// bone never turns under it.
 //
 // Run: -executeMethod AvatarBridge.Regression.EndpointScaleProbe.Run (no -quit)
 #if VRC_SDK_VRCSDK3

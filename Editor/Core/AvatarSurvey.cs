@@ -1,12 +1,6 @@
-// What an avatar actually does, read rather than driven.
-//
-// The toggle sweep moves a parameter and watches: it can say nothing
-// appeared to happen and never why. This is the other half. It reads the
-// controller, the menu and the components into one model, so a question
-// like "can anything change this parameter" has an answer that does not
-// depend on catching it in the act.
-//
-// Nothing here writes to the avatar.
+// What an avatar does, read rather than driven: controller, menu and components in one
+// model, so "can anything change this parameter" has an answer the toggle sweep cannot give.
+// Read only.
 #if CVR_CCK_EXISTS
 using System.Collections;
 using System.Collections.Generic;
@@ -23,8 +17,7 @@ namespace AvatarBridge
 {
     public static class AvatarSurvey
     {
-        // How a parameter can come to hold a value. A parameter with none
-        // of these is stuck at its default for the avatar's whole life.
+        // How a parameter gets a value; with none it is stuck at its default.
         public enum Source { Menu, Driver, Contact, Stream, Curve, Game }
 
         public class Param
@@ -36,8 +29,7 @@ namespace AvatarBridge
             public readonly SortedSet<string> Writers = new SortedSet<string>(System.StringComparer.Ordinal);
             public readonly SortedSet<string> Readers = new SortedSet<string>(System.StringComparer.Ordinal);
             public readonly SortedSet<Source> How = new SortedSet<Source>();
-            // Layers that read it AND write something to the avatar, so a
-            // parameter nothing can change is a feature nobody can reach.
+            // Layers that read it AND write to the avatar: if nothing changes it, the feature is unreachable.
             public int DrivesBindings;
         }
 
@@ -81,9 +73,7 @@ namespace AvatarBridge
             public string Detail;
         }
 
-        // Something that could leave the avatar and be uploaded as a prop:
-        // its own mesh, its own textures, hanging off one bone, switched by
-        // one control. Anything skinned across the rig is clothing and stays.
+        // Could be uploaded as a prop: own mesh and textures, one bone, one control.
         public class PropCandidate
         {
             public string Path;
@@ -97,11 +87,9 @@ namespace AvatarBridge
         public class Model
         {
             public string Avatar;
-            // Null when there was none to read. Then no layer is known, and
-            // nothing here proves a renderer is never switched on.
+            // Null when none: then nothing proves a renderer is never switched on.
             public AnimatorController Controller;
-            // Clips the shipped override controller swaps in, by the clip they
-            // replace. What plays is the replacement, so that is what is read.
+            // Override clips by the clip they replace; the replacement is what plays.
             public readonly Dictionary<AnimationClip, AnimationClip> Overrides = new Dictionary<AnimationClip, AnimationClip>();
             public readonly List<Param> Parameters = new List<Param>();
             public readonly List<Layer> Layers = new List<Layer>();
@@ -171,10 +159,7 @@ namespace AvatarBridge
             }
         }
 
-        // The controller ChilloutVR uploads: the overrides, else the base,
-        // and the Animator's slot last. The CCK reads the first two. The slot
-        // is whatever was left there, and on an avatar never built it is
-        // often empty or stale.
+        // What CVR uploads: overrides, else base. The Animator slot is last, often stale or empty.
         internal static AnimatorController ShippedController(CVRAvatar avatar, Animator animator = null)
         {
             var controller = avatar != null ? BridgeContext.Underlying(avatar.overrides) : null;
@@ -258,8 +243,7 @@ namespace AvatarBridge
         }
 
         // ponytail: a layer with sub-machines counts every state as reachable; follow
-        // their routing if a real avatar needs it. Every gap here can only make the
-        // checks below go quiet, never raise a false alarm.
+        // their routing if a real avatar needs it. Gaps only silence checks, never false-alarm.
         static HashSet<AnimatorState> Reachable(AnimatorStateMachine root, Dictionary<string, AnimatorControllerParameter> declared)
         {
             if (root.stateMachines.Length > 0) return null;
@@ -320,8 +304,7 @@ namespace AvatarBridge
             {
                 layer.Bindings.Add($"{b.path}::{b.propertyName}");
                 writes.Add($"{b.path}::{b.propertyName}");
-                // A curve on the Animator itself writes the parameter of that
-                // name: the usual way to smooth a toggle.
+                // An Animator curve writes the same-named parameter, the usual toggle smoother.
                 if (b.type != typeof(Animator) || !string.IsNullOrEmpty(b.path)) continue;
                 var p = model[b.propertyName];
                 if (p == null) continue;
@@ -355,17 +338,14 @@ namespace AvatarBridge
             }
         }
 
-        // An entry the CCK builds its own layer for at "Create Controller".
-        // Its objects are its own targets, so no layer of ours reads it, and
-        // that read as a dead control: the converter pruned every one.
-        // A dropdown keeps its targets on each option, not on itself, and a
-        // clip-mode entry builds the same layer from the author's clips.
+        // An entry the CCK builds its own layer for at "Create Controller". No layer of
+        // ours reads it, so it looked dead and the converter pruned every one.
+        // A dropdown keeps targets per option; clip mode builds from the author's clips.
         internal static bool DrivesTargets(CVRAdvancedSettingsEntry entry)
             => TargetLists(entry).Any(list => list.Count > 0) || Clips(entry).Any();
 
-        // The paths the CCK's generated layer for this entry switches. It
-        // binds the stored treePath, and skips a target with no object. In
-        // clip mode it switches whatever the clips turn on or off.
+        // Paths the generated layer switches: stored treePath, targets with an object, or in
+        // clip mode whatever the clips toggle.
         internal static IEnumerable<string> TargetPaths(CVRAdvancedSettingsEntry entry)
         {
             foreach (var list in TargetLists(entry))
@@ -417,8 +397,7 @@ namespace AvatarBridge
         static object Field(object owner, string name)
             => owner.GetType().GetField(name, BindingFlags.Public | BindingFlags.Instance)?.GetValue(owner);
 
-        // A control writes its machine name, and the axis suffixes the
-        // client registers for the multi-value types.
+        // Its machine name, plus the client's axis suffixes for multi-value types.
         static IEnumerable<string> Names(string machine)
         {
             if (string.IsNullOrEmpty(machine)) yield break;
@@ -446,8 +425,7 @@ namespace AvatarBridge
                 }
             }
 
-            // A clip animates the driver's slots and it sets the parameters
-            // on the animators it lists. Only this avatar's own counts.
+            // Only drivers aimed at this avatar's own animator count.
             var animator = avatar.GetComponent<Animator>();
             foreach (var driver in avatar.GetComponentsInChildren<CVRAnimatorDriver>(true))
             {
@@ -462,8 +440,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Streams are read by name: the CCK's entry type has moved
-            // between versions and the field is not worth a hard reference.
+            // By name: the CCK's entry type moved between versions.
             foreach (var stream in avatar.GetComponentsInChildren<CVRParameterStream>(true))
             {
                 if (stream == null) continue;
@@ -482,12 +459,7 @@ namespace AvatarBridge
             }
         }
 
-        // Which renderers could be lifted off the avatar entirely.
-        //
-        // The test is deliberately strict, because being wrong here costs
-        // somebody their outfit: one bone, textures nothing else uses, and a
-        // single control switching it. Clothing skinned across the rig, and
-        // anything a second layer animates, fails and stays where it is.
+        // Renderers that could be lifted off entirely. Strict, as a mistake costs an outfit.
         static void FindProps(CVRAvatar avatar, Model model)
         {
             var root = avatar.transform;
@@ -511,10 +483,7 @@ namespace AvatarBridge
                 string path = AnimationUtility.CalculateTransformPath(r.transform, root);
                 var mesh = AvatarWeight.MeshOf(r);
 
-                // This tool's own atlas and socket readout objects. Not
-                // rejected with a reason, because there is no question to
-                // answer: they are not the user's to lift out. A plug's
-                // readout is one slot of the plug and does not count.
+                // This tool's own atlas and readout objects: silently skipped, not the user's.
                 if (r.sharedMaterials != null && (r.sharedMaterials.Any(YapsMarks.IsAtlasMaterial)
                     || r.sharedMaterials.Length > 0 && r.sharedMaterials.All(YapsMarks.IsReadoutMaterial))) continue;
 
@@ -522,10 +491,8 @@ namespace AvatarBridge
                 string bone = null;
                 if (r is SkinnedMeshRenderer skin)
                 {
-                    // One bone, or one chain. A thing held in a hand is
-                    // weighted to the hand AND its fingers, which is still
-                    // extractable: attach at the root of the chain and lose
-                    // the articulation. Bones on separate limbs are clothing.
+                    // Or one chain: a held item weights the hand AND fingers, still extractable
+                    // at the chain root. Bones on separate limbs are clothing.
                     var used = UsedBones(skin)
                         .Where(i => skin.bones != null && i >= 0 && i < skin.bones.Length && skin.bones[i] != null)
                         .Select(i => skin.bones[i])
@@ -543,10 +510,8 @@ namespace AvatarBridge
                 }
                 if (string.IsNullOrEmpty(bone)) { Reject(model, "no bone to ride"); continue; }
 
-                // A toggle almost never animates the renderer: it switches an
-                // object above it. Climb while the ancestor holds this
-                // renderer and nothing else, which is exactly the boundary a
-                // prop would be cut along, and look for any of those paths.
+                // Toggles switch an object above the renderer: climb while the ancestor holds
+                // only this renderer, the boundary a prop would be cut along.
                 var paths = new List<string> { path };
                 for (var at = r.transform.parent; at != null && at != root; at = at.parent)
                 {
@@ -554,11 +519,8 @@ namespace AvatarBridge
                     paths.Add(AnimationUtility.CalculateTransformPath(at, root));
                 }
 
-                // How many layers touch it does not matter: a prop is
-                // routinely switched by its own toggle, a preset and an emote
-                // all at once. What matters is whether anything does more
-                // than switch it, because a material or blendshape animated
-                // from the avatar cannot follow it out.
+                // Many layers may switch it; what disqualifies is anything more than switching,
+                // since an animated material or blendshape cannot follow it out.
                 var touching = model.Layers
                     .Where(l => l.Bindings.Any(b => paths.Any(p =>
                         b.StartsWith(p + "::", System.StringComparison.Ordinal))))
@@ -572,10 +534,7 @@ namespace AvatarBridge
                     .Distinct()
                     .ToList();
                 var beyondSwitching = touched
-                    // Scaling to zero is how a great many avatars toggle a
-                    // thing that must stay active. Treat it as switching: a
-                    // candidate list is read by a person, and refusing every
-                    // scale-toggled prop hides most of them.
+                    // Scale to zero is a common toggle; refusing it would hide most props.
                     .Where(prop => prop != "m_IsActive" && prop != "m_Enabled"
                                    && !prop.StartsWith("m_LocalScale", System.StringComparison.Ordinal))
                     .ToList();
@@ -612,9 +571,7 @@ namespace AvatarBridge
             model.Rejected[why] = n + 1;
         }
 
-        // The one bone every other used bone hangs off, or null when they
-        // sit on separate branches: a shirt reaching both arms has no root
-        // short of the spine, and lifting that out is lifting out the body.
+        // The bone all used bones hang off, or null on separate branches (a shirt's root is the spine).
         static Transform ChainRoot(List<Transform> used)
         {
             foreach (var candidate in used)
@@ -660,17 +617,14 @@ namespace AvatarBridge
                 }
                 else if (p.Writers.Count == 0 && p.DrivesBindings > 0 && Neutralised(p.Name, out string by))
                 {
-                    // Frozen on purpose. A condition reading it now always
-                    // takes the same branch, which is what the setting meant,
-                    // and calling that a lost feature sends people hunting.
+                    // Frozen on purpose by a setting; not a lost feature.
                     Add(model, "neutralised by a setting", p.Name,
                         $"{by} removed what wrote it, so conditions reading it settle at {p.Default} " +
                         "and behave as though it never fires. Working as asked, not broken.");
                 }
                 else if (p.Writers.Count == 0 && p.DrivesBindings > 0 && LostItsDriver(p.Name, out string was))
                 {
-                    // Not an unwired feature: something used to write this and
-                    // the conversion removed the thing that did.
+                    // The conversion removed its writer.
                     Add(model, "stopped working when converted", p.Name,
                         $"{was}, so nothing writes it here. It drives {BridgeElements.Count(p.DrivesBindings, "binding", "bindings")} " +
                         $"and now sits at {p.Default}.");
@@ -711,10 +665,8 @@ namespace AvatarBridge
                 Add(model, "empty layer", l.Name, "no states, so it can never do anything");
             }
 
-            // A state with no motion and Write Defaults off drops the whole body
-            // into the bicycle pose, every muscle at zero, while it plays. Seen on
-            // a toggle whose clips went missing; the same avatar stood fine on
-            // empty states with Write Defaults on.
+            // No motion with Write Defaults off drops the body into the bicycle pose (every
+            // muscle at zero) while it plays; with Write Defaults on it stands fine.
             foreach (var l in model.Layers.Where(l => l.Weight > 0f))
             {
                 foreach (var st in l.Reached.Where(s => s.State.motion == null))
@@ -740,9 +692,8 @@ namespace AvatarBridge
         {
             var live = model.Layers.Where(l => l.Weight > 0f).ToList();
             var covered = live.ToDictionary(l => l, Covered);
-            // An empty path is the Animator itself: humanoid muscles, root motion,
-            // animated parameters. Locomotion, an additive idle and an action layer
-            // all writing the body is the design, not a clash.
+            // Empty path is the Animator itself (muscles, root motion, parameters): several
+            // layers writing the body is the design, not a clash.
             bool OnBody(string b) => b.StartsWith("::", System.StringComparison.Ordinal);
 
             var writers = new Dictionary<string, List<Layer>>(System.StringComparer.Ordinal);
@@ -837,9 +788,7 @@ namespace AvatarBridge
 
         static string Readable(string binding) => binding.Replace("::", ".");
 
-        // A parameter this tool deliberately cut the writer from. The name
-        // survives because a layer still reads it beside parameters that are
-        // very much alive, and the merger keeps what it references.
+        // Its writer cut on purpose; the name survives because a layer still reads it.
         static bool Neutralised(string name, out string by)
         {
             by = null;
@@ -853,9 +802,7 @@ namespace AvatarBridge
             return false;
         }
 
-        // A parameter VRChat wrote and ChilloutVR does not. Worth telling
-        // apart from a feature the author never wired: this one worked
-        // before the conversion, and the fix is different.
+        // VRChat wrote it, CVR does not: it worked before, so the fix differs from an unwired one.
         static bool LostItsDriver(string name, out string was)
         {
             was = null;
@@ -880,8 +827,7 @@ namespace AvatarBridge
         static void Add(Model model, string kind, string subject, string detail)
             => model.Findings.Add(new Finding { Kind = kind, Subject = subject, Detail = detail });
 
-        // Reflection: the CCK's driver task type has changed shape across
-        // versions and the harness reads it the same way.
+        // Reflection: the CCK's driver task type changed shape across versions.
         static void ReadDriver(StateMachineBehaviour behaviour, Layer layer, Model model)
         {
             if (behaviour == null) return;
@@ -900,8 +846,7 @@ namespace AvatarBridge
                         target.Writers.Add(who);
                         target.How.Add(Source.Driver);
                     }
-                    // Its operands can be parameters too. Missing those read a
-                    // copy's source as unused, and FreeWins deletes unused ones.
+                    // Operands too, or a copy's source reads as unused and FreeWins deletes it.
                     foreach (string operand in new[] { "a", "b", "c" })
                     {
                         if (taskType.GetField(operand + "Type")?.GetValue(task)?.ToString() != "Parameter") continue;
@@ -914,10 +859,7 @@ namespace AvatarBridge
             }
         }
 
-        // A name nobody chose and nobody can act on.
-        //
-        // GoGo Loco's parameters, this tool's scaffolding, what the game
-        // writes, what a PhysBone used to write. Normal, and not findings.
+        // Names nobody can act on (GoGo, this tool's scaffolding, game and PhysBone outputs).
         static readonly System.Text.RegularExpressions.Regex Scaffolding =
             new System.Text.RegularExpressions.Regex(
                 @"^#?(Go/|AB_Ready_|YAPS\d|VF\d+_|VF_\d+_)|^#AvatarScaler/|_(IsGrabbed|Stretch|Squish|Angle|IsPosed)$",
@@ -928,8 +870,7 @@ namespace AvatarBridge
             && (Scaffolding.IsMatch(name) || CvrParameterNames.IsGameDriven(name)
                 || CvrParameterNames.NeverFed(name));
 
-        // Findings a person can act on: something of theirs is broken or
-        // unreachable, and the name is one they would recognise.
+        // Findings on something of theirs, under a name they would recognise.
         static readonly HashSet<string> Actionable = new HashSet<string>
         {
             "unreachable feature", "control that does nothing", "control with no parameter",
@@ -940,8 +881,7 @@ namespace AvatarBridge
 
         static bool WorthTelling(Finding f) => Actionable.Contains(f.Kind) && !Internal(f.Subject);
 
-        // What each finding is called where somebody who did not build the
-        // avatar has to read it. The model's own names are for the model.
+        // Reader-facing names for each finding.
         static string Headline(string kind, int count)
         {
             switch (kind)
@@ -979,8 +919,7 @@ namespace AvatarBridge
             }
         }
 
-        // The order a reader cares about, not the order they happen to be
-        // in: something nobody can reach beats something merely untidy.
+        // Unreachable before untidy.
         static readonly string[] Order =
         {
             "state that bicycles the body",
@@ -996,9 +935,7 @@ namespace AvatarBridge
             return i < 0 ? Order.Length : i;
         }
 
-        // The conversion report's section: the counts in the open, the full
-        // listing folded, because a complex avatar has a thousand contested
-        // bindings and nobody reads a thousand lines.
+        // Counts open, listing folded: a complex avatar has a thousand contested bindings.
         public static string Markdown(Model model)
         {
             var sb = new StringBuilder();
@@ -1039,8 +976,7 @@ namespace AvatarBridge
             return sb.ToString();
         }
 
-        // The Toolkit shows rows, so one row per kind rather than per
-        // finding: twelve hundred rows is not a report, it is a wall.
+        // One row per kind, not per finding: twelve hundred rows is a wall.
         public static void Fill(BridgeReport report, Model model)
         {
             report.Add(ReportStatus.Converted, "Survey", "Read",

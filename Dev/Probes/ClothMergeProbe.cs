@@ -1,15 +1,9 @@
 // How many cloth solvers could actually merge.
 //
-// The weight card says several solvers under one parent "could merge",
-// unless a toggle switches them apart". That is one gate and there are two,
-// because a MagicaCloth holds ONE set of simulation settings for every root
-// bone it carries:
-//
-//   1. nothing may switch two solvers apart, or merging welds a toggle shut
-//   2. their settings must already match, or merging retunes the loser
-//
-// So this counts the ceiling honestly: solvers, minus the distinct
-// (toggle signature, settings fingerprint) pairs they fall into. Reads only.
+// A MagicaCloth has one settings set for all its roots, so merging needs both:
+//   1. nothing switches the solvers apart, or a toggle is welded shut
+//   2. settings already match, or the loser is retuned
+// Ceiling = solvers minus distinct (toggle signature, settings) pairs. Reads only.
 //
 //   -executeMethod AvatarBridge.Regression.ClothMergeProbe.RunBatch
 #if CVR_CCK_EXISTS
@@ -120,9 +114,7 @@ namespace AvatarBridge.Regression
             return row;
         }
 
-        // Every clip that can switch a given path, by name, so two solvers
-        // driven by the same clips read identically and two driven by
-        // different ones do not.
+        // Clip names per path: same clips, same signature.
         static Dictionary<string, SortedSet<string>> SwitchingByPath(CVRAvatar avatar)
         {
             var map = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);

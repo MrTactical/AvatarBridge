@@ -1,24 +1,8 @@
-// Puts YAPS back onto a material whose shader has changed since the
-// conversion that first patched it.
-//
-// The case this exists for: a converted plug wears a Poiyomi shader
-// with the deform patched into it, and Poiyomi's unlock button goes
-// back to the shader it was locked FROM, which has no deform. So
-// unlocking to change a colour silently removes the deform, re-locking
-// does not bring it back, and there was no way back except converting
-// the whole avatar again.
-//
-// Now there is. Unlock, edit, re-lock, run this. The patch is applied
-// to whatever shader the material wears at the time, so every Poiyomi
-// feature and every property the user set survives it.
-//
-// The awkward part is the VALUES. A material's _YAPS_ properties only
-// exist while its shader declares them, and the unlocked shader does
-// not, so HasProperty says no and GetTexture returns nothing. They are
-// not gone: Unity keeps them in the material's serialized property
-// lists, orphaned but intact. So they are read from there, put back
-// after the patched shader is assigned, and the bake texture survives a
-// round trip it would otherwise not.
+// Puts YAPS back onto a material whose shader changed since the conversion.
+// Poiyomi's unlock returns to the shader it was locked from, which has no deform,
+// and re-locking does not restore it. Unlock, edit, re-lock, then run this.
+// The _YAPS_ values are invisible while the shader lacks them but still sit in the
+// serialized property lists, so they are read from there and put back.
 
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
@@ -56,17 +40,15 @@ namespace AvatarBridge
                     continue;
                 }
                 string folder = Path.GetDirectoryName(assetPath).Replace('\\', '/');
-                // A material inside a package is read only, so it cannot be repointed.
-                // The asset path, not the folder: a material directly in Assets
-                // has the folder "Assets", which has no slash after it.
+                // Package materials are read only. Test the path, not the folder:
+                // a material directly in Assets has folder "Assets", no slash.
                 if (!assetPath.StartsWith("Assets/", System.StringComparison.OrdinalIgnoreCase))
                 {
                     refusals.Add($"{material.name}: lives in {folder}, which is not in Assets; move it first");
                     continue;
                 }
 
-                // BEFORE the shader changes. Assigning a shader that lacks a
-                // property is one of the moments Unity may drop it.
+                // Before the shader changes: assigning one that lacks a property may drop it.
                 var saved = Capture(material);
 
                 var shader = YapsShaderPatcher.Patch(material, null, out string refusal, out _);
@@ -84,9 +66,7 @@ namespace AvatarBridge
                 if (!material.HasProperty("_YAPS_Bake")
                     || material.GetTexture("_YAPS_Bake") == null)
                 {
-                    // Worth saying rather than leaving them to find out in
-                    // game: the deform is in the shader but the mesh data it
-                    // bends by is not on the material, so it will do nothing.
+                    // Without the bake the deform does nothing in game.
                     refusals.Add($"{material.name}: patched, but it carries no bake texture: " +
                                  "convert the avatar again to rebuild it");
                 }
@@ -121,11 +101,7 @@ namespace AvatarBridge
             public readonly Dictionary<string, Vector4> Vectors = new Dictionary<string, Vector4>();
         }
 
-        // Read from the SERIALIZED lists, not through the material. A
-        // property whose shader does not declare it is invisible to
-        // HasProperty and GetFloat, which is what an unlocked material is
-        // in, but Unity still has the values in m_SavedProperties with
-        // nothing to apply them to.
+        // From m_SavedProperties: undeclared properties are invisible to HasProperty/GetFloat.
         static Values Capture(Material material)
         {
             var values = new Values();
@@ -160,8 +136,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Vector properties live in m_Colors; Unity stores both as a
-            // colour and does not distinguish them here.
+            // Vectors are stored in m_Colors.
             var colors = saved.FindPropertyRelative("m_Colors");
             for (int i = 0; colors != null && i < colors.arraySize; i++)
             {

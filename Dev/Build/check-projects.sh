@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-# Compile the repo together with each deployed project's own scripts: the
-# probes, tests and helpers in its Assets that call into AvatarBridge or
-# YAPS. compile-check.sh proves the repo builds; this proves a rename did
-# not break something that only lives in a project.
+# Compile the repo with each project's own scripts that call into AvatarBridge
+# or YAPS, so a rename cannot break something that only lives in a project.
 #
 #   Dev/Build/check-projects.sh                every project deploy.sh finds
 #   Dev/Build/check-projects.sh "/d/path/A"    just these
 #
-# The VRChat SDK define goes on only where the project has the SDK, so a
-# ChilloutVR-only project is checked as one. Errors are shown for the
-# project's files; the repo's own are compile-check.sh's job.
+# VRChat SDK define only where the project has the SDK. Only the project's
+# errors are shown; the repo's are compile-check.sh's job.
 set -u
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 UNITY="${UNITY_DATA:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Data}"
@@ -48,8 +45,7 @@ for proj in "${projects[@]}"; do
         echo "-target:library"
         echo "-out:\"$(cygpath -w "$dll")\""
         echo "-define:CVR_CCK_EXISTS;${sdk:+VRC_SDK_VRCSDK3;}AVATARBRIDGE_YAPS;UNITY_EDITOR;UNITY_2022_3_OR_NEWER"
-        # 0436: the deployed copy in ScriptAssemblies defines the same types
-        # as the repo sources, and the sources win.
+        # 0436: the deployed copy defines the same types; the sources win.
         echo "-nowarn:0169,0414,0649,0067,0436"
         echo "-r:\"$(cygpath -w "$NETSTANDARD")\""
         for d in "$UNITY/Managed/UnityEngine"/*.dll "$proj/Library/ScriptAssemblies"/*.dll; do
@@ -57,10 +53,8 @@ for proj in "${projects[@]}"; do
         done
         [ -n "$sdk" ] && while read -r f; do echo "-r:\"$(cygpath -w "$f")\""; done <<< "$sdk"
         find "$REPO/Editor" "$REPO/Runtime" -name '*.cs' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done
-        # The dev harness deploy.sh refreshes by name, as a deploy leaves it,
-        # so every AvatarBridge type the project can see is a source here.
-        # Same lookup as deploy.sh: the harness folders only, last match wins,
-        # or a gitignored spike sharing a name gets compiled instead.
+        # Dev harness resolved as deploy.sh does: harness folders only, last
+        # match wins, or a gitignored spike sharing a name gets compiled.
         for have in "$proj/Assets/AvatarBridge/Editor/DevTools"/*.cs; do
             [ -f "$have" ] || continue
             src=$(find "$REPO"/Dev/{Corpus,Tests,Probes,Scenes,Tester} -name "$(basename "$have")" -type f 2>/dev/null | tail -n 1)
@@ -72,9 +66,8 @@ for proj in "${projects[@]}"; do
 
     if [ -n "$sdk" ]; then name="$(basename "$proj") (VRChat SDK)"; else name="$(basename "$proj") (no VRChat SDK)"; fi
     errors=$("$MONO" "$CSC" "@$(cygpath -w "$rsp")" 2>&1 | grep "error CS" | sort -u)
-    # A type the repo renamed or removed still resolves from the deployed copy
-    # in Assembly-CSharp-Editor.dll, so a script calling the old name compiles
-    # here and breaks once Unity rebuilds. One bound out of those dlls is stale.
+    # A renamed type still resolves from the deployed dll, then breaks when
+    # Unity rebuilds. Anything bound out of those dlls is stale.
     stale=""
     if [ -f "$dll" ]; then
         if "$MONO" "$IKDASM" "$(cygpath -w "$dll")" > "$WORK/il.txt"; then

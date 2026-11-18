@@ -1,14 +1,8 @@
 // What a cascading physics addon actually looks like.
 //
-// Cake PB and its relatives build a rig of helper bones, each stage doing
-// one job and feeding the next, and the avatar's own bone rides the end of
-// it. Converting each stage into its own solver gives a dozen things
-// swinging separately where the source had one composed result.
-//
-// Before deciding what to do about that, two facts are needed: what the
-// rig is shaped like, and whether the MESH is skinned to the helper bones
-// or to the avatar's own. Removing the rig is only safe if the mesh never
-// mentions it.
+// Cake PB and similar chain helper-bone stages that feed the avatar's bone;
+// converted per stage they swing separately. Reports the rig's shape and
+// whether the mesh skins to it: removing it is only safe if not.
 //
 //   -executeMethod AvatarBridge.Regression.CakeRigProbe.Run
 //   AVATARBRIDGE_ONE  = output folder holding the prefab
@@ -35,9 +29,7 @@ namespace AvatarBridge.Regression
             var asset = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
             var instance = (GameObject)PrefabUtility.InstantiatePrefab(asset);
 
-            // Before anything rig-specific, because the useful question after
-            // a deletion is whether it broke a reference, and by then the rig
-            // is gone.
+            // First: after a deletion the rig is gone and only broken references remain.
             Dangling(instance);
 
             var rig = instance.GetComponentsInChildren<Transform>(true)
@@ -82,9 +74,7 @@ namespace AvatarBridge.Regression
                 }
             }
 
-            // The mapping that matters: constraints OUTSIDE the rig whose
-            // source is INSIDE it. Those constrained objects are the real
-            // bones the rig drives, and the ones a jiggle would go on.
+            // Constraints outside the rig sourced inside it: the real bones it drives.
             foreach (var t in instance.GetComponentsInChildren<Transform>(true))
             {
                 if (underRig.Contains(t)) continue;
@@ -132,9 +122,7 @@ namespace AvatarBridge.Regression
                 ? "[Cake] no surviving cloth borrows a collider from the rig - safe to delete"
                 : $"[Cake] {borrowed} collider reference(s) into the rig would break");
 
-            // Does anything ANIMATE a bone in the rig? A relay whose source
-            // is animated still carries something once the rig's physics is
-            // gone; one whose source is inert just copies a dead pose.
+            // A relay from an inert source just copies a dead pose once the physics is gone.
             var animatedInRig = new SortedSet<string>(StringComparer.Ordinal);
             foreach (var animator in instance.GetComponentsInChildren<Animator>(true))
             {
@@ -194,9 +182,7 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // A collider deleted while a surviving cloth still referenced it
-        // leaves a null in that cloth's list. This is what catches a deletion
-        // having quietly broken collision.
+        // A deleted collider leaves a null in a surviving cloth's list: broken collision.
         static void Dangling(GameObject instance)
         {
             int dangling = 0, held = 0;

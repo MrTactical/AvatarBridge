@@ -20,11 +20,8 @@ namespace AvatarBridge
             {
                 bool changed = false;
 
-                // 2D audio is dropped, not merely unpositioned. CVR
-                // decides whether to spatialize from the blend itself,
-                // and a failing source is never handed to the
-                // spatializer: perfect for the wearer, silent for
-                // everyone else.
+                // CVR never spatializes a source below blend 1: the
+                // wearer hears it, everyone else hears silence.
                 if (source.spatialBlend < 1f)
                 {
                     source.spatialBlend = 1f;
@@ -55,9 +52,7 @@ namespace AvatarBridge
                     source.maxDistance = source.minDistance;
                     changed = true;
                 }
-                // Not changed; the author's reach is the author's call.
-                // But a sound that dies inside arm's length presents as
-                // a conversion fault, so it is named.
+                // Left as set, but named: a short reach looks like a conversion fault.
                 if (source.maxDistance < 5f && nearby.Count < 6)
                 {
                     nearby.Add($"{source.gameObject.name} ({source.maxDistance:0.#} m)");
@@ -98,14 +93,9 @@ namespace AvatarBridge
             }
         }
 
-        // VRChat never applies an avatar's root motion, so a source avatar
-        // routinely ships with the flag left on and nothing ever played it.
-        // Here the Animator does apply it, and a clip carrying root curves
-        // turns or shoves the avatar itself, over whatever ChilloutVR's own
-        // locomotion is doing. Reported as a spin on the spot after landing,
-        // out of a VRChat proxy landing clip, and only in VR: a desktop
-        // player's mouse writes an absolute yaw every frame, which hides the
-        // drift, where VR only ever asks for a relative turn.
+        // VRChat ignores root motion, so source avatars ship with it on. CVR
+        // applies it, and root curves turn or shove the avatar: a spin after
+        // landing, VR only, since desktop mouse yaw is absolute and hides it.
         internal static void StopRootMotion(BridgeContext ctx)
         {
             var animator = ctx.TargetAnimator;
@@ -128,13 +118,11 @@ namespace AvatarBridge
         internal static void NormalizeSkinnedBounds(BridgeContext ctx)
         {
             float measured = AvatarScalerInjector.MeasureHeight(ctx);
-            // The floor is for the padding only. Judged against it, every
-            // avatar under 0.75 m read as an unmeasurable one.
+            // Floor for the padding only; checked against it, every avatar under 0.75 m failed.
             float height = Mathf.Max(measured, 1.5f);
 
             if (!MeasureAvatarVolume(ctx.Target, out var envelope)
-                // Shorter than half the avatar means the geometry gave
-                // no usable answer. Decline rather than guess.
+                // Under half the avatar: no usable answer, decline rather than guess.
                 || envelope.size.y < measured * 0.5f)
             {
                 ctx.Report.Warning("Meshes", "Bounding boxes left as the avatar had them",
@@ -149,9 +137,7 @@ namespace AvatarBridge
             int changed = 0;
             foreach (var renderer in ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true))
             {
-                // localBounds is in the root bone's space, so the
-                // world-metre envelope must be carried into that space
-                // first. Bones ship at wildly different scales.
+                // localBounds is in root bone space, and bones ship at wildly different scales.
                 var space = renderer.rootBone != null ? renderer.rootBone : renderer.transform;
                 var wanted = ToLocalBounds(space, envelope);
 
@@ -176,8 +162,7 @@ namespace AvatarBridge
 
         internal static bool MeasureAvatarVolume(GameObject root, out Bounds world)
         {
-            // A local rather than the out parameter directly: C# won't let a local function
-            // capture an out parameter.
+            // A local function cannot capture an out parameter.
             var measured = new Bounds();
             bool any = false;
 
@@ -203,8 +188,7 @@ namespace AvatarBridge
                         Add(bone.position);
                     }
                 }
-                // A skinned mesh with no bone list is rare but legal; its root bone still says
-                // where it is, and without this such a mesh would contribute nothing at all.
+                // No bone list is rare but legal; the root bone still places the mesh.
                 if (skinned.bones.Length == 0 && skinned.rootBone != null)
                 {
                     Add(skinned.rootBone.position);

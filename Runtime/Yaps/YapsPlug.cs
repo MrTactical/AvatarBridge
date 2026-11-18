@@ -18,10 +18,8 @@ namespace AvatarBridge.Yaps
                  "conversion baked. A number bakes that slot alone, and a plug spanning several tears at the seam.")]
         public int materialSlot = -1;
 
-        // Made by the converter, which recorded every slot and mesh it baked
-        // in bakedSlots. Its object is a marker under a bone, so a chain read
-        // from it finds no slots, or every material of the body; a re-bake
-        // takes the records instead.
+        // Made by the converter. Its object is a marker under a bone, so a chain read
+        // from it finds the wrong slots; a re-bake uses bakedSlots instead.
         [HideInInspector]
         public bool converted;
 
@@ -149,16 +147,12 @@ namespace AvatarBridge.Yaps
         [Tooltip("Never answer a socket with any of these tags; beats the list above. Four at most.")]
         public List<string> refuses = new List<string>();
 
-        // Whether a bake gives this plug an in-game readout. Drawn in the
-        // inspector's See it work card, not with the knobs. Off unless asked
-        // for: the CCK counts its material slot on every built avatar.
+        // Off unless asked for: the CCK counts its material slot on every built avatar.
         [HideInInspector]
         public bool readout;
 
-        // The renderer the readout sits on and the mesh it replaced, so a
-        // rebuild or Remove can put it back; and what it is built from, so
-        // another plug baked into the same mesh can build it again. Written
-        // by the readout builder.
+        // Where the readout sits and the mesh it replaced, for Remove; and its
+        // sources, so another plug baked into the same mesh can rebuild it.
         [HideInInspector]
         public Renderer readoutRenderer;
         [HideInInspector]
@@ -173,23 +167,17 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Material bakedFrom;
 
-        // One entry per material slot the bake replaced, because a plug's
-        // vertices can span several. A whole avatar baked as one plug wears
-        // three materials, and patching only one leaves the rest of the mesh
-        // rigid while the patched part bends, so the mesh tears along the
-        // seam. bakedFrom above stays for the primary slot so an avatar
-        // baked before this still restores.
+        // One entry per slot the bake replaced: patching only one slot of a plug that
+        // spans several tears the mesh at the seam. bakedFrom stays for the primary
+        // slot so older bakes still restore.
         [System.Serializable]
         public class BakedSlot
         {
             public int slot;
             public Material was;
 
-            // Which renderer's slot. A plug rooted high enough spans several
-            // meshes, and slot 0 of a collar is not slot 0 of the body, so a
-            // record keyed on the number alone puts one mesh's material onto
-            // another. Empty means the plug's own renderer, so records
-            // written before a plug could span meshes still resolve.
+            // A plug can span meshes, so the slot number alone is ambiguous.
+            // Empty means the plug's own renderer (older records).
             public Renderer renderer;
         }
 
@@ -203,9 +191,8 @@ namespace AvatarBridge.Yaps
         public System.Collections.Generic.List<string> bakedShapes =
             new System.Collections.Generic.List<string>();
 
-        // A material an animation swaps into a baked slot, baked as that
-        // slot's own. It sits on no renderer until the toggle plays, so the
-        // knobs and the own-socket ticks reach it only through this record.
+        // A material an animation swaps into a baked slot. It sits on no renderer
+        // until the toggle plays, so the knobs reach it only through this record.
         [System.Serializable]
         public class SlotVariant
         {
@@ -232,10 +219,8 @@ namespace AvatarBridge.Yaps
         [HideInInspector]
         public Mesh boundsFrom;
 
-        // The wearer's own sockets, as changes against the default: every one
-        // may be entered except those on the hips. Changes rather than a full
-        // list, so a socket added later starts at its default rather than off.
-        // The inspector draws these as one checklist.
+        // The wearer's own sockets, as changes against the default (all but the hips).
+        // Changes, not a full list, so a socket added later starts at its default.
         [HideInInspector]
         public List<YapsSocket> selfEnter = new List<YapsSocket>();
         [HideInInspector]

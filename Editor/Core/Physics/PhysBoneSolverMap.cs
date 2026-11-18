@@ -74,11 +74,10 @@ namespace AvatarBridge
             return Mathf.Clamp01(inspector);
         }
 
-        // MagicaCloth2 takes this fraction of every restoring move back out of the velocity, so
-        // only the rest carries on as bounce; a PhysBone keeps all of it. Damping sits at its
-        // ceiling for nearly every chain (MagicaCloth2 sheds at most a fifth a step), so this is
-        // the one coefficient left, and it puts the chain's slow mode where the PhysBone's is.
-        // A preset's fixed value gave a dead chain a springy one's bounce and the other way round.
+        // MagicaCloth2 removes this fraction of each restoring move from the velocity; a PhysBone
+        // keeps all of it. Damping is at its ceiling for nearly every chain (MC2 sheds at most a
+        // fifth a step), so this is the one free coefficient: it matches the slow mode. A fixed
+        // preset value gave dead chains bounce and springy ones none.
         public static float RestorationAttenuation(float pull, float spring, float stiffness, bool advanced,
             float damping, float restoration)
         {

@@ -1,14 +1,8 @@
 // Does "nothing in the animator can switch it on" hold up?
 //
-// The report calls a renderer dead when it is off in the scene and no clip
-// binding reaches it. Acting on that means deleting geometry, so the claim
-// has to be checked against a walk that shares none of its code: every
-// animator in the hierarchy, override clips included, blend trees and sub
-// machines recursed, and every ancestor path considered.
-//
-// A false positive is the one that matters. The report calling something
-// dead that some clip really does switch on is a renderer the optimiser
-// would delete off a working avatar.
+// Checks the report's "dead renderer" claim (off, no clip reaches it) with a
+// walk sharing none of its code: every animator, overrides, blend trees, sub
+// machines, ancestor paths. A false positive deletes working geometry.
 //
 //   -executeMethod AvatarBridge.Regression.DeadRendererProbe.RunBatch
 #if CVR_CCK_EXISTS
@@ -123,9 +117,7 @@ namespace AvatarBridge.Regression
             return row;
         }
 
-        // Every path any clip can switch, read from the clips themselves
-        // rather than from the survey. The corpus digest calls this too, so
-        // the check and the thing it checks never drift apart.
+        // Read from the clips, not the survey. The corpus digest calls this too.
         public static HashSet<string> SwitchedByAnyClip(CVRAvatar avatar, out int clipCount)
         {
             var clips = new HashSet<AnimationClip>();
@@ -159,9 +151,7 @@ namespace AvatarBridge.Regression
             return switched.Contains("");
         }
 
-        // An override controller is the case the report can get wrong: the
-        // survey reads the controller underneath, so a clip swapped in by
-        // the override is never seen. Both are collected here.
+        // The survey reads the controller under an override and misses swapped clips; collect both.
         static void CollectClips(RuntimeAnimatorController runtime, HashSet<AnimationClip> clips)
         {
             if (runtime == null) return;

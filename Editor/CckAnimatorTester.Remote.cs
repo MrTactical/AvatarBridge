@@ -8,13 +8,10 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // A second copy of the live avatar, run the way another player's client
-    // runs it: it hears only what ChilloutVR sends. Synced parameters within
-    // the budget and the game's movement, gesture and voice parameters are
-    // copied from the wearer every frame. "#" locals stay at their defaults,
-    // IsLocal is false, and a parameter an animation drives is left to the
-    // copy's own animator, since every client computes those itself. Wherever
-    // the two differ, other players see something the wearer does not.
+    // A copy of the live avatar run as another player's client runs it: it gets only synced
+    // parameters within the budget and the game's movement, gesture and voice values. "#" locals
+    // stay default, IsLocal is false, and animation-driven parameters are left to the copy's own
+    // animator, as every client computes those itself.
     public partial class CckAnimatorTester
     {
         // The game sets these per viewer, so copying the wearer's would be wrong.

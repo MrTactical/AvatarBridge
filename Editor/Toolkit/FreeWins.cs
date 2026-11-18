@@ -1,22 +1,8 @@
-// Phase 1 of the optimisation plan: the removals nothing can notice.
-//
-// Two of them, both proven by reading the controller rather than by
-// flipping something and watching:
-//
-//   - a layer with no states, which can never do anything
-//   - a parameter no clip writes, no transition reads, no driver touches,
-//     no menu control names and no contact fires
-//
-// The third item on the plan's list, the placeholder clips written into
-// empty motion slots, is NOT removed and must not be. Unity crashes when
-// it builds a playable graph containing an empty slot, which is why those
-// placeholders exist at all. They are reported so the missing motion gets
-// found, and left exactly where they are.
-//
-// A sweep result is never the criterion here. An individual toggle
-// subordinated to a preset, a driver behind a wait state, a local name
-// driven only from elsewhere: all three look dead in motion and are not.
-// Only the static reading decides.
+// Removals nothing can notice: layers with no states, and parameters no clip, transition,
+// driver, menu control or contact uses. Placeholder clips in empty motion slots stay: Unity
+// crashes building a playable graph with an empty slot. They are only reported.
+// Decided by reading the controller, never by a sweep: preset-bound toggles, drivers behind
+// waits and names driven from elsewhere look dead in motion and are not.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -107,9 +93,7 @@ namespace AvatarBridge
                         plan.Spared.Add($"\"{name}\" belongs to YAPS, which fills its channel at setup");
                         continue;
                     }
-                    // Belt and braces. The survey counts a menu entry as a
-                    // writer, so this should never fire; if it ever does, the
-                    // parameter stays and the disagreement is worth knowing.
+                    // Should never fire (the survey counts menu entries); if it does, keep it.
                     if (named.Contains(name))
                     {
                         plan.Spared.Add($"\"{name}\" is named by an Advanced Settings entry");
@@ -123,9 +107,7 @@ namespace AvatarBridge
             return plan;
         }
 
-        // Into a copy at `savePath`, never into the controller itself:
-        // someone pointing this at their own avatar should be able to throw
-        // the result away.
+        // Into a copy at `savePath`, never the controller itself, so the result can be thrown away.
         public static AnimatorController Apply(CVRAvatar avatar, Plan plan, string savePath, BridgeReport report)
         {
             if (plan == null || plan.Controller == null)
@@ -180,11 +162,9 @@ namespace AvatarBridge
             EditorUtility.SetDirty(into);
             AssetDatabase.SaveAssets();
 
-            // Everywhere the old one is wired. ChilloutVR uploads the overrides,
-            // the CCK's Create Controller copies the base, and the editor plays
-            // the slot. Swapping the slot alone left the upload untidied and the
-            // next survey offering the same removals. The CCK's own two slots
-            // too: left on the old override, it offers to attach that again.
+            // Everywhere the old one is wired: ChilloutVR uploads the overrides, Create Controller
+            // copies the base, the editor plays the slot. The CCK's two slots too, or it offers
+            // to attach the old override again.
             var copies = new Dictionary<AnimatorOverrideController, AnimatorOverrideController>();
             RuntimeAnimatorController Swap(RuntimeAnimatorController held) =>
                 Rewired(held, plan.Controller, into, savePath, copies, 0);
@@ -215,11 +195,8 @@ namespace AvatarBridge
             return into;
         }
 
-        // An override wrapping the old controller is copied with its copy
-        // wrapping `to`, one level down: assigning over it would throw away
-        // every clip mapping in it, and retargeting it in place would reach
-        // every other avatar sharing it. Removed layers have no states, so no
-        // clip a swap names goes with them.
+        // An override of the old controller is copied to wrap `to`: assigning over it loses its
+        // clip mappings, retargeting in place reaches every avatar sharing it.
         static RuntimeAnimatorController Rewired(RuntimeAnimatorController held, AnimatorController from,
             AnimatorController to, string beside, Dictionary<AnimatorOverrideController, AnimatorOverrideController> copies, int depth)
         {
@@ -294,9 +271,7 @@ namespace AvatarBridge
                                         && b.path.EndsWith("AvatarBridge_EmptySlot", System.StringComparison.Ordinal));
         }
 
-        // Every motion in the machine, including the ones inside blend trees
-        // and sub-machines. Walked rather than listed: an avatar's states are
-        // nested however its author nested them.
+        // Every motion in the machine, blend trees and sub-machines included.
         static IEnumerable<Motion> Clips(AnimatorStateMachine machine)
         {
             if (machine == null) yield break;
