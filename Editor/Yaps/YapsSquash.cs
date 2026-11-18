@@ -30,6 +30,7 @@ namespace AvatarBridge
     public static class YapsSquash
     {
         public const string Category = "Squash";
+        public const string Experimental = "Live tissue is a beta and very experimental. Test it in ChilloutVR before you rely on it, and report anything that stretches, jumps or flickers.";
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
         // On each copy's importer, before the material it was copied from, for Strip to put back.
         internal const string Mark = "squash:";
@@ -2291,7 +2292,7 @@ namespace AvatarBridge
                 Lap("FollowSwaps");
                 var (on, refused) = YapsJelly.On(root, folder + "/" + YapsNativeBuilder.Sanitise(root.name) + " Jelly", ctx.Report);
                 BakeIfDented(root);
-                if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue", string.Join(" ", on));
+                if (on.Count > 0) ctx.Report.Converted(Category, "Soft parts move as live tissue (beta, very experimental)", string.Join(" ", on) + ". " + Experimental);
                 foreach (var why in refused) ctx.Report.Warning(Category, "A part is not on the jelly", why);
                 Lap("Jelly");
             }

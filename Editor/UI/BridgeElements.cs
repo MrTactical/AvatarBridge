@@ -494,10 +494,10 @@ namespace AvatarBridge
             return tag;
         }
 
-        public static Label BetaTag()
+        public static Label BetaTag(string tooltip = null)
         {
             var tag = (Label)Chip("BETA", Tone.Warn,
-                tooltip: "Confirmed working in game, but on limited evidence: turn it on deliberately and test.");
+                tooltip: tooltip ?? "Confirmed working in game, but on limited evidence: turn it on deliberately and test.");
             tag.AddToClassList("ab-chip-strong");
             return tag;
         }
