@@ -272,7 +272,6 @@ namespace AvatarBridge
         _YAPS_SquashLimbR (""YAPS squash right arm radii: upper, lower, hand"", Vector) = (0.2,0.18,0.25,0)
         _YAPS_SquashHands (""YAPS squash hands: own gain, others radius, others gain, skin stride"", Vector) = (1,0.05,1,0)
         _YAPS_SquashTune (""YAPS squash: lying-back weight, strength, bend give, deepest dent"", Vector) = (0.25,1,0.35,0.35)
-        _YAPS_SquashMotion (""YAPS squash in motion: stretch per reach, swing ignored below, longest"", Vector) = (0,0.1,1.12,0)
         _YAPS_SquashPlug (""YAPS squash plug press gain"", Range(0,2)) = 1
         [NoScaleOffset] _YAPS_JellyState (""YAPS live tissue state"", 2D) = ""black"" {}
         _YAPS_JellyLattice (""YAPS live tissue: particles across, up, deep; spacing"", Vector) = (0,0,0,0)

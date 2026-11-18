@@ -3298,6 +3298,18 @@ namespace AvatarBridge.Regression
             public float handBob, handBobHz;
             public Vector3 bobBase, handFixed, chestFixed;
             public bool bobSet, handFixedSet;
+            // -jellyHandSlow n [stairs [hold]]: the hand eased in over n frames, not 20, in stairs equal
+            // steps of depth, each held hold frames (150). -jellyHandOwn: the wearer's own wrist sent
+            // there in place of another player's hand.
+            public int handSlow = 20, handStairs = 1, handHold = 150;
+            public bool handOwn;
+            public Quaternion[] ownRest;
+            // -jellyHandWorld: the hand goes where the part's front was when it came, as a player's does,
+            // not after the part. -jellyHandBalls r: the part's cloths' balls at r again, as on a part
+            // whose cloth the conversion left be.
+            public bool handWorld, worldSet;
+            public Vector3 worldFront, worldOut;
+            public float handBalls;
             public float[] gripW = new float[8];
             public float speed, hitchSecs, turnDeg, kickBy, shoveBy, fps, bgBase = -1f, bgMost, furthestMost, tearMost, relMost, after30Most;
             public float[] pace;
@@ -3327,6 +3339,10 @@ namespace AvatarBridge.Regression
                 if (Arg("-jellyHandSweep") is string hw) handSweep = int.Parse(hw);
                 if (Arg("-jellyHandArm") is string ha) handArm = F(ha);
                 if (Arg("-jellyHandBob") is string hb) { handBob = F(hb); handBobHz = F(Arg("-jellyHandBob", 2)); }
+                if (Arg("-jellyHandSlow") is string hl) { handSlow = int.Parse(hl); if (Arg("-jellyHandSlow", 2) is string hn2 && !hn2.StartsWith("-")) { handStairs = int.Parse(hn2); if (Arg("-jellyHandSlow", 3) is string hh && !hh.StartsWith("-")) handHold = int.Parse(hh); } }
+                handOwn = a.Contains("-jellyHandOwn");
+                handWorld = a.Contains("-jellyHandWorld");
+                if (Arg("-jellyHandBalls") is string hbl) handBalls = F(hbl);
                 said = string.Join(" ", a.SkipWhile(x => x != "-jellyStab").Skip(1).Where(x => x != "-logFile"));
             }
         }
@@ -3413,7 +3429,7 @@ namespace AvatarBridge.Regression
                     var l = on.inverse.MultiplyPoint3x4((Vector3) Particle(s, 0, p)) / breastSpacing;
                     lines.Add(string.Join(",", p % dn.x, p / dn.x % dn.y, p / (dn.x * dn.y), l.x.ToString("0.0000", CultureInfo.InvariantCulture), l.y.ToString("0.0000", CultureInfo.InvariantCulture), l.z.ToString("0.0000", CultureInfo.InvariantCulture)));
                 }
-                foreach (int x in new[] { 29, 30, 31, 40, 58, 59, 85 }) lines.Add($"# {x} {(Vector3) s[dr + x]:F4} {s[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) s[dr + x]) / breastSpacing:F3}");
+                foreach (int x in new[] { 1, 18, 29, 30, 31, 40, 41, 58, 59, 85, 87, 92 }) lines.Add($"# {x} {(Vector3) s[dr + x]:F4} {s[dr + x].w:F4} local {on.inverse.MultiplyPoint3x4((Vector3) s[dr + x]) / breastSpacing:F3}");
                 lines.Add($"# region0 on the body {carried.InverseTransformPoint(breastRegions[0].position) / breastSpacing:F3} turned {(Quaternion.Inverse(carried.rotation) * breastRegions[0].rotation).eulerAngles:F1}");
                 lines.Add($"# region0 {breastRegions[0].name} parent {(breastRegions[0].parent ? breastRegions[0].parent.name : "-")} scale {breastRegions[0].lossyScale.x:F4}");
                 File.WriteAllLines(System.IO.Path.Combine(SessionState.GetString(K + "out", "Jelly"), $"dump-{frame}.csv"), lines);
@@ -3510,7 +3526,8 @@ namespace AvatarBridge.Regression
                     st.lastFurthest = furthest;
                 }
                 if (frame % 5 == 0)
-                    Debug.Log($"[Jelly] hand {frame}: furthest {1000f * furthest:0.0} mm, grips {string.Join(" ", st.gripW.Select(w => w.ToString("0.00", CultureInfo.InvariantCulture)))}, slots {Enumerable.Range(0, 8).Count(e => s[SideIx(0, 2 * e + 1)].w > 0.5f)}");
+                    Debug.Log($"[Jelly] hand {frame}: furthest {1000f * furthest:0.0} mm, grips {string.Join(" ", st.gripW.Select(w => w.ToString("0.00", CultureInfo.InvariantCulture)))}, slots {Enumerable.Range(0, 8).Count(e => s[SideIx(0, 2 * e + 1)].w > 0.5f)}" +
+                              $", tear {tear:0.00}, t18 {s[SideIx(0, 18)]:F3}, t1 {s[SideIx(0, 1)]:F4}, t0 {s[SideIx(0, 0)]:F4}, t41 {s[SideIx(0, 41)]:F2}, t87 {s[SideIx(0, 87)].x:F2}, t92 {s[SideIx(0, 92)].x:F2}, t86 {s[SideIx(0, 86)].x:F3} {s[SideIx(0, 86)].y:F4}, mass off rest {1000f * (breastRegions[0].InverseTransformPoint((Vector3) s[SideIx(0, 30)]) - new Vector3(0f, 0f, 0.5f * (n.z - 1) * breastSpacing)):F1} mm, anchor off its place {1000f * (swing.InverseTransformPoint(breastRegions[0].position) - regionsAt[0]):F1} mm");
             }
             if (badCount > 0) { st.badFrames++; if (st.firstBad < 0) st.firstBad = frame; }
             if (++frame < st.frames) return;
@@ -3538,7 +3555,14 @@ namespace AvatarBridge.Regression
             float reach = 0.11f * st.handTall;
             if (frame >= st.handAt)
             {
-                float into = Mathf.SmoothStep(0f, 1f, (frame - st.handAt) / 20f);
+                if (st.handWorld)
+                {
+                    if (!st.worldSet) { st.worldFront = carried.InverseTransformPoint(front); st.worldOut = carried.InverseTransformDirection(outward); st.worldSet = true; }
+                    front = carried.TransformPoint(st.worldFront);
+                    outward = carried.TransformDirection(st.worldOut);
+                }
+                int stage = Mathf.Min((frame - st.handAt) / (st.handSlow + st.handHold), st.handStairs - 1);
+                float into = (stage + Mathf.SmoothStep(0f, 1f, (frame - st.handAt - stage * (st.handSlow + st.handHold)) / (float) st.handSlow)) / st.handStairs;
                 if (st.handSweep > 0 && frame >= st.handAt + 20)
                     into = 0.5f + 0.5f * Mathf.Cos(2f * Mathf.PI * (frame - st.handAt - 20) / st.handSweep);
                 float g = st.handFlicker > 0 && (frame / st.handFlicker) % 2 == 1 ? 0f : st.handGesture;
@@ -3558,9 +3582,25 @@ namespace AvatarBridge.Regression
                     wrist = st.handFixed;
                     chest = st.chestFixed;
                 }
+                if (st.handOwn)
+                {
+                    var anim = swing.GetComponentInChildren<Animator>();
+                    bool left = OwnLeft(anim);
+                    var upperArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftUpperArm : HumanBodyBones.RightUpperArm);
+                    var lowerArm = anim.GetBoneTransform(left ? HumanBodyBones.LeftLowerArm : HumanBodyBones.RightLowerArm);
+                    var wristBone = anim.GetBoneTransform(left ? HumanBodyBones.LeftHand : HumanBodyBones.RightHand);
+                    if (st.ownRest == null) st.ownRest = new[] { upperArm.rotation, lowerArm.rotation };
+                    upperArm.rotation = st.ownRest[0];
+                    lowerArm.rotation = st.ownRest[1];
+                    TwoBone(upperArm, lowerArm, wristBone, tipAt, swing.forward);
+                    if (frame % 30 == 0) Debug.Log($"[Jelly] own wrist {frame}: {100f * Vector3.Distance(wristBone.position, tipAt):0.0} cm off its goal, {100f * Vector3.Dot(front - wristBone.position, outward):0.0} cm in from the front");
+                }
+                else
+                {
                 hand[1] = new Vector4(wrist.x, wrist.y, wrist.z, g);
                 chestAt[1] = chest;
                 root[1] = new Vector4(chestAt[1].x, swing.position.y, chestAt[1].z, st.handTall);
+                }
 #if AVATARBRIDGE_MAGICA
                 if (st.handCollider > 0f)
                 {
@@ -3574,6 +3614,7 @@ namespace AvatarBridge.Regression
                         var cloths = jelly.transform.root.GetComponentsInChildren<MagicaCloth2.MagicaCloth>(true);
                         foreach (var net in cloths)
                         {
+                            if (st.handBalls > 0f && net.name.Contains("Breast")) { Debug.Log($"[Jelly] {net.name} balls {net.SerializeData.radius.value} to {st.handBalls}"); net.SerializeData.radius.value = st.handBalls; }
                             net.SerializeData.colliderCollisionConstraint.colliderList.Add(cap);
                             net.SetParameterChange();
                         }

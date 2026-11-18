@@ -395,6 +395,7 @@ namespace AvatarBridge
             // The rest pose the four directional poses are measured against. VRChat treats an
             // unset straight pose as identity, and so does this.
             var eyes = new List<CVRAvatar.EyeMovementInfoEye>();
+            int defaulted = 0;
             void Add(Transform sourceEye, bool isLeft)
             {
                 if (sourceEye == null)
@@ -409,14 +410,17 @@ namespace AvatarBridge
 
                 Quaternion Straight(VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations r) =>
                     r == null ? Quaternion.identity : (isLeft ? r.left : r.right);
+                // A pose left unset, or set to straight ahead, measures 0 and pinned the eye that way.
                 float Travel(VRCAvatarDescriptor.CustomEyeLookSettings.EyeRotations pose)
                 {
-                    if (pose == null)
-                    {
-                        return 0f;
-                    }
-                    return Quaternion.Angle(Straight(settings.eyesLookingStraight),
+                    float a = pose == null ? 0f : Quaternion.Angle(Straight(settings.eyesLookingStraight),
                         isLeft ? pose.left : pose.right);
+                    if (a >= 1f)
+                    {
+                        return a;
+                    }
+                    defaulted++;
+                    return DefaultEyeLimit;
                 }
 
                 // Toward the nose is "in": the left eye's in-limit is its looking-RIGHT pose.
@@ -458,8 +462,12 @@ namespace AvatarBridge
             ctx.Report.Converted(Category, "Eye movement",
                 $"{BridgeElements.Count(eyes.Count, "eye", "eyes")} set up in Transform mode, gaze limits measured from the " +
                 $"VRChat poses (up {sample.eyeAngleLimitUp:0.#}°, down {Mathf.Abs(sample.eyeAngleLimitDown):0.#}°, " +
-                $"in {Mathf.Abs(sample.eyeAngleLimitIn):0.#}°, out {sample.eyeAngleLimitOut:0.#}°).");
+                $"in {Mathf.Abs(sample.eyeAngleLimitIn):0.#}°, out {sample.eyeAngleLimitOut:0.#}°)." +
+                (defaulted > 0 ? $" {BridgeElements.Count(defaulted, "direction", "directions")} had no VRChat pose and got {DefaultEyeLimit:0}°." : ""));
         }
+
+        // A gaze limit for a direction the VRChat poses leave unset.
+        const float DefaultEyeLimit = 25f;
 
         static void WireJawBoneLipSync(BridgeContext ctx, CVRAvatar cvrAvatar)
         {

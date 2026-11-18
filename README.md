@@ -335,7 +335,9 @@ if you want penetration.
    component count that moved, listed under *Since the last conversion* in `ConversionReport.md`.
    So reconverting on a new release, or after changing one setting, tells you what it did. The
    comparison is kept in the output folder as `.last-conversion.txt`, which Unity never imports;
-   delete it to start over.
+   delete it to start over. It also keeps the **upload ID**: once a conversion has been uploaded,
+   converting it again uploads over that same avatar instead of adding a new one (see
+   [each upload adds a new avatar](#each-upload-adds-a-new-avatar-instead-of-updating-the-old-one)).
 
 ## What gets converted
 
@@ -1607,9 +1609,8 @@ over the skin (a bra, a shirt, piercings) takes the same move and nothing comes 
 costs no synced parameters and uses no contacts. The wearer's own arms press it, and so do other
 players' hands, from the hand positions ChilloutVR hands every shader, so neither avatar needs
 anything set up for it. The physics are untouched: the parts still swing as their cloth makes
-them, and the squash works from where they swung to. As they swing they also stretch away from
-where they hang and squash back toward it, keeping their volume, which a bone chain alone cannot
-do, as far as real flesh would.
+them, and the squash works from where they swung to: the physics do the moving, the squash only
+the squashing.
 
 **Live tissue.** On a humanoid avatar, building the squash also puts each of its parts on the
 jelly, up to four on one avatar: a pair, or a part painted on one side alone (a belly, a tail). The
@@ -1617,11 +1618,20 @@ jelly is a lattice of flesh the graphics card steps every frame in each viewer's
 same body shader. A bigger part gets a finer lattice, up to a cap, so large breasts or a large seat
 dent as cleanly as small ones. Any player's hand or head dents it, the dent shaded as a hollow, and it fills back; a fist grips the skin and pulls
 it, letting go when pulled too far; a slap rings out from where it lands; the pair press against
-each other, and the wearer's own arms and legs press it too. The cloth still swings each part and
-the tissue rides it, but the touch is the tissue's alone: each part's cloth and Dynamic Bones drop
-to a millimetre of collision size, so a hand, the wearer's or another player's, dents the skin
-without also shoving the bone, and the avatar's own MagicaCloth and Dynamic Bone colliders that a
-pair's cloth collides with press the skin instead. Taking a part off the jelly puts the size back. With MagicaCloth installed and **Other Colliders**
+each other, and the wearer's own arms and legs press it too. **The physics do the moving and the
+tissue only the touching:** the cloth or Dynamic Bones swing each part as on the source avatar, and
+left alone the tissue settles onto its bones within half a second and holds there, so walking,
+running or flying never stretches it. A hand coming within reach, the wearer's own hand reaching in,
+a pair swung into each other or a probe pressed lets it go within an eighth of a second, eased, so a
+hand or arm already inside does not throw the skin, and it dents, grips and rings as before; let go,
+it fills back and settles again. A part no physics swing moves with the body, as on
+the source. A hand moves a part only through its physics: the cloth and Dynamic Bones keep their
+collision size, so another player's hand pushes the bones as it does on the source, and the tissue
+only dents the skin around it, never moving or stretching the part as a whole, however deep it is
+held. The avatar's own MagicaCloth and Dynamic Bone colliders that a pair's cloth collides with
+press the skin instead of the bones, so an arm resting in or through a part does not throw the cloth
+about. Parts built by an earlier version had their cloth's collision size cut to a millimetre;
+converting again puts it back. With MagicaCloth installed and **Other Colliders**
 ticked under **Live tissue**, a net of probes spread over the skin also feels other players'
 MagicaCloth colliders, any shape, each pressing at about its own size, a fingertip's to a palm's.
 It is off by default: the net costs every viewer about 0.1 s more each time the avatar loads, and
@@ -1645,8 +1655,8 @@ game gave the probes no collider. Rebuild after changing it. Each part on the je
 also has its own feel, under **Tune how it feels ▸ Each part**: a **Preset** (Breasts, Butt, Thighs,
 Belly, Firm or Custom), guessed from the part's name or the bone it rides the first time it is built
 (Firm, for skin close over muscle, on an arm, a calf or the neck), fills
-eight knobs, **Firmness**, **Settle**, **Give**, **Swing**, **Spring back**, **Taut**, **Press depth**
-and **Slap**, each a share of how the build tunes the part, 1 being the feel the breasts were tuned on.
+five knobs, **Firmness**, **Settle**, **Taut**, **Press depth** and **Slap**, each a share of how
+the build tunes the part, 1 being the feel the breasts were tuned on.
 Moving one makes the part Custom; all of them are live, no rebuild. The Butt, Thighs, Belly and Firm presets
 are first guesses, not yet tuned in game. A non-humanoid avatar, a part the jelly cannot fit and
 any past the fourth keep the squash, where the squash takes them (its first two pairs), and
@@ -1700,11 +1710,9 @@ shader another avatar already patched is reused instead of compiled again.
 **Set up squash** on the Setup card opens it again. The settings live on the component and the
 testing in the Avatar Tester, one place each. Its knobs write straight to the materials as you move them, so nothing
 needs rebuilding: **Tune how it feels** holds how flat a part presses and where the volume goes, whether the
-pair meets (on by default), the stretch in motion, and what presses it (own arms, other players' hands, plugs, and
-the physics' own colliders, off by default). The stretch is real flesh's: a small one, with small swings
-ignored. With the live tissue on, the six knobs only the squash's own dent reads (how flat and how wide,
-the spill, the physics' colliders, lying back and your own arms) are hidden; the tissue takes the stretch in
-motion on parts their physics swing, and other players' hands as in (above 0) or out (0), and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
+pair meets (on by default), and what presses it (own arms, other players' hands, plugs, and
+the physics' own colliders, off by default). With the live tissue on, the six knobs only the squash's own dent reads (how flat and how wide,
+the spill, the physics' colliders, lying back and your own arms) are hidden; the tissue takes other players' hands as in (above 0) or out (0), and each part's feel is under **Each part**. **Test in the Avatar Tester**, at the top of that step once built, opens the Avatar Tester on the avatar with the
 squash preview running under **Interaction lab ▸ Squash**. On parts still on the squash it starts half squeezed
 outside Play mode, so every knob shows as it moves there; the live tissue presses in Play mode only. **Squeeze** is another
 player's two open hands pushing each pair together from outside (on the squash, *Other players' hands* scales it), **Bounce** swings each part as a jump would, and **Test hand** puts another player's open hand in
@@ -1793,7 +1801,7 @@ light shares the four vertex-light slots with everything else that uses them. Th
 thickness, so the shaft's radius is taken as a tenth of its length, between 1.2 and 6 cm. Without a
 socket between the pair, a plug still passes through the parts. **Plugs**, under *What presses it*,
 sets how hard; 0 leaves them out. A squash built by an earlier version needs **Rebuild** pressed
-again (or the avatar reconverted) to notice its socket, and to stretch in motion.
+again (or the avatar reconverted) to notice its socket.
 
 ### Testing it
 
@@ -1955,7 +1963,8 @@ dozen. `#` in ChilloutVR marks a local parameter; that's the spelling you'll see
 
 Pick one in the **Face tracking** dropdown. The two set-up modes remove whatever FT rig the avatar
 shipped with, animator layers, parameters *and* objects, so nothing is left fighting over the same
-blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
+blendshapes. That includes the layers the rig switches with its own toggles, such as one that holds
+every mouth shape at rest while the visemes play. On a typical VRCFT avatar that's a couple of layers and a few hundred parameters.
 
 - **Native CVR Component**: sets up `CVRFaceTracking` and maps the shapes. Self-contained, but the
   built-in solver is a bit stiff. **Rigs that name their shapes without a side are handled**: many
@@ -1965,7 +1974,12 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   Slots where the side *is* the movement, a jaw, tongue or lip shifting left or right, are never
   filled from a sideless shape: a plain `Tongue` is not a tongue moving sideways. The same matching
   decides the *Analyse this avatar* recommendation, so a rig like that is not read as having no face
-  tracking at all.
+  tracking at all. **Slots still empty are built** on a copy of the face mesh in the output folder: a
+  shape with no side is split down the middle of the face into a left and a right half, ARKit's names
+  are blended into Unified Expressions' own the way VRCFaceTracking blends them (a smile is 0.8 corner
+  pull and 0.2 corner slant), a funnel or pucker is shared between the upper and lower lip, and a
+  two-step tongue becomes one that comes half out on the first step. The report counts them. Thanks to
+  Kneesox, whose face tracking fixer these come from.
 - **Unity Animator Blendtrees (DSR)**: injects DragonSkyRunner's *CVR Eye & Face Tracking* rig
   (bundled), repaths every clip onto your actual eye bones and face mesh, and reconciles its shape
   vocabulary against whatever your mesh has: by name, casing, **ARKit ↔ Unified Expressions**
@@ -1979,12 +1993,16 @@ blendshapes. On a typical VRCFT avatar that's a couple of layers and a few hundr
   the animator. Smoothing proxies VRChat never synced automatically become `#`-local, which costs
   **zero** sync bits, so a full smoothed rig fits ChilloutVR's 3200-bit budget comfortably, and
   the FT parameters that were synced keep syncing. The pick for avatars whose shipped rig is the
-  point.
+  point. **Not for a VRCFaceTracking rig that syncs through binary bits** (`v2/JawOpen1`, `2`, `4`,
+  `Negative`...): VRChat lists those to the tracking app as bools, the animator holds them as floats,
+  and ChilloutVR lists them as the animator has them, so the app sends them nothing; as floats they would
+  also cost 32 bits each. The report warns when one is kept, and *Analyse this avatar* recommends Native.
 
 **Analyse this avatar** recommends Native when the face mesh carries the shapes. When the avatar
 also brings its own rig, the animator layers a face-tracking add-on or template uses to drive and
 smooth those shapes, a *your call* card says so and offers **Keep the avatar's own rig**: both set-up
-modes replace that rig, and *Apply all* leaves the choice to you. When this avatar has no tracking
+modes replace that rig, and *Apply all* leaves the choice to you. A rig that syncs through binary bits
+gets no such card: kept, it does not work here, so Native is recommended instead. When this avatar has no tracking
 shapes but another in the scene wears the same mesh with them, as an add-on's installer leaves
 things when it works on a copy, the analysis and the report name that avatar: it is the one to
 convert. A face-tracking add-on installed in the project but not yet run on the avatar is named the
@@ -2155,7 +2173,7 @@ settle. Leaving all of them alone converts fine.
 | **Patch non-SPI shaders for VR** | off · BETA | Copies shaders that [draw into one eye only](#shaders-that-only-draw-into-one-eye) into `RehomedAssets` with the stereo macros added. Analyse counts them; whether a patched copy *looks* right is a VR question |
 | **Opt-ins ▸ OSC toys ▸ Keep the OGB / PCS haptics contacts** (YAPS add-on) | off | The toy-app contacts *Penetration* strips with the rest of the stack. Plugs and sockets work either way; these only drive a toy, and each one spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS*; *Remove* strips them regardless. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | **Opt-ins ▸ OSC toys ▸ Keep OGB haptics synced (OSCGoesBrrr, Lovense)** (YAPS add-on) | off | Off, the kept OGB haptics parameters are local (free); OSCGoesBrrr's automatic detection skips ChilloutVR's `#` names, but its manual avatar-parameter links read them, and the report lists the names. On, they stay synced and automatic detection works with no links to add (ChilloutVR still needs its `--osc-query-prefix=VRChat-Client` launch argument), at 32 sync bits each, about nine per plug and per socket; the report's sync budget entry says where the avatar landed. Needs the contacts above kept and *Penetration* on *Convert to YAPS* |
-| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on each layer that lies over a soft part, at no sync cost; on a humanoid avatar the parts become live tissue instead, which the graphics card steps every frame and any hand dents, grips and slaps, the parts' own cloth no longer feeling hands, and the solved presses and stretch apply only to parts the tissue cannot take; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
+| **Opt-ins ▸ Soft parts ▸ Soft body shape: squash where parts press together** (YAPS add-on) | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, presses them under a hand as soft tissue solved when the squash is built, and parts them around a plug in a socket between them, on each layer that lies over a soft part, at no sync cost; on a humanoid avatar the parts become live tissue instead, which the graphics card steps every frame and any hand dents, grips and slaps, the parts' own cloth still moving the bones under a hand, and the solved presses and stretch apply only to parts the tissue cannot take; see [Squash](#squash-soft-parts-that-press-together). The parts are found by bone name, or from regions painted with *Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions*; tuned on the **YAPS Squash** component the build adds. Works with *Penetration* on any answer |
 | **Opt-ins ▸ Penetration ▸ Show the avatar's OWN depth animations to other players** (YAPS add-on) | off | Not YAPS's socket shapes, which already play for everyone on a synced parameter. This is the bulges and winces the avatar's author animated in VRChat, which are contact-driven, and ChilloutVR runs an avatar's triggers on the wearer's machine alone. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs and the room sees it, at 32 bits per socket: one depth parameter each, six sockets is about 192 of 3200; a socket that kept several depth parameters as authored pays for each. Needs *Penetration* on *Convert to YAPS* |
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own Off/On layer and works immediately. *CVR Native Targets* leaves object toggles to the CCK's builder: you must press **Create Controller** yourself |
 | **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of this avatar's measured height, centred on its original size. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has its own parameter or menu entry called "Height": rename that one to get the slider |
@@ -2322,7 +2340,7 @@ Bipeds are unaffected by any of it.
 ### Not converted
 
 - **Blendshape-based gaze**: bone-based eye look converts (gaze limits measured from the VRChat
-  poses), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
+  poses, 25° for a direction left unset), but VRChat avatars whose eyes move by blendshape only get a report entry. (Blink and
   blendshape face tracking *are* handled.)
 - **PhysBone posing and stretch**, and the `_Stretch` / `_Squish` / `_IsPosed` parameters (squish
   itself carries over, as how firmly a chain's bones hold their length)
@@ -2479,7 +2497,7 @@ Find your symptom:
 | **Toggles, menus, contacts** | [toggle does nothing on screen](#a-toggle-switches-on-the-layer-plays-and-nothing-changes-on-screen) · [toggle never comes back](#a-toggle-switches-on-but-never-back-off) · [partial material swap](#a-material-swap-changes-only-some-parts) · [dead menu control](#a-menu-control-appears-moves-syncs-and-does-nothing) · [duplicate controls](#two-near-identical-menu-controls-and-only-one-works) · [dead contact](#a-contact-does-nothing-at-all-for-anyone-including-you) |
 | **What only others see (or don't)** | [flickering for others](#other-people-see-my-avatar-flickering-cycling-colours-or-thrashing-i-dont) · [rapid flicker](#an-animation-flickers-rapidly-often-only-on-other-players-screens) · [private sound](#a-sound-only-you-can-hear) · [private particles](#a-particle-effect-only-you-can-see) · [particle squares](#a-particle-effect-draws-as-plain-coloured-squares) · [one-eye effects](#an-effect-draws-in-one-eye-only-in-vr) · [live tissue jumps or breaks Mini Me](#the-live-tissue-jumps-or-flickers-when-pressed-or-mini-me-breaks-the-avatar) |
 | **YAPS (penetration)** | [plug doesn't bend in game](#yaps-the-plug-does-not-bend-toward-a-socket-in-game) · [plug stops at a portal](#yaps-a-plug-stops-at-a-portal-entrance) · [shader not patched](#yaps-could-not-patch-the-shader-or-the-test-plug-sits-there-straight) · [plug bends twice](#yaps-a-plug-bends-twice-or-stretches) · [socket reads "not built"](#yaps-a-converted-socket-reads-not-built-or-the-windows-row-says-a-plug-is-not-baked) · [stopped bending after unlocking materials](#yaps-a-plug-stopped-bending-after-unlocking-materials) · [unlocked Poiyomi warning](#yaps-the-report-says-poiyomis-unlocked-shader-ships-under-yaps) · [plug left alone](#yaps-a-plug-was-left-alone-because-its-chain-is-the-bodys-own) · [plain mesh jumps](#yaps-a-plain-mesh-plug-jumps-or-turns-the-moment-a-socket-engages-it) · [body-mesh socket won't open](#yaps-a-socket-on-the-body-mesh-does-not-open-around-a-plug) · [toggle greyed in the tester](#yaps-a-menu-toggle-the-tool-added-is-greyed-out-in-the-ccks-tester-or-shows-a-red-) · [OSC toy stays silent](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
-| **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) |
+| **Uploading** | [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something) · [object ID failure](#uploading-fails-with-failed-to-generate-new-object-id) · [new avatar every upload](#each-upload-adds-a-new-avatar-instead-of-updating-the-old-one) |
 
 ### Nothing compiles: `'ImageDownloader' does not contain a definition for 'GetImage'`
 
@@ -3261,6 +3279,16 @@ shader back on, so nothing on them bends (see [after unlocking materials](#yaps-
 
 Not AvatarBridge: that's the CCK. ChilloutVR's API refused a content slot, usually the account's
 private upload limit. The real message is in `Player.log` or the console just above the exception.
+
+### Each upload adds a new avatar instead of updating the old one
+
+The CCK remembers which avatar to update by an ID on the converted copy, and each conversion makes
+a new copy. Converting again copies the ID across from the last conversion of the same avatar: from
+the prefab in its output folder, or from the old copy if it is still in an open scene. The report
+says so under **Upload**. It finds nothing when the old copy was deleted before its ID ever reached
+the prefab, or when another avatar in the open scenes has the same name. Then copy the ID off the
+old copy (its Asset Info, **Copy asset unique identifier**) into the new copy's Asset Info,
+**Re-Attach GUID**. To upload a reconversion as a separate avatar, clear its GUID in the CCK.
 
 ### One extra recompile after importing
 

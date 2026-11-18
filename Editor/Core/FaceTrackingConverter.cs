@@ -47,6 +47,20 @@ namespace AvatarBridge
         {
             if (ctx.Settings.faceTrackingMode == FaceTrackingMode.None)
             {
+                int bits = 0;
+#if VRC_SDK_VRCSDK3
+                var expressions = ctx.SourceDescriptor != null ? ctx.SourceDescriptor.expressionParameters : null;
+                if (expressions != null && expressions.parameters != null)
+                    bits = expressions.parameters.Count(p => p != null && FaceTrackingParameters.IsBinarySyncBit(p.name));
+#endif
+                if (bits > 0)
+                {
+                    ctx.Report.Warning(Category, "Kept the avatar's own face tracking, which syncs through binary bits",
+                        $"Its {bits} sync bits do not work in ChilloutVR: the tracking app sends nothing to them here, " +
+                        $"and they cost {bits * 32} of the 3200 synced bits. Convert with \"Native CVR Component\" " +
+                        "(or \"Unity Animator Blendtrees (DSR)\") for face tracking that works and others see.");
+                    return;
+                }
                 ctx.Report.Skipped(Category, "Kept the avatar's own face tracking (chosen)",
                     "Nothing added. An existing rig merges with the animator; to add one, convert with " +
                     "\"Native CVR Component\" or \"Unity Animator Blendtrees (DSR)\" selected.");
@@ -110,6 +124,7 @@ namespace AvatarBridge
             // "Add Face Tracking" button does.
             faceTracking.GetBlendShapeNames();
             faceTracking.AutoSelectFaceTrackingShapes();
+            int made = bestIsUnified ? MakeMissingShapes(ctx, faceTracking, bestMesh) : 0;
             int unsided = FillUnsidedShapes(faceTracking, bestMesh);
 
             int mapped = faceTracking.FaceBlendShapes.Count(s => !string.IsNullOrEmpty(s) && s != "-none-");
@@ -120,12 +135,207 @@ namespace AvatarBridge
                 $"Native CVR face tracking set up on \"{bestMesh.name}\"",
                 $"{mode} mode; {mapped} blendshapes mapped. Review them on the CVRFaceTracking " +
                 "component." +
+                (made > 0
+                    ? $" {made} more were built from shapes the mesh has: a shape with no side split down the " +
+                      "middle of the face, and ARKit's names blended into Unified Expressions' own."
+                    : "") +
                 (unsided > 0
                     ? $" {unsided} have no side, so both slots share one shape and move together."
                     : ""));
         }
 
-        static int FillUnsidedShapes(CVRFaceTracking faceTracking, SkinnedMeshRenderer mesh)
+        // Unified Expressions slots the CCK's matcher leaves empty, built on a copy of the mesh from
+        // what it has. Recipes are tried in order, the first whose shapes all exist wins:
+        // "A+B*k" sums shapes, "@L" / "@R" keeps one half of the face, ":w" is a frame's weight and
+        // ";" starts another frame. {S} is Right or Left, {s} R or L, for the slot built.
+        // Weights after VRCFaceTracking's own simple expressions. From Kneesox's face tracking fixer,
+        // with thanks.
+        static readonly (string slot, string[] recipes)[] Recipes =
+        {
+            ("EyeWide{S}", new[] { "EyeWide@{s}" }),
+            ("EyeSquint{S}", new[] { "EyeSquint@{s}" }),
+            ("EyeDilation{S}", new[] { "EyeDilation@{s}", "PupilDilation@{s}" }),
+            ("EyeConstrict{S}", new[] { "EyeConstrict@{s}", "PupilConstrict@{s}" }),
+            ("BrowPinch{S}", new[] { "BrowDown{S}*0.25", "BrowDown@{s}*0.25" }),
+            ("BrowLowerer{S}", new[] { "BrowDown{S}*0.75", "BrowDown@{s}*0.75" }),
+            ("BrowInnerUp{S}", new[] { "BrowInnerUp@{s}" }),
+            ("BrowOuterUp{S}", new[] { "BrowOuterUp@{s}" }),
+            ("NoseSneer{S}", new[] { "NoseSneer@{s}" }),
+            ("CheekSquint{S}", new[] { "CheekSquint@{s}" }),
+            ("CheekPuff{S}", new[] { "CheekPuff@{s}" }),
+            ("CheekSuck{S}", new[] { "CheekSuck@{s}" }),
+            ("LipSuckUpper{S}", new[] { "LipSuckUpper@{s}", "MouthRollUpper@{s}" }),
+            ("LipSuckLower{S}", new[] { "LipSuckLower@{s}", "MouthRollLower@{s}" }),
+            ("LipFunnelUpper{S}", new[] { "LipFunnelUpper@{s}", "LipFunnel@{s}*0.5", "MouthFunnel@{s}*0.5" }),
+            ("LipFunnelLower{S}", new[] { "LipFunnelLower@{s}", "LipFunnel@{s}*0.5", "MouthFunnel@{s}*0.5" }),
+            ("LipPuckerUpper{S}", new[] { "LipPucker{S}*0.5", "LipPucker@{s}*0.5", "MouthPucker@{s}*0.5" }),
+            ("LipPuckerLower{S}", new[] { "LipPucker{S}*0.5", "LipPucker@{s}*0.5", "MouthPucker@{s}*0.5" }),
+            ("MouthUpperUp{S}", new[] { "MouthUpperUp@{s}" }),
+            ("MouthLowerDown{S}", new[] { "MouthLowerDown@{s}" }),
+            ("MouthUpper{S}", new[] { "Mouth{S}*0.5" }),
+            ("MouthLower{S}", new[] { "Mouth{S}*0.5" }),
+            ("MouthCornerPull{S}", new[] { "MouthSmile{S}*0.8", "MouthSmile@{s}*0.8" }),
+            ("MouthCornerSlant{S}", new[] { "MouthSmile{S}*0.2", "MouthSmile@{s}*0.2" }),
+            ("MouthDimple{S}", new[] { "MouthDimple@{s}" }),
+            ("MouthFrown{S}", new[] { "MouthSad{S}", "MouthFrown@{s}", "MouthSad@{s}" }),
+            ("MouthStretch{S}", new[] { "MouthStretch@{s}" }),
+            ("MouthPress{S}", new[] { "MouthPress@{s}" }),
+            ("MouthTightener{S}", new[] { "MouthTightener@{s}" }),
+            ("MouthClosed", new[] { "MouthClose" }),
+            ("MouthRaiserUpper", new[] { "MouthShrugUpper" }),
+            ("MouthRaiserLower", new[] { "MouthShrugLower" }),
+            // A two-step tongue: the first step alone half out, both all the way.
+            ("TongueOut", new[] { "TongueOutStep1:50;TongueOutStep1+TongueOutStep2:100", "TongueOutStep1" }),
+        };
+
+        struct Term { public int shape, side; public float k; }
+
+        internal static int MakeMissingShapes(BridgeContext ctx, CVRFaceTracking faceTracking, SkinnedMeshRenderer smr)
+        {
+            var targets = faceTracking.CurrentShapeNames;
+            var slots = faceTracking.FaceBlendShapes;
+            var src = smr.sharedMesh;
+            if (targets == null || slots == null || slots.Length != targets.Length || src == null)
+            {
+                return 0;
+            }
+            var names = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < src.blendShapeCount; i++)
+            {
+                if (!names.ContainsKey(src.GetBlendShapeName(i))) names[src.GetBlendShapeName(i)] = i;
+            }
+            var recipes = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (slot, list) in Recipes)
+            {
+                if (!slot.Contains("{S}")) { recipes[slot] = list; continue; }
+                foreach (var (S, side) in new[] { ("Right", "R"), ("Left", "L") })
+                    recipes[slot.Replace("{S}", S)] = list.Select(r => r.Replace("{S}", S).Replace("{s}", side)).ToArray();
+            }
+
+            var plans = new List<(int slot, List<(float weight, List<Term> terms)> frames)>();
+            for (int i = 0; i < targets.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(slots[i]) && slots[i] != "-none-") continue;
+                // ARKit's camelCase is the same name: the CCK's matcher is exact.
+                if (names.TryGetValue(targets[i], out int same)) { slots[i] = src.GetBlendShapeName(same); continue; }
+                if (!recipes.TryGetValue(targets[i], out var list)) continue;
+                foreach (var recipe in list)
+                {
+                    var frames = Parse(recipe, names);
+                    if (frames == null) continue;
+                    var only = frames[0].terms[0];
+                    if (frames.Count == 1 && frames[0].terms.Count == 1 && only.side == 0 && Mathf.Approximately(only.k, 1f) && Mathf.Approximately(frames[0].weight, 100f))
+                        slots[i] = src.GetBlendShapeName(only.shape);
+                    else
+                        plans.Add((i, frames));
+                    break;
+                }
+            }
+            faceTracking.FaceBlendShapes = slots;
+            if (plans.Count == 0) return 0;
+
+            float[] right = RightOfMidline(ctx, smr);
+            if (right == null) return 0;
+            int n = src.vertexCount;
+            var mesh = UnityEngine.Object.Instantiate(src);
+            mesh.name = src.name;
+            var deltas = new Dictionary<int, (Vector3[] v, Vector3[] nr, Vector3[] t)>();
+            (Vector3[] v, Vector3[] nr, Vector3[] t) Delta(int shape)
+            {
+                if (deltas.TryGetValue(shape, out var d)) return d;
+                int last = src.GetBlendShapeFrameCount(shape) - 1;
+                d = (new Vector3[n], new Vector3[n], new Vector3[n]);
+                src.GetBlendShapeFrameVertices(shape, last, d.v, d.nr, d.t);
+                // Brought to a full-weight frame, so a shape authored at 50 is not halved.
+                float w = src.GetBlendShapeFrameWeight(shape, last);
+                if (w > 0f && !Mathf.Approximately(w, 100f))
+                    for (int i = 0; i < n; i++) { d.v[i] *= 100f / w; d.nr[i] *= 100f / w; d.t[i] *= 100f / w; }
+                return deltas[shape] = d;
+            }
+            foreach (var (slot, frames) in plans)
+            {
+                foreach (var (weight, terms) in frames)
+                {
+                    var v = new Vector3[n]; var nr = new Vector3[n]; var t = new Vector3[n];
+                    foreach (var term in terms)
+                    {
+                        var d = Delta(term.shape);
+                        for (int i = 0; i < n; i++)
+                        {
+                            float k = term.k * (term.side > 0 ? right[i] : term.side < 0 ? 1f - right[i] : 1f);
+                            if (k == 0f) continue;
+                            v[i] += d.v[i] * k; nr[i] += d.nr[i] * k; t[i] += d.t[i] * k;
+                        }
+                    }
+                    mesh.AddBlendShapeFrame(targets[slot], weight, v, nr, t);
+                }
+                slots[slot] = targets[slot];
+            }
+            string dir = ctx.OutputDir.TrimEnd('/') + "/FaceTracking";
+            OutputAssetPaths.EnsureFolder(dir);
+            AssetDatabase.CreateAsset(mesh, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(src.name)}.asset"));
+            smr.sharedMesh = mesh;
+            faceTracking.FaceBlendShapes = slots;
+            return plans.Count;
+        }
+
+        // Null when any shape a frame names is missing.
+        static List<(float weight, List<Term> terms)> Parse(string recipe, Dictionary<string, int> names)
+        {
+            var frames = new List<(float, List<Term>)>();
+            foreach (string text in recipe.Split(';'))
+            {
+                string body = text;
+                float weight = 100f;
+                int colon = text.LastIndexOf(':');
+                if (colon >= 0)
+                {
+                    weight = float.Parse(text.Substring(colon + 1), System.Globalization.CultureInfo.InvariantCulture);
+                    body = text.Substring(0, colon);
+                }
+                var terms = new List<Term>();
+                foreach (string raw in body.Split('+'))
+                {
+                    string name = raw.Trim();
+                    float k = 1f;
+                    int side = 0;
+                    int star = name.IndexOf('*');
+                    if (star >= 0) { k = float.Parse(name.Substring(star + 1), System.Globalization.CultureInfo.InvariantCulture); name = name.Substring(0, star); }
+                    int at = name.IndexOf('@');
+                    if (at >= 0) { side = name.Substring(at + 1) == "R" ? 1 : -1; name = name.Substring(0, at); }
+                    if (!names.TryGetValue(name, out int shape)) return null;
+                    terms.Add(new Term { shape = shape, side = side, k = k });
+                }
+                frames.Add((weight, terms));
+            }
+            return frames;
+        }
+
+        // Per vertex, 1 on the avatar's right of the face's middle and 0 on its left, eased over
+        // 6 mm across it, at the pose the clone stands in. Null without a humanoid head.
+        static float[] RightOfMidline(BridgeContext ctx, SkinnedMeshRenderer smr)
+        {
+            var animator = ctx.Target.GetComponent<Animator>();
+            var head = animator != null && animator.isHuman ? animator.GetBoneTransform(HumanBodyBones.Head) : null;
+            if (head == null) return null;
+            var l = animator.GetBoneTransform(HumanBodyBones.LeftUpperArm);
+            var r = animator.GetBoneTransform(HumanBodyBones.RightUpperArm);
+            Vector3 across = l != null && r != null && (r.position - l.position).sqrMagnitude > 1e-8f
+                ? (r.position - l.position).normalized : ctx.Target.transform.right;
+            var baked = new Mesh();
+            // Without the scale flag: with it, a body under a scaled parent came out scaled twice.
+            smr.BakeMesh(baked);
+            var v = baked.vertices;
+            UnityEngine.Object.DestroyImmediate(baked);
+            var t = smr.transform;
+            const float half = 0.003f;
+            var right = new float[v.Length];
+            for (int i = 0; i < v.Length; i++)
+                right[i] = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(-half, half, Vector3.Dot(t.position + t.rotation * v[i] - head.position, across)));
+            return right;
+        }
+
+        internal static int FillUnsidedShapes(CVRFaceTracking faceTracking, SkinnedMeshRenderer mesh)
         {
             var targets = faceTracking.CurrentShapeNames;
             var slots = faceTracking.FaceBlendShapes;

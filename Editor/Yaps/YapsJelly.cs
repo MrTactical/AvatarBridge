@@ -54,15 +54,11 @@ namespace AvatarBridge
             public bool wire = true;
         }
 
-        // How the build tunes a part its bone carries, before the part's feel scales it. Carried on
-        // the cloth: the mass at 2.5 Hz, critically damped, a hand's press moving 0.525 of the whole,
-        // held within 0.3 of its length any way, up and down too: a squeezed part goes where nothing
-        // presses. 0.35 within 0.2 was tuned while a hand also shoved the cloth's bone; with the cloth
-        // kept out of the touch it stopped a squeeze short. At 0.6 within 0.35 a squeeze from both
-        // sides drove a pair together until their masses met, and the hands' push then took them
-        // up toward the chin; held to 0.15 up and down, it rose 54 mm at 0.3 across, a hand's push
-        // then turned by where the mass was (Lean). Leaned from its rest, it rises 16 mm and back.
-        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0.525f, CarriedLimit = 0.3f;
+        // How the build tunes a part its bone carries, before the part's feel scales it. A hand moves
+        // none of the whole: the cloth's colliders move the bones and the tissue only dents. At 0.525
+        // a hand held deep leaned the whole 61 mm and drew the part out 1.3 times its length, and
+        // on a part as small as the hand it read as a cone along the arm.
+        internal const float CarriedHz = 2.5f, CarriedZeta = 1f, CarriedGive = 0f, CarriedLimit = 0.3f;
         // How deep a hand presses before the skin holds it, metres, before Press depth scales it.
         // At 0.08 a squeeze from both sides stopped denting 4 cm short of hands 12 cm in.
         internal const float Deepest = 0.12f;
@@ -145,7 +141,8 @@ namespace AvatarBridge
             // bulges it the other ways and it comes back when let go.
             mat.SetFloat("_Solid", 0.7f * (s != null ? s.volumeKept : 1f));
             // Squeeze: other players' palms flatten the whole at constant volume (Squeezed in the step).
-            mat.SetFloat("_Squeeze", 0.6f);
+            // Not a part the bones carry: it reshaped the whole along the hand, the dent's job.
+            mat.SetFloat("_Squeeze", mat.GetFloat("_MassCarried") > 0f ? 0f : 0.6f);
             // Flattened about its own middle, a squeezed part's inner side pulls off the cleavage;
             // the wholes close in to 0.55 of their distance at rest (was 0.85), so a pair squeezed
             // from the outsides presses into each other instead of parting top and bottom.
@@ -154,10 +151,6 @@ namespace AvatarBridge
             mat.SetFloat("_Pair", (s == null || s.meet) && mat.GetFloat("_Regions") > 1.5f ? 1f : 0f);
             // The squash's Grip slides: 2 cm of drag, then the grip goes with the fist.
             mat.SetFloat("_GripSlip", slide || s != null && s.gripSlides ? 0.02f : 0f);
-            // The stretch in motion, on a part a cloth swings: w 1, or x on from a build before w was kept.
-            var motion = mat.GetVector("_Motion");
-            bool swung = motion.w > 0f || motion.x > 0f;
-            mat.SetVector("_Motion", swung && (s == null || s.stretchInMotion) ? YapsSquash.Stretch + new Vector4(0f, 0f, 0f, 1f) : new Vector4(0f, motion.y, motion.z, swung ? 1f : 0f));
             // Other players' hands, in or out: the tissue keeps a hand out of the skin, so a share has
             // nothing to scale.
             float hands = s == null || s.othersHands > 0f ? 1f : 0f;
@@ -354,34 +347,32 @@ namespace AvatarBridge
                 }
             var pixels = cells.Select(d => new Color(float.IsPositiveInfinity(d) ? 0f : d, 0f, 0f, 0f)).ToArray();
             // Kept in place when it exists: remade at the same path, the materials would read it Missing.
+            // Filled as a new texture and copied over it, as the squash's textures are, and saved at
+            // once: rewritten where it lay, a tester's map reached disk as uninitialised memory.
             string path = folder + "/Jelly_Depth.asset";
+            var fresh = new Texture2D(G, 12 * G, TextureFormat.RFloat, false, true) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+            fresh.SetPixels(pixels);
+            fresh.Apply(false);
             var tex = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
-            // Flagged as the CCK's upload checks ask: left Read/Write enabled, it failed validation
-            // and blocked the upload. Readable again while it is rewritten. Never streamed, unlike
-            // the squash's: the step's materials are on no mesh, where the CCK warns of streaming.
-            void Flags(bool readable)
-            {
-                var flags = new SerializedObject(tex);
-                flags.FindProperty("m_IsReadable").boolValue = readable;
-                flags.FindProperty("m_StreamingMipmaps").boolValue = false;
-                flags.ApplyModifiedPropertiesWithoutUndo();
-            }
             if (tex == null)
             {
-                tex = new Texture2D(G, 12 * G, TextureFormat.RFloat, false, true);
-                AssetDatabase.CreateAsset(tex, path);
+                AssetDatabase.CreateAsset(fresh, path);
+                tex = fresh;
             }
             else
             {
-                Flags(true);
-                tex.Reinitialize(G, 12 * G, TextureFormat.RFloat, false);
+                EditorUtility.CopySerialized(fresh, tex);
+                Object.DestroyImmediate(fresh);
             }
-            tex.filterMode = FilterMode.Point;
-            tex.wrapMode = TextureWrapMode.Clamp;
-            tex.SetPixels(pixels);
-            tex.Apply(false);
-            Flags(false);
+            // Flagged as the CCK's upload checks ask: left Read/Write enabled, it failed validation
+            // and blocked the upload. Never streamed, unlike the squash's: the step's materials are on
+            // no mesh, where the CCK warns of streaming.
+            var flags = new SerializedObject(tex);
+            flags.FindProperty("m_IsReadable").boolValue = false;
+            flags.FindProperty("m_StreamingMipmaps").boolValue = false;
+            flags.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(tex);
+            AssetDatabase.SaveAssetIfDirty(tex);
             return tex;
         }
 
@@ -552,14 +543,7 @@ namespace AvatarBridge
                     if (shares[side][v] >= 0.5f)
                         skinReach[side] = Mathf.Max(skinReach[side], Vector3.Dot(undo * (body.transform.position + body.transform.rotation * at[v] - chest.position) - c, way));
             }
-            // The squash's stretch in motion, as the conversion set it; none for a pair no cloth of its
-            // own swings, as thighs: the bone it rides is the limb, and a seated thigh would read as
-            // swung a quarter turn off where it hangs.
-            var motion = mats[0].GetVector("_YAPS_SquashMotion");
             bool clothed = PairCloth(root, part).Count > 0;
-            if (!clothed) motion.x = 0f;
-            // w marks a part a cloth swings, for Live to turn the stretch back on.
-            motion.w = clothed ? 1f : 0f;
             var depthMap = DepthMap(sides, shares, at, body, chest, undo, los, his, into);
             Lap("Depth map");
             // The third pass too, which judges the same reach to wake a rest.
@@ -588,7 +572,6 @@ namespace AvatarBridge
                 // Flesh barely changes volume but gives easily in shear, so nearly all of each
                 // neighbourhood's own squash is kept: half kept, it sprang back like rubber.
                 mat.SetFloat("_Squish", 0.9f);
-                mat.SetVector("_Motion", motion);
                 EditorUtility.SetDirty(mat);
             }
             var restored = Restore(root, names[pair]);
@@ -837,11 +820,13 @@ namespace AvatarBridge
             }
             // The avatar's own MagicaCloth and DynamicBone colliders that its breasts' cloth collides
             // with press the breasts as its limbs do, and come out of that cloth's lists, so they dent
-            // the skin and no longer move the bones: they deform the mesh. Each
-            // is handed as two ends, a child at either end of its capsule, so it rides its bone as the
-            // limbs do. Not one within a cell of the breasts' skin as built: it moves the lattice
-            // round that skin at rest and would dent it for good (a sphere in the cleavage left the
-            // tissue 41 mm off its rest), so it stays in the cloth, moving the bones as before.
+            // the skin and no longer move the bones: left in, a forearm through a breast threw the
+            // cloth about and the tissue with it, 577 mm. Other players' hands, which the client adds
+            // to the cloth at runtime, still move the bones. Each is handed as two ends, a child at
+            // either end of its capsule, so it rides its bone as the limbs do. Not one within a cell
+            // of the breasts' skin as built: it moves the lattice round that skin at rest and would
+            // dent it for good (a sphere in the cleavage left the tissue 41 mm off its rest), so it
+            // stays in the cloth, moving the bones as before.
             var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
             // The squash's Twitch: a transform to kick the mass, which takes the last
             // collider's anchors.
@@ -856,12 +841,6 @@ namespace AvatarBridge
                 else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
             var unlisted = PairCollide(root, part, pressing.Select(p => p.c), with: false);
-            // And every other collider, other players' among them: the client adds theirs to every
-            // cloth at runtime, past any list, and the cloth's balls, the source's size, moved the
-            // bones under each hand the tissue was denting. One touch answered twice: a breast shoved
-            // down and held, a squeeze shaking it. Shrunk, the tissue takes every touch and the cloth
-            // only swings.
-            var shrunk = PairShrink(root, part, made.transform);
             Lap("Collide");
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
@@ -888,8 +867,7 @@ namespace AvatarBridge
                 colRadii[i] = pressing[i].r;
             }
             string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
-                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "") +
-                              (shrunk.Count > 0 ? $", the cloth's balls shrunk to {1000f * Shrunk:0} mm so the tissue takes every touch ({string.Join(", ", shrunk)})" : "");
+                              (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "");
             var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
             var handed = anchors.transforms.ToList();
@@ -994,7 +972,7 @@ namespace AvatarBridge
             string each = sides == 2 ? " each" : "", litres = string.Join(" and ", volume.Select(x => $"{1000f * x:0.0}")) + " litres";
             return $"On {root.name}: {names[pair]} on {(sides == 2 ? "two lattices" : "a lattice")} of {n.x}x{n.y}x{n.z} ({n.x * n.y * n.z} particles{each}, {100f * spacing:0.0} cm apart, " +
                    $"{100f * (n.x - 1) * spacing:0} x {100f * (n.y - 1) * spacing:0} x {100f * (n.z - 1) * spacing:0} cm) under {chest.name}; " +
-                   (cloth ? $"{litres}, riding {string.Join(" and ", carriers.Select(x => x ?? "nothing"))}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand moving the whole by {give:0.00} of its press; "
+                   (cloth ? $"{litres}, riding {string.Join(" and ", carriers.Select(x => x ?? "nothing"))}{(clothed ? ", which the cloth swings" : ", which no cloth swings")}, a hand denting it and never moving the whole; "
                        : $"{litres}, {kilos:0.0} kg{each}, so it swings at {hz:0.00} Hz and a hand moves the whole by {give:0.00} of its push; ") +
                    probed + $"{patched} of {mats.Count} squash materials read it{(left.Count > 0 ? " (left as they were: " + string.Join(", ", left) + ")" : "")}; " +
                    (cloth ? (off.Count > 0 ? "switched back on: " + string.Join(", ", off) : clothed ? "its cloth left on" : "no cloth on it")
@@ -1405,18 +1383,21 @@ namespace AvatarBridge
         }
 
         // The cloth and dynamic bones whose roots are on the pair's bone chains, found as the squash
-        // finds the chains, by name and side.
+        // finds the chains, by name and side, or on a bone naming the part with no side above them,
+        // as one cloth rooted on a Boob_Root swings both: missed, the tissue rode the bone above the
+        // swung one and its colliders kept their full size.
         internal static List<Behaviour> PairCloth(Transform root, Regex part)
         {
             bool Sided(Transform t) => t != null && part.IsMatch(t.name) && SideOf.IsMatch(t.name);
-            var chains = new HashSet<Transform>(root.GetComponentsInChildren<Transform>(true)
-                .Where(t => Sided(t) && !Sided(t.parent)).SelectMany(t => t.GetComponentsInChildren<Transform>(true)));
+            var tops = root.GetComponentsInChildren<Transform>(true).Where(t => Sided(t) && !Sided(t.parent)).ToList();
+            var chains = new HashSet<Transform>(tops.SelectMany(t => t.GetComponentsInChildren<Transform>(true)));
+            bool Above(Transform t) => part.IsMatch(t.name) && tops.Any(c => c != t && c.IsChildOf(t));
             var found = new List<Behaviour>();
             foreach (var b in root.GetComponentsInChildren<Behaviour>(true))
             {
                 string type = b != null ? b.GetType().Name : "";
                 if (type != "MagicaCloth" && type != "DynamicBone") continue;
-                if (RootsOf(b).Any(t => t != null && chains.Contains(t))) found.Add(b);
+                if (RootsOf(b).Any(t => t != null && (chains.Contains(t) || Above(t)))) found.Add(b);
             }
             return found;
         }
@@ -1489,34 +1470,8 @@ namespace AvatarBridge
             return at != null ? at.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == bits[0]).ElementAtOrDefault(nth) : null;
         }
 
-        // A jellied part's cloth balls, MagicaCloth's least.
-        internal const float Shrunk = 0.001f;
         const string RadiusMark = "Jelly radius ";
         static string RadiusOf(string type) => type == "MagicaCloth" ? "serializeData.radius.value" : "m_Radius";
-
-        // The pair's cloth and dynamic bones' balls cut to Shrunk, each old size kept in a mark under
-        // the jelly, "Jelly radius <size> <type> <nth of its type there> <path>"; what was cut. Not one
-        // rooted inside another's chain: a piercing's cloth hanging off the part still feels a hand.
-        static List<string> PairShrink(Transform root, Regex part, Transform under)
-        {
-            var said = new List<string>();
-            var cloths = PairCloth(root, part).Select(b => (b, roots: RootsOf(b).Where(t => t != null).ToList())).ToList();
-            foreach (var (b, roots) in cloths.Where(c => !c.roots.Any(t => cloths.Any(o => o.b != c.b && o.roots.Any(r => r != t && t.IsChildOf(r))))).ToList())
-            {
-                string type = b.GetType().Name;
-                var so = new SerializedObject(b);
-                var r = so.FindProperty(RadiusOf(type));
-                if (r == null || r.floatValue <= Shrunk) continue;
-                int nth = Array.IndexOf(b.GetComponents<Behaviour>().Where(x => x != null && x.GetType().Name == type).ToArray(), b);
-                var mark = new GameObject($"{RadiusMark}{r.floatValue.ToString("R", CultureInfo.InvariantCulture)} {type} {nth} {AnimationUtility.CalculateTransformPath(b.transform, root)}");
-                Undo.RegisterCreatedObjectUndo(mark, "Put the breasts on the jelly");
-                mark.transform.SetParent(under, false);
-                said.Add($"{b.name} from {1000f * r.floatValue:0} mm");
-                r.floatValue = Shrunk;
-                so.ApplyModifiedProperties();
-            }
-            return said;
-        }
 
         // A mark's ball back to the size it keeps.
         static void Unshrink(Transform root, string mark)
@@ -2053,6 +2008,11 @@ Shader ""Hidden/YAPS/Jelly Probe Marker""
                 if (m != null && mesh != null && m.HasProperty("_JellySkinStride")
                     && (m.GetFloat("_JellySkinStride") == 0f || OnDisk(m, @"^\s*- _JellySkinStride: 0\s*$")))
                     return $"{m.name} is back at its defaults ({AssetDatabase.GetAssetPath(m)})";
+            // One byte over and over is no depth map: a tester's was all 0xCD, and no hand pressed.
+            foreach (var m in made.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(q => q.materials ?? new Material[0]).Distinct())
+                if (m != null && m.HasProperty("_JellyDepth") && m.GetTexture("_JellyDepth") is Texture2D depth
+                    && OnDisk(depth, @"^\s*_typelessdata: ([0-9a-f]{2})\1*\s*$"))
+                    return $"its depth map is blank ({AssetDatabase.GetAssetPath(depth)})";
             return null;
         }
 
@@ -2157,6 +2117,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Near (""Never hangs rigid for being out of view within this many metres of the viewer's camera"", Float) = 2
         // Over a sprint's 4 m/s and under flight's 10, by the client's own defaults.
         _Fast (""Hangs rigid moving faster than this many metres a second, easing in over the 2 below; 0 never"", Float) = 7
+        // The bones' own physics swing it; the tissue only answers what touches it.
+        _Hold (""Seconds an untouched part takes to settle onto its bones and hold there, until something touches it; 0 never"", Float) = 0.4
         _Half (""Steps at _Rate.y past this many metres from the viewer's head, short of _Far; 0 never"", Float) = 2
         // Every frame: the client reads the switch back late and one read at a time, so at 45 a
         // second and 230 fps the steps came in bursts, the draw stuttered and it never slept.
@@ -2184,7 +2146,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
         _Limit (""Furthest its centre swings off its rest, as a share of its length from the root"", Float) = 0.6
         _Taut (""How much a loaded region's swing stiffens and damps: fully strained, the spring 1 + _Taut times as stiff, the damping 1 + 3 _Taut times"", Float) = 1
         _JellyTwitch (""Which handed transform the animator moves off the first hang to kick the mass; 0 none"", Float) = 0
-        _Motion (""Stretch in motion, the squash's own: x per reach of swing, y swing ignored below this share of the reach, z longest stretch; x 0 none"", Vector) = (0, 0, 1, 0)
         _Pair (""1: regions 0 and 1 are a pair, each keeping off the other"", Float) = 0
         _PairKeep (""Nearest the pair's centres come, as a share of their distance at rest"", Float) = 0.85
         _Squish (""Share of each neighbourhood's own squash and stretch it keeps, at constant volume; 0 rigid"", Range(0, 1)) = 0
@@ -2242,7 +2203,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             #include ""UnityCG.cginc""
             #include ""JellyCommon.cginc""
 
-            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Fast, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
+            float _Stiff, _Hz, _Hand, _Far, _Behind, _Near, _Fast, _Hold, _Half, _Pass, _FixedDt, _Stress, _Sleep, _Lift, _Rider, _Rest, _Regions;
             float _MassHz, _MassCarried, _MassDamp, _Give, _MassRadius, _Limit, _Pair, _PairKeep, _Squish, _Viscous, _Solid, _Squeeze, _Taut, _JellyTwitch;
             float4 _Slap, _Rate;
             float _Landing, _Cap, _Mid, _Smooth;
@@ -2258,10 +2219,11 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             static float3 Kick = 0;
             static float3 Smoothed = 0;
             static float Ease = 0;
+            static const float Waking = 0.12;
             // A landing heard this step, rung next step if the new speed held (97 and 98).
             static float4 Landed = 0, LandedBy = 0;
             static float Scale = 1;
-            float4 _Motion, _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
+            float4 _PairOffset, _PairReach, _PairSkin, _JellyOwn0, _JellyOwn1, _JellyCol0, _JellyCol1, _JellyBox0, _JellyBox1, _JellyOffsetAt0, _JellyOffsetTurn0, _JellyOffsetAt1, _JellyOffsetTurn1;
             // A helper mesh skinned four points to each region's bone and four to where it hangs on
             // the chest, as the squash's slots, bound as the provider's copy of its skinned buffer.
             ByteAddressBuffer _JellySkin;
@@ -2673,7 +2635,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 int row = (int) ((Region * 6 + 2 * k + (face.x + face.y + face.z < 0 ? 1 : 0)) * DEPTH_GRID) + g0.y;
                 float a = _JellyDepth.Load(int3(g0.x, row, 0)), b = _JellyDepth.Load(int3(g0.x + 1, row, 0));
                 float c = _JellyDepth.Load(int3(g0.x, row + 1, 0)), d = _JellyDepth.Load(int3(g0.x + 1, row + 1, 0));
-                return lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
+                // A map that reads as no depth inside the box is taken as no map: one saved as
+                // garbage on a tester's machine read -4e8, and every hand was held 4e8 m away.
+                float skin = lerp(lerp(a, b, t.x), lerp(c, d, t.x), t.y);
+                return skin >= 0 && skin < 2 * dot(abs(face), half) ? skin : 0;
             }
 
             // A hand past _Deepest into the skin, or a third of the tissue, is held there, as skin
@@ -2757,6 +2722,21 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 if (!(x.w > 0.5)) return 1;
                 float t = dot(normalize(m._m00_m10_m20), normalize(x.xyz)) + dot(normalize(m._m01_m11_m21), normalize(y.xyz)) + dot(normalize(m._m02_m12_m22), normalize(z.xyz));
                 return smoothstep(0.5736, 0.7660, 0.5 * (t - 1));
+            }
+
+            // Whether the pair press on each other as Moved's plane has them: a cloth swinging them
+            // together touches like a hand, so the hold lets go.
+            bool Meeting(float4x4 m, float scale, uint side)
+            {
+                if (!(_Pair > 0 && _PairReach.x > 0)) return false;
+                uint rows = side - Base, other = Region ^ 1, ps = other * (rows + 1) + rows;
+                float zc = 0.5 * (Count().z - 1) * _Lattice.w;
+                float4 ta = _MainTex.Load(int3(30, side, 0)), tb = _MainTex.Load(int3(30, ps, 0));
+                float3 ca = ta.w > 0 ? ta.xyz : mul(m, float4(0, 0, zc, 1)).xyz;
+                float3 cb = tb.w > 0 ? tb.xyz : mul(AnchorOf(other), float4(0, 0, zc, 1)).xyz;
+                // 2 mm in: at rest they sit at exactly the distance they were built at, and the float
+                // noise either side of it let the hold go every other step while standing.
+                return (length(_PairOffset.xyz) - _PairReach.z) * scale - 0.002 * scale > distance(ca, cb) && Meet(m, ps) > 0;
             }
 
             // How far a capsule from a to b of radius r leans the mass's spring target: c of its
@@ -2863,6 +2843,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
             // Far from the viewer's head or well behind their camera, judged on the first region for
             // every region alike, half a metre's give on the distance so it does not flicker.
+            // Held on its bones, untouched (_Hold): stepped and scanned still, so a hand wakes it.
+            bool Held() { return Ease >= 1 && Ease < 1.5; }
+
             bool Away(bool was)
             {
                 float4x4 a = Anchor(0);
@@ -3184,25 +3167,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
             // The region's mass, as one piece: its centre, the lattice's at rest, swings on the root,
             // the anchor's place. Each particle's home turns with it, more the nearer the front, so the
             // back face stays on the chest wall, and follows its centre in and out at constant volume.
-            // Then the squash's own stretch in motion (yaps_dent.cginc), as real flesh's: swung
-            // away from where it hangs it stretches, toward it it squashes, by _Motion.x per reach of
-            // swing past _Motion.y of the reach, within _Motion.z, at constant volume, about the side
-            // it hangs from. Off, or not stepped this tenth of a second, home is the rest on the anchor
-            // alone. swing is the turn the particle's home took.
-            // How far region r's bone has carried its centre off where it hangs on the chest, as the
-            // squash's swing is its follow off its rest: the provider's third and fourth transforms
-            // hold each region still on its parent. 0 for a region riding no bone.
-            float3 Hung(uint r)
-            {
-                float4 at = r == 0 ? _JellyOffsetAt0 : _JellyOffsetAt1;
-                if (r > 1 || !(at.w > 0)) return 0;
-                float4x4 h = _JellyAnchor[2 + r];
-                if (!(dot(h._m00_m10_m20, h._m00_m10_m20) > 1e-12)) return 0;
-                float4 c = float4(0, 0, 0.5 * (Count().z - 1) * _Lattice.w, 1);
-                return mul(Anchor(r), c).xyz - mul(h, c).xyz;
-            }
-
-            float3 HomeOn(int3 l, float4x4 m, float4 tip, bool swings, float3x3 shape, float3 hung, out float4 swing)
+            // Off, or not stepped this tenth of a second, home is the rest on the anchor alone. swing is
+            // the turn the particle's home took.
+            float3 HomeOn(int3 l, float4x4 m, float4 tip, bool swings, float3x3 shape, out float4 swing)
             {
                 float3 local = mul((float3x3) m, Shaped(l, shape));
                 float3 root = m._m03_m13_m23;
@@ -3216,21 +3183,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 swing = normalize(lerp(float4(0, 0, 0, 1), normalize(float4(cross(a, b), 1 + dot(a, b))), w));
                 float s = lerp(1, len / len0, w), along = dot(local, a);
                 local = a * (along * s) + (local - a * along) * rsqrt(s);
-                float3 at = root + mul(Turn(swing), local);
-                // The cloth's swing of the bone, as the squash's stretch reads it, and the mass's lag on
-                // it.
-                float3 sw = hung + tip.xyz - root - rest;
-                float reach = _MassRadius * length(m._m00_m10_m20), sl = length(sw), off = sl - _Motion.y * reach;
-                [branch] if (_Motion.x > 0 && off > 0)
-                {
-                    float3 u = sw / sl, up = normalize(m._m01_m11_m21);
-                    float st = lerp(1, clamp(1 + _Motion.x * off / reach * -dot(u, up), 1 / _Motion.z, _Motion.z), w);
-                    float3 hangAt = tip.xyz + up * (0.5 * (n.y - 1) * _Lattice.w * length(m._m01_m11_m21));
-                    float3 r0 = at - hangAt;
-                    float by = dot(r0, u);
-                    at = hangAt + u * (by * st) + (r0 - u * by) * rsqrt(st);
-                }
-                return at;
+                return root + mul(Turn(swing), local);
             }
 
             // The solid, once a frame in the first pass, column k of the squash the homes take: the best
@@ -3294,7 +3247,6 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // swing and stretch, which turn the front more than the back, read as a shear.
                 float4 tip = _MainTex.Load(int3(30, side, 0)), unused;
                 bool swings = _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < 0.1;
-                float3 hung = Hung(Region);
                 // On the anchor they were stepped on: the particles and the mass are last frame's, and
                 // against this frame's the mass lagged a frame's move, which read as a stretch along
                 // it. Fed back through the homes, the tissue sat 53 mm ahead at a run.
@@ -3311,7 +3263,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     int3 l = int3(round(float3(i % 4, (i / 4) % 4, i / 16) * (n - 1) / 3.0));
                     float3 q = Rest(l), p = Into(on, _MainTex.Load(Texel((uint) Index(l), 0)).xyz)
-                        + q - Into(on, HomeOn(l, on, tip, swings, hands, hung, unused));
+                        + q - Into(on, HomeOn(l, on, tip, swings, hands, unused));
                     pc += p;
                     qc += q;
                     qq += q * q;
@@ -3372,7 +3324,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 [branch] if (Snapped && _Pass < 0.5) tip.xyz = Carried(tip.xyz, m, side);
                 // Stamped and recent: a cleared texel reads as stepped at time 0, and at a scene's first
                 // frame that passed, swinging every home toward the world's origin.
-                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), swing);
+                return HomeOn(l, m, tip, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), swing);
             }
 
             // How fast particle l's home moves: from last frame's anchor and mass (texels 26 to 29 and
@@ -3388,7 +3340,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 // Carried, 31 holds last frame's mass moved on with the anchor: put back on last frame's.
                 if (_MassCarried > 0) was.xyz = mul(last, float4(Into(Anchor(Region), was.xyz), 1)).xyz;
                 float4 unused;
-                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), Hung(Region), unused)) / FrameDt;
+                return (home - HomeOn(l, last, was, _MassHz > 0 && tip.w > 0 && abs(_Time.y - tip.w) < Stale, Shape(side), unused)) / FrameDt;
             }
 
             // Where a particle is headed from s, where it was was (w that step's time): its home's own
@@ -3432,7 +3384,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float3 root = m._m03_m13_m23;
                 float zc = 0.5 * (Count().z - 1) * _Lattice.w;
                 float3 rest = mul(m, float4(0, 0, zc, 1)).xyz;
-                bool fresh = distant || Bad(tip) || Bad(was) || Hot >= 8 || !(tip.w > 0 && abs(_Time.y - tip.w) < Stale) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < Reach);
+                bool fresh = distant || Held() || Bad(tip) || Bad(was) || Hot >= 8 || !(tip.w > 0 && abs(_Time.y - tip.w) < Stale) || !(was.w > 0 && was.w < 0.1) || !(distance(tip.xyz, rest) < Reach);
                 if (x == 31) return float4(fresh ? rest : tip.xyz, dt);
                 if (fresh) return x == 86 ? 0 : float4(rest, _Time.y);
                 // Strained, as last frame's 86 has it, flesh goes taut: pulled out by a fist or
@@ -3557,7 +3509,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 turn = Quat((float3x3) m / scale);
                 q = Mul(swing, turn);
                 // The back face rides the anchor, or on a limb the core round its bone.
-                if (Pinned(l) || distant) return home;
+                if (Pinned(l) || distant || Held()) return home;
                 float4 s = _MainTex.Load(Texel(p, 0));
                 float3 ahead, base;
                 float kh = 0;
@@ -3731,6 +3683,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 }
                 // Easing toward rigid while fast: a pull home at up to 20 a second.
                 [branch] if (Ease > 0 && Ease < 1.5) next = lerp(next, home, 1 - exp(-20 * Ease * h));
+                else if (Ease < 0) next = lerp(next, home, Ease * Ease * (3 + 2 * Ease));
                 return next;
             }
 
@@ -4217,7 +4170,18 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // rigid. Off the smoothed speed, so every copy agrees, and a snap keeps the last.
                     float wasEase = _MainTex.Load(int3(18, side, 0)).z;
                     float toward = _Fast > 0 ? saturate((length(Smoothed) - _Fast + 2) / 2) : 0;
-                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : toward;
+                    // Untouched, it eases onto its bones over _Hold and holds there (1): walking, the
+                    // tissue's own swing on top of the cloth's stretched it twice over. Any hand in reach,
+                    // the wearer's own hand into the box, a probe, a grip or the pair pressing together
+                    // last step lets it go at once. An arm or thigh lies in the box at rest, so those
+                    // dent the skin through the draw alone while it holds.
+                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || ((uint) _MainTex.Load(int3(41, side, 0)).y & 0x44u) != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
+                    // Touched while held, it lets go over Waking, eased at both ends, the share still
+                    // held home kept negative: let go at once, an arm already inside threw the skin
+                    // 80 mm in a frame, and a linear let go left a 26 mm step where it ended.
+                    float letting = wasEase >= 1 && wasEase < 1.5 ? 1 : max(-wasEase, 0);
+                    float hold = _Hold > 0 && !touched ? min(min(wasEase, 1) + dt / _Hold, 1) : -max(letting - dt / Waking, 0);
+                    Ease = Snapped ? wasEase : (wasEase > 1.5 && toward > 0) || toward >= 1 ? 2 : toward > 0 ? max(toward, hold) : hold;
                     // A change of speed past _Landing in the step, kept for the next step: against the
                     // smoothed speed, a steady speed-up read as one and rang every step.
                     float3 by = sped.xyz - vNow;
@@ -4325,8 +4289,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float r;
                             uint c = px.x < 64 ? (uint) (px.x - 42) >> 1 : 8 + ((uint) (px.x - 64) >> 1);
                             Own(c, scale, a, b, r);
-                            bool reach = false;
-                            [branch] if ((px.x & 1) && r > 0) reach = InReach(a, b, r, m, scale, side);
+                            // 1 in reach, 2 into the skin's box itself: an arm at the side is always in
+                            // reach, so only 2 counts as touching for the hold.
+                            float reach = 0;
+                            [branch] if ((px.x & 1) && r > 0) { float gap = Gap(a, b, r, m, scale, side); reach = gap <= 0 ? 2 : gap <= 0.08 * scale ? 1 : 0; }
                             float hold;
                             [branch] if (c == 2 || c == 6) Held(a, b, r, r, false, a, b, m, scale, hold);
                             return (px.x & 1) == 0 ? float4(a, r) : float4(b, reach);
@@ -4434,9 +4400,14 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // judgements. Read a frame late by the first pass, so the reach has room.
                     [branch] if (px.x == 41)
                     {
-                        uint bits = 0;
-                        [unroll] for (uint c = 0; c < 16; c++) bits |= _MainTex.Load(int3(c < 8 ? 43 + 2 * c : 49 + 2 * c, side, 0)).w > 0.5 ? 1u << c : 0;
-                        return float4(distant ? 0 : bits, 0, 0, 1);
+                        uint bits = 0, into = 0;
+                        [unroll] for (uint c = 0; c < 16; c++)
+                        {
+                            float w = _MainTex.Load(int3(c < 8 ? 43 + 2 * c : 49 + 2 * c, side, 0)).w;
+                            bits |= w > 0.5 ? 1u << c : 0;
+                            into |= w > 1.5 ? 1u << c : 0;
+                        }
+                        return float4(distant ? 0 : bits, distant ? 0 : into, 0, 1);
                     }
 #ifdef JELLY_SLEEP
                     if (px.x == 18) return float4(distant, Sleepy(m, distant, side), Ease, 1);

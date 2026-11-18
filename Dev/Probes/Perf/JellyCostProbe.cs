@@ -270,8 +270,8 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // The stretch in motion and other players' hands, live: both off through the component's
-        // retune, then back, each part's step reading them.
+        // Other players' hands, live: off through the component's retune, then back, each part's
+        // step reading them.
         static void Knobs(Transform root)
         {
             var s = YapsSquash.SettingsOf(root);
@@ -284,20 +284,17 @@ namespace AvatarBridge.Regression
             string Read() => string.Join("; ", worn.Select(w =>
             {
                 var m = w.GetComponentsInChildren<CVRMaterialDataProvider>(true).SelectMany(p => p.materials ?? new Material[0]).First(q => q != null && q.HasProperty("_MassHz"));
-                return $"{w.name.Substring(YapsJelly.Worn.Length + 1)} motion {m.GetVector("_Motion")} arrays {m.GetVector("_JellyArrays").x}";
+                return $"{w.name.Substring(YapsJelly.Worn.Length + 1)} arrays {m.GetVector("_JellyArrays").x}";
             }));
             string was = Read();
-            bool stretch = s.stretchInMotion;
             float hands = s.othersHands;
-            s.stretchInMotion = false;
             s.othersHands = 0f;
             foreach (var w in worn) YapsJelly.Retune(w, s);
             string off = Read();
-            s.stretchInMotion = stretch;
             s.othersHands = hands;
             foreach (var w in worn) YapsJelly.Retune(w, s);
             string back = Read();
-            bool ok = back == was && !off.Contains("arrays 1") && off.Split(';').All(q => q.Contains("motion (0.00,"));
+            bool ok = back == was && !off.Contains("arrays 1");
             Log($"knobs {(ok ? "ok" : "FAIL")}: as built {was}; both off {off}; back {back}");
         }
 

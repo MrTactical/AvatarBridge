@@ -33,8 +33,6 @@ namespace AvatarBridge
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
         // On each copy's importer, before the material it was copied from, for Strip to put back.
         internal const string Mark = "squash:";
-        // The stretch in motion as real flesh's: 0.6 a reach of swing past a tenth of it, at most 1.12.
-        internal static readonly Vector4 Stretch = new Vector4(0.6f, 0.1f, 1.12f, 0f);
         static readonly Regex Soft = new Regex("breast|boob|butt|booty|glute", RegexOptions.IgnoreCase);
         static readonly Regex Side = new Regex(@"left|right|[._ ]?[lr](?=$|[._ ])", RegexOptions.IgnoreCase);
 
@@ -44,7 +42,7 @@ namespace AvatarBridge
             "_YAPS_DentPower", "_YAPS_DentOwn", "_YAPS_DentSwing", "_YAPS_SquashReach", "_YAPS_SquashAway", "_YAPS_SquashOut",
             "_YAPS_SquashIn", "_YAPS_SquashSideA", "_YAPS_SquashSideB", "_YAPS_SquashTune", "_YAPS_SquashPair",
             "_YAPS_SquashShape", "_YAPS_SquashPulse", "_YAPS_SquashPush", "_YAPS_SquashLimbL", "_YAPS_SquashLimbR",
-            "_YAPS_SquashHands", "_YAPS_SquashMotion", "_YAPS_SquashPlug", "_YAPS_DentSpill",
+            "_YAPS_SquashHands", "_YAPS_SquashPlug", "_YAPS_DentSpill",
             "_YAPS_SquashHangToward", "_YAPS_SquashHangOut", "_YAPS_SquashHangAcross", "_YAPS_SquashSurface",
             "_YAPS_SquashSurfaceOn", "_YAPS_SoftRow", "_YAPS_SoftTable", "_YAPS_SoftDepth", "_YAPS_SoftOut", "_YAPS_SoftIn",
             "_YAPS_SoftFront", "_YAPS_SoftSideA", "_YAPS_SoftSideB", "_YAPS_SoftBelow", "_YAPS_JellyOwn",
@@ -184,9 +182,6 @@ namespace AvatarBridge
             m.SetVector("_YAPS_SquashPush", new Vector4(s.clothPush, 0.03f, 0.25f, s.ownArms > 0f ? 1f : 0f));
             m.SetVector("_YAPS_SquashHands", new Vector4(s.ownArms, s.handSize, s.othersHands, hands.w));
             m.SetFloat("_YAPS_SquashPlug", s.plugs);
-            // Like real flesh: the stretch per reach of swing, the swing ignored as the sag the physics
-            // settle into, and the longest it gets. An anime style stretched every hop into a teardrop.
-            m.SetVector("_YAPS_SquashMotion", s.stretchInMotion ? Stretch : Vector4.zero);
         }
 
         // Every material the build's providers write, alternates included.

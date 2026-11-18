@@ -105,7 +105,6 @@ float4 _YAPS_SquashLimbR;
 float _YAPS_SquashPulse;    // test builds: a squeeze from the outside that comes and goes on its own, as a share of the start
 float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres at a 1.6 m viewpoint, z their press gain, w skin stride in bytes (0 none)
 float4 _YAPS_SquashTune;    // x lying-back weight, as a share of the reach out; y strength of every press; z bend give, as a share of the reach out; w deepest dent, as a share of the reach toward the hand
-float4 _YAPS_SquashMotion;  // x stretch per reach of swing, y swing ignored below this share of the reach, z longest stretch, w unused
 float _YAPS_SquashPlug;     // a plug's press gain
 // The pair as soft tissue, solved at the build (YapsSoftBody.cs). Per renderer, laid out as
 // _YAPS_DentOwn, sixteen bits a number: in r each vertex's row in the table plus one, 0 for none;
@@ -1158,40 +1157,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         along[2] = flat[2] * min(grow[0] * grow[1], _YAPS_SquashShape.z);
         bool dented = dentDepth[0] + dentDepth[1] + dentDepth[2] + dentDepth[3] > 0;
 
-        // In motion: the physics swing the part off its rest, and the flesh stretches away from
-        // where it hangs and squashes back toward it, keeping its volume. A bone chain only
-        // swings it rigid. The swing is how far the follow is off the rest, which for a spring
-        // is the push the motion gives it, so it rings as long as the physics do. Sideways
-        // swings bend it and are the physics' own. About the side it hangs from, which stays.
-        // ponytail: small swings stand in for the sag the physics settle into, which the edit
-        // mode rest never saw; a slow average of the swing needs memory an avatar has not got.
-        float stretch = 1;
-        float3 stretchW = 0, hangAt = 0;
-        float3 hang = _YAPS_SquashFollow[4 + m]._m01_m11_m21;
-        if (_YAPS_SquashMotion.x > 0 && YapsUnit(4 + m) > 0 && dot(hang, hang) > 1e-10)
-        {
-            hang = normalize(hang);
-            float3 swing = p.centre - YapsSlot(4 + m);
-            float sl = length(swing);
-            float off = sl - _YAPS_SquashMotion.y * reach;
-            if (off > 0)
-            {
-                stretchW = swing / sl;
-                float by = _YAPS_SquashMotion.x * off / reach * -dot(stretchW, hang);
-                stretch = clamp(1 + by, 1 / _YAPS_SquashMotion.z, _YAPS_SquashMotion.z);
-                hangAt = hang * YapsSpan(p, hang);
-            }
-        }
-        if (pressAll <= 0 && dot(swung, swung) <= 0 && !dented && stretch == 1) continue;
-        float3 nmS = n;
-        if (stretch != 1)
-        {
-            float thin = rsqrt(stretch);
-            float3 r0 = d - hangAt;
-            float along = dot(r0, stretchW);
-            d = hangAt + stretchW * along * stretch + (r0 - stretchW * along) * thin;
-            if (hasNormal) nmS = normalize(n + stretchW * dot(stretchW, n) * (thin / stretch - 1));
-        }
+        if (pressAll <= 0 && dot(swung, swung) <= 0 && !dented) continue;
 
         // The bend leans the squashed shape, so it keeps the volume the squash kept.
         float3 squashed = 0;
@@ -1199,7 +1165,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         for (int c3 = 0; c3 < 3; c3++) squashed += ax[c3] * (dot(d, ax[c3]) * along[c3] + shift[c3]);
         float lean = saturate((dot(squashed, p.o) + bendFrom) / bendSpan);
         float3 moved = p.centre + squashed + bend * lean;
-        float3 nm = nmS;
+        float3 nm = n;
         if (hasNormal)
         {
             if (pressAll > 0)

@@ -159,6 +159,17 @@ namespace AvatarBridge
                     if (binding.Substring(cut + 2).StartsWith("blendShape.", System.StringComparison.Ordinal)) animated.Add(binding);
                 }
             }
+            // And what ChilloutVR drives itself: visemes, blink and face tracking. Read as unused, the
+            // shapes Native face tracking builds raised the warning by 28 on avatars where all of them run.
+            void Driven(Renderer face, IEnumerable<string> names)
+            {
+                if (face == null || names == null) return;
+                string at = AnimationUtility.CalculateTransformPath(face.transform, avatar.transform);
+                foreach (string n in names.Where(n => !string.IsNullOrEmpty(n) && n != "-none-")) animated.Add($"{at}::blendShape.{n}");
+            }
+            Driven(avatar.bodyMesh, (avatar.visemeBlendshapes ?? new string[0]).Concat(avatar.blinkBlendshape ?? new string[0]));
+            foreach (var ft in avatar.GetComponentsInChildren<CVRFaceTracking>(true).Where(f => f.UseFacialTracking))
+                Driven(ft.FaceMesh, ft.FaceBlendShapes);
 
             foreach (var r in renderers)
             {

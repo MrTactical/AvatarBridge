@@ -307,7 +307,6 @@ void Main(uint id : SV_DispatchThreadID)
             var hands = new Vector4(F(r, 0, 2), F(r, 0.03f, 0.08f), P(r, 0.8) ? F(r, 0.2f, 2) : 0, wild ? 12 : 0);
             var shape = new Vector4(F(r, 0.2f, 0.6f), F(r, 0.5f, 1), F(r, 1.5f, 3), P(r, 0.7) ? 1 : 0);
             var tune = new Vector4(F(r, 0, 1), F(r, 0.5f, 1.5f), F(r, 0, 1), F(r, 0.2f, 0.8f));
-            var motion = new Vector4(P(r, 0.6) ? F(r, 0.2f, 2) : 0, F(r, 0, 0.3f), F(r, 1.2f, 2), 0);
             var pairs = new Vector4(F(r, 0.05f, 0.25f), F(r, 0, 1), F(r, 0.05f, 0.25f), F(r, 0, 1));
             float plug = P(r, 0.7) ? F(r, 0.2f, 2) : 0;
             var limbL = new Vector4(F(r, 0.1f, 0.4f), F(r, 0.1f, 0.4f), F(r, 0.1f, 0.4f), 0);
@@ -363,7 +362,6 @@ void Main(uint id : SV_DispatchThreadID)
                 cs.SetFloat("_YAPS_SquashPulse", 0);
                 cs.SetVector("_YAPS_SquashHands", hands);
                 cs.SetVector("_YAPS_SquashTune", tune);
-                cs.SetVector("_YAPS_SquashMotion", motion);
                 cs.SetFloat("_YAPS_SquashPlug", plug);
                 cs.SetFloat("_YAPS_DentPower", 1);
                 cs.SetFloat("_YAPS_DentSpill", 0.3f);

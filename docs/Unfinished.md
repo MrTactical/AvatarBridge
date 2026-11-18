@@ -13,6 +13,10 @@ Laid out by when: what 5.0.0 waits for, what 5.0.1 takes, then the ideas.
 
 ## Before 5.0.0
 
+**CUT OFF 2026-11-17 (Joe: "put rc18 in there, and then that's the cut off point").** The draft as
+it stands (main 81d80c99, rc18 included) is 5.0.0. Nothing else goes in; everything new is 5.0.1 on
+dev. Only a bug that breaks conversion or crashes the game for users reopens it, as a hotfix off main.
+
 5.0.0 ships when Joe has worn it through the in-game checklist (`Dev/Release/ingame-checklist-5.0.0.md`,
 local) and says so. SPS2 tags (S23), the portal (S24) and the duplicate (S25) must pass in game, and
 both packages ship together. Joe, 2026-10-21: the items below are fixed first. Records of work done
@@ -3795,6 +3799,9 @@ arm ... something to do with the grab". The stab harness (`-jellyHandIn` and the
   1.7 mm a frame, no grips. Desktop gestures change only on a keyboard combo
   (`CVRInputModule_Keyboard.Update_Emotes`), so his gesture was steady and the flicker fix is
   probably not his case.
+- **Rechecked on the dent-only tissue (2026-11-18):** a steady hand at 6 to 10 cm, bobbing in 10 Hz packets, swaying,
+  with a MagicaCloth capsule, or sweeping in and out moved the part 0.5 to 4.7 mm a frame; a flickering fist 7.1 mm.
+  Still not reproduced. The dent-only change (item 51) took out the hand's push up the arm, the likeliest match.
 - Next: Joe retests on rc18 (reconverted). If it still jumps, record his own hand's values in game
   (the provider's `_CVR_PlayerLeftHandPositions[0]`, w the gesture, and the root's w, his
   avatar's height) and the slot texels 0 to 15 and 112 to 119 while it jumps.
@@ -3817,14 +3824,151 @@ Measured in the stability harness (`-jellyStab`, Kar's breasts, a glide eased in
 - **Open, probably the tester's "stretch": the cloth under it.** Cloth on, a steady 4 m/s run turns the breast
   bone about 60 degrees outward and 10 cm sideways (the masses 34 to 44 cm apart), and the skin goes with it;
   73 mm and 2.1x stretch at the back face, unchanged by `_Solid`, `_Motion`, `_MassHz`, `_Pair`, `_Smooth`
-  and `_Landing`. Next: the physics A/B probe on Kar, the converted MagicaCloth against the original
-  PhysBones on a steady run. If PhysBones swing far less, the conversion is too loose at speed.
+  and `_Landing`. **Physics A/B on Kar (`-abSpeed 4`), swing peak in degrees, original PhysBones against
+  the MagicaCloth copy:** 1.4 m/s walk 47 against 23-26, 4 m/s run 71 against 61. The conversion swings less
+  than VRChat, so the swing at a run is the avatar's own physics (pull 0.18, spring 0.8, limit 50 degrees),
+  not a loose conversion. Whether the tissue riding it looks worse than VRChat's skin on the same bone is
+  open; waits for the tester's answer on which stretch they meant.
+- **Folded into 5.0.0** (Joe 2026-11-17: "number 1"): main e32abbc8, tag moved, draft packages and notes
+  updated; test build rc20 has the same contents.
 - Harness flags added: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f` (particles on the
   stepped anchor, the plane's distances, the region on the body), `-jellyStabSide`, `-jellyStabFilm`.
+- **The physics move, the tissue only touches, DONE on dev** (caf63e98 to ce9e95b5, Joe 2026-11-17: "let magica
+  handle all physics ... squash and jelly only handle mesh deforms"). The tester's rc20 avatar had live tissue,
+  squash and a MagicaCloth chain on the same breasts and butt: the tissue's own swing rode the cloth's. Now an
+  untouched part eases onto its bones over `_Hold` (0.4 s) and holds there (Ease 1, particles at home, mass
+  reset), stepped and scanned so a touch wakes it next step: a hand in reach, the wearer's own HAND into the
+  box (arms and the avatar's own colliders lie in the box at rest, 41.y bits 0 and 8 on Kar, and dent through
+  the draw alone), a probe, a grip, or the pair 2 mm past their built distance (exactly at it, float noise
+  let the hold go every frame while standing). Harness, hold off against on, steady: walk 1.82x to 1.05x,
+  run 2.10x to 1.08x, 25 fps 1.59x to 1.00x, worst over a whole run 3.81x to 1.09x; still and kick
+  unchanged; a hand pressed in 64.7 mm both ways. A part no cloth swings no longer swings at all, as on the
+  source. The squash's stretch in motion is removed (shader, homes, setting, setup fold). Not in game yet.
+
+### 50. Face tracking failing in every mode on a VRCFaceTracking add-on avatar. A user (Kneesox), 2026-11-17, with their own fixer script and a 4.7.2 Keep-mode output, DONE on dev, not in game
+Their fixer (strip the rig, native component, built shapes) works for them; they gave permission to take from it.
+Read against their output:
+- **Native and DSR left five rig layers** (3d3c3280): a viseme layer holding every mouth shape at 0 behind
+  `VisemesEnable` and `TrackingType`, and four tongue layers on `TongueControlActive`, `ForceTongueOut*`,
+  `Tongue-x/y`. The strip now knows those switches (menu unchanged, Keep keeps them) and leaves `IsLocal`,
+  `TrackingType`, `VRMode` and quantization out of a layer's count: it strips exactly the 12 their fixer did.
+- **Keep cannot run a binary-synced rig** (4f587f66). VRCFaceTracking (master, `BaseParam`) does match
+  `#FT/v2/JawOpen` and sends to that exact address, so the `#` alone is not it. But ChilloutVR lists every
+  animator parameter where VRChat lists the expression parameters, so the input, its `Drive` and its
+  `Generated` copy all end in `/v2/JawOpen` and the first match wins; and the 130 binary bits are floats in the
+  animator, so the app's bool parameters never match them, and synced they cost 4160 of 3200 bits. The
+  analyser steers such a rig to Native and drops the keep card; a kept one is a report warning.
+- **Native builds the slots the CCK leaves empty** (cd36e8e3): sideless shapes split at the face's midline,
+  ARKit names blended after VRCFaceTracking's weights, funnel and pucker halved, a two-step tongue. Eye look: an
+  unset VRChat pose gets 25 degrees instead of pinning the eye.
+- **Built shapes checked on 22 corpus scenes** (FaceTrackingShapesProbe, b6b7e97d): every left or right half
+  moves on its own side and the halves match; slots mapped went up on 21 of 22 (27 to 58 on five, 10 to 70 from
+  the CCK alone on one). **Open:** none of it is tested in game. Their fixer's blendshape eye look (EyeLook
+  shapes, no eye bones) is not taken.
+
+### 51. Live tissue drawn out into a cone along a hand held deep in it. A tester (fluffybat), 2026-11-17, rc21, FIXED on dev (harness), not in game
+"insane stretching when the hand in breast", "when I nudge it slowly, almost stretching past breaking": a breast drawn
+2-3 times its length along the arm while a hand is pushed in deep and held. Their avatar: two 0.1 litre breasts on
+10x11x9 lattices, a hand radius as big as the part, one MagicaCloth rooted on an unsided Boob_Root. Joe's rule for it:
+the cloth's colliders move the bones, the tissue only dents the mesh; a hand never moves the whole.
+Found (a five-agent read plus 10 harness runs, synthesis in the session scratch):
+- **The hand moved and reshaped the whole.** `_Give` 0.525 leaned the mass 61 mm and `_Squeeze` flattened it along
+  the hand: lattice 1.30x its depth outward, steady through a 2.5 s hold (str-arm45); both 0: 0.32 spacings, the
+  dent kept. Now `CarriedGive` 0 and no squeeze on a carried part; Give, Swing and Spring back leave the feel UI.
+  Joe would have kept some push if it could stay unstretched: the push without its outward part still reached
+  15.2-15.3 of 14 spacings at 0.525 and 15.0-15.2 at 0.25 (bar 14.75), so it stays off.
+- **The cloth was never recognised**: `PairCloth` took only roots on a sided bone, so a cloth on `Boob_Root` left the
+  tissue riding the bone above the swung one. A root naming the part above the sided chains counts now.
+- **The cloth no longer shrinks its balls**: other players' hands (added to the cloth at runtime) move the bones
+  through it, as on the source; the tissue dents. The avatar's own colliders still leave the cloth's lists and only
+  dent: left in, the own-forearm run threw the cloth about (furthest 577 mm, snap guard every frame). Old builds'
+  marks still put the size back on a rebuild.
+- **Nothing bounded the draw**: the clamp was twice the part's depth. The skin is now drawn within its depth of
+  where the bones hold it, a quarter of that outward.
+- **The tester's depth map was all 0xCD** in 8 of 8 of their outputs (rewritten about 4 minutes after converting; not
+  reproduced here by any save, unload or reload, DepthSaveProbe). The step reads a value outside the box as no
+  map; the map is written as a new texture copied over the old and saved at once, as the squash's are; the upload
+  check reads it back.
+- **Proof on e42bf610**, Kar with a hand at the tester's proportions (`-jellyHandTall 6.4 -jellyStabSet _Deepest=0.48`,
+  slow push in four steps, each held 150 frames), lattice front in rest spacings of 14 (was on rc21):
+  45 degree arm 14.32 max (18.26), outward 0.53 (4.26), dent -5.10 kept; hand collider 14.27 (outward 4.91 before);
+  80 degree arm 14.52, one back particle 1.19 out under the hand; straight 13.98. Films: dented round the arm, no cone.
+  Own forearm: tear 5.80, furthest 144 mm (5.77, 139.6). Walk, run and 25 fps: tear 1.00-1.01, nothing left over.
+  Hand dents keep their depth (65.9 mm, 106.9 mm at 10 cm), tear up from 1.41 to 1.51 and 1.85 to 2.11: the whole
+  no longer gives, so the particles take all of it. FreshCompileTimeTest PASS.
+- **The wake jump, FIXED on dev (harness), not in game.** A part held on its bones and touched let go in one frame,
+  so whatever was already in it moved the lattice at once: a hand arriving during a 4 m/s glide 77.7 mm in a frame
+  (tear 5.53), the wearer's own forearm reaching in 80.5 mm (tear 5.80). Now it lets go over 0.12 s, eased at both
+  ends (Ease negative while it does, the share still held home). Bar set before the runs: at most 15 mm between
+  frames after the wake. Handrun 14.0 mm, tear 4.27. Own forearm: the wake itself spread over 11 frames (1.8 to 17.0
+  mm a frame), the skin's film steady through it (pixels changed per frame 2160-2415, rc22 3063 at the wake); a
+  27.9 mm step remains in the lattice two frames before the let go ends, as rc22's 22.5 mm one two frames after
+  its wake, with no matching change on the skin, so the literal bar fails on own there. Tear 5.77 (the forearm
+  lies through the lattice; the harness's IK puts it through from behind). Regressions unchanged to the first
+  decimal (arm 45 and 80, collider, deep hand, dents 65.9 and 106.9 mm, walk, run, 25 fps).
+- **Own forearm live/held at one depth:** the deep own run settles asleep with the arm inside (lattice still, 92.7
+  mm, nothing on the skin); not a stretch.
+- **Open:** in game with the tester. Nothing here reads the drawn skin, only the lattice; the films are the check.
 
 ## 5.0.1
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
+
+### 48. Optimisation pass. Joe, 2026-11-17: "full optimisation pass", then "yes" to items 1-6 and the cache measurement
+**Folded into 5.0.0** (Joe 2026-11-17: "throw all optimisations into 5.0.0"; main 4077a2e4, tag moved, draft packages
+and notes updated). Cold first upload A/B on the plush, Library/ShaderCache cleared before each bundle build, one run
+each: 5.0.0 140.4 s, these changes 124.0 s; YAPS and JellyStep compiles 122.3 to 106.2 s, every other shader 9.2 and
+9.3 s (the control); bundle 27.62 to 27.57 MB. Two read-only reviews of the folded commits found nothing.
+**The idle pass folded too** (Joe 2026-11-17: "shove it all in 5.0.0"; main 03962bd8): vertex light per pixel,
+the soft bake's presses side by side, the VRCFury rehome's material batch, the texture list's ties. Test build rc19
+(same contents) went to a tester with the in-game checks; nothing of it has been run in game yet.
+**The tester's rc19 conversions** (Xeon E5-2673 v3, 24 threads, RX 5500 XT; their own avatar with squash and
+tissue, 2026-11-17): first convert 148 s, 51 s of it recompiling the 13 patched files the update made stale; the
+third 54 s against 133 s for the same avatar on the 11-16 build (squash 104 to 42.7 s, FollowSwaps 35.9 to 5.7 s,
+animator merge 17.7 to 5.4 s), 0 errors. Upload time not recorded in the files.
+Four read-only reviews (first view, per-frame GPU, conversion, upload). Per-frame GPU had little left after
+item 36. Done on dev, each measured:
+- **Outline skip missed two lock forms** (e29f2013, test 84547ce8): older Poiyomi locks write a zero width bare,
+  `clip(OutlineMask * 0.0 - 0.001)`, Pro as `float(0)`; both now left unbent like the commented form. The
+  OutlineClipTest reproduced it first (bare and float(0) WRONG) and passes now. The reviewer's estimate: about a
+  third of an affected patch's first-upload compile (Zombunny 2: 18 s of 85 s wall), plus a dead vertex pass a frame.
+- **The tissue step's stereo variants** (95b5e3dc): its `skip_variants` never reached the ones Unity adds, so 9
+  variants compiled where 3 are drawn. YapsStereoStrip drops every stereo variant of `Hidden/AvatarBridge/JellyStep`
+  (only ever blitted). Proven on a Kar bundle: the step's funnel now ends 4 -> 16 -> 4 after scriptable
+  stripping (Zombunny before: 3 -> 12 -> 9). Open: those 3 compiled fp variants still took 161 s wall / 224 s CPU
+  on Kar, against 9 in 10 s / 57 s on Zombunny on 11-16. Not this change (it removes variants only); another
+  Unity may have been compiling at the time, and Kar's step variants differ. Worth one quiet re-time.
+- **GoGo poses in one batch** (b2b9a1c1) and **no second controller save after the slot filler** (3b5cdf34):
+  measured by the 5-avatar subset run `opt-sub5` (below).
+- **The tissue's 8 lattice corners in a rolled loop** (6691fdbf): fxc 51,844 to 43,388 bytes at 3 slots; the plush's
+  body vertex programs 48.8-49.5 KB to 40.4-41.1 KB a pass. Cut short by Shader Filtering, the region is drawn at
+  rest rather than torn. The first check counted the corners, and fxc proved the count 8 and dropped it, so a
+  filter cutting the loop in bytecode would have torn the skin anyway; it reads the weights' sum now (696a6c94),
+  which survives in the listing (`ge ..., 0.999` then `if_nz`), +196 bytes. Not run under the filter: Joe in game.
+  Kar's tissue numbers identical.
+- **No marker-light search in a plug's shadow caster** (e2b3231c), which is handed no lights: the caster program
+  86,988 to 80,500 bytes. Bend tester identical, PlugGhostProbe PASS on every route (lights-only included, via the relay).
+- Plush vertex bytecode a viewer builds: 535 KB to 456 KB (two body passes now byte-identical, 19 to 18 distinct).
+- **The driver keeps built shaders across restarts** (NVIDIA, this machine): the same bytes in a fresh process
+  built in 49-76 ms against 2,790 ms for new bytes. So the first-view freeze is paid once per machine per exact
+  bytecode, not per session: byte stability across avatars and versions is worth more than kilobytes.
+
+Queued, larger: one tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, ~100-145 ms first view;
+risk, several steps writing one pair); lighting keywords the host's vertex never reads multiplying the YAPS vertex
+variants. **VERTEXLIGHT_ON done on dev 2026-11-17** (7d6f71f3): a host declaring it for both stages gets it per
+pixel when its own vertex programs compile to the same bytes with and without it (four light sets, the
+material's keywords, 0.35 s a host); later Poiyomi already declares it so. VertexLightTest: a pixel reader is
+rewritten, a vertex reader is not, and under a vertex light the pixel stage still sees the keyword. All six
+Poiyomi 8.1 hosts tried are rewritten. Cold upload of an avatar with two such patches: 286 to 238 variants,
+22.3 to 20.6 s of YAPS compile, bundle 43.9 to 41.4 s (one run each). LIGHTPROBE_SH and the ForwardAdd axes
+come from Unity's built-in sets, which cannot be split by stage without redeclaring them: not done.
+Not run in game: Joe, point lights on an older Poiyomi avatar look the same.
+- **Kar's slow tissue step was not the shipped code** (re-timed quiet 2026-11-17: 4 variants, 214 s wall,
+  403 s CPU). Kar's test scene still draws the 10-31 spike's `Assets/AvatarBridge_JellySpike/JellyStep.shader`
+  (four copies of the step share the name in Attempt Conversion); the tool's own in YAPS/Generated/Jelly built
+  in about 5 s on the plush. Nothing to fix. Smaller,
+queued: the empty asset refreshes per avatar (attribute first), the orphan clips left in a merged controller,
+batching the rehomer's texture writes.
 
 ### 46. A Mini Me clone never squashes or jiggles. Joe in game, 2026-11-16, OPEN, waits for his call
 
@@ -3882,6 +4026,24 @@ viewer per YAPS version; plug and squash shaders are patched per avatar and paid
   YAPS properties on a patched body shader, which must stay declared (undeclared values die on the
   next import). Left as is.
 - Open: Joe in game, with the GS2 nightly.
+- **A plush avatar still hitches once on first view (Joe in game, 2026-11-17).** Its built package dumped
+  (`ShaderDumpProbe`, 108 programs) and timed cold with `d3d-load.py`, ChilloutVR running so the times
+  are rough (3.3-3.6 s): the tissue step ~1.0 s (355 KB, once per viewer per version), the plug ~0.8 s,
+  four tissue body shaders ~1.3 s. A plain locked Poiyomi material is 25-31 KB; patched, 206-250 KB,
+  all of the growth in the vertex programs (~45 KB in each of four passes; fragments unchanged). The
+  main and extra-light vertex programs of different materials are the SAME code: only the constant
+  buffer offsets of the YAPS values differ, shifted by each material's own Poiyomi properties in `$Globals`.
+  So the driver builds 12 distinct body programs (574 KB) where 4 would do (192 KB).
+  **Done, 934e69b6, folded into 5.0.0 (Joe: "if it shows measurable improvement put it 5.0.0").** The YAPS
+  values sit in named cbuffers of their own, one per include. The plush re-patched (`-dumpRefresh`): its
+  four body materials share ONE vertex program per pass (27 distinct to 19), 917 KB to 535 KB of vertex
+  bytecode, and the cold driver build of everything it draws 2.6-2.7 s to 1.8-1.9 s (game closed). A
+  converted avatar picks it up on its next rebuild: the patch name hashes the include text, so the six
+  patched materials read as stale. Bend tester PASS with one place of 50 in the two-socket 25 cm case now
+  taking the nearer socket (twice); Kar's tissue numbers identical; fresh compile PASS. Leaving Eyes/Brows
+  and Tails unpatched now saves nothing (they share the program), so dropped. No tissue in the extra-light
+  and shadow passes: declined by Joe (a still shadow under a moving body). Open: ChilloutVR filling the
+  named cbuffers, Joe in game (a plug that bends and tissue that moves prove it).
 
 ### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", after 5.0.0
 
@@ -6183,7 +6345,10 @@ sets animator transitions and behaviours only when they changed, caches the mate
 renderer and property, and finds GoGo clips with one search. Measured from each step's
 times in `Diagnostics.md`. Still open, largest first:
 
-- **The soft bake itself (~13 s a pair)** when it does run (a squash with no jelly, a refused
+- ~~**The soft bake itself (~13 s a pair)**~~ **Presses side by side, done on dev 2026-11-17** (16f1a73d): each
+  press on one thread and a tissue of its own. SoftBakeTest, a synthetic pair of 6782 particles: 20.5 s to 7.0 s,
+  all 30 answers bit for bit. Not timed on an avatar: none in the corpus bakes now, the jelly takes every pair.
+  The cache by input hash is not built. Was: when it does run (a squash with no jelly, a refused
   part): run the presses in parallel with each press single-threaded instead of ~100 small
   `Parallel.For` calls per substep, and cache the result by a hash of every input it reads.
 - **The texture-size scan (~7 s in a large project, again in the window after Convert).** Not
@@ -6193,11 +6358,17 @@ times in `Diagnostics.md`. Still open, largest first:
   window instead.
 - **The merged controller is written and reimported 4-8 times a conversion** (1-3 s, up to
   10-15 s on a large VRCFury controller).
-- **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`).
+- **Volatile assets rehomed one forced import at a time** (`RehomeReferencedAsset`). **Measured and part
+  fixed on dev 2026-11-17.** The step took 8 to 22 s on the large VRCFury avatars; a log line (`Rehome steps`)
+  put all of it in rescuing the materials swap clips name (43 on one avatar, 14 of them copied), about 175 ms to
+  write each and 310-350 ms in its textures. The writes now go in the scene pass's batch (936bfcc8): 7.8 to
+  5.7 s and 13.4 to 8.6 s on that avatar, the same 243 output files. Setting motions only on a change measured
+  nothing and was reverted. Left: the textures' 310 ms a material, not yet split; texture clones stay
+  immediate, since a batched material must not name a texture written in the same batch.
 - **Two digest moves since the 5.0.0 release run** (full corpus 2026-11-16 on 7a4d2163, 7 of 88
   changed, the release run 0): six scenes of one avatar list two equal 5.3 MB texture warnings in
   the other order (`AvatarWeight.cs:217` sorts by bytes alone, so ties follow material order:
-  add `ThenBy` name); one avatar's rehomed clip reads "Blush" where the baseline read "Blush 1",
+  ~~add `ThenBy` name~~ done e5bea683, by name then path); one avatar's rehomed clip reads "Blush" where the baseline read "Blush 1",
   the file still `Blush 1.anim`, so a name is now taken before the import that renames it. Both
   cosmetic; check whether the speed work moved them before accepting a new baseline.
 - **Upload time, not measured yet** (Joe, 2026-11-16: "add the upload timing to the queue"). The
@@ -6247,6 +6418,10 @@ times in `Diagnostics.md`. Still open, largest first:
   the stub targets: the resolve 2.33 to 1.40 s, the whole deform 2.50 to 1.96 s, temps 59 to 43,
   slots unchanged (3053 to 3050). Tried and dropped: the four nearest as named scalars (slower,
   deform 3.04 s) and the three passes folded into the same loop (5% more, 84 more slots).
+  In Unity, `FreshCompileTimeTest` (one body variant per host with every role, one run each):
+  Poiyomi Toon 65.3 to 59.9 s, Poiyomi Pro 54.6 to 47.9 s, YAPS Standard 67.9 to 63.9 s. The bend
+  tester's 88 lines are identical before and after. Not yet: a cold bundle build of a plug avatar,
+  and an in-game look with Shader Filtering on.
   4. Last resort: the deform in a blit (as the jelly does), the vertex program only reading it.
      A redesign, measured against the in-game cost first.
   Proof each step: cold bundle build on one plug avatar before and after, plus an in-game look
