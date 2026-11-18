@@ -1041,8 +1041,8 @@ namespace AvatarBridge
             foreach (var socketRoot in socketRoots)
             {
                 var renderer = SocketRenderer(socketRoot);
-                if (renderer == null || MeshOf(renderer) == null
-                    || MeshOf(renderer).blendShapeCount == 0)
+                if (renderer == null || AvatarWeight.MeshOf(renderer) == null
+                    || AvatarWeight.MeshOf(renderer).blendShapeCount == 0)
                 {
                     // No shapes to open with, but still a socket to retune.
                     YapsNativeBuilder.AdoptSocket(socketRoot, renderer, null, null);
@@ -1189,30 +1189,20 @@ namespace AvatarBridge
         static Renderer SocketRenderer(Transform socketRoot)
         {
             var own = socketRoot.GetComponentInChildren<Renderer>(true);
-            if (own != null && MeshOf(own) != null && MeshOf(own).blendShapeCount > 0)
+            if (own != null && AvatarWeight.MeshOf(own) != null && AvatarWeight.MeshOf(own).blendShapeCount > 0)
             {
                 return own;
             }
             for (var at = socketRoot.parent; at != null; at = at.parent)
             {
                 var renderer = at.GetComponent<Renderer>();
-                if (renderer != null && MeshOf(renderer) != null
-                    && MeshOf(renderer).blendShapeCount > 0)
+                if (renderer != null && AvatarWeight.MeshOf(renderer) != null
+                    && AvatarWeight.MeshOf(renderer).blendShapeCount > 0)
                 {
                     return renderer;
                 }
             }
             return null;
-        }
-
-        static Mesh MeshOf(Renderer renderer)
-        {
-            if (renderer is SkinnedMeshRenderer skin)
-            {
-                return skin.sharedMesh;
-            }
-            var filter = renderer.GetComponent<MeshFilter>();
-            return filter != null ? filter.sharedMesh : null;
         }
 
         // Informational only: the shader stands down on depth, not on this.

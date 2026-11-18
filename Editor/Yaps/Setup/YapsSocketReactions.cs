@@ -28,9 +28,11 @@ namespace AvatarBridge
 
         // Synced, and named after the bone. No '#', no spaces: CVR takes
         // neither.
-        public static string Parameter(YapsSocket socket) => "YAPS/" + Machine(Unique(socket)) + "/Depth";
+        public static string Parameter(YapsSocket socket) => ParameterFor(Unique(socket));
+        internal static string ParameterFor(string socketName) => "YAPS/" + Machine(socketName) + "/Depth";
 
-        public static string LegacyParameter(YapsSocket socket) => "#YAPS/" + Sanitise(socket.name) + "/Depth";
+        public static string LegacyParameter(YapsSocket socket) => LegacyParameterFor(socket.name);
+        internal static string LegacyParameterFor(string socketName) => "#YAPS/" + Sanitise(socketName) + "/Depth";
 
         public static string LayerName(YapsSocket socket) => "YAPS " + Unique(socket) + " reactions";
 

@@ -938,7 +938,7 @@ namespace AvatarBridge
             return most == 0 ? null : skins.Where(s => Carries(s) == most).OrderByDescending(Spread).First();
         }
 
-        // What the name search would give one renderer, for the region tool to start from.
+        // What the name search would give one renderer, as two channels. The probes' reading.
         public static Vector4[] NamedShares(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
         {
             var all = NamedChannels(root, body, out names, out none);

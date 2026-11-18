@@ -99,7 +99,7 @@ namespace AvatarBridge
                 return null;
             }
 
-            var mesh = MeshOf(renderer);
+            var mesh = AvatarWeight.MeshOf(renderer);
             if (mesh == null)
             {
                 failure = "the renderer has no mesh";
@@ -1395,16 +1395,6 @@ namespace AvatarBridge
             EditorUtility.SetDirty(existing);
             AssetDatabase.SaveAssetIfDirty(existing);
             return existing;
-        }
-
-        static Mesh MeshOf(Renderer renderer)
-        {
-            if (renderer is SkinnedMeshRenderer skin)
-            {
-                return skin.sharedMesh;
-            }
-            var filter = renderer.GetComponent<MeshFilter>();
-            return filter != null ? filter.sharedMesh : null;
         }
 
         static string Sanitise(string name)

@@ -254,7 +254,7 @@ namespace AvatarBridge
             });
         }
 
-        // Each part on the live tissue: a preset and its eight knobs, each a share of how the build
+        // Each part on the live tissue: a preset and its five shown knobs, each a share of how the build
         // tunes the part. Live like the rest; a knob moved off the preset makes it Custom.
         BridgeElements.Card EachPart(YapsSquashSettings settings, Transform root)
         {
@@ -269,11 +269,7 @@ namespace AvatarBridge
             {
                 int i = settings.feels.FindIndex(f => f.part == part);
                 card.Section(part);
-                if (i < 0)
-                {
-                    card.Body.Add(BridgeElements.Hint("Built before parts had a feel of their own: rebuild to give it one."));
-                    continue;
-                }
+                if (i < 0) continue;
                 string at = $"feels.Array.data[{i}]";
                 var preset = new EnumField("Preset", settings.feels[i].preset) { bindingPath = at + ".preset",
                     tooltip = "Fills the knobs below for a breast, a butt, thighs, a belly, or Firm for skin close over muscle (an arm, a calf, the neck). Custom keeps them as they are." };
@@ -288,7 +284,8 @@ namespace AvatarBridge
                 card.Body.Add(preset);
                 for (int q = 0; q < YapsJelly.FeelKnobs.Length; q++)
                 {
-                    // The cloth moves the whole, so these three only tune a mass no avatar part has.
+                    // Hidden: Give is inert on a cloth-carried part (it scales a give of 0), and Swing and
+                    // Spring back only settle a twitch or the pair pressing together, at the preset's values.
                     if (YapsJelly.FeelKnobs[q] == "give" || YapsJelly.FeelKnobs[q] == "swing" || YapsJelly.FeelKnobs[q] == "springBack") continue;
                     int knob = q;
                     var slider = BridgeElements.SliderField(FeelLabels[q], FeelTips[q], 0.25f, 3f, YapsJelly.KnobsOf(settings.feels[i])[q], v =>

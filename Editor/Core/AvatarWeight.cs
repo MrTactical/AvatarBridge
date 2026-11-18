@@ -791,6 +791,7 @@ namespace AvatarBridge
 
         internal static Mesh MeshOf(Renderer r)
         {
+            if (r == null) return null;
             if (r is SkinnedMeshRenderer skin) return skin.sharedMesh;
             var filter = r.GetComponent<MeshFilter>();
             return filter != null ? filter.sharedMesh : null;

@@ -470,8 +470,8 @@ namespace AvatarBridge
                     string socketName = layer.name.Substring(5, layer.name.Length - 5 - suffix.Length);
                     var one = new List<AnimatorController> { controller };
                     // The synced name this build writes, and the local one older builds did.
-                    RemoveLayer(one, layer.name, "YAPS/" + Machine(socketName) + "/Depth");
-                    RemoveLayer(one, layer.name, "#YAPS/" + Sanitise(socketName) + "/Depth");
+                    RemoveLayer(one, layer.name, YapsSocketReactions.ParameterFor(socketName));
+                    RemoveLayer(one, layer.name, YapsSocketReactions.LegacyParameterFor(socketName));
                     done.Add($"layer \"{layer.name}\" in \"{controller.name}\": its socket is gone");
                 }
                 // Depth parameters no layer reads.
@@ -1001,19 +1001,6 @@ namespace AvatarBridge
             string path = clip != null ? AssetDatabase.GetAssetPath(clip) : null;
             return !string.IsNullOrEmpty(path)
                    && path.Replace('\\', '/').StartsWith(YapsNativeBuilder.OutputRoot + "/", System.StringComparison.OrdinalIgnoreCase);
-        }
-
-        static string Sanitise(string s)
-        {
-            foreach (char c in System.IO.Path.GetInvalidFileNameChars()) s = s.Replace(c, '_');
-            return s;
-        }
-
-        // The parameter-safe form the reactions use.
-        static string Machine(string s)
-        {
-            string clean = System.Text.RegularExpressions.Regex.Replace(s ?? "", "[^A-Za-z0-9_-]+", "");
-            return string.IsNullOrEmpty(clean) ? "Socket" : clean;
         }
     }
 }

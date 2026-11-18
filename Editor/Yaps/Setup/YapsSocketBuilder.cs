@@ -44,7 +44,7 @@ namespace AvatarBridge
         [MenuItem("Tools/Avatar Bridge/YAPS/Create universal socket prefabs")]
         public static void CreatePrefabs()
         {
-            EnsureFolder(PrefabFolder);
+            YapsNativeBuilder.EnsureFolderPublic(PrefabFolder);
             var hole = CreatePrefab("YAPS Hole", YapsSocket.SocketKind.Hole);
             var ring = CreatePrefab("YAPS Ring", YapsSocket.SocketKind.Ring);
             AssetDatabase.SaveAssets();
@@ -61,7 +61,7 @@ namespace AvatarBridge
         [MenuItem("Tools/Avatar Bridge/YAPS/Create a plug prop prefab")]
         public static void CreatePlugPropPrefab()
         {
-            EnsureFolder(PrefabFolder);
+            YapsNativeBuilder.EnsureFolderPublic(PrefabFolder);
             // Its own mesh: the test plug's is overwritten by the next one
             // spawned, which left the saved prefab with no mesh.
             var root = YapsNativeBuilder.BuildTestPlug(null, select: false,
@@ -103,7 +103,7 @@ namespace AvatarBridge
         [MenuItem("Tools/Avatar Bridge/YAPS/Create a ring-and-socket prop prefab")]
         public static void CreateSocketPropPrefab()
         {
-            EnsureFolder(PrefabFolder);
+            YapsNativeBuilder.EnsureFolderPublic(PrefabFolder);
             var root = new GameObject("YAPS Ring and Socket Prop");
 
             // Something to see and grab.
@@ -498,15 +498,6 @@ namespace AvatarBridge
             var p = go.AddComponent<CVRPointer>();
             p.type = type;
             return p;
-        }
-
-        static void EnsureFolder(string path)
-        {
-            if (AssetDatabase.IsValidFolder(path)) return;
-            string parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
-            string leaf = System.IO.Path.GetFileName(path);
-            if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);
-            AssetDatabase.CreateFolder(parent, leaf);
         }
     }
 }
