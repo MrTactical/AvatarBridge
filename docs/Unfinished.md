@@ -3914,6 +3914,13 @@ Found (a five-agent read plus 10 harness runs, synthesis in the session scratch)
 
 Speed, held back from 5.0.0 (Joe, 2026-10-21).
 
+### 52. Code rot review. Joe, 2026-11-18: "a code rot review, or tech-debt review, we been writing a lot", after 5.0.0 releases
+A whole-repo pass for what the 5.0.0 run left behind: dead code and settings nothing reads (the tissue's Give, Swing and
+Spring back are out of the UI but still in the shader and presets), migration paths for marks only test builds wrote,
+duplicated helpers between the converter and the toolkit, comments that describe removed behaviour, probes whose
+flags no longer exist, and files past a size anyone can hold in their head (`YapsJelly.cs`). Report first, ranked,
+then fix in small commits with the tests and corpus around them. Not before 5.0.0 is published.
+
 ### 48. Optimisation pass. Joe, 2026-11-17: "full optimisation pass", then "yes" to items 1-6 and the cache measurement
 **Folded into 5.0.0** (Joe 2026-11-17: "throw all optimisations into 5.0.0"; main 4077a2e4, tag moved, draft packages
 and notes updated). Cold first upload A/B on the plush, Library/ShaderCache cleared before each bundle build, one run
