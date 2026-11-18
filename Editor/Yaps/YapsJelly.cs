@@ -1728,7 +1728,6 @@ namespace AvatarBridge
             }
             var mesh = FilledMesh(folder + "/Jelly_Probe_Markers.asset", m =>
             {
-                m.name = "Jelly probe markers";
                 m.vertices = points.ToArray();
                 m.SetUVs(1, at);
                 m.boneWeights = weights.ToArray();
@@ -1964,6 +1963,8 @@ namespace AvatarBridge
             if (made) mesh = new Mesh();
             mesh.Clear();
             fill(mesh);
+            // The file's own name: a mismatch reimports it on every write, and older builds saved another.
+            mesh.name = System.IO.Path.GetFileNameWithoutExtension(path);
             if (made) AssetDatabase.CreateAsset(mesh, path);
             else EditorUtility.SetDirty(mesh);
             AssetDatabase.SaveAssetIfDirty(mesh);
