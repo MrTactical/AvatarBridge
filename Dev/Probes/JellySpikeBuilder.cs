@@ -2661,6 +2661,21 @@ namespace AvatarBridge.Regression
                     YapsShaderPatcher.EndPass(null, null);
                     Debug.Log($"[Jelly] squash built {built}: {squash}");
                 }
+                // -jellyRebuild 0|1: the squash built as the YAPS tool builds it, into its own folder;
+                // with 1 then taken off and built again in this session, as the window's Remove
+                // squash then the component's Rebuild do (queue item 54).
+                int rebuildAt = Array.IndexOf(args, "-jellyRebuild");
+                if (rebuildAt >= 0 && rebuildAt + 1 < args.Length)
+                {
+                    PrefabUtility.UnpackPrefabInstance(made, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
+                    var r = made.GetComponentInChildren<CVRAvatar>(true).transform;
+                    Debug.Log("[Jelly] build: " + YapsSquash.Build(r, out _));
+                    if (args[rebuildAt + 1] == "1")
+                    {
+                        bool stripped = YapsSquash.Strip(r, Yaps.YapsSwapFollow.RunnableClips(r));
+                        Debug.Log($"[Jelly] removed {stripped}, rebuilt: " + YapsSquash.Build(r, out _));
+                    }
+                }
             }
             var avatar = Object.FindObjectsOfType<CVRAvatar>().FirstOrDefault(a => YapsSquash.Has(a.transform));
             // Any other jelly in the scene, a prop, shares the step's materials in the editor, where
