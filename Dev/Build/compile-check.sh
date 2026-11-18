@@ -89,7 +89,7 @@ for defines in "CVR_CCK_EXISTS" \
     # Without the add-on, drop Editor/Yaps AND Runtime: the public package prunes both.
     case "$shape" in
         addon:*)             (cd "$REPO" && yaps_files | tr '\0' '\n' | grep '\.cs$' | sed "s|^|$REPO/|") ;;
-        *AVATARBRIDGE_YAPS*) find "${sources[@]}" -name '*.cs' ;;
+        *AVATARBRIDGE_YAPS*) find "${sources[@]}" -name '*.cs' -not -path '*/Dev/Spikes/*' ;;
         *)                   find "${sources[@]}" -name '*.cs' -not -path '*/Editor/Yaps/*' -not -path '*/Runtime/*' ;;
     esac |
         while read -r f; do echo "\"$(cygpath -w "$f")\"" >> "$rsp"; done

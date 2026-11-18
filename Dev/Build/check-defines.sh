@@ -56,7 +56,8 @@ sources="$WORK/sources.rsp"
 {
   find "$REPO/Editor" "$REPO/Runtime" -name '*.cs' | while read -r f; do echo "\"$(cygpath -w "$f")\""; done
   grep '^"Assets/AvatarBridge/Editor/DevTools/' "$RSP" | tr -d '"\r' | while read -r have; do
-    src="$(find "$REPO/Dev" -name "$(basename "$have")" -type f -print -quit)"
+    # Harness folders only, last match wins, as deploy.sh: a gitignored spike sharing a name is not the harness.
+    src="$(find "$REPO"/Dev/{Corpus,Tests,Probes,Scenes,Tester} -name "$(basename "$have")" -type f 2>/dev/null | tail -n 1)" || true
     src="${src:-$PROJ/$have}"
     # A scratch probe deleted since that compile is not a source any more.
     [ -f "$src" ] && echo "\"$(cygpath -w "$src")\""
@@ -73,7 +74,8 @@ echo "\"$(cygpath -w "$foreign")\"" | tee -a "$sources" >> "$public"
 # Project scripts using this tool's types are dev spikes; without the add-on
 # they fail and csc writes no assembly for the read-back.
 spikes="$WORK/spikes.txt"
-grep '^"Assets/' "$RSP" | tr -d '"' | grep -v '^Assets/AvatarBridge/' | while read -r f; do
+grep '^"Assets/' "$RSP" | tr -d '"
+' | grep -v '^Assets/AvatarBridge/' | while read -r f; do
   case "$f" in *.cs) grep -qs "AvatarBridge" "$PROJ/$f" && echo "$f" ;; esac
 done > "$spikes"
 
@@ -90,7 +92,8 @@ for yaps in 1 0; do
     echo "-out:\"$out\"" >> "$WORK/args.rsp"
     [ "$yaps" = 1 ] && echo "-define:AVATARBRIDGE_YAPS" >> "$WORK/args.rsp"
     if [ "$yaps" = 0 ]; then
-      awk 'FILENAME == ARGV[1] { skip[$0]; next } { k = $0; gsub(/["]/, "", k) } !(k in skip)'         "$spikes" "$WORK/args.rsp" > "$WORK/args-public.rsp" && mv "$WORK/args-public.rsp" "$WORK/args.rsp"
+      awk 'FILENAME == ARGV[1] { skip[$0]; next } { k = $0; gsub(/["
+]/, "", k) } !(k in skip)'         "$spikes" "$WORK/args.rsp" > "$WORK/args-public.rsp" && mv "$WORK/args-public.rsp" "$WORK/args.rsp"
     fi
     [ "$magica" = 1 ] && echo "-define:AVATARBRIDGE_MAGICA" >> "$WORK/args.rsp"
     [ "$dynbone" = 1 ] && echo "-define:AVATARBRIDGE_DYNBONE" >> "$WORK/args.rsp"

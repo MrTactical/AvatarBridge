@@ -21,7 +21,7 @@ namespace AvatarBridge.Regression
             string prefab = YapsSocketBuilder.PlugPropPrefabPath;
             string held = null;
             GameObject setup = null, holder = null;
-            var before = new HashSet<string>(Generated());
+            var before = GeneratedFiles.Snapshot();
             try
             {
                 // Built, not instanced from the prop prefab, which owns its own files.
@@ -60,9 +60,7 @@ namespace AvatarBridge.Regression
                     AssetDatabase.MoveAsset(held, prefab);
                     AssetDatabase.DeleteAsset(Hold);
                 }
-                foreach (var path in Generated().Where(p => !before.Contains(p)
-                             && (p.Contains("/YAPS Test Plug/") || p.Contains("/YAPS Preview Plug/") || p.Contains("/Test Plug/"))))
-                    AssetDatabase.DeleteAsset(path);
+                GeneratedFiles.DeleteNew(before);
             }
             Debug.Log(failures == 0 ? "[PreviewPlugOwnFilesTest] PASS" : $"[PreviewPlugOwnFilesTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

@@ -122,7 +122,7 @@ namespace AvatarBridge.Regression
                     sw.Restart();
                     var prefab = bundle.LoadAllAssets<GameObject>().First();
                     double asset = sw.Elapsed.TotalMilliseconds;
-                    // Instantiated under a switched-off parent, so what -hitchStrip names can go before
+                    // Instantiated under a switched-off parent, so what the -hitchPrefab "::a+b" suffix names can go before
                     // anything wakes; then switched on, which is where Awake and OnEnable run.
                     var holder = new GameObject("LoadHitch holder");
                     holder.SetActive(false);

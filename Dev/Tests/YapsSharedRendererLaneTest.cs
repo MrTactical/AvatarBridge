@@ -21,6 +21,7 @@ namespace AvatarBridge.Regression
             failures = 0;
             var made = new List<Object>();
             GameObject plugA = null, plugB = null, body = null;
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 plugA = YapsNativeBuilder.BuildTestPlug(select: false, length: 0.2f, name: "Lane Test A");
@@ -125,11 +126,7 @@ namespace AvatarBridge.Regression
                 if (body != null) Object.DestroyImmediate(body);
                 if (plugA != null) Object.DestroyImmediate(plugA);
                 if (plugB != null) Object.DestroyImmediate(plugB);
-                foreach (var n in new[] { "Lane Test A", "Lane Test B" })
-                {
-                    AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/" + n);
-                    AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/Test Plug/" + n + " Mesh.asset");
-                }
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[YapsSharedRendererLaneTest] PASS" : $"[YapsSharedRendererLaneTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

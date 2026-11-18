@@ -2879,7 +2879,7 @@ namespace AvatarBridge.Regression
                 {
                     sd.colliderCollisionConstraint.mode = MagicaCloth2.ColliderCollisionConstraint.Mode.None;
                     EditorUtility.SetDirty(cloth);
-                    // MagicaCloth2 collides a BoneSpring by points whatever this says: -spClothNoHands instead.
+                    // MagicaCloth2 collides a BoneSpring by points whatever this says: keep colliders out of its list instead (-spNoColliders <prefixes>).
                     Debug.Log($"[Jelly] film: {cloth.name} collides with nothing" + (sd.clothType == MagicaCloth2.ClothProcess.ClothType.BoneSpring ? ", IGNORED: a BoneSpring collides by points" : ""));
                 }
                 // -jellyClothOff: the cloth off, so whatever else moves the bone shows alone.

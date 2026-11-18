@@ -22,6 +22,7 @@ namespace AvatarBridge.Regression
             failures = 0;
             GameObject first = null, second = null;
             string dir = YapsNativeBuilder.OutputRoot + "/" + Name;
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 // Another avatar of the same name already plays a clip where the new toggle's would go.
@@ -58,8 +59,7 @@ namespace AvatarBridge.Regression
                 if (first != null) Object.DestroyImmediate(first);
                 if (second != null) Object.DestroyImmediate(second);
                 AssetDatabase.DeleteAsset(dir);
-                AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/Toggle Owner Plug");
-                AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/Test Plug/Toggle Owner Plug Mesh.asset");
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[ToggleClipOwnerTest] PASS" : $"[ToggleClipOwnerTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
