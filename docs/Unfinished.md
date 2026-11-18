@@ -55,6 +55,10 @@ its number; only the look in game is left here.
   before.
 - **(31.5) A converted chain whose PhysBone has a radius curve** (MagicaCloth 2): it collides like the
   original in VRChat, thinner toward the tip, not as a full-size ball along its length.
+- **(40) Smaller Arms and Thickness on the plush, in game:** does either deform show, for you and for
+  others? If neither does, try one upload without YAPS to tell the add-on from the avatar.
+- **(49) Walking and running with live tissue:** a part nobody touches does not stretch; a hand, your
+  own hand, a grip or the pair pressing wakes it; nothing at landing after fast flight.
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -621,61 +625,6 @@ matter only where a pair stays on the squash alone):
 Real work left, most urgent first: what somebody hits while wearing an avatar, then what waits on a
 tester, then the unmeasured leftovers.
 
-### 49. Live tissue stretching while moving: what is left. Joe and a tester on rc19, 2026-11-17. SHIPPED in 5.0.0, not seen in game; two questions OPEN
-
-Shipped in 5.0.0 and recorded in `archive/Closed-2026-11.md`: past 7 m/s the tissue hangs rigid
-(8b2fb4bb), it no longer leads the body on one pass (db9574e8), and an untouched part eases onto
-its bones over `_Hold` 0.4 s and holds there until touched (caf63e98 to ce9e95b5; Joe: "let magica
-handle all physics ... squash and jelly only handle mesh deforms"). Harness only (`-jellyStab`).
-- **In game, not yet:** walking and running, a part nobody touches does not stretch (harness: walk
-  1.82x to 1.05x, run 2.10x to 1.08x, 25 fps 1.59x to 1.00x); a hand, the wearer's own hand, a grip
-  or the pair pressing wakes it; nothing at landing after fast flight worse than before (118 mm in
-  the harness, was 209).
-- **Open: why two whole passes (under 72 fps) lag a frame.** The lead fix is on for one pass only.
-  Under 72 fps the same fix left the front a frame behind (60 fps 22 mm, 25 fps 65 mm against
-  15 mm), so there it keeps this frame's anchor, which happens to cancel that lag. Each pass moves
-  the particles exactly the anchor's half step; the shape holds compressed (back layers ahead,
-  front behind), and `_Solid` amplifies it (0.44 to 0.73 cells at 60 fps). Tried and reverted:
-  taking the first pass's homes half a step back made it worse (60 fps 1.01, 25 fps 2.48 cells; the
-  60 fps hitch tore 5.6x).
-- **Open, probably the tester's "stretch": the cloth under the tissue.** Cloth on, a steady 4 m/s
-  run turns the breast bone about 60 degrees outward and 10 cm sideways (the masses 34 to 44 cm
-  apart) and the skin goes with it; 73 mm and 2.1x stretch at the back face, unchanged by `_Solid`,
-  `_Motion`, `_MassHz`, `_Pair`, `_Smooth` and `_Landing`. Physics A/B on Kar (`-abSpeed 4`), swing
-  peak in degrees, original PhysBones against the MagicaCloth copy: 1.4 m/s walk 47 against 23-26,
-  4 m/s run 71 against 61. The conversion swings less than VRChat, so the swing at a run is the
-  avatar's own physics (pull 0.18, spring 0.8, limit 50 degrees), not a loose conversion. Whether
-  the tissue riding it looks worse than VRChat's skin on the same bone is open; waits for the
-  tester's answer on which stretch they meant.
-- Harness flags: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f`,
-  `-jellyStabSide`, `-jellyStabFilm`.
-
-### 40. A plush avatar in game: what is left of the reports. 2026-11-14, from the plush build session, OPEN
-
-The fixed points (dropdown names, a renamed parameter's default, the squash's Build pressed twice,
-the readout slot, the world probes) shipped in 5.0.0; the record is in `archive/Closed-2026-11.md`.
-Legend as before: [G] seen in game, [R] read from code, [M] measured.
-- **Smaller Arms does nothing in game, though it does in the editor [G, open].** Both deforms add a
-  move to the incoming skinned position, and the arms carry no part, so the shader cannot hide a
-  blendshape. Waiting on: whether Thickness works in game, whether others see it, and a non-YAPS
-  upload.
-- **Asked, not built: `_Damp` and a gravity share under Feel**, since a rebuild overwrites hand
-  edits (the session zeroes `_Damp`, `_Gravity` and `_Lift` after each build as a stopgap). Give,
-  Swing and Spring back have since left the Feel UI (item 51), so decide this with item 52's
-  clean-up of the tissue's settings. Joe's call.
-- **Upside down the tissue "busted" [G Joe]: not reproduced** on a breast pair or a belly (1 mm off
-  rest either way; 0.9 mm after item 41's guards). The session's reading (`_Lift` along the
-  anchor's up adding to gravity when inverted, about 11 cm on a belly; lying flat the pull goes
-  diagonal) and its proposal (lift along world up, as Cored does, or fade to it as the anchor turns
-  over) are not built. Reopen with a film from the game.
-- **Trailing with speed:** closed for an untouched part by items 41 and 49 (it holds on its bones,
-  rigid past 7 m/s). The belly's worse stop is in item 41.
-- **Ideas from the same round [Minor].** A report line when a toggle's off clip, baked from the
-  scene, equals its on clip (a toggle switched on before converting can never switch off). A way to
-  leave parts out of the squash and jelly regions by blendshape, material or vertex group (the
-  jelly crumpled a cloth tag). The squash's "built by an older YAPS" status naming which version
-  built it and which would rebuild it.
-
 ### 16. Tester reports on the rc builds, 2026-10-22. SHIPPED in 5.0.0; one report waits on the tester
 
 Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.md`.
@@ -696,12 +645,6 @@ Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.m
   scalarised socket arrays, an unrolled atlas scan, skipping optimisation (2x instructions); the
   partner pass's hand loop as `[loop]` was identical but saved a quarter of a second at best and was
   not applied. Not done: a tester's own upload timed before and after.
-
-### 5. Cloth on a plug's own bones, unmeasured. OPEN
-
-A cloth chain that moves bones inside a plug would break the per-vertex frame in play. Ruled out
-as the cause of the 4.6.4 tear (`archive/Closed-2026-10.md`, "Blendshapes a plug renderer holds came
-undone"), never measured in game or in Play mode. No report behind it.
 
 ### 6. Conversions got slower between corpus 418 and 419: the squash's compile. SHIPPED in 5.0.0, one check open
 
@@ -1915,6 +1858,13 @@ a probe on the skin slides round a thin collider, so its depth is not there to r
 11 felt). Options: probes that cannot slide (a bone's tip held to its line), a second layer under the skin, or a
 thin collider pressing at least its radius. Unmeasured: 128 probes a pair against 48 on a heavy scene. Only
 matters for MagicaCloth colliders with Other Colliders on; players' hands dent through the arrays regardless.
+
+### Three ideas from the plush avatar's reports (item 40). 2026-11-14, NOT STARTED
+- A report line when a toggle's off clip, baked from the scene, equals its on clip: a toggle switched
+  on before converting can never switch off.
+- A way to leave parts out of the squash and jelly regions by blendshape, material or vertex group
+  (the jelly crumpled a cloth tag).
+- The squash's "built by an older YAPS" status naming which version built it and which would rebuild.
 
 ### Fold into the next intentional YAPS shader change. From the code rot review (item 52), 2026-11-18
 Each changes the patched shader text, so on its own it would make every YAPS avatar read "Needs a rebuild"
