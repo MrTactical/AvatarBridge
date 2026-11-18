@@ -1335,8 +1335,8 @@ bra, a shirt, piercings) moves with it. It costs no synced parameters and uses n
 > squash on asks you to press **I accept** first, once per machine. Test it in ChilloutVR before you
 > rely on it, and [report](#reporting-a-bug) anything that stretches, jumps or flickers. Squash and
 > live tissue run on every viewer's graphics card, so too many parts, or many squashed avatars close
-> together, cost frames in game. It is confirmed in game on breasts; other parts, the non-breast presets, clones and the
-> behaviour at speed are not yet confirmed in game.
+> together, cost frames in game. It is confirmed in game on breasts; other parts, the non-breast presets and the
+> behaviour at speed are not yet confirmed in game. A clone of the avatar (Mini Me) does not squash or jiggle.
 
 On a humanoid avatar the parts become **live tissue**. That is the path nearly every avatar takes,
 so it comes first here.
@@ -1503,8 +1503,7 @@ follow:
   without the squash. Nothing breaks.
 - A viewer with **Shader Filtering** on (ChilloutVR's *Settings ▸ Experimental*) sees hands and
   plugs mostly stop pressing.
-- A clone of the avatar (Mini Me) is expected to stay at its rest shape. Not yet confirmed in
-  game.
+- A clone of the avatar (Mini Me) stays at its rest shape: it does not squash or jiggle.
 - The first upload after building compiles the body shader once. On a non-humanoid avatar using
   the squash this can take several minutes.
 - Clothing follows the skin under it within 3 cm, and within 5 cm where a hand presses it.

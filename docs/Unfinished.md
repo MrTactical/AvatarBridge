@@ -59,9 +59,6 @@ its number; only the look in game is left here.
   others? If neither does, try one upload without YAPS to tell the add-on from the avatar.
 - **(49) Walking and running with live tissue:** a part nobody touches does not stretch; a hand, your
   own hand, a grip or the pair pressing wakes it; nothing at landing after fast flight.
-- **(54) Editor, the plush in Joe's project:** Remove squash, repaint the regions, then the
-  component's Rebuild, in one session; in Play mode the Avatar Tester's Squeeze dents the skin and
-  clothes without tearing them into spikes. If it tears, keep the Editor.log and reopen 54.
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -162,27 +159,6 @@ shipped in 5.0.0; the record is in `archive/Closed-2026-11.md`. Only the game ca
 Known ceilings, not work: a new toggle's clip file is not checked against an avatar that is only in
 a prefab, off the scene (risk 29); the tester's DynamicBone grab fix (bug 6) has no automated test,
 only `check-defines.sh`.
-
-### 46. A Mini Me clone never squashes or jiggles. Joe in game, 2026-11-16. OPEN, waits for Joe's call (a feature, not a repair)
-**Check:** Joe's call: see a Mini Me clone stay at rest in game, then say whether the clone deform gets built.
-
-The clone (ChilloutVR's ContentCloneManager, as used by Mini Me) draws the host's skinned buffer with
-the host's materials under its own `unity_ObjectToWorld`, somewhere else and smaller. The dent
-(`yaps_dent.cginc` 807, 1397) and the jelly (`yaps_jelly.cginc` 402, 429) take a vertex to world
-through that matrix and measure it against host-world data (the follow matrices, the skin buffer,
-the lattice and anchors), so every clone vertex reads out of reach and keeps its rest shape. Not
-proven in game; read from the code by the plush build session. Partly by design: 98d8aaaf and
-96188335 leave another copy's skin alone on purpose, because the clone's chest and hips were
-dragged across to the wearer as long bars. A fix makes the clone deform, a feature, not a repair.
-
-Possible fix: deform in the host's frame when the draw is a displaced clone (its translation more
-than about a centimetre off the host's), mapping back with the host's inverse so the clone's own
-matrix then places and scales it. Needs the host's render matrix per material copy (the follow
-array is full, so one more data provider per renderer) and the exact matrix Unity draws a skinned
-renderer with. The host, mirrors and the first-person copy keep today's path.
-
-Also seen on the same avatars: a jelly whose skin mesh shipped empty crashed the clone outright
-("vertex buffer #0 is null") and broke the host. FilledMesh (089b0d74) writes the skin full at once.
 
 ### 50. Face tracking failing in every mode on a VRCFaceTracking add-on avatar. A user (Kneesox), 2026-11-17, with their own fixer script and a 4.7.2 Keep-mode output. SHIPPED in 5.0.0, not checked in game
 **Check:** a VRCFaceTracking avatar converted on Native tracks face, tongue and eyes in game.
@@ -656,7 +632,7 @@ recorded as sent.
 
 ## 5.0.1
 
-What is planned for the next release: the window's Remove squash, the code rot review, the Update button, what the 5.0.0 review
+What is planned for the next release: the window's Remove squash, the code rot review, what the 5.0.0 review
 left, the scaler's default once GS2 is on stable, then the small fixes and the speed leftovers.
 
 ### 53. "Remove squash" in the YAPS window left the YAPS Squash component. Joe, 2026-11-18. FIXED 2026-11-18, shipped in the 5.0.0 refresh (a9ff085a), Joe checked the window
@@ -665,34 +641,6 @@ component (parts and painted regions) on the avatar, and its message does not sa
 stripped at upload), but it reads as a failed remove. Decided (Joe): the window's button also deletes the component,
 with Undo, and says Ctrl+Z brings it back. The component's own "Remove the squash" keeps unbuilding only, settings kept
 for the next build.
-
-### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", then "write it". PLAN, decided, NOT BUILT
-
-Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
-**Update**, so a reconvert keeps the changes made by hand that do not conflict. Today every Convert
-rebuilds the output from the source and writes over it; only the window's settings and the
-*Since the last conversion* comparison carry over.
-
-- **Proposed (not built): Unity's prefab Variant of the OUTPUT.** Convert writes a base prefab and
-  makes a Variant beside it once; the user edits the Variant. Update rewrites the base; the Variant's
-  overrides (added objects, moved bones, changed components) ride over it, and a value both set is
-  the user's, shown as an override. No merge logic of ours.
-- **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
-- **Differs from the parked Variant-of-the-ORIGINAL idea** under Minor Ideas: the base here is our
-  own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
-- **Decided (Joe, 2026-11-16: "write it"):**
-  - **The slot.** A Variant AvatarBridge made: Update rewrites its base. An older output with no
-    Variant: the button reads **Update and keep a backup**, rebuilds, keeps the old prefab beside it,
-    and makes the Variant from then on (hand edits on that copy cannot be told apart). Anything else
-    (a VRChat avatar, another tool's output) is refused with a one-line reason.
-  - **Edits on objects the new base dropped.** Unity keeps them on the Variant as unused overrides,
-    so nothing is lost silently; the report lists them under *Edits that no longer apply* with each
-    path, and the user decides whether to remove them. An object added under a parent that is gone
-    is moved to the avatar root and listed, not dropped.
-  - **The upload id** lives on the Variant, so every Update re-uploads to the same ChilloutVR avatar.
-  - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
-    button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
-    (UiOffscreenProbe) before building.
 
 ### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
 
@@ -965,6 +913,34 @@ would reach further. Thinking so far, nothing built:
 - Cost: the joint spike measured about 15 us a chain per avatar past the first, at 90 Hz.
 - Next step: a read-only look at gates 1 to 3 in the client. Gate 4 goes away with point 1 of
   "Squash anywhere" (no hard cap on parts).
+
+### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", then "write it". PLAN ONLY, for 5.1
+
+Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
+**Update**, so a reconvert keeps the changes made by hand that do not conflict. Today every Convert
+rebuilds the output from the source and writes over it; only the window's settings and the
+*Since the last conversion* comparison carry over.
+
+- **Proposed (not built): Unity's prefab Variant of the OUTPUT.** Convert writes a base prefab and
+  makes a Variant beside it once; the user edits the Variant. Update rewrites the base; the Variant's
+  overrides (added objects, moved bones, changed components) ride over it, and a value both set is
+  the user's, shown as an override. No merge logic of ours.
+- **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
+- **Differs from the parked Variant-of-the-ORIGINAL idea** under Minor Ideas: the base here is our
+  own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
+- **Decided (Joe, 2026-11-16: "write it"):**
+  - **The slot.** A Variant AvatarBridge made: Update rewrites its base. An older output with no
+    Variant: the button reads **Update and keep a backup**, rebuilds, keeps the old prefab beside it,
+    and makes the Variant from then on (hand edits on that copy cannot be told apart). Anything else
+    (a VRChat avatar, another tool's output) is refused with a one-line reason.
+  - **Edits on objects the new base dropped.** Unity keeps them on the Variant as unused overrides,
+    so nothing is lost silently; the report lists them under *Edits that no longer apply* with each
+    path, and the user decides whether to remove them. An object added under a parent that is gone
+    is moved to the avatar root and listed, not dropped.
+  - **The upload id** lives on the Variant, so every Update re-uploads to the same ChilloutVR avatar.
+  - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
+    button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
+    (UiOffscreenProbe) before building.
 
 ### 23. Squash swaps: repoint at upload. Joe, 2026-10-25. PLAN ONLY, for 5.1
 The record is in `archive/Closed-2026-10.md`, "Squash turned swapped-in materials pink".
