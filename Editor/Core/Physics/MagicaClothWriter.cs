@@ -290,9 +290,26 @@ namespace AvatarBridge
                 ApplyMotionLeash(ctx, data, sdata);
             }
 
-
+            TaperRadius(ctx, data, sdata);
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
+        }
+
+        // A PhysBone's radius curve, carried over as VRChat applies it: radius x curve along the
+        // chain, on top of whatever sized the particles above. DynamicBone already took it.
+        static void TaperRadius(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            if (data.StandIn || !PhysBoneChainData.HasCurve(data.RadiusCurve)) return;
+            float peak = 0f;
+            for (int i = 0; i < 16; i++) peak = Mathf.Max(peak, PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, i / 15f));
+            if (peak <= 0.0001f) return;
+            var shape = new AnimationCurve(data.RadiusCurve.keys.Select(k =>
+                new Keyframe(k.time, k.value / peak, k.inTangent / peak, k.outTangent / peak, k.inWeight, k.outWeight) { weightedMode = k.weightedMode }).ToArray());
+            float root = sdata.radius.value;
+            sdata.radius.SetValue(root * peak, shape);
+            ctx.Report.Converted(Category, data.Label,
+                $"Particle radius follows the PhysBone's radius curve: {root * PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, 0f):0.###} " +
+                $"at the root to {root * PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, 1f):0.###} at the tip.");
         }
 
         public static MagicaCloth WriteSynthesized(BridgeContext ctx, Transform rigRoot)

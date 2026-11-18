@@ -568,6 +568,7 @@ applies these facts about the source:
   one, becomes the swing bound.
 - **Speed limits are raised** from the preset's (1 m/s on the springs) to MagicaCloth2's defaults.
   A limit is kept so a teleport cannot fling the chain. Each raise is reported.
+- **A radius curve** tapers the particles along the chain as it tapered the PhysBone's radius.
 
 **`Is Animated` sets Animation Pose Ratio to 1**, with that option on or off. Without it a slider
 that scales a chain's own bones stops working. The report names each chain.

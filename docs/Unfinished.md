@@ -44,6 +44,11 @@ its number; only the look in game is left here.
   own hand; the dent is one hand deep, not doubled.
 - **(30.4) The press's lighting on a smooth-shaded avatar:** no ring round a dent with the slope
   on (only toon ramps have been looked at).
+- **(31.6) Hands that carry only a MagicaCloth collider,** with Other Colliders on and a second player
+  who shares colliders: turn on **Jelly probes (debug)**; a marker moved and red is a pass, moved and
+  white means the step never read it, unmoved means the client gave the probes no collider.
+- **(31.8) A top-and-bottom squeeze with the breast cloths' full-size balls,** seen by a viewer who shares
+  colliders: the part does not ring on ("one touch answered twice").
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -798,37 +803,6 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
 - README: the options table default, the scaler's section, and a line on the hand-over between the
   two sliders. The window tooltip and the settings comment say the same.
 - Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
-
-### 31. The breasts less fluid than the Oct 31 films: what is left. Joe, 2026-11-06. SHIPPED in 5.0.0; the feel question CLOSED by decision 2026-11-17; the collider points OPEN
-
-The record is in `archive/Closed-2026-11.md`. "Fluid" is settled by Joe's rule of 2026-11-17 (items
-49 and 51): the cloth moves the bones, the tissue only dents the mesh, a hand never moves the whole.
-So the stretch is not being won back, `PairShrink` (the cloth's balls cut to 1 mm) is undone, and
-the night2k comparison is dropped. Left, the item's own numbers:
-- **(6) Hands that carry only a MagicaCloth collider: in game unproven.** In the editor they dent.
-  In game, by default no other player's collider reaches the wearer's cloth at all (the three
-  Dynamic Bone Interaction relations default to None; placement hands); players' hands dent through
-  the arrays regardless. The cloth probes are **Other Colliders** now, off by default (item 42),
-  with the **Jelly probes (debug)** menu toggle as the pass or fail line: a marker moved and red,
-  the whole chain works; moved and white, the tip moved but the step never read it; unmoved, the
-  client gave the probes no collider. Next: Joe and a second player who shares colliders.
-- **(7) A thin collider in a gap between probes is felt but placed outside the skin.** Matrix
-  `colliders3`: all 11 felt; a finger or the 15 mm sphere in a gap reads -9 to -19 mm. A probe on
-  the skin slides round a thin collider's side, so how deep it went is not there to read; an
-  offline model agreed (fingers at 7 to 13 mm for 30 even with 96 probes). Options: probes that
-  cannot slide (a bone's tip held to its line), a second layer under the skin, or a thin collider
-  pressing at least its radius. Unmeasured: the cost of 128 probes a pair against 48 on a heavy
-  scene; the seat and thighs rows were never rerun on the spread probes.
-- **(8) To watch in game since the balls are back to full size:** with the film's hand colliders
-  on the breast cloths, the bone was shoved 56 mm down and rang 63 times in a top-and-bottom
-  squeeze ("one touch answered twice"); item 51 accepted that on purpose and its harness run with a
-  hand collider held (lattice 14.27 of 14 spacings). Only a viewer who shares colliders can see it.
-- **(5) Unanswered:** whether a converted cloth's radius should taper to the tip, as a PhysBone
-  radius curve might (every particle of the breast cloth is a ball of the PhysBone's radius,
-  0.19 m on Kar).
-- Seen in the state trace before item 51, never filmed, probably gone with the give at 0: during a
-  held press the whole mass slid 5 cm down off the hand in 11 frames, and while pushed its steps
-  alternated about 6 and 2 mm frame to frame. Check once on the current harness before believing it.
 
 ### 48. Optimisation pass: what is queued, and what nobody has seen in game. Joe, 2026-11-17. SHIPPED in 5.0.0; the rest OPEN
 
@@ -1998,6 +1972,13 @@ Numbers are item 30's own; its record is in `archive/Closed-2026-11.md`.
 - (9) Every problem at the top of the component with its fix; a line saying what the build adds; a
   cost measured on the user's own card; a pile-up ring round a deep press; a dent whose rim grows
   with the press.
+
+### Thin colliders between the tissue's probes (item 31 point 7). Measured 2026-11-06, NOT STARTED
+A finger or a 15 mm sphere that slips between two cloth probes is felt but placed 9 to 19 mm outside the skin:
+a probe on the skin slides round a thin collider, so its depth is not there to read (matrix `colliders3`, all
+11 felt). Options: probes that cannot slide (a bone's tip held to its line), a second layer under the skin, or a
+thin collider pressing at least its radius. Unmeasured: 128 probes a pair against 48 on a heavy scene. Only
+matters for MagicaCloth colliders with Other Colliders on; players' hands dent through the arrays regardless.
 
 ### Fold into the next intentional YAPS shader change. From the code rot review (item 52), 2026-11-18
 Each changes the patched shader text, so on its own it would make every YAPS avatar read "Needs a rebuild"
