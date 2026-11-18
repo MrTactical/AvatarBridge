@@ -30,7 +30,19 @@ namespace AvatarBridge
     public static class YapsSquash
     {
         public const string Category = "Squash";
-        public const string Experimental = "Live tissue is a beta and very experimental. Test it in ChilloutVR before you rely on it, and report anything that stretches, jumps or flickers.";
+        public const string Experimental = "Live tissue is a beta and very experimental. Test it in ChilloutVR before you rely on it, and report anything that stretches, jumps or flickers. " +
+            "Squash and live tissue run on every viewer's graphics card, so too many parts, or many squashed avatars close together, cost frames in game.";
+
+        // Opted into knowingly, once per machine: a beta that costs every viewer frames. Batch runs
+        // have nobody to ask.
+        public static bool Accepted()
+        {
+            const string key = "AvatarBridge.Yaps.LiveTissueAccepted";
+            if (Application.isBatchMode || EditorPrefs.GetBool(key)) return true;
+            bool yes = EditorUtility.DisplayDialog("Squash and live tissue (beta)", Experimental, "I accept", "Cancel");
+            if (yes) EditorPrefs.SetBool(key, true);
+            return yes;
+        }
         const string ShaderHostName = "YAPS squash (shader)", FollowName = "YAPS squash follow", RestName = "YAPS squash rest", BackName = "YAPS squash back";
         // On each copy's importer, before the material it was copied from, for Strip to put back.
         internal const string Mark = "squash:";

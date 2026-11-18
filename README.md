@@ -1326,9 +1326,11 @@ An opt-in in the YAPS add-on, off by default. Breasts, butt and other soft parts
 hand and press against each other. It runs in the body's shader, so every layer over the skin (a
 bra, a shirt, piercings) moves with it. It costs no synced parameters and uses no contacts.
 
-> **Live tissue is a beta and very experimental.** The window marks it **BETA**. Test it in
-> ChilloutVR before you rely on it, and [report](#reporting-a-bug) anything that stretches, jumps or
-> flickers. It is confirmed in game on breasts; other parts, the non-breast presets, clones and the
+> **Live tissue is a beta and very experimental.** The window marks it **BETA**, and turning the
+> squash on asks you to press **I accept** first, once per machine. Test it in ChilloutVR before you
+> rely on it, and [report](#reporting-a-bug) anything that stretches, jumps or flickers. Squash and
+> live tissue run on every viewer's graphics card, so too many parts, or many squashed avatars close
+> together, cost frames in game. It is confirmed in game on breasts; other parts, the non-breast presets, clones and the
 > behaviour at speed are not yet confirmed in game.
 
 On a humanoid avatar the parts become **live tissue**. That is the path nearly every avatar takes,
