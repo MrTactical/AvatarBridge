@@ -237,7 +237,7 @@ since the editor holding the avatar is usually already open.
 
 Still untested: what a per-frame blit or camera actually costs.
 
-### 5. The screen-space atlas: postponed, deliberately
+### 5. The screen-space atlas: postponed, deliberately (later shipped; see A1 to A5 below)
 
 Sockets render encoded quads into a reserved screen region; plugs sample it back through a named
 GrabPass. The only channel that dodges the light slots, the pair cap, the sync bits AND the

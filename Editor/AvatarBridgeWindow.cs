@@ -811,7 +811,7 @@ namespace AvatarBridge
                     "Blame this if contacts get unreliable in a busy instance."));
             }
             optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
-                "On, OSCGoesBrrr finds them automatically, at 32 sync bits each. Off, link them by hand; " +
+                "On, OSCGoesBrrr finds them automatically, at 32 sync bits per parameter (about 290 per plug or socket). Off, link them by hand; " +
                 "the report lists the names.",
                 settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
             if (settings.syncHapticsForOsc)

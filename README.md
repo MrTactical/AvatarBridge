@@ -1430,7 +1430,7 @@ Knobs write straight to the materials as you move them. No rebuild.
 
 **Build the squash** builds it, **Rebuild the squash** rebuilds, **Remove the squash** puts every
 layer back on its own material, toggles included, and keeps the component's settings for the next
-build. **Remove squash** on the Setup card does the same and also removes the component, with its
+build. **Remove squash** on the Squash card in the YAPS window does the same and also removes the component, with its
 parts and painted regions (Ctrl+Z brings it back). The step says whether the build is up to date
 and, if not, why. Rebuild after changing the parts, **Materials left alone**, the body, an outfit,
 or after updating YAPS.
@@ -1439,7 +1439,7 @@ or after updating YAPS.
 - Only a layer that lies over a soft part gets a copy. A baked plug never does.
 - Toggles that swap a material into a squashed slot are pointed at a squashed copy, so they keep
   working. A clip that lives in a package is not edited, and the report names it.
-- Deleted the component by hand? **Remove squash** on the Setup card, or **Clean up leftovers**,
+- Deleted the component by hand? **Remove squash** on the Squash card, or **Clean up leftovers**,
   still puts the materials back.
 
 **Live tissue options**
@@ -1449,6 +1449,7 @@ Under *Tune how it feels ▸ Live tissue*:
 | Option | Default | What it does | Rebuild after changing? |
 |---|---|---|---|
 | **Twitch** | Off | Adds a **Jelly twitch** menu toggle. Each flip kicks the jiggle once | Yes |
+| **Twitch Size** | 0.02 | How far a twitch kicks, in metres | Yes |
 | **Grip Slides** | Off | A fist stroking along the skin takes its grip with it | No, it is live |
 | **Other Colliders** | Off | Other players' MagicaCloth colliders press the skin too. Needs MagicaCloth installed. Costs every viewer about 0.1 s more each time the avatar loads. Only viewers whose Dynamic Bone interaction settings take in other players' colliders see it press. Hands press without it | Yes |
 | **Probe Markers** | Off | With Other Colliders on, adds a **Jelly probes (debug)** menu toggle: a marker on each probe, white at rest, red where the tissue felt a collider | Yes |
@@ -2112,7 +2113,7 @@ Folded, because Analyse sets these from the avatar. Open it to override one on p
 |---|---|---|
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco; ChilloutVR has its own locomotion. Keeping it is experimental: tick Base, Additive and Action or there is no locomotion at all. Its poses do not lock movement, floor poses keep a standing viewpoint, and the quick-menu emotes stop. See [GoGo Loco](#gogo-loco) |
 | **Put GoGo poses in the emote wheel** | on | Offered while GoGo is removed. Up to eight: the avatar's own GoGo emotes first, then GoGo's sit and lie poses. They replace ChilloutVR's stock emotes on this avatar, hold until you move, and cost no sync |
-| **Penetration** | Convert to YAPS (recommended) | Shown only with the YAPS add-on installed. Without it the window says penetration is removed and links to the add-on. *Convert to YAPS (recommended)* rebuilds DPS, TPS and SPS for ChilloutVR. *Remove* takes out every plug and socket; the plug mesh stays, straight. *Leave as VRChat built it* touches nothing. The OGB, PCS and Wholesome haptics contacts go with the first two unless kept under *Opt-ins ▸ OSC toys*. See [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
+| **Penetration** | Convert to YAPS (recommended) | Shown only with the YAPS add-on installed. Without it the window says penetration is removed and links to the add-on. *Convert to YAPS (recommended)* rebuilds DPS, TPS and SPS for ChilloutVR. *Remove* takes out every plug and socket; the plug mesh stays, straight. *Leave as VRChat built it* touches nothing. The OGB, PCS and Wholesome haptics contacts go with both; under *Convert to YAPS (recommended)* they can be kept under *Opt-ins ▸ OSC toys*. See [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves that write material properties the shader does not have. The source is untouched |
 
 **Animator layers to convert**

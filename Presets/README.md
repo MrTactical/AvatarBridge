@@ -25,7 +25,8 @@ Two of its numbers are not taken as saved:
 
 - **Soft-body spring power has a floor of 0.06.** A `Breast`, `Butt`, `Belly` or `Thigh` preset
   saved lower is raised to it, the shipped ones included (they carry 0.01 to 0.03): at 0.01 a soft
-  body came out about six times floppier.
+  body came out about six times floppier. A soft body converted as a stand-in uses 0.03 instead, so
+  it gives under a hand.
 - **Damping and angle restoration come from the PhysBone** while *Derive physics from the
   PhysBone* is on, which it is by default. The preset's damping only sets a floor, and so does its
   restoration on a soft body; turn the option off to keep the preset's own.

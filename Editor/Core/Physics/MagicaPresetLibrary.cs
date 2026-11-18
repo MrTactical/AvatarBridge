@@ -46,7 +46,7 @@ namespace AvatarBridge
             ClsBreast = new ChainClass("Breast", SoftSpring),
             ClsButt = new ChainClass("Butt", SoftSpring),
             ClsBelly = new ChainClass("Belly", SoftSpring),
-            ClsThigh = new ChainClass("Thigh", SoftSpring),
+            ClsThigh = new ChainClass("Thigh", MiddleSpring),
             ClsEar = new ChainClass("Ear", SoftSpring),
             ClsWhisker = new ChainClass("Whisker", ShortHair),
             ClsFluff = new ChainClass("Fluff", ShortHair),

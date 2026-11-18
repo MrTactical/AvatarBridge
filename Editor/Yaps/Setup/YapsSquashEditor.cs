@@ -365,7 +365,7 @@ namespace AvatarBridge
             if (!on) return row;
             var squeeze = new Slider("Squeeze", 0f, 1f) { value = Squeeze, showInputField = true,
                 tooltip = Jellied(YapsSquash.RootOf(settings)) ? "Two open hands pushing each pair together from outside, how far in."
-                    : "Two open hands pushing each pair together from outside, how far in. They press as other players' hands do, so \"Other players' hands\" scales them." };
+                    : "Two open hands pushing each pair together from outside, how far in. They press as other players' hands do, so \"Others Hands\" scales them." };
             squeeze.AddToClassList("ab-slider");
             squeeze.RegisterValueChangedCallback(e => Squeeze = e.newValue);
             into.Add(squeeze);
