@@ -9,28 +9,12 @@ using MagicaCloth2;
 
 namespace AvatarBridge
 {
-    // Works out what kind of chain a PhysBone is, and loads the MagicaCloth2 preset for it.
-    //
-    // Deriving MagicaCloth2 values from PhysBone values does not work; the two are different
-    // kinds of simulation (see MagicaClothWriter). What DOES work is picking a whole
-    // configuration that someone tuned as a set, because MagicaCloth2's parameters interact:
-    // damping, stiffness, inertia and radius only make sense together. So nothing here
-    // computes a number. It classifies, then loads.
-    //
-    // Lookup order for a class, first hit wins:
-    //
-    //   1. "MC2_Preset_Bridge_<Class>.json" ; tuned for this kind of chain, anywhere in
-    //                                          the project. Drop your own in to override.
-    //   2. the class's MagicaCloth2 fallback ; one of MagicaCloth2's own shipped presets
-    //   3. nothing                           . MagicaCloth2's component defaults
-    //
-    // That ordering is why the class list can be finer-grained than MagicaCloth2's preset set
-    // without inventing anything: every class already resolves to a sensible MagicaCloth2
-    // preset today, and tuning one class is a drop-in file that changes only that class.
-    //
-    // **Authoring a preset:** set a chain up the way you want it in the MagicaCloth inspector,
-    // press Save on its Preset dropdown, and name the file after the class. MagicaCloth2 writes
-    // exactly the JSON this reads. See Assets/AvatarBridge/Presets/README.md.
+    // Classifies a PhysBone chain and loads a MagicaCloth2 preset for it. Deriving MC2 values
+    // from PhysBone values does not work (see MagicaClothWriter); MC2 parameters only make
+    // sense as a tuned set. Lookup, first hit wins: "MC2_Preset_Bridge_<Class>.json" anywhere
+    // in the project, then the class's shipped MC2 fallback, then component defaults.
+    // To author one: Save from the MagicaCloth inspector's Preset dropdown, named after the
+    // class. See Assets/AvatarBridge/Presets/README.md.
     public static class MagicaPresetLibrary
     {
         // A kind of chain, and the MagicaCloth2 preset to use until one is tuned for it.
@@ -98,12 +82,9 @@ namespace AvatarBridge
                 return byName;
             }
 
-            // The bone's own name said nothing; ask its ancestors. Add-on hair and clothing
-            // prefabs routinely carry meaningless bone names inside a container that says
-            // exactly what they are: a hair root with a nonsense name classified as a generic
-            // loose chain (Soft Spring preset; stretchy, and the hair came out floaty) while
-            // sitting under a container named for the hair. Nearest ancestor first, stopping at
-            // the Animator so the avatar's own name never matches.
+            // Ask the ancestors: add-on prefabs put meaningless bone names under a container
+            // named for what they are (unnamed hair came out floaty as a generic chain).
+            // Stops at the Animator so the avatar's own name never matches.
             for (var p = data.Root.parent; p != null && p.GetComponent<Animator>() == null; p = p.parent)
             {
                 var byAncestor = ClassifyByName(p.name, bones);
@@ -306,9 +287,7 @@ namespace AvatarBridge
 
         static readonly Dictionary<string, string> JsonCache = new Dictionary<string, string>();
 
-        // Per conversion, the way GrabbyBonesSupport.Reset() is. Without it
-        // a preset edited on disk mid-session keeps serving the text this
-        // session first read, and the report still says "preset applied".
+        // Per conversion, or a preset edited on disk mid-session keeps serving stale text.
         public static void Reset() => JsonCache.Clear();
 
         static string LoadJson(string presetName)
@@ -334,9 +313,7 @@ namespace AvatarBridge
                     break;
                 }
             }
-            // A miss is cached too, or every chain searches the project
-            // again. Reset clears it at the start of each conversion, so a
-            // preset dropped in before the next one is still found.
+            // Misses are cached too, or every chain searches the project again.
             JsonCache[presetName] = json;
             return json;
         }

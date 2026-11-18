@@ -8,21 +8,10 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Makes the merged controller self-contained: every animation clip and avatar mask it
-    // references is copied into the conversion's RehomedAssets folder and the controller is
-    // repointed at the copies.
-    //
-    // Born from a tester's frozen fingers. A converted controller referenced its clips
-    // wherever the source avatar kept them. 71 of one avatar's 116 clips lived in the
-    // source's own folders, including every hand-pose clip. Move that conversion to a project
-    // without those folders and each reference silently resolves to None: the state machine
-    // still runs, transitions still fire, and every pose "plays" as stillness, with no error
-    // anywhere. Gestures frozen in game while the same controller works on the author's PC is
-    // exactly how that presents.
-    //
-    // Two deliberate exclusions: the CCK's own assets (uploading requires the CCK installed,
-    // so they are guaranteed present in any project that can upload), and anything already in
-    // the output folder (generated, travels with the conversion).
+    // Copies every clip and mask the merged controller references into RehomedAssets and
+    // repoints it. Moved to a project without the source folders, a reference silently resolves
+    // to None and every pose plays as stillness, with no error (seen as frozen gestures in game).
+    // Skipped: the CCK's own assets (any project that can upload has them) and the output folder.
     public static class AnimationSelfContainer
     {
         const string Category = "Animator";
@@ -95,11 +84,9 @@ namespace AvatarBridge
             }
         }
 
-        // Every copy is made before anything is repointed. One at a time, each cost a delete
-        // refresh, a copy refresh and a save of the controller the last repoint dirtied. Planned
-        // in the order the walk meets them, so Claim hands out the same names, then copied in
-        // one batch. A copy cannot be loaded inside it, so loading and editing wait for the Stop,
-        // and the walk afterwards finds every copy already in the maps.
+        // Every copy is made in one batch before anything is repointed; one at a time cost two
+        // refreshes and a controller save each. Planned in walk order so Claim gives the same
+        // names. A copy cannot load inside the batch, so loading waits for the Stop.
         static int CopyAll(AnimatorControllerLayer[] layers, AnimatorController controller, string controllerPath,
             string outputDir, string dir, Dictionary<Motion, Motion> map, Dictionary<AvatarMask, AvatarMask> maskMap,
             List<string> copied, ref int copiedMasks, out int staleCount)
@@ -354,13 +341,8 @@ namespace AvatarBridge
                 }
                 if (changed)
                 {
-                    // NeedsCopy says no for a tree the CCK or an engine
-                    // builtin owns, on the grounds that it travels with
-                    // every project. That is true of the tree, and not of
-                    // a CHILD this pass just copied: writing the new
-                    // children back would edit the CCK's own asset, which
-                    // is the shared-asset mistake this file exists to
-                    // prevent and its comment above already names.
+                    // A CCK or builtin tree is not copied, but writing a copied child back into it
+                    // would edit the CCK's own shared asset.
                     if (!ours)
                     {
                         var late = UnityEngine.Object.Instantiate(tree);
@@ -418,9 +400,7 @@ namespace AvatarBridge
             }
 
             var settings = AnimationUtility.GetAnimationClipSettings(clip);
-            // Only when the pose is actually in use. The field is often left
-            // populated on a clip that ignores it, and dragging a clip
-            // nothing reads into the output folder is just litter.
+            // Only when used: the field is often set on a clip that ignores it.
             if (!settings.hasAdditiveReferencePose || settings.additiveReferencePoseClip == null
                 || !NeedsCopy(AssetDatabase.GetAssetPath(settings.additiveReferencePoseClip),
                               outputDir, controllerPath))

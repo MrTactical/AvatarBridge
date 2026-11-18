@@ -7,27 +7,12 @@ using UnityEngine.Animations;
 
 namespace AvatarBridge
 {
-    // Makes ParentConstraint offsets follow the avatar's scale, so a
-    // hat stays on a shrinking head.
-    //
-    // Unity rotates a constraint offset by its source but never scales
-    // it; the offset is a fixed number of metres. The fix: spend the
-    // offset. A relay empty is created as a child of the source at the
-    // world point the offset described, and the constraint repoints at
-    // it with a zero offset. As a real child it inherits scale for
-    // free. At 1x nothing moves, by construction.
-    //
-    // Not done in the animation: the scaler runs before constraints
-    // convert, and the Size layer asserts with Write Defaults on.
-    // This pass touches no clip and no layer.
-    //
-    // Left alone, each skipped whole: animated offsets, sources inside
-    // a converted physics chain, sources outside the avatar, unlocked
-    // constraints, sources flattened on an axis (divide by zero).
-    //
-    // The relay is placed by measurement wherever the output is
-    // unambiguous; the formula stands in elsewhere, and the report
-    // carries the largest gap seen between the two.
+    // Unity rotates a ParentConstraint offset but never scales it, so a hat leaves a shrinking
+    // head. A relay child of the source at the offset's world point, with zero offset, inherits
+    // scale. Not in animation: the scaler runs before constraints convert, and the Size layer
+    // uses Write Defaults on. Skipped: animated offsets, sources in a converted physics chain or
+    // outside the avatar, unlocked constraints, axis-flattened sources (divide by zero).
+    // Placed by measurement where unambiguous, else by formula; the report gives the largest gap.
     public static class ConstraintScaleRelay
     {
         const string Category = "Avatar scaler";
@@ -235,10 +220,7 @@ namespace AvatarBridge
                     relay.transform.SetParent(bone, false);
                     relay.transform.localRotation = Quaternion.identity;
                     relay.transform.localScale = Vector3.one;
-                    // Assigning a world position lets Unity work out the
-                    // local one, which matters on scaled bones.
-                    // The fallback is the documented evaluation: Unity rotates a
-                    // parent constraint's offset by the source and never scales it.
+                    // World position lets Unity solve the local one on scaled bones.
                     relay.transform.position = measured
                         ? truth
                         : bone.position + bone.rotation * offset;

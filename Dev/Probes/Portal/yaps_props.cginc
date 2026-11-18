@@ -32,67 +32,44 @@ float _YAPS_BakeGirth;
 float _YAPS_FrameFromVertex;
 
 // --- the editor's preview socket -------------------------------------
-// World space, from a property block that never ships.
-//
-// The contact channel used to drive these from a CVRMaterialDriver, in
-// its own space with _YAPS_ChannelSpace at 1, beside a socket front and a
-// channel frame. It is gone (see YapsResolveSocket), so its leftovers are
-// Properties entries only, kept for old materials, and a material still
-// flagged 1 is ignored.
+// World space, from a property block that never ships. _YAPS_ChannelSpace
+// is a leftover kept for old materials; a material flagged 1 is ignored.
 float4 _YAPS_SocketPos;     // xyz world position
 float4 _YAPS_SocketForward; // xyz world direction, w unused
 float4 _YAPS_SocketFlags;   // x: engaged 0..1, y: is-hole, z/w spare
 float _YAPS_ChannelSpace;
 
-// Which sockets belong to this plug's OWN avatar, so it can ignore them.
-//
-// A light carries a position and nothing else, no owner. Its wearer's own
-// sockets are always in reach, so a plug spends its life bent into them.
-//
-// So ChilloutVR's player positions answer it: nearest player to the plug,
-// nearest to the light, same person or not. Nothing is transmitted.
-//
-// A FLAG, not a tag. Zero or more means check ownership, -1 means do not.
-// It used to be a digit in the range's fourth decimal. Only the second
-// decimal survives, so sockets worked or not by luck.
+// Ignore sockets on the plug's OWN avatar. A light carries no owner and the
+// wearer's own sockets are always in reach, so ChilloutVR's player positions
+// decide: nearest player to the plug vs nearest to the light.
+// A flag: zero or more checks ownership, -1 does not. A digit in the range
+// failed: only the second decimal survives.
 float _YAPS_SelfTag;
 
-// Whether the wearer's OWN sockets may be answered. Off by default, and that
-// default is the point: a hole ends the chain, and a hole on the wearer's own
-// body is nearly always nearer to the plug than anybody else's socket, so
-// admitting them unasked would end the chain at home and no one else could
-// ever be reached.
+// Off by default on purpose: the wearer's own hole is nearly always nearest,
+// and a hole ends the chain, so nobody else could ever be reached.
 float _YAPS_SelfAllow;
 
-// The wearer's owner id, animated from a synced parameter onto every plug
-// and socket material the avatar carries. Zero is unknown. See
-// YapsOwnerDecode in the atlas protocol.
+// Owner id from a synced parameter, 0 unknown. See YapsOwnerDecode.
 float _YAPS_Owner;
 
-// Which of the wearer's own sockets this plug may enter, a bit per socket
-// number (bit 0 is socket 1). Chosen in the editor, set at build.
+// Wearer's sockets this plug may enter, bit 0 is socket 1.
 float _YAPS_SelfSockets;
 
-// The ones among them chosen by name, a tick set by hand or an SPS Self
-// rule. Those skip the tag test; a default tick does not, so the tag
-// chooser still narrows the wearer's own sockets.
+// Those chosen by name skip the tag test; a default tick does not.
 float _YAPS_SelfChosen;
 
 
-// The screen atlas. The property defaults to 0; conversion and Build both
-// set 1. The marker lights answer where it cannot.
+// Defaults to 0; conversion and Build set 1. Marker lights cover the rest.
 float _YAPS_UseAtlas;
 
 // Debug view. 0 off, 1 resolved by, 2 gap to socket, 3 engagement,
 // 4 socket facing, 5 atlas taps, 6 atlas target.
-// The patcher only edits the VERTEX stage, so the view cannot paint.
-// It answers in plug LENGTH instead. See YapsDeform.
+// Only the vertex stage is patched, so it answers in plug LENGTH, not colour.
 float _YAPS_Debug;
 
 // --- the hole taper --------------------------------------------------
-//
-// Where narrowing begins and where it closes to nothing, as fractions of
-// plug length, so big and small plugs taper the same proportion.
+// Fractions of plug length, so every size tapers in proportion.
 float _YAPS_TaperStart;
 float _YAPS_TaperEnd;
 
@@ -125,13 +102,8 @@ float _YAPS_WriggleStrength;
 float _YAPS_WriggleSpeed;
 
 // --- shape at rest, from DPS ------------------------------------------
-//
-// A resting bend and a curl at the tip, applied to the BAKED position
-// before the curve walk.
-//
-// Curvature bends the whole shaft, most at the tip. ReCurvature adds an
-// opposite bend near the tip, so a plug can sweep up then hook.
-// Both are radians of turn at the tip.
+// Applied to the BAKED position before the curve walk. Radians at the tip;
+// ReCurvature bends back near the tip, so a plug can sweep up then hook.
 float _YAPS_Curvature;
 float _YAPS_ReCurvature;
 // How much the BASE resists the bend toward a socket.
@@ -139,54 +111,33 @@ float _YAPS_ReCurvature;
 float _YAPS_EntranceStiffness;
 
 // --- the curve's shape, from TPS ---------------------------------------
-//
-// The bezier handles decide how the shaft arrives.
-// BezierSmoothness scales both: below 1 sharper, above 1 a wider arc.
-// BezierStart holds the first fraction straight, SmoothStart eases into
-// the curve rather than kinking at it.
+// BezierSmoothness scales both handles: below 1 sharper, above 1 wider.
+// BezierStart holds the first fraction straight, SmoothStart avoids a kink.
 float _YAPS_BezierSmoothness;
 float _YAPS_BezierStart;
 float _YAPS_SmoothStart;
 // A socket nearer than this fraction of plug length is treated as this
 // far, so the shaft cannot fold into a hairpin.
 float _YAPS_MinimumSocketDistance;
-//
-// TPS's BUFFERED DEPTH is deliberately NOT a uniform. A vertex shader has
-// no memory between frames. The channel's smoothing layer is the buffer,
-// exposed as "socket follow". Lights and legacy content have no lag.
+// TPS's buffered depth is not a uniform: a vertex shader has no memory
+// between frames.
 
 // --- which sockets this plug will answer, from SPS ---------------------
-//
-// Four tags to require and four to refuse, one PATTERN per component. A
-// tag is a free-form string hashed FNV-1a exactly as SPS hashes it, then
-// folded to three bits of twenty; a socket publishes the OR of its tags in
-// the atlas's third pixel, and the test is whether all three of a tag's
-// bits are lit there. Zero means the slot is empty.
-//
-// Patterns rather than the strings themselves because a shader cannot
-// hash a name it never receives, and vectors rather than a set of floats
-// because an animation drives a component the same way it drives a float,
-// which is the only route a menu row has into a shader.
-//
-// The fold costs a false yes about one time in twenty on a socket wearing
-// three tags. That is deliberate and the direction matters: a stray yes on
-// the include side answers a socket that was not asking, and on the exclude
-// side refuses one it need not have. See Runtime/Yaps/YapsTags.cs.
-//
-// ONLY THE ATLAS carries a socket's word. A marker light's RANGE is its
-// whole message and the digits belong to Raliv; a contact says a socket is
-// there and not what it is. Both routes answer without knowing, so a plug
-// with a list still resolves through them. A preference, not a lock.
+// Four tags to require, four to refuse, one PATTERN per component: the tag
+// hashed FNV-1a as SPS does, folded to three bits of twenty. A socket
+// publishes the OR of its tags in the atlas's third pixel. Zero is empty.
+// Patterns because a shader cannot hash a name it never receives; vectors
+// because animation is the only route a menu row has into a shader.
+// The fold gives a false yes about 1 in 20 on a three-tag socket. See
+// Runtime/Yaps/YapsTags.cs.
+// Only the atlas carries tags; lights and contacts answer regardless, so
+// this is a preference, not a lock.
 float4 _YAPS_TagInclude;
 float4 _YAPS_TagExclude;
 
 // --- blendshapes -----------------------------------------------------
-//
-// How many shape blocks follow the base one, and what each is worth.
-// A vertex shader cannot read a blendshape weight, so the converter
-// mirrors the animation driving each slider onto these instead.
-//
-// These change the PLUG's own rest mesh, not the bulges a socket plays.
+// A vertex shader cannot read a blendshape weight, so the converter mirrors
+// each slider's animation here. The plug's own rest mesh, not socket bulges.
 float _YAPS_ShapeCount;
 float4 _YAPS_ShapeWeights;    // shapes 0-3
 float4 _YAPS_ShapeWeights2;   // shapes 4-7

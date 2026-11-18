@@ -1,19 +1,9 @@
-// Can a patched Poiyomi vertex stage take the atlas read?
-//
-// Dev only, pruned from public builds.
+// Can a patched Poiyomi vertex stage take the atlas read (a hash plus 27
+// texture reads)? Instruction, register and interpolator budgets are unknown.
+// Copies the patched shader a plug wears, injects the atlas block into the
+// copy's vertex function and reports whether it compiles.
 //
 //   Tools > Avatar Bridge > Dev > Atlas > Poiyomi headroom
-//
-// Every atlas spike so far used a clean twenty-line shader. A real plug wears
-// somebody's Poiyomi, already patched, already doing vertex work, and
-// compiled across Poiyomi's own variants. Adding a hash and twenty-seven
-// texture reads to THAT is a different proposition: instruction counts,
-// register pressure, and interpolator budget are all unknown.
-//
-// This does not touch the shipped shader. It finds the patched shader a plug
-// is actually wearing, copies it, injects the atlas block into the copy's
-// vertex function, imports it, and reports whether it compiled. A copy that
-// compiles is the answer; a copy that does not names the limit.
 #if CVR_CCK_EXISTS
 using System.IO;
 using System.Linq;
@@ -50,16 +40,10 @@ public static class PoiyomiHeadroom
                   + System.Environment.NewLine + "  errors    " + ShaderUtil.ShaderHasError(shader)
                   + System.Environment.NewLine + "  messages  " + ShaderUtil.GetShaderMessageCount(shader));
 
-        // The atlas block, written the way it would ship: a hash to find the
-        // cell, then one read per neighbouring cell. The accumulator is folded
-        // into a value the deform already uses, or a compiler removes the
-        // whole thing and the test measures nothing.
-        //
-        // Reads through _YAPS_Bake, a Texture2D already declared and already
-        // read with .Load in the deform. Same KIND of read the atlas needs, a
-        // point read with no filtering, and it means this declares nothing:
-        // the first attempt added a sampler and landed it in the middle of a
-        // function signature.
+        // As it would ship: a hash, then one read per neighbouring cell. Folded into
+        // the deform's value, or the compiler removes it all.
+        // Reads the already-declared _YAPS_Bake with .Load (same unfiltered kind of
+        // read), so nothing new is declared: an added sampler landed mid-signature.
         const string block = @"
             // --- YAPS atlas headroom probe ---
             {
@@ -80,11 +64,7 @@ public static class PoiyomiHeadroom
             }
             // --- end YAPS atlas headroom probe ---
 ";
-        // The CALL, not the definition. The definition reads
-        // "void YapsSocketDeform(inout float3 position" and spans two lines,
-        // and the first version of this matched it and injected into the
-        // middle of the parameter list, which is what the two syntax errors
-        // at lines 5845 and 5849 were.
+        // The CALL, not the two-line definition: matching that injected into its parameter list.
         int call = text.IndexOf("YapsSocketDeform(yapsPosition", System.StringComparison.Ordinal);
         if (call < 0)
         {

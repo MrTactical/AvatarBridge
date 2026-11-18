@@ -7,13 +7,10 @@ using VRC.SDK3.Dynamics.Contact.Components;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the widened contact-curve repointing (task #19): enable curves
-    // follow the converted contact's object, position curves its transform.
-    //
-    // Both verdicts are from the shipped client: the host registers in OnEnable so m_Enabled
-    // maps onto m_IsActive, and the host carries the authored offset in its TRANSFORM, so
-    // position curves map 1:1 onto m_LocalPosition. Filters bake once at TriggerToContact
-    // Create and are never read again, so those drop with the warning.
+    // Contact-curve repointing (task #19), verdicts from the shipped client: the host registers
+    // in OnEnable, so m_Enabled maps onto m_IsActive; it carries the offset in its transform, so
+    // position curves map 1:1 onto m_LocalPosition. Filters bake once at TriggerToContact Create
+    // and are never read again, so those drop with the warning.
     public static class ContactCurveRepointTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Contact curve repointing")]

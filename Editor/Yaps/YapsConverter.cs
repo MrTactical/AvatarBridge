@@ -22,8 +22,7 @@ namespace AvatarBridge
 
         static readonly string[] AtlasJunk = { "SpsResolver", "SpsScreenMarker", "SpsAtlas" };
 
-        // Contains, as the deletion always matched: it sees through Fury's ID
-        // prefix, and the probes counted these objects the same way.
+        // Contains: it sees through Fury's ID prefix.
         static bool IsAtlasJunk(string name) => AtlasJunk.Any(hint => name.Contains(hint));
 
         // Plug slots whose swapped-in variants are baked once the clips are
@@ -52,8 +51,7 @@ namespace AvatarBridge
 
             var plugRoots = Named(ctx, "BakedSpsPlug");
             var socketRoots = Named(ctx, "BakedSpsSocket");
-            // Always: an avatar can carry SPS and leftover DPS or TPS parts, and those were
-            // left as they were whenever SPS was found.
+            // Always: an avatar can carry SPS and leftover DPS or TPS parts.
             LegacyPending = true;
             if (plugRoots.Count == 0 && socketRoots.Count == 0)
             {
@@ -72,12 +70,9 @@ namespace AvatarBridge
             CarryTags(ctx, rebuild);
             YapsSocketRebuilder.Wake(ctx, socketRoots);
 
-            // The plug half of the socket report in CarryTags: a miss falls to
-            // the defaults without a word, and an author who narrowed the
-            // tags or stopped the overrun would never learn it was dropped.
-            // Converted plugs only: one ConvertPlug gave up on already has its
-            // warning, and the record's Root can sit below plugRoot, so the
-            // count is the only safe match.
+            // Plug half of CarryTags' report: a miss falls to defaults silently.
+            // Converted plugs only (a failed one already warned), matched by
+            // count since the record's Root can sit below plugRoot.
             var untraced = new List<string>();
             foreach (var plugRoot in plugRoots)
             {
@@ -98,10 +93,8 @@ namespace AvatarBridge
             }
             foreach (var plug in ctx.YapsPlugs)
             {
-                // Every material of the plug, never just the recorded one. A plug
-                // spanning two materials with the flag on one reads the atlas across
-                // half its mesh and the lights across the other, which looks right
-                // until the lights go out.
+                // Every material: with the flag on one, half the plug reads the
+                // atlas and half the lights, which looks right until lights go out.
                 foreach (var material in plug.Materials)
                 {
                     if (material == null) { continue; }
@@ -123,9 +116,7 @@ namespace AvatarBridge
                         $"Two plugs on one mesh share {YapsBaker.MaxShapes} shape slots, and the first took the rest. " +
                         "The second's later shapes do not bend it.");
             }
-            // The readouts, after every plug is measured and its values are
-            // final: a plug measured over another's readout takes it for part
-            // of the plug.
+            // Readouts last: a plug measured over another's readout counts it as plug.
             foreach (var renderer in ctx.YapsPlugs.Select(p => p.Renderer).Distinct())
             {
                 YapsDebugOverlayBuilder.Build(renderer, ctx.Report);
@@ -136,9 +127,8 @@ namespace AvatarBridge
             WireSocketToggles(ctx, socketRoots);
             YapsSocketRebuilder.Lighthouse(ctx);
 
-            // The tag chooser, which the toolkit has built since it existed and
-            // this path never did: the words it reads live on the plug component,
-            // and until now a converted plug had none. Two builders again.
+            // The tag chooser, as the toolkit builds it: its words live on the
+            // plug component.
             string chooser = YapsTagMenu.Build(ctx.CvrAvatar, ctx.MergedController);
             if (chooser != null)
             {
@@ -206,10 +196,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // The plug's chain must be its own. When the first bones found above
-            // the plug object are the wearer's, Hips or Spine or a leg, "the plug"
-            // is the body. Length says nothing here: a hyper plug is longer than
-            // its wearer and still has a chain of its own.
+            // The chain must be its own: if the first bones above are the
+            // wearer's (Hips, Spine, a leg), "the plug" is the body. Length
+            // proves nothing: a hyper plug outgrows its wearer.
             string bodyBone = HumanoidBoneName(ctx, chainLevel);
             if (bodyBone != null)
             {
@@ -248,12 +237,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // Every material slot the plug's triangles use, never just the biggest.
-            // A tip modelled on its own material is a second slot, and leaving it
-            // unpatched leaves it hanging in the air while the rest bends away.
-            //
-            // result.Root, not plugRoot: the bake may have descended to the shaft,
-            // and asking a wider root patches materials the bake left out.
+            // Every slot the plug uses: an unpatched tip slot hangs in the air.
+            // result.Root, not plugRoot: the bake may have descended to the shaft.
             var split = new HashSet<int>();
             var slots = SplitShared(ctx, where, renderer, result.Root, MaterialSlotsOf(renderer, result.Root), split);
             var patchedSlots = new List<string>();
@@ -285,11 +270,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // Every OTHER mesh built as part of the plug, a tip, a second half or
-            // a ring or harness on a renderer of its own, baked on this frame and
-            // length so they bend as one piece, as the toolkit does. Not the body
-            // touching the base: it meets the root bone and goes no further, and
-            // its materials are not the plug's. YapsBaker.RidesPlug draws the line.
+            // Every OTHER plug mesh (tip, ring, harness) on this frame and length,
+            // so they bend as one. Not the body touching the base;
+            // YapsBaker.RidesPlug draws the line.
             var extras = new List<BridgeContext.YapsPlugMesh>();
             var extraMaterials = new List<Material>();
             var others = result.FromSkinnedMesh
@@ -349,30 +332,24 @@ namespace AvatarBridge
                 Rotation = result.Rotation,
             });
 
-            // The same markers the toolkit builds for a native plug, on the measured
-            // frame: DPS tracker light, TPS and SPS pointers. Fury's own rig goes
-            // first, or its tracker doubles the fresh one and its pointers win the
-            // announce's dedupe. The toy mod length as the plug's own switch says,
-            // on unless a plug already there turned it off.
+            // The toolkit's markers on the measured frame. Fury's rig goes first,
+            // or its tracker doubles and its pointers win the dedupe. Toy mod
+            // length on unless an existing plug turned it off.
             YapsSocketRebuilder.StripPlugRig(plugRoot);
             var had = plugRoot.GetComponent<YapsPlug>();
             YapsNativeBuilder.AnnouncePlug(plugRoot, result.Origin, result.Rotation,
                 result.Length * toMetres, result.Radius * toMetres, tipLight: true, pointers: true,
                 toyLengthDir: had == null || had.toyModLength ? ctx.OutputDir + "/YAPS" : null);
 
-            // The authoring component, read back off the patched material,
-            // so a re-bake writes the same thing. No slot named: a named slot
-            // bakes that one alone, and the records below name every one.
+            // Read back off the patched material so a re-bake writes the same.
+            // No slot named: a named slot bakes that one alone.
             YapsNativeBuilder.AdoptPlug(plugRoot, renderer, -1, primaryMaterial, null);
 
             var adopted = plugRoot.GetComponent<YapsPlug>();
             if (adopted != null)
             {
-                // The tag rules in the author's words. The material holds them as
-                // hashes and a hash reads back as nothing, so a toolkit re-bake
-                // wrote the component's empty lists over them and the plug came
-                // out answering every socket. The inspector showed empty lists
-                // the whole time, which is the half nobody would have queried.
+                // In words: the material holds hashes, so a re-bake from empty
+                // lists made the plug answer every socket.
                 string authored = AuthoredKey(ctx, plugRoot);
                 if (authored != null)
                 {
@@ -381,9 +358,8 @@ namespace AvatarBridge
                     if (YapsBakePrep.AuthoredRefuses.TryGetValue(authored, out var refuses))
                         adopted.refuses = new List<string>(refuses);
                 }
-                // Every slot baked here, this mesh's first with the primary at the
-                // head, so a toolkit re-bake reaches the same slots and meshes on
-                // the same frame, and the own-socket ticks and Remove reach them too.
+                // Every slot baked here, primary first, so a re-bake, the
+                // own-socket ticks and Remove reach the same ones.
                 adopted.converted = true;
                 if (filter != null && filter.sharedMesh != unbounded) adopted.boundsFrom = unbounded;
                 void Record(Renderer on, int slot)
@@ -393,8 +369,7 @@ namespace AvatarBridge
                     adopted.bakedSlots.Add(new YapsPlug.BakedSlot { slot = slot, was = swap.from, renderer = on });
                 }
                 foreach (int slot in patchedSlotIndices) Record(renderer, slot);
-                // The other meshes take the primary's knobs, which the component
-                // just read, or each bends on its own settings and the seam opens.
+                // The primary's knobs for all, or the seam opens.
                 foreach (var mesh in extras)
                 {
                     var mats = mesh.Renderer.sharedMaterials;
@@ -418,9 +393,7 @@ namespace AvatarBridge
                 (skippedShadowPasses > 0 ? $" {BridgeElements.Count(skippedShadowPasses, "shadow pass cannot be patched and stays", "shadow passes cannot be patched and stay")} straight." : ""));
         }
 
-        // One material slot of the plug's renderer: patch its shader,
-        // apply the bake, carry the old system's settings. Null means the
-        // slot could not take the deform, and it has said why.
+        // Null: the slot could not take the deform, and has said why.
         static Material PatchPlugSlot(BridgeContext ctx, string where, Renderer renderer,
             Transform plugRoot, int slot, YapsBaker.Result result, out int skippedShadowPasses, string key = null)
         {
@@ -433,15 +406,11 @@ namespace AvatarBridge
                 return null;
             }
 
-            // What the material already is. The old deform must not run beside
-            // YAPS: TPS, SPS and Poiyomi's DPS keep their shader with theirs switched
-            // off, Raliv's DPS moves to Simple Lit because it has no switch. Same rule
-            // the toolkit applies to a native plug.
+            // The old deform must not run beside YAPS: TPS, SPS and Poiyomi's DPS
+            // are switched off, Raliv's DPS (no switch) moves to Simple Lit.
             var source = materials[slot];
-            // A slot another plug on the same shaft already patched in this
-            // conversion is patched again from what it replaced. Patching the
-            // patched copy was refused, fell back to YAPS Simple Lit, and the
-            // shaft lost its own shader's look to the second plug component.
+            // Repatched from what it replaced: patching the patched copy was
+            // refused and fell back to Simple Lit, losing the shaft's look.
             if (ctx.YapsMaterialSwaps.TryGetValue((renderer, slot), out var prior)
                 && prior.to == source && prior.from != null)
             {
@@ -485,10 +454,8 @@ namespace AvatarBridge
                     allowSps: legacy == YapsLegacyMap.Origin.SPS, roles: YapsShaderPatcher.Roles.Plug);
             }
 
-            // A shader that will not take the deform is not the end of it:
-            // YAPS Standard or Simple Lit will, with the look carried over. The toolkit has
-            // always done this; the converter used to give up instead. Raliv's
-            // DPS has already tried Simple Lit, and the same patch refuses again.
+            // A refusing shader falls back to YAPS Standard or Simple Lit with the
+            // look carried over. Raliv's DPS already tried Simple Lit.
             if (shader == null && !simpleLit)
             {
                 shader = PatchOnFallback(ctx, source, ref refusal, out var plain, out skippedShadowPasses,
@@ -516,11 +483,9 @@ namespace AvatarBridge
             {
                 YapsNativeBuilder.SwitchOffLegacyDeform(patched, legacy);
             }
-            // Every OTHER material the animator can put in this slot gets the same
-            // bake, or an alternate look stays deformless and the plug goes rigid
-            // whenever its toggle is on. Done in RepointSwappedMaterials: the clips
-            // here are still the author's, and the stereo pass has yet to swap its
-            // copies into them, so a variant read now can be the wrong material.
+            // Swapped-in materials need the bake too, or the plug goes rigid on
+            // that toggle. Done later in RepointSwappedMaterials: the clips here
+            // are not yet this conversion's copies.
             PendingVariants.Add((renderer, slot, result, new[] { source, patchSource, patched }));
             if (carried.Count > 0)
             {
@@ -542,9 +507,7 @@ namespace AvatarBridge
                 : true;
             patched.SetFloat("_YAPS_Overrun", overrun ? 1f : 0f);
 
-            // Which sockets this plug will answer, in the author's own
-            // words. SPS bakes them to hashes and a hash is not a word, so
-            // they come off the component before the bake or not at all.
+            // In words, read before the bake hashes them.
             if (plugObject != null && YapsBakePrep.AuthoredAnswers.TryGetValue(plugObject, out var answers))
             {
                 patched.SetVector("_YAPS_TagInclude", YapsTags.Patterns(answers));
@@ -609,14 +572,9 @@ namespace AvatarBridge
         static string AuthoredKey(BridgeContext ctx, Transform plugRoot) =>
             plugRoot != null ? YapsBakePrep.PlugKey(plugRoot.parent, ctx.Target.transform) : null;
 
-        // The socket half of the tag carry. The plug half sits in the
-        // material patch, since that is where the plug's uniforms are
-        // written; this one has to reach the rebuild, which happens later
-        // and on the ChilloutVR side of the defines, so it travels in the
-        // spec rather than by reading the dictionary from there.
-        //
-        // Keyed by the object the socket component sat on, which survives
-        // as the parent of BakedSpsSocket, unless the bake merged it away.
+        // The socket half of the tag carry. It travels in the spec because
+        // the rebuild runs later, on the ChilloutVR side of the defines. Keyed
+        // by the socket component's object, the parent of BakedSpsSocket.
         static void CarryTags(BridgeContext ctx, Dictionary<Transform, YapsSocketRebuilder.Spec> specs)
         {
             int tagged = 0;
@@ -628,10 +586,8 @@ namespace AvatarBridge
                 string key = YapsBakePrep.SocketKey(pair.Key.parent, ctx.Target.transform);
                 if (key == null)
                 {
-                    // Not matched to the socket it was baked from, so what it
-                    // said is unknown. The component's default, never nothing:
-                    // an empty list reads as a socket wearing no tag, which
-                    // every SPS plug left on the shared tag refuses.
+                    // Unmatched: the component's default, never empty, which
+                    // every plug on the shared tag would refuse.
                     pair.Value.Tags = new List<string> { YapsTags.Shared };
                     unmatched.Add(ctx.PathInTarget(pair.Key.parent != null ? pair.Key.parent : pair.Key));
                     continue;
@@ -652,9 +608,7 @@ namespace AvatarBridge
             int plugs = YapsBakePrep.AuthoredAnswers.Count + YapsBakePrep.AuthoredRefuses.Count;
             if (tagged == 0 && plugs == 0) return;
 
-            // The bake holds four on each list. Dropping the fifth quietly
-            // changes which sockets the plug answers, and the author reads
-            // their own list in the other tool and sees nothing wrong.
+            // The bake holds four per list; a dropped fifth must be reported.
             int over = 0;
             foreach (var list in YapsBakePrep.AuthoredAnswers.Values) over += YapsTags.Dropped(list);
             foreach (var list in YapsBakePrep.AuthoredRefuses.Values) over += YapsTags.Dropped(list);
@@ -678,10 +632,8 @@ namespace AvatarBridge
             plugVertices = 0;
             chainLevel = null;
 
-            // VRCFury's own first rule: a renderer sitting on the plug's object is
-            // the plug. A dedicated mesh object carrying the component has no bones
-            // beneath it, and scoring by bone weight from there climbs to the hips
-            // and elects the body.
+            // VRCFury's first rule: a renderer on the plug's object is the plug.
+            // Scoring by bone weight from there climbs to the hips.
             var owner = plugRoot.parent;
             if (owner != null && owner != ctx.Target.transform)
             {
@@ -689,27 +641,17 @@ namespace AvatarBridge
                 if (onObject != null && onObject.sharedMesh != null)
                 {
                     plugVertices = onObject.sharedMesh.vertexCount;
-                    // The level goes out with it, or this shortcut skips the
-                    // body guard below: it returned before anything set one, so
-                    // the guard asked about null, and null is not a bone. A
-                    // component put on the object carrying the BODY's mesh took
-                    // this path and the whole avatar was baked as the plug,
-                    // silently, which is the failure the second rule exists for.
-                    //
-                    // The object the component sits on is the level here, and a
-                    // dedicated plug mesh object is not a humanoid bone, so the
-                    // guard passes it. One that IS a bone is the body's mesh
-                    // sitting on the skeleton, which is the case to refuse.
+                    // Set the level, or the body guard asks about null and a
+                    // component on the BODY's mesh object bakes the whole avatar.
+                    // A plug mesh object is not a humanoid bone, so it passes.
                     chainLevel = owner;
                     return onObject;
                 }
             }
 
-            // VRCFury's second rule, and the one that matters: climb ONCE from the
-            // plug object, and at the first level where any mesh has vertices on
-            // that level's bones, take the mesh with most. Letting every mesh climb
-            // on its own let the body reach the hips and win by sheer count over a
-            // plug with its own armature. Ten avatars baked their whole body.
+            // VRCFury's second rule: climb ONCE, and at the first level where any
+            // mesh has vertices, take the mesh with most. Climbing per mesh let
+            // the body reach the hips and win by count; ten avatars baked whole.
             var renderers = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true);
             for (var level = plugRoot; level != null && level != ctx.Target.transform.parent; level = level.parent)
             {
@@ -827,12 +769,8 @@ namespace AvatarBridge
             return null;
         }
 
-        // A submesh belongs to the plug if its triangles use plug vertices.
-        // Names are the author's business and are routinely "Body".
-        //
-        // Every such submesh, biggest first: a tip modelled on its own material
-        // is a second slot, and an unpatched slot stays rigid while the rest of
-        // the plug bends around it.
+        // By plug vertices, never names (routinely "Body"). Every such submesh,
+        // biggest first: an unpatched tip slot stays rigid.
         static List<int> MaterialSlotsOf(Renderer renderer, Transform plugRoot)
         {
             var found = new List<int>();
@@ -877,10 +815,8 @@ namespace AvatarBridge
         static int MaterialSlotOf(Renderer renderer, Transform plugRoot) =>
             MaterialSlotsOf(renderer, plugRoot)[0];
 
-        // A slot a plug on another shaft already baked in this conversion.
-        // One material holds one plug's bend, so without its own slot this
-        // plug takes the material over and the other never bends. It gets
-        // one on the slot's original material, the way the first plug did.
+        // A slot another shaft's plug already baked. One material holds one
+        // bend, so this plug gets its own slot on the original material.
         static List<int> SplitShared(BridgeContext ctx, string where, Renderer renderer, Transform root,
             List<int> slots, HashSet<int> split)
         {
@@ -924,10 +860,8 @@ namespace AvatarBridge
 
         // --- the sockets -----------------------------------------------
 
-        // The author's menu entry, wired to the rebuilt socket. Fury's toggle
-        // drove the deleted atlas, so pointing it at the socket object makes the
-        // menu mean what it says without adding a second entry. A socket some
-        // clip already switches is the author's to control and is left alone.
+        // Fury's toggle drove the deleted atlas; pointing it at the socket keeps
+        // one entry. A socket a clip already switches is left alone.
         static void WireSocketToggles(BridgeContext ctx, List<Transform> socketRoots)
         {
             // Only layers that can assert count as owning a path; Fury's
@@ -967,8 +901,7 @@ namespace AvatarBridge
             }
         }
 
-        // The menu entry that toggles this socket. VRCFury's toggle drove
-        // the deleted atlas and never touched the lights.
+        // The menu entry that toggles this socket.
         static string ToggleFor(BridgeContext ctx, Transform socket)
         {
             var names = ctx.CvrAvatar.avatarSettings.settings
@@ -976,12 +909,9 @@ namespace AvatarBridge
                 .Where(n => !string.IsNullOrEmpty(n))
                 .ToList();
 
-            // The menu entry is named after the author's object, the one the
-            // socket component sat on, so the socket and that object and no
-            // higher. Climbing on reached the bones, and a "Head" or "Hip"
-            // accessory entry prefix-matched them and switched the socket with
-            // the accessory. A bone as the parent means ArmatureLink merged the
-            // author's object away, so it is no name to go by either.
+            // The socket and its author object, no higher: climbing reached
+            // bones, and a "Head" accessory entry prefix-matched them. A bone
+            // parent means ArmatureLink merged the author's object away.
             var owner = socket.parent;
             foreach (var at in new[] { socket, owner })
             {
@@ -1120,9 +1050,8 @@ namespace AvatarBridge
                     continue;
                 }
 
-                // The socket shader measures depth from its mesh's own
-                // origin, so only a mesh whose origin IS the socket opens
-                // right. A body mesh keeps its contact-driven reactions.
+                // Depth is measured from the mesh origin, so only a mesh whose
+                // origin IS the socket opens right. Body meshes keep reactions.
                 if (!YapsNativeBuilder.MeshIsTheSocket(renderer, socketRoot))
                 {
                     YapsNativeBuilder.AdoptSocket(socketRoot, renderer, null, null);
@@ -1202,23 +1131,14 @@ namespace AvatarBridge
                 // -1, never 0. Zero is "a plug is here, not yet in"; -1 is
                 // "nothing told me", which lets the shader fall back to lights.
                 material.SetFloat("_YAPS_SocketDepth", -1f);
-                // Self-exclusion earns its place only where a plug of this avatar's
-                // rests on the socket, which is the crotch case it was written for. Out
-                // on a hand it decides ownership by the nearest hip, and the nearest
-                // hip can be somebody else's.
+                // Self-exclusion only where the wearer's plug rests on the socket
+                // (the crotch case). Elsewhere it judges ownership by the nearest
+                // hip, which can be a stranger's.
                 bool ownPlugRests = ctx.YapsPlugs.Any(
                     p => Vector3.Distance(p.Origin, socketRoot.position) <= p.Length + 0.1f);
-                // And the rest test is taken in the CONVERSION pose, which is one
-                // pose out of all of them. A dedicated socket mesh on a limb that
-                // happens to have the wearer's own plug near it at conversion had
-                // exclusion switched on for the life of the upload, and thereafter
-                // ownership answers with whichever hip is nearest that mesh: rest
-                // the hand in a stranger's lap and the socket decides their plug is
-                // its own wearer's and turns away the one plug it exists for.
-                //
-                // The toolkit bake has refused this case since 4.5.0 and the
-                // converter did not, so the same avatar behaved differently
-                // depending on which door it came through.
+                // The conversion pose is one pose: a limb socket near the wearer's
+                // plug at conversion would refuse a stranger's plug in their lap.
+                // The toolkit bake refuses this case too.
                 // Every mesh here is the socket's own; the body ones left above.
                 bool undecidable = YapsNativeBuilder.RidesAMovingLimb(socketRoot);
                 material.SetFloat("_YAPS_SocketNoSelfExclude",
@@ -1322,9 +1242,8 @@ namespace AvatarBridge
             return false;
         }
 
-        // DPS and TPS through the YAPS window's own Build, on the avatar as it ships, so a
-        // reconvert keeps what pressing the button made. The converter used to leave them as
-        // they were, and every reconvert threw the window's upgrade away.
+        // DPS and TPS through the YAPS window's own Build, so a reconvert keeps
+        // the window's upgrade.
         public static void UpgradeLegacy(BridgeContext ctx)
         {
             if (!LegacyPending) return;
@@ -1346,9 +1265,7 @@ namespace AvatarBridge
             }
         }
 
-        // Every curve YAPS wrote, asked of Unity once the paths are final.
-        // One that binds to nothing does nothing in game, and no other check
-        // would say so.
+        // A curve that binds to nothing does nothing in game, silently.
         public static void CheckCurveBindings(BridgeContext ctx)
         {
             var dead = YapsToggles.DeadBindings(ctx.Target, ctx.MergedController);
@@ -1406,20 +1323,10 @@ namespace AvatarBridge
             }
         }
 
-        // A TOGGLE THAT SWAPS THE MATERIAL PUTS THE ORIGINAL BACK.
-        //
-        // The bake repoints a renderer's slot at the patched copy, and that
-        // holds until the animator runs. An avatar that swaps that slot in an
-        // animation, a skin picker or a variant toggle, hands the slot back to
-        // the material the author baked from, which carries no deform and no
-        // bake. The plug straightens the instant play mode starts, and the tool
-        // reports it as never baked, because from the material there is nothing
-        // to find.
-        //
-        // Scoped to the renderer AND slot that were actually repointed. The
-        // original material is usually worn by other meshes as well, and they
-        // have no bake of their own: handing them a plug's deform would bend
-        // the wrong mesh.
+        // A TOGGLE THAT SWAPS THE MATERIAL PUTS THE ORIGINAL BACK, with no
+        // deform or bake: the plug straightens in play mode. Scoped to the
+        // renderer and slot repointed, since other meshes wearing the original
+        // would bend wrongly.
         public static void RepointSwappedMaterials(BridgeContext ctx)
         {
             if (ctx.MergedController == null
@@ -1428,15 +1335,9 @@ namespace AvatarBridge
                 return;
             }
 
-            // Keyed by the ORIGINAL material, never by the slot it sat in. A swap
-            // clip is free to move a material between slots, and a mesh with two
-            // baked materials has clips that do: one puts material B where the bake
-            // found A. Matching on the slot alone left those keys pointing at the
-            // unbaked original, so the part came back rigid the moment the toggle
-            // played.
-            //
-            // Still scoped to this RENDERER. Every patched copy here was baked for
-            // this mesh, so moving one between its own slots is safe.
+            // Keyed by the ORIGINAL material, not slot: swap clips move
+            // materials between slots, and slot matching left the part rigid.
+            // Still per RENDERER, where moving between its own slots is safe.
             var bySlot = new Dictionary<string, Dictionary<int, (Material from, Material to)>>();
             var byMaterial = new Dictionary<string, Dictionary<Material, Material>>();
             foreach (var pair in ctx.YapsMaterialSwaps)
@@ -1455,10 +1356,7 @@ namespace AvatarBridge
                 }
                 slots[pair.Key.slot] = pair.Value;
 
-                // One original material baked twice on one mesh is ambiguous: two plug
-                // regions sharing a material get a bake each, and a clip's key cannot
-                // say which one it meant. Null marks it unanswerable, and the slot
-                // route below stays the one that can answer.
+                // Baked twice on one mesh is ambiguous: null, and the slot route answers.
                 var mats = byMaterial[path];
                 mats[pair.Value.from] = mats.TryGetValue(pair.Value.from, out var had)
                                         && had != pair.Value.to
@@ -1526,13 +1424,9 @@ namespace AvatarBridge
                 }
             }
 
-            // The alternates after the loop above, and each repointed as it is
-            // baked, so a key already pointing at a bake is not baked again.
-            //
-            // Each copies its slot's finished material: Run's atlas and self flags,
-            // the owner pass's own-socket ticks, the overrun, tags and carried knobs
-            // are all on it by now. Then remembered on the plug whose materials the
-            // own-socket ticks reach, so a later build or inspector click keeps it current.
+            // Repointed as baked, so no key is baked twice. Each copies its
+            // slot's finished material (flags, ticks, tags, knobs), then is
+            // remembered on the plug so later builds keep it current.
             int variantKeys = 0;
             var plugs = ctx.Target.GetComponentsInChildren<YapsPlug>(true);
             foreach (var (renderer, slot, result, known) in PendingVariants)
@@ -1745,9 +1639,8 @@ namespace AvatarBridge
         // StartsWith, never Contains: the first-person exclusion object is
         // named "FPRExclusion_BakedSpsSocket" and is not a socket.
         //
-        // Through Fury's ID prefix: ArmatureLink moves a socket to the head and
-        // renames it "[VF724] BakedSpsSocket", and matching the raw name left
-        // one of those looking like Fury's for a whole day.
+        // Through Fury's ID prefix: ArmatureLink renames a moved socket
+        // "[VF724] BakedSpsSocket".
         static List<Transform> Named(BridgeContext ctx, string needle) =>
             ctx.Target.GetComponentsInChildren<Transform>(true)
                 .Where(t => t != null && YapsScanner.NameStarts(t.name, needle))

@@ -1,24 +1,10 @@
 // Spike 2: publish this object's own WORLD POSITION into the atlas.
 //
-// Spike 1 round-tripped a constant, which proves the pipe and nothing about
-// what fits through it. This encodes a real transform, so it moves when the
-// object moves and the error can be measured in metres rather than in
-// colour channels.
-//
-// The payload comes from the object's OWN matrix, not from a C# property,
-// because that is what a socket would have to do in game: there is no script
-// running on someone else's avatar to set a material value. A plain
-// MeshRenderer has a real unity_ObjectToWorld; a SkinnedMeshRenderer does
-// NOT, since Unity skins into world space and hands the shader identity, so
-// a socket marker for this has to be an ordinary mesh.
-//
-// Encoding here is deliberately naive: normalised across a fixed box around
-// the world origin. That is the WRONG scheme for shipping and the spike
-// should show why: a half float carries about three decimal digits of
-// relative precision, so this is excellent near the origin and poor far from
-// it. The fix is to encode the offset within a spatial-hash cell instead,
-// where the payload is never more than half a cell. Measure the naive one
-// first so the number is real rather than asserted.
+// From the object's own matrix: no script runs on someone else's avatar.
+// Must be a plain MeshRenderer; skinned ones get an identity matrix.
+// Deliberately naive encoding (a fixed box round the origin) to measure how a
+// half float's ~3 digits degrade with distance; shipping encodes an offset
+// within a hash cell.
 Shader "YAPS/Spike Position"
 {
     Properties
@@ -57,9 +43,7 @@ Shader "YAPS/Spike Position"
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-                // The patch sits at a fixed place on screen, in clip space,
-                // ignoring this object's transform and the eye. Both slices
-                // of the eye texture array then carry identical content.
+                // Fixed clip-space spot, so both eye slices carry the same content.
                 float2 unit = v.vertex.xy + 0.5;
                 float2 p = _Corner.xy + unit * _Size * float2(1, -1);
                 o.pos = float4(p, UNITY_NEAR_CLIP_VALUE, 1);

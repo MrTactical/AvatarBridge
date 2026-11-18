@@ -1,9 +1,6 @@
-// Toggle style "CVR Native Targets" hands each plain object toggle to the
-// CCK: its objects go into the menu entry and its layer is deleted. The
-// dead-menu prune then found a parameter no layer read and deleted the
-// entry too, so every toggle handed over left the menu. This converts one
-// avatar that way and checks each one is still in the menu, still holds its
-// objects, and is not reported as a control that does nothing.
+// "CVR Native Targets" moves each object toggle into its menu entry and deletes its layer, so
+// the dead-menu prune saw an unread parameter and deleted the entry too. Checks each handed-over
+// toggle stays in the menu, keeps its objects, and is not reported as doing nothing.
 //
 // Run: -executeMethod AvatarBridge.Regression.NativeToggleProbe.Run -probeScene "Assets/.../Scene.unity"
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS

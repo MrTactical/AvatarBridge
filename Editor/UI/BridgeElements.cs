@@ -12,16 +12,9 @@ namespace AvatarBridge
     // Labels are sentence case. A chip is a status or a filter, never a button.
     internal enum ButtonKind { Secondary, Strong, Danger }
 
-    // The window's building blocks.
-    //
-    // Elements are constructed in C# rather than declared in UXML on purpose: UXML would put the
-    // layout in one file and the wiring in another, joined by string names looked up with Q<>,
-    // and a typo in that join fails silently at runtime. Built here, construction and wiring are
-    // the same line of code, and the compiler checks it. The stylesheet still carries everything
-    // USS is actually better at; the cascade, :hover, and the two skins.
-    //
-    // Every colour, size and gap is a class in AvatarBridge.uss. Inline style here is limited to
-    // brand-ramp colours computed per element (banner, active tab, step badge, primary button).
+    // The window's building blocks, built in C# rather than UXML: a typo in a Q<> name join fails
+    // silently, here the compiler checks it. Colours, sizes and gaps are classes in
+    // AvatarBridge.uss; inline style only for per-element ramp colours.
     internal static class BridgeElements
     {
         // ---------------------------------------------------------------- root ----
@@ -894,10 +887,9 @@ namespace AvatarBridge
             return field;
         }
 
-        // Hides what does not match, by class, so clearing never shows anything a window hid on
-        // purpose. A setting matches on its label or its explanation: people look for what a
-        // setting does, not its name. A heading that matches shows its whole group, and one left
-        // with nothing under it hides. True when anything still shows.
+        // Hides non-matches by class, so clearing never shows what a window hid on purpose. Matches
+        // label or explanation; a matching heading shows its group, an empty one hides. True when
+        // anything still shows.
         public static bool Filter(VisualElement container, string query)
         {
             bool all = string.IsNullOrWhiteSpace(query);

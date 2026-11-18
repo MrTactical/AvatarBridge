@@ -8,20 +8,10 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // The conversion report as a single self-contained web page, written beside the markdown.
-    //
-    // The markdown stays the artefact for bug reports; grep-able, diff-able, attachable. This
-    // is the page a person actually reads: what happened, how much of it, and where to look,
-    // with the numbers drawn instead of listed. Everything is inline; no CDN, no external
-    // fonts, no script includes; because the file gets opened from disk and shared around,
-    // and a report that needs the internet to render is a report that renders blank.
-    //
-    // Chart rules followed deliberately: outcome colours are STATUS colours and each slice is
-    // also named and counted in text, so identity never rides on colour alone; the category
-    // chart is one measure across categories, so it uses one hue rather than a rainbow; dark
-    // mode is its own palette step, not an inversion. The palette validator could not run on
-    // this machine (no Node), so the risky adjacency; amber beside orange; is avoided by
-    // construction instead: "approximated" is blue.
+    // The report as one self-contained page beside the markdown. All inline (no CDN or fonts):
+    // it is opened from disk, offline. Slices are named and counted in text, never colour alone;
+    // categories use one hue; dark mode is its own palette. "Approximated" is blue to avoid
+    // amber beside orange.
     public static class HtmlReportWriter
     {
         public static void Write(BridgeContext ctx)

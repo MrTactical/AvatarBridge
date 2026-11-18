@@ -6,18 +6,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for report sample ordering (task #13).
-    //
-    // Report details show a few entries out of many, taken from a SortedSet. That was already
-    // ordered, and still churned: VRCFury stamps generated objects with a component id .
-    // "[VF397] Assjob"; and assigns those ids fresh on every bake, so sorting the raw string
-    // reordered the set whenever Fury renumbered. The harness redacts "[VF397]" to "[VF#]" before
-    // comparing digests, so two runs of an unchanged avatar produced a diff naming a different
-    // path with an identical count.
-    //
-    // The ordering therefore ignores Fury ids. The second case below is the one that matters:
-    // ignoring them must NOT make two different strings compare equal, or a SortedSet would
-    // silently drop one and the report would under-count.
+    // Report sample ordering (task #13). VRCFury renumbers its "[VF397]" ids on every bake, so
+    // sorting the raw string churned the samples between runs of an unchanged avatar. The order
+    // ignores Fury ids, but must never make two different strings equal, or the SortedSet drops one.
     public static class StableSampleOrderTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Stable report sample order")]

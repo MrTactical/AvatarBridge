@@ -1,15 +1,7 @@
-// A readout for a socket that will not be found, drawn beside it.
-//
-// Its own renderer, a quad at the socket's origin next to the atlas writer,
-// hidden until the avatar's "YAPS readout" toggle shows it. The owner layer
-// animates its _YAPS_Owner like every renderer carrying the property, and
-// Unity hands it the same vertex lights a renderer at the socket gets.
-//
-// Everything is read back, never assumed. The atlas cells are what a plug
-// on this camera would read, found by the socket's own cell tag and its
-// position within the cell, so an 8-bit target that rounds the tag wrong,
-// a neighbour that took the bucket and a writer that never drew each show
-// as what they are.
+// A readout for a socket that will not be found: a quad at the socket, shown by the
+// "YAPS readout" toggle, getting the same owner id and vertex lights as the socket.
+// Everything is read back as a plug on this camera would, so a bad tag rounding, a
+// stolen bucket or a writer that never drew each show as what they are.
 //
 // Six cells in one row, each a colour:
 //   1  atlas on this camera   black too small, red wrong screen, green live
@@ -105,9 +97,7 @@ Shader "YAPS/Socket Readout"
                 bool sameTarget = all(abs(_YAPS_Atlas_TexelSize.zw - _ScreenParams.xy) < 1.5);
                 float target = !YapsAtlasFits() ? 0.0 : (!sameTarget ? 1.0 : 3.0);
 
-                // The writer's own arithmetic, cell by cell, then every bucket
-                // of both homes: the bucket is the writer's choice, and a
-                // reader finds a socket by its tag and position.
+                // Every bucket of both homes: a reader finds a socket by tag and position.
                 float4 levels = 0;
                 float kind = -1;
                 float number = 0;
@@ -137,9 +127,8 @@ Shader "YAPS/Socket Readout"
                                 float4 got = YAPS_ATLAS_LOAD(px, cellY);
                                 if (got.a < 0.5) continue;
                                 if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
-                                // Within a 128th of the cell: an 8-bit target
-                                // rounds the position a 510th, a neighbour
-                                // sitting there is the same socket to a plug.
+                                // 1/128 of the cell: 8-bit rounds by 1/510, and anything
+                                // that close is the same socket to a plug.
                                 if (distance(got.rgb, f) > 1.0 / 128.0) continue;
                                 state = 2;
                                 bool oneWay;
@@ -159,9 +148,7 @@ Shader "YAPS/Socket Readout"
                 int mine = YapsOwnerOf(_YAPS_Owner);
                 float ownerState = mine == 0 ? 0.0 : (found < 0 ? 3.0 : (found == mine ? 1.0 : 2.0));
 
-                // The protocol lights, black and short, as a plug reads
-                // them: a root says 7, or 1 to 4 in legacy, a plug's tracker
-                // 8 or 9.
+                // Root digit 7 (legacy 1 to 4); a plug's tracker 8 or 9.
                 float ownLight = 0;
                 float plugDepth = -1;
                 [unroll] for (uint i = 0; i < 4; i++)

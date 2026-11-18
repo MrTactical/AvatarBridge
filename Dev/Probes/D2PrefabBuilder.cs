@@ -1,27 +1,11 @@
 // Builds the D2 test rig: does a named GrabPass reach a CVRBlitter?
 //
-// D1 proved the second half of the GPU bridge in game: a blit into a render
-// texture, read by CVRTexturePropertyParser, drives real component properties
-// on every client including remote copies. What it did NOT answer is where the
-// value can come from. A blit shader has no object transforms, so it cannot
-// know where anything on the avatar IS, which rules it out as the source for
-// anything measured off the rig.
-//
-// The way round it is the atlas pattern: geometry ON the avatar computes the
-// value, because geometry has a matrix, and publishes it into a named screen
-// grab. A named GrabPass is a global texture, so a blit can sample it without
-// knowing anything about the scene. That would put the whole socket resolve
-// within reach of C# for the price of one blit.
-//
-// The question this rig asks is only the first link: a blit runs on the main
-// camera's pre-render, so it can only ever see the PREVIOUS frame's grab, and
-// "previous frame" and "never" look identical from the editor. So the source
-// writes a sawtooth. A cube that ramps means the grab reached the blit; a cube
-// that sits still means it did not, and the route is dead.
-//
-// Two blocks are written, one at each end of the screen, and the blit reads
-// both and takes the larger. Which way up a grab lands is a convention this
-// probe should not spend an in-game run discovering.
+// D1 proved blit -> parser -> components on every client. A blit has no
+// transforms, so geometry on the avatar computes the value and publishes it
+// via a named GrabPass (a global texture) for the blit to sample.
+// The blit runs at pre-render and sees only the previous frame's grab, which
+// the editor cannot tell from never: a ramping cube means it arrived.
+// Blocks at both screen ends, the larger wins, so grab orientation does not matter.
 //
 //   -executeMethod AvatarBridge.Regression.D2PrefabBuilder.Build
 #if CVR_CCK_EXISTS && UNITY_EDITOR
@@ -37,9 +21,7 @@ namespace AvatarBridge.Regression
     {
         const string Folder = "Assets/AvatarBridge_D2";
 
-        // The block is 16 pixels so a reader landing a few pixels out still
-        // hits it. One pixel would make a rounding difference look like a
-        // dead transport.
+        // 16 px, so a few pixels of rounding still hit it.
         const int BlockPx = 16;
 
         // Batch for the corpus machine, a menu item for a project already
@@ -78,9 +60,7 @@ namespace AvatarBridge.Regression
 
             var root = new GameObject("D2_Probe");
 
-            // The value, written by geometry on the avatar. In the real thing
-            // this is where the socket resolve goes; here it is a clock, so
-            // that a working chain is visibly different from a stuck one.
+            // A clock stands in for the socket resolve, so a stuck chain shows.
             Draw(root, "Source", quads, sourceMaterial);
             // Straight after, in its own queue, so the grab holds it.
             Draw(root, "Grab", quads, grabMaterial);
@@ -167,10 +147,8 @@ namespace AvatarBridge.Regression
             };
         }
 
-        // Two quads, corners in UV0 and every position zero, exactly as the
-        // atlas writes them: a viewer with custom shaders off gets the
-        // replacement shader and the mesh, so a mesh that draws nothing at the
-        // origin is the only mesh that stays invisible to them.
+        // Corners in UV0, positions zero, as the atlas does: with custom shaders
+        // off the fallback draws the mesh, and this one draws nothing.
         static Mesh Quads()
         {
             var verts = new List<Vector3>();
@@ -190,9 +168,7 @@ namespace AvatarBridge.Regression
             mesh.SetVertices(verts);
             mesh.SetUVs(0, corners);
             mesh.SetTriangles(tris, 0);
-            // Culling on renderer bounds would stop the whole thing the moment
-            // the wearer left the frame, and the wearer is behind the camera
-            // for anyone reading this.
+            // Huge bounds: the wearer is behind their own camera.
             mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 1000f);
             Save(mesh, "/D2 Quads.asset");
             return AssetDatabase.LoadAssetAtPath<Mesh>(Folder + "/D2 Quads.asset");
@@ -200,10 +176,7 @@ namespace AvatarBridge.Regression
 
         static RenderTexture MakeTexture(string file)
         {
-            // Linear, never the default. A gamma render texture applies the
-            // sRGB curve on the way in and again on the way out, and the
-            // parser samples raw pixels: D1 read 0.6431 back from 0.3725
-            // before this was understood, and it looked like a dead transport.
+            // Linear: the parser reads raw pixels, and gamma read 0.6431 back from 0.3725.
             var rt = new RenderTexture(4, 4, 0, RenderTextureFormat.ARGB32,
                 RenderTextureReadWrite.Linear)
             {

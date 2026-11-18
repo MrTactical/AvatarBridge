@@ -7,14 +7,10 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the restore clips written in batches.
-    //
-    // The partial-off topping and the assertion pass wrote one clip per state, a refresh each;
-    // they now go through the fillers' batch. Pinned here: every restored state holds a saved
-    // clip with the value at conversion time, a second conversion replaces the files instead of
-    // numbering new ones, and the assertion pass's "{layer} {state} restore" never takes the
-    // file of a filler's "{layer} restore" spelled the same. That collision deleted the
-    // filler's clip and left its toggle with nothing to switch off.
+    // Restore clips written in batches. Pinned: every restored state holds a saved clip with the
+    // conversion-time value, a reconversion replaces files rather than numbering new ones, and the
+    // assertion pass's "{layer} {state} restore" never takes a filler's "{layer} restore" spelled
+    // the same (that collision deleted the filler's clip, leaving its toggle nothing to switch off).
     public static class RestoreClipBatchTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Restore clips in batches")]

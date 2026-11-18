@@ -21,8 +21,7 @@ namespace AvatarBridge
             "VRCFury's has no switch on the material, so the plug may bend twice. Convert the original avatar " +
             "rather than a built copy, and check this plug in game.";
 
-        // One carried value: where it came from, where it went, and what
-        // was done to it on the way. Kept so the report can list them.
+        // One carried value, for the report.
         public struct Carried
         {
             public string From;
@@ -31,10 +30,8 @@ namespace AvatarBridge
             public string Note;
         }
 
-        // Which system authored this material, if any. Decided from the
-        // properties the material actually HAS, not the shader's name ,
-        // Poiyomi hosts TPS inside its own shader, and a locked Poiyomi
-        // renames the shader per material.
+        // Decided by properties, not shader name: Poiyomi hosts TPS in its own
+        // shader, and a locked Poiyomi renames the shader per material.
         public static Origin Detect(Material material, out Part part)
         {
             part = Part.Plug;
@@ -78,9 +75,7 @@ namespace AvatarBridge
             return Origin.None;
         }
 
-        // Carries the authored values from `source` onto `target`, and
-        // names the ones with no counterpart. The length and radius are
-        // the bake's own: DPS states knobs in metres, YAPS in fractions.
+        // Length and radius come from the bake: DPS states knobs in metres, YAPS in fractions.
         public static List<Carried> Carry(Material source, Material target,
             List<string> unmapped, float plugLength = 0f, float plugRadius = 0f)
         {
@@ -106,16 +101,13 @@ namespace AvatarBridge
         static void CarryDpsPlug(Material s, Material t, List<Carried> carried, List<string> unmapped,
             float plugLength, float plugRadius)
         {
-            // Direct, same meaning, same units.
             Direct(s, t, "_Curvature", "_YAPS_Curvature", carried);
             Direct(s, t, "_ReCurvature", "_YAPS_ReCurvature", carried);
             Direct(s, t, "_EntranceStiffness", "_YAPS_EntranceStiffness", carried);
             Direct(s, t, "_Wriggle", "_YAPS_WriggleStrength", carried);
             Direct(s, t, "_WriggleSpeed", "_YAPS_WriggleSpeed", carried);
 
-            // The plug's size, for the metre-to-fraction conversions. The
-            // measured length wins; the author's _Length is the fallback
-            // and the disagreement, if any, is noted.
+            // Measured length wins over _Length; a disagreement is noted.
             float stated = s.HasProperty("_Length") ? s.GetFloat("_Length") : 0f;
             float length = plugLength > 0.001f ? plugLength : stated;
             if (plugLength > 0.001f && stated > 0.001f
@@ -126,8 +118,7 @@ namespace AvatarBridge
                     Note = $"the material said {stated:0.###} m, the mesh measures {plugLength:0.###} m" });
             }
 
-            // Squeeze: a radius the shaft is clamped to. As a fraction it is
-            // squeezed BY, that is 1 - clampRadius / plugRadius.
+            // DPS: a radius to clamp to. YAPS: the fraction squeezed by.
             if (s.HasProperty("_Squeeze") && plugRadius > 0.0001f)
             {
                 float clampTo = Mathf.Max(s.GetFloat("_Squeeze"), 0f);
@@ -139,7 +130,6 @@ namespace AvatarBridge
                 Set(t, "_YAPS_SqueezeDistance", Mathf.Clamp(s.GetFloat("_SqueezeDist") / length, 0.01f, 1f),
                     "_SqueezeDist", carried, "metres, divided by the plug's length");
             }
-            // Bulge: a fraction of radius, directly.
             Direct(s, t, "_BulgePower", "_YAPS_Bulge", carried);
             if (s.HasProperty("_BulgeOffset") && length > 0.001f)
             {
@@ -151,9 +141,8 @@ namespace AvatarBridge
 
         static void CarryDpsSocket(Material s, Material t, List<Carried> carried, List<string> unmapped)
         {
-            // DPS depths are metres past the socket, YAPS fractions of a
-            // plug a socket cannot know. Carried against a 0.3 m
-            // reference, which keeps the order and the proportions.
+            // DPS depths are metres, YAPS fractions of an unknown plug: a 0.3 m
+            // reference keeps order and proportions.
             const float reference = 0.3f;
             var starts = new Vector4(0f, 0.25f, 0.5f, 0.75f);
             var fades = new Vector4(0.3f, 0.3f, 0.3f, 0.3f);
@@ -206,11 +195,9 @@ namespace AvatarBridge
             Direct(s, t, "_TPS_BezierStart", "_YAPS_BezierStart", carried);
             Direct(s, t, "_TPS_SmoothStart", "_YAPS_SmoothStart", carried);
             Direct(s, t, "_TPS_MinimumOrificeDistance", "_YAPS_MinimumSocketDistance", carried);
-            // Buffered depth smoothed the contact channel, which no longer
-            // bends a plug.
+            // Smoothed the contact channel, which no longer bends a plug.
             Note(s, "_TPS_BufferedStrength", unmapped);
-            // _TPS_IdleGravity is not a setting: TPS declares it as a help box
-            // telling the author to use PhysBone gravity, which converts.
+            // _TPS_IdleGravity is only a help box pointing at PhysBone gravity, which converts.
             Note(s, "_TPS_TwoSidedRings", unmapped);
         }
 
@@ -219,8 +206,7 @@ namespace AvatarBridge
         static void CarrySps(Material s, Material t, List<Carried> carried, List<string> unmapped)
         {
             Direct(s, t, "_SPS_Overrun", "_YAPS_Overrun", carried);
-            // Everything else SPS carries is either the bake (redone from
-            // the mesh) or transport (identity, tags, the channel's job).
+            // The rest is the bake (redone from the mesh) or transport.
         }
 
         // --- helpers ---------------------------------------------------------

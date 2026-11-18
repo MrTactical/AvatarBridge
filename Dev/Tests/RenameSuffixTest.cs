@@ -8,11 +8,10 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Poiyomi's Rename Animated puts a suffix on a property when it locks, "_Color_Skin0", and
-    // the author's clips bind that name. The suffix is the material's NAME unless a tag pins it,
-    // and a YAPS copy is saved under a name of its own, so a copy of a material the author had
-    // locked got a new suffix: the next unlock lost the renamed values and the next lock moved
-    // the property off every clip. A copy keeps its source's suffix. Needs Poiyomi; it locks.
+    // Poiyomi's Rename Animated suffixes a property on lock ("_Color_Skin0") and clips bind that.
+    // The suffix is the material's name unless a tag pins it, so a renamed YAPS copy got a new one:
+    // unlock lost the values, relock moved the property off every clip. A copy keeps its source's
+    // suffix. Needs Poiyomi; it locks.
     //
     // Run: -executeMethod AvatarBridge.Regression.RenameSuffixTest.Run
     public static class RenameSuffixTest

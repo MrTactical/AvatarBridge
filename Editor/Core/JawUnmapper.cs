@@ -7,14 +7,8 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    // Takes the humanoid Jaw mapping off a bone that is not a jaw and
-    // rebuilds the rig. Unity's Auto-Map assigns one to whatever is
-    // nearest when it cannot read a face, and the avatar then talks out
-    // of it. The baked skeleton passes through as recorded.
-    //
-    // Always on, no setting: CVR puts the Auto voice position on the jaw
-    // bone and jaw visemes animate it, so a misassigned Jaw misplaces the
-    // voice and waggles whatever the bone is. Nobody wants that kept.
+    // Unmaps a humanoid Jaw that Auto-Map put on a non-jaw bone. Always on: CVR puts the voice
+    // on the jaw and jaw visemes animate it, so a wrong Jaw misplaces the voice and waggles the bone.
     public static class JawUnmapper
     {
         const string Category = "Humanoid rig";
@@ -43,10 +37,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // Read from the VRChat descriptor: ctx.CvrAvatar does not exist yet, this pass runs
-            // first. CVR drives the humanoid Jaw for jaw-flap lip sync, so unmapping the bone the
-            // descriptor moves, whatever its name, is what leaves the mouth dead. With no bone
-            // named there, the same placement test the voice uses decides.
+            // VRChat descriptor (ctx.CvrAvatar does not exist yet). Never unmap the jaw-flap bone, or
+            // the mouth goes dead. With none named, the voice's placement test decides.
             var vrc = ctx.SourceDescriptor;
             bool jawLipSync = vrc != null
                 && vrc.lipSync == VRC.SDKBase.VRC_AvatarDescriptor.LipSyncStyle.JawFlapBone;
@@ -101,18 +93,12 @@ namespace AvatarBridge
                 return;
             }
 
-            // Detached first. With the old rig still assigned,
-            // BuildHumanAvatar validates against it rather than the
-            // description handed in. The description is the argument;
-            // the assigned avatar should not get a vote.
+            // Detached first, or BuildHumanAvatar validates against the old rig, not the description.
             var previous = animator.avatar;
             var layers = Detach(animator);
             var rebuilt = AvatarBuilder.BuildHumanAvatar(root, description);
 
-            // Second attempt, from the live hierarchy: the baked skeleton
-            // describes the model as imported and conversion has moved
-            // on. Second because it carries the current pose, not the
-            // configured T-pose.
+            // Live hierarchy as fallback: current, but in the current pose rather than the T-pose.
             bool usedLiveSkeleton = false;
             if (rebuilt == null || !rebuilt.isValid)
             {

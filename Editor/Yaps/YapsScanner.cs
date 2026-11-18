@@ -1,9 +1,5 @@
-// Finds every penetration setup under a root, DPS, TPS, SPS or YAPS,
-// and says what it found. Touches nothing.
-//
-// A socket is one object with a cluster of markers beneath it. Markers
-// are gathered, each walked up to the object that owns the cluster, and
-// grouped by that owner.
+// Finds every DPS, TPS, SPS or YAPS setup under a root. Touches nothing.
+// Markers are walked up to the object owning their cluster and grouped by it.
 //
 // How each system announces itself:
 //
@@ -56,18 +52,12 @@ namespace AvatarBridge
             // Something to fix. An entry here turns the row amber.
             public List<string> Notes = new List<string>();
 
-            // Working as designed, said out loud so it does not read as
-            // damage. A row with only these stays green.
+            // Working as designed but worth saying. A row with only these stays green.
             public List<string> Expected = new List<string>();
 
-            // The plug this mesh is PART OF, when it has no plug of its own.
-            //
-            // A plug rooted high enough carries every mesh its bones move, and each
-            // of those ends up wearing a patched material, which reads as a plug in
-            // its own right and lists as a peer. It is not one: it has no frame, no
-            // length and no settings, it wears the carrier's. Listing it as a peer
-            // invited a second plug component on a mesh already carried, which then
-            // re-baked it with its own frame and broke the two apart.
+            // The plug this mesh is part of, when it has no plug of its own. Listed
+            // as a peer, it invited a second plug component that re-baked it with
+            // its own frame and broke the two apart.
             public Yaps.YapsPlug CarriedBy;
 
             public string ReadableList()
@@ -138,8 +128,7 @@ namespace AvatarBridge
                 f.IsYapsAlready = true;
                 f.Origin = YapsLegacyMap.Origin.YAPS;
                 f.StatedLength = comp.lengthOverride;
-                // The component's renderer may already wear the material. Finish
-                // claims the renderer, so read it here.
+                // Read here: Finish claims the renderer.
                 var target = comp.Target;
                 if (target != null)
                 {
@@ -148,10 +137,8 @@ namespace AvatarBridge
                     if (comp.materialSlot >= 0) order = order.Where(s => s == comp.materialSlot);
                     else if (comp.converted)
                     {
-                        // An auto slot names no material, so two plugs splitting one
-                        // mesh both showed the first plug material on it. The converter
-                        // records the primary first on its mesh. A native bake in place
-                        // records nothing for it, so its first record can be a mirror.
+                        // Auto slot: prefer the converter's first record on this mesh,
+                        // or two plugs splitting one mesh both show the first material.
                         var record = comp.bakedSlots?.FirstOrDefault(b => b != null && b.slot >= 0
                             && b.slot < mats.Length && YapsNativeBuilder.Same(b.renderer, target, comp));
                         if (record != null) order = order.OrderBy(s => s != record.slot);
@@ -184,15 +171,14 @@ namespace AvatarBridge
                 {
                     var origin = YapsLegacyMap.Detect(mats[i], out var part);
                     if (origin == YapsLegacyMap.Origin.None || part != YapsLegacyMap.Part.Plug) continue;
-                    // Squash copies carry the same YAPS properties with no bake, so
-                    // every squashed shirt and body listed as a plug. A YAPS plug
-                    // with no component is always a baked one.
+                    // Squash copies carry YAPS properties with no bake; a componentless
+                    // YAPS plug is always baked.
                     if (origin == YapsLegacyMap.Origin.YAPS && !YapsMarks.IsBakedMaterial(mats[i])) continue;
                     var owner = PlugOwner(r.transform);
                     if (owner == r.transform && plugObjects.Count > 0)
                     {
-                        // Not above the renderer: one whose bones carry it, else the
-                        // nearest. Hierarchy order crossed two plugs' meshes over.
+                        // The one whose bones carry it, else the nearest; hierarchy
+                        // order crossed two plugs' meshes over.
                         var bounds = r.bounds;
                         owner = plugObjects
                             .OrderByDescending(t => YapsBaker.CountVerticesUnder(r, t) > 0)
@@ -226,10 +212,8 @@ namespace AvatarBridge
                 if (p == null || string.IsNullOrEmpty(p.type)) continue;
                 if (IsSocketRootTag(p.type) || IsSocketFrontTag(p.type)) markers.Add((p.transform, null, p));
             }
-            // Which plugs found by their MATERIAL are really another plug's
-            // carried mesh. Only ever a mesh with no plug of its own: a
-            // component is an author saying "this one is mine", and that is
-            // answered as a conflict at bake, not quietly reparented here.
+            // Material-found plugs that are another plug's carried mesh. Never one
+            // with its own component: that conflict is raised at bake.
             foreach (var f in result.Plugs)
             {
                 if (f.Root == null || f.Renderer == null) continue;
@@ -295,9 +279,7 @@ namespace AvatarBridge
             return close < 0 ? name : name.Substring(close + 1).TrimStart();
         }
 
-        // The path below root with Fury's id taken out of every name. Fury
-        // numbers what it moves afresh each build, so anything ordered by the
-        // raw path reshuffles on a reconvert of an unchanged avatar.
+        // Fury renumbers each build, so raw paths reshuffle on a reconvert.
         public static string StablePath(Transform t, Transform root)
         {
             var names = new List<string>();
@@ -306,8 +288,7 @@ namespace AvatarBridge
             return string.Join("/", names);
         }
 
-        // Every name test reads through Fury's id. ArmatureLink renames what
-        // it moves "[VF724] BakedSpsSocket", and a raw test misses each one.
+        // ArmatureLink renames what it moves "[VF724] BakedSpsSocket".
         public static bool NameStarts(string name, string prefix) =>
             name != null && StripFuryId(name).StartsWith(prefix, StringComparison.Ordinal);
 
@@ -320,11 +301,8 @@ namespace AvatarBridge
             // Inclusive of the root; the scan target may be the socket.
             for (var at = marker; at != null; at = at.parent)
             {
-                // VRCFury stamps its own objects "[VF564] BakedSpsSocket", so a
-                // StartsWith check misses every baked socket and the heuristic
-                // below answers instead: a different ancestor for the lights than
-                // for the pointers, which reads as two sockets on one spot and
-                // invites deleting a working half.
+                // Through the Fury id, or the heuristic below picks different owners
+                // for lights and pointers: two sockets on one spot.
                 if (IsSocketObject(at.name)) return at;
                 if (at.GetComponent<Yaps.YapsSocket>() != null) return at;
                 if (at == root) break;
@@ -354,7 +332,7 @@ namespace AvatarBridge
             return renderer;
         }
 
-        // A name a user recognises. "[VF80] Pussy" gives "Pussy".
+        // A name a user recognises. "[VF80] Hole" gives "Hole".
         static string SocketName(Transform owner)
         {
             for (var at = owner; at != null; at = at.parent)
@@ -399,15 +377,10 @@ namespace AvatarBridge
                 f.Notes.Add($"{f.Origin} deform, upgrade carries its settings onto YAPS");
             if ((f.ReadableBy & Speaks.DPS) == 0) f.Notes.Add("no tip light: DPS sockets cannot see it");
             if ((f.ReadableBy & (Speaks.TPS | Speaks.SPS)) == 0) f.Notes.Add("no plug pointers: contact sockets cannot see it");
-            // Behind the toolkit: the row goes amber and Build is the fix,
-            // which is the whole point of saying it here rather than only
-            // on the material.
             if (f.Material != null && f.IsYapsAlready && YapsShaderPatcher.IsStale(f.Material))
                 f.Notes.Add("its shader is older than the toolkit; Build refreshes it");
-            // A debug view REPLACES the deform, and it is a material value, so
-            // it uploads. On an ordinary plug that is a curiosity; on a
-            // whole-avatar plug it flattens the avatar for everyone, and it
-            // survives the upload looking like a broken bake.
+            // A debug view replaces the deform and uploads as a material value; on a
+            // whole-avatar plug it flattens the avatar for everyone.
             if (f.Material != null && f.Material.HasProperty("_YAPS_Debug")
                 && f.Material.GetFloat("_YAPS_Debug") > 0.5f)
                 f.Notes.Add("a DEBUG VIEW is on, it replaces the deform and will upload with the avatar");
@@ -444,14 +417,8 @@ namespace AvatarBridge
             if (!f.HasAxis) f.Notes.Add("no axis, plugs will aim at it rather than thread it");
             if (rootLight == null && !f.IsYapsAlready) f.Notes.Add("no marker lights, DPS plugs and light-only plugs cannot see it");
 
-            // Switched off is the difference between the preview and the game.
-            // The preview reads transforms and bends a plug whatever state
-            // anything is in; the game needs these components live. A socket
-            // that previews perfectly and does nothing in game is this.
-            //
-            // A socket switched off at its own root is the wearer using the
-            // toggle, not a fault. Saying "nothing can find it" about that
-            // sends them hunting a bug they made themselves.
+            // The preview bends regardless of state; the game needs these live. A socket
+            // off at its own root is the wearer's toggle, not a fault.
             bool socketItselfOff = f.Root != null && !f.Root.gameObject.activeInHierarchy;
             int darkPointers = f.Pointers.Count(p => p != null
                 && (!p.enabled || !p.gameObject.activeInHierarchy));
@@ -468,9 +435,7 @@ namespace AvatarBridge
                 && (!l.enabled || !l.gameObject.activeInHierarchy));
             if (darkLights > 0 && !socketItselfOff)
             {
-                // Dark on purpose under the lighthouse: pairs wait on the
-                // menu, one lit at a time. Only a socket dark with no
-                // lighthouse to light it is a problem.
+                // Under the lighthouse, dark until the menu picks it; a problem otherwise.
                 var avatar = f.Root != null ? f.Root.GetComponentInParent<CVRAvatar>(true) : null;
                 bool lighthouse = avatar != null && avatar.avatarSettings != null
                     && avatar.avatarSettings.settings != null

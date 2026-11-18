@@ -11,19 +11,9 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Setup mode: prepares ANY humanoid avatar for ChilloutVR, with **no VRChat SDK
-    // involved at all**.
-    //
-    // The conversion path exists to translate VRChat data. Everything else AvatarBridge
-    // does (the viewpoint, visemes and blink wiring, face tracking, the height scaler)
-    // is CVR-side work that never needed VRChat in the first place. This runs exactly
-    // those passes against features read straight off the rig and meshes, so it works on
-    // a Booth model or an original avatar. Not on one that already has a menu:
-    // it builds the controller and the menu fresh, and says so when it replaces one.
-    //
-    // What it deliberately does NOT do: anything requiring VRChat data (menus and
-    // parameters from expression assets, PhysBone/contact conversion, animator merging).
-    // Those need the VRChat SDK to read, so they live in the conversion path.
+    // Setup mode: the CVR-side passes (viewpoint, visemes, blink, face tracking, scaler) on any
+    // humanoid, no VRChat SDK. Builds controller and menu fresh, replacing an existing one.
+    // Menus, PhysBones, contacts and merging need VRChat data, so they stay in the conversion.
     public static class CvrSetup
     {
         const string Category = "CVR setup";
@@ -250,9 +240,7 @@ namespace AvatarBridge
             WireBlink(ctx, cvrAvatar, mesh);
 
             // --- advanced settings container ----------------------------------------
-            // Setup builds the menu and the controller fresh from the CCK
-            // base. An avatar that already had a menu loses it here, and
-            // says so; Undo brings it back.
+            // Fresh from the CCK base: an existing menu is lost (reported, Undo restores it).
             int hadEntries = cvrAvatar.avatarSettings != null && cvrAvatar.avatarSettings.settings != null
                 ? cvrAvatar.avatarSettings.settings.Count : 0;
             if (hadEntries > 0)
@@ -492,11 +480,9 @@ namespace AvatarBridge
             return folder != "Assets" && !folder.StartsWith("Assets/") || folder.Contains("..") ? null : folder;
         }
 
-        // The folder is named after the avatar, so two avatars sharing a name shared it, and the
-        // second conversion deleted the first one's controller and clips. The folder now records
-        // which scene object it was made for; another object gets a numbered folder of its own.
-        // `chosen` is FindOutputDir's answer from before something else made the folder: asked
-        // again, an untagged numbered folder reads as another avatar's.
+        // The folder records its scene object, so a same-named avatar gets a numbered folder
+        // instead of deleting the other's files. `chosen` is FindOutputDir's earlier answer:
+        // asked again, an untagged numbered folder reads as another avatar's.
         internal static string CreateOutputDir(string dir, GameObject source, BridgeReport report, string category,
             string chosen = null)
         {

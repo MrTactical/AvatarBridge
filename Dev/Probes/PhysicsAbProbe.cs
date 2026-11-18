@@ -3,13 +3,10 @@
 // it takes to settle, how far it overshoots, how much of a swing reaches the middle of the
 // chain, and where it hangs once the avatar lies down.
 //
-// Each scene is converted with a new user's defaults, the source switched back on beside its
-// copy, every Animator off so only the script moves them, and the copy set aside so the two
-// never touch. One timeline drives both roots (walk, turn, jump, shake, lie down) and both
-// Head bones (a head turn the root never sees). Time is pinned at 90 fps with
-// captureFramerate, so a run repeats and the machine's speed does not matter. Positions are
-// read after both solvers wrote them, from a step appended to the end of the frame; the drive
-// runs first thing in Update, after MagicaCloth2 has restored its bones.
+// Each scene is converted with default settings, source and copy side by side, Animators off.
+// One timeline drives both roots (walk, turn, jump, shake, lie down) and Head bones. Time is
+// pinned at 90 fps by captureFramerate so runs repeat. The drive runs first in Update, after
+// MagicaCloth2 restores its bones; positions are read at frame end, after both solvers.
 //
 // Survey: -executeMethod AvatarBridge.Regression.PhysicsAbProbe.Survey -abOut <dir>
 //   every avatar scene in the project, its active chains counted by class.
@@ -641,10 +638,9 @@ namespace AvatarBridge.Regression
             if (lines.Count == 0) return false;
 
             SessionState.SetString(K + "avatar", descriptor.name);
-            // VRCFury builds every avatar in the scene on entering Play, running the upload hooks
-            // (NDMF plugins included), which rebuilds bones this probe drives. It skips names
-            // carrying Av3Emulator's "(ShadowClone)"; the scene is never saved, and no machine-wide
-            // preference gets touched.
+            // VRCFury builds every avatar on entering Play (NDMF included), rebuilding bones this
+            // drives; it skips names carrying "(ShadowClone)". Renaming beats flipping a machine-wide
+            // preference, and the scene is never saved.
             descriptor.gameObject.name += " (ShadowClone)";
             SessionState.SetString(K + "bodies", string.Join("|", IndexPath(descriptor.transform), head != null ? IndexPath(head) : "",
                 IndexPath(converted.transform), dstHead != null ? IndexPath(dstHead) : ""));
@@ -1227,16 +1223,12 @@ namespace AvatarBridge.Regression
             return world;
         }
 
-        // -abSquash: the part squashes by bone scale, never by moving vertices. The skinning of
-        // every bone carrying it moves onto a stack beside the rig, built only from constraints
-        // the avatar can carry: follow (ParentConstraint to the main bone, at the part's centre),
-        // aim (AimConstraint at the partner's follow), scale (the one animated value), counter
-        // (RotationConstraint back to the follow), then a skin bone per carrying bone in the
-        // bones' own hierarchy, each copying its bone's rotation. At rest the stack is identity,
-        // so the bind pose holds; every renderer weighted to those bones follows, so layers
-        // cannot part; the physics bones never see the scale. Each vertex moved on its own tore
-        // the skin and parted it from the top over it; the main bone alone left the chain
-        // root's 43% of the part unsquashed, and it slid past its partner.
+        // -abSquash: squash by bone scale, never by moving vertices. Skinning moves onto a
+        // constraint-only stack beside the rig: follow (ParentConstraint), aim (at the partner),
+        // scale (the animated value), counter (RotationConstraint), then a skin bone per carrying
+        // bone copying its rotation. Identity at rest, so the bind pose holds and layers cannot
+        // part; physics bones never see the scale. Per-vertex moves tore the skin; scaling the main
+        // bone alone left the chain root's 43% unsquashed.
         static bool Squash => Array.IndexOf(Environment.GetCommandLineArgs(), "-abSquash") >= 0 || Driver || Reader || Affine;
         // -abAffine: the same stack with no skin bones. The dent shader takes each part's counter
         // after its follow as one map and moves every layer by it, so no constraint per bone. In
@@ -1248,11 +1240,9 @@ namespace AvatarBridge.Regression
         // squashed to 0.85 and grown to 1.35 across holds 1.5 times its volume and looks soft.
         static float Overfill => FlagF("-abOverfill", 2.33f);
         static float Flattest => FlagF("-abFlattest", 0.6f);
-        // The follow rides the part's top carrying bone, so that bone's skin keeps an exact rest
-        // offset and takes the whole squash. Riding the main bone instead, a chain root's skin
-        // was dragged 16 cm by the swing of its own child. Skin bones below it copy their bone's
-        // position too, keeping a joint's stretch at the cost of the squash on their own origin.
-        // -abSkinPos static keeps the rest offset all the way down instead.
+        // The follow rides the top carrying bone: on the main bone, a chain root's skin was dragged
+        // 16 cm by its child's swing. Lower skin bones copy position too, keeping joint stretch at
+        // the cost of squash on their origin. -abSkinPos static keeps the rest offset instead.
         static bool SkinFollowsPosition => Arg("-abSkinPos") != "static";
 
         static void BuildSquash(DentPart p, float reach)
@@ -1378,13 +1368,11 @@ namespace AvatarBridge.Regression
             p.flattest = Mathf.Min(p.flattest, p.scale.localScale.z);
         }
 
-        // -abDriver: the squash as ChilloutVR runs it, with no C# of ours in the loop. A box
-        // trigger on one part's aim reads a pointer on its partner's follow, so the box's z runs
-        // down the line between them: one synced float per pair, 0 where the surfaces meet at rest
-        // and 1 with the centres together. An animator blend tree sets both scales from it. The
-        // client is the one thing emulated, from its decompiled box read. Triggers are evaluated
-        // after constraints and the animator reads the value next frame, as here. The press comes
-        // from rest reaches and a rest share, not the skin each frame.
+        // -abDriver: the squash as ChilloutVR runs it, no custom C#. A box trigger on one part's aim
+        // reads a pointer on the partner's follow: one synced float per pair, 0 at rest contact, 1
+        // with centres together, driving a blend tree. Only the client's box read is emulated (from
+        // the decompile): triggers after constraints, the animator a frame later. The press comes
+        // from rest reaches, not the skin each frame.
         static bool Driver => Array.IndexOf(Environment.GetCommandLineArgs(), "-abDriver") >= 0;
         static Transform squashRoot;
         static Animator squashAnimator;
@@ -1712,12 +1700,10 @@ namespace AvatarBridge.Regression
         static float Det3(Matrix4x4 m) =>
             m.m00 * (m.m11 * m.m22 - m.m12 * m.m21) - m.m01 * (m.m10 * m.m22 - m.m12 * m.m20) + m.m02 * (m.m10 * m.m21 - m.m11 * m.m20);
 
-        // Each vertex's share of each part is its skin weight to that part's bones, baked into a
-        // texture per renderer and read by vertex id. A layer over the skin takes the shares of
-        // the skin under it instead of its own: a top weighted less to the breasts than the skin
-        // squashed less, and the skin spilled out through it. Each part's shape is measured from
-        // the vertices it carries at least half of, skinned by hand from the bind poses: a bake's
-        // space depends on the renderer's scale, which a converted rig can carry at 100.
+        // Each vertex's share of a part is its skin weight to the part's bones, baked per renderer
+        // and read by vertex id. A layer over the skin takes the skin's shares: with its own lower
+        // weights it squashed less and the skin poked through. Shapes are measured from vertices at
+        // least half the part's, skinned by hand: a bake's space follows renderer scale, up to 100.
         static List<DentPart> BuildDentParts(List<Chain> soft)
         {
             var parts = soft.Select(c => new DentPart { name = c.dst.root.name }).ToList();

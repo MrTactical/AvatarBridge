@@ -13,11 +13,10 @@ namespace AvatarBridge.Regression
     // avatar and run the menu item. Each bone gets a body; the bone follows its body
     // through a parent constraint, so a body moving away from its parent stretches the bone.
     //
-    // The bodies sit under the avatar root, never under the bone's own parent: a dynamic
-    // body whose parent transform moves is teleported with it, and feels none of that
-    // motion. Under the root, the player's own movement still carries them (so a teleport
-    // carries them too), while everything the animation does to the hips reaches them
-    // through the joint. No colliders, so no layer or content filter applies.
+    // Bodies sit under the avatar root, not the bone's parent: a dynamic body is teleported with
+    // a moving parent and feels none of that motion. Under the root, player movement (and
+    // teleports) carry them while hip animation reaches them through the joint. No colliders,
+    // so no layer or content filter applies.
     //
     // Self-test: -executeMethod AvatarBridge.Regression.JointSpike.SelfTest -quit
     public static class JointSpike

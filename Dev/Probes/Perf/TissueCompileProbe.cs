@@ -12,10 +12,9 @@ using Debug = UnityEngine.Debug;
 
 namespace AvatarBridge.Regression
 {
-    // Where the live tissue's time goes, and what the error check sees: copies of the named squash
-    // materials take the tissue's role one at a time, as YapsJelly.On does, each step timed. Then
-    // the editor ticks until the shader compiler is idle and every new shader is checked again,
-    // since a compile that times out was reported as clean once. Run without -quit; it exits itself:
+    // Where the live tissue's time goes: copies of the named squash materials take the tissue role
+    // one at a time, as YapsJelly.On does, each step timed. Then every new shader is checked again
+    // once the compiler is idle, since a timed-out compile once read as clean. Exits itself:
     //   -executeMethod AvatarBridge.Regression.TissueCompileProbe.Run -tissueMaterials "Assets/a.mat|Assets/b.mat"
     // Leaves Assets/__TissueCompile and the new shaders in the YAPS folder for the caller to move out.
     public static class TissueCompileProbe

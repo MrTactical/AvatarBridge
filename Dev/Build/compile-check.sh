@@ -1,29 +1,16 @@
 #!/usr/bin/env bash
 #
-# STALE LIBRARY WARNING. This reuses the project's compiled Assembly-CSharp,
-# so straight after a deploy it compiles the new editor code against the OLD
-# runtime code and reports missing fields that exist. Seen 2026-08-27: six
-# errors for bakedSlots, previewAsChannel and previewInPlayMode, every one of
-# them present in the source, against a DLL a day older than the deploy.
-# Compare Library/ScriptAssemblies/Assembly-CSharp.dll against the files you
-# deployed before believing a failure, or let Unity open the project once.
-# Compiles the editor scripts five times: with the VRChat SDK and without,
-# each with and without the YAPS add-on, and MagicaCloth2 without the SDK.
-#
-# The references are the project's own ScriptAssemblies, which hold its
-# deployed copy of this repo, add-on included. A type a combination leaves
-# out still resolves from there and the compile passes, so each assembly is
-# read back and any AvatarBridge type bound out of Assembly-CSharp* fails it.
-#
-# Everything but the first combination matters. A ChilloutVR-only user
-# installs AvatarBridge for the toolkit and never has the VRChat SDK, and
-# YAPS ships as a separate add-on, so a converter without it compiles with
-# Editor/Yaps absent from the project entirely. Unity in the local projects
-# only ever compiles the one where everything is installed.
-#
-# Mono's csc, not the Roslyn one under lib/mono/msbuild: that one fails to
-# start and prints no error CS lines at all, which reads as a clean pass.
-# The assembly having been produced is the only trustworthy signal.
+# STALE LIBRARY: references the project's compiled Assembly-CSharp, so right
+# after a deploy it can report fields missing that exist (2026-08-27: six such
+# errors against a day-old DLL). Check the DLL's age, or open Unity once.
+# Compiles the editor scripts with and without the VRChat SDK, each with and
+# without the YAPS add-on, and MagicaCloth2 without the SDK: the shapes users
+# have that local Unity never compiles.
+# The references hold the deployed copy, so a type a combination leaves out
+# still resolves; each assembly is read back and any AvatarBridge type bound
+# out of Assembly-CSharp* fails it.
+# Mono's csc: the Roslyn one under lib/mono/msbuild fails to start and prints
+# no errors. Only a produced assembly is a trustworthy pass.
 set -u
 
 UNITY="${UNITY_DATA:-/c/Program Files/Unity/Hub/Editor/2022.3.22f1/Editor/Data}"
@@ -55,8 +42,7 @@ fail=0
 # MagicaCloth2 without the SDK is the toolkit's audience. check-defines.sh
 # varies the physics defines only in a project that has the SDK.
 . "$REPO/Dev/Build/yaps-files.sh"
-# "addon:" is the add-on installed alone: its own file list and nothing else. 4.1.0 and 4.1.1
-# shipped unable to compile that way, and the closure check alone is not a compiler.
+# "addon:" = the add-on installed alone (4.1.0 and 4.1.1 could not compile that way).
 for defines in "CVR_CCK_EXISTS" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_MAGICA" \
                "CVR_CCK_EXISTS;AVATARBRIDGE_YAPS" \
@@ -76,12 +62,9 @@ for defines in "CVR_CCK_EXISTS" \
         echo "-r:\"$(cygpath -w "$NETSTANDARD")\""
     } > "$rsp"
 
-    # The split modules only. Managed/*.dll holds the old monolithic
-    # UnityEngine and UnityEditor too, and having both makes every type
-    # ambiguous.
+    # Split modules only: the monolithic UnityEngine beside them makes every type ambiguous.
     for dll_path in "$UNITY/Managed/UnityEngine"/*.dll "$PROJECT/Library/ScriptAssemblies"/*.dll; do
-        # Without the SDK, nothing built on it either: a ChilloutVR-only
-        # project has none of these, so a type found in one is not there.
+        # Without the SDK, nothing built on it either.
         case "$defines" in
             *VRC_SDK_VRCSDK3*) ;;
             *) case "$(basename "$dll_path")" in VRC*|com.vrcfury*|*vrchat*) continue ;; esac ;;
@@ -89,8 +72,7 @@ for defines in "CVR_CCK_EXISTS" \
         [ -f "$dll_path" ] && echo "-r:\"$(cygpath -w "$dll_path")\"" >> "$rsp"
     done
 
-    # The SDK ships precompiled, and only these are managed. Sweeping the
-    # whole package tree drags in native plugins that csc cannot read.
+    # Only these SDK dlls are managed; the rest are native and csc cannot read them.
     case "$defines" in
         *VRC_SDK_VRCSDK3*)
             find "$PROJECT/Packages" -path "*VRCSDK/Plugins*" -name "VRC*.dll" 2>/dev/null |
@@ -98,26 +80,13 @@ for defines in "CVR_CCK_EXISTS" \
             ;;
     esac
 
-    # Dev tooling only in the SDK build. It never ships, and it runs in
-    # projects that always have the VRChat SDK; only Editor has to stand up
-    # without it.
-    # Runtime as SOURCE, not as the deployed assembly the references pull
-    # in. Linking the deployed one meant a runtime change was never checked
-    # here at all: a new type read as missing and a broken attribute read as
-    # fine, both until somebody opened Unity.
+    # Runtime as SOURCE: linking the deployed assembly never checked runtime changes.
     sources=("$REPO/Editor" "$REPO/Runtime")
-    # Dev tooling assumes a machine with everything installed, so it only
-    # joins the combination that has everything.
+    # Dev tooling assumes everything installed, so only that combination.
     case "$defines" in
         *VRC_SDK_VRCSDK3*AVATARBRIDGE_YAPS*) sources+=("$REPO/Dev") ;;
     esac
-    # Without the add-on those files are not in the project at all, so
-    # compiling them would prove the wrong thing: the point of the run is
-    # that the converter stands up when they are missing.
-    # Runtime goes with Editor/Yaps: the public package prunes BOTH, so a
-    # combination that keeps Runtime is not a shape any user has. Compiling
-    # it was the same blind spot the YAPS closure check exists for, in the
-    # other direction: a shipped file reaching a type that stayed behind.
+    # Without the add-on, drop Editor/Yaps AND Runtime: the public package prunes both.
     case "$shape" in
         addon:*)             (cd "$REPO" && yaps_files | tr '\0' '\n' | grep '\.cs$' | sed "s|^|$REPO/|") ;;
         *AVATARBRIDGE_YAPS*) find "${sources[@]}" -name '*.cs' ;;
@@ -129,9 +98,8 @@ for defines in "CVR_CCK_EXISTS" \
     "$MONO" "$CSC" "@$(cygpath -w "$rsp")" 2>&1 | grep -E "error CS" | head -20
 
     if [ -f "$dll" ]; then
-        # Every AvatarBridge type this combination may use is in its sources,
-        # so one bound out of the deployed Assembly-CSharp* is a type the user
-        # will not have. A failed read-back is a failure, not a clean pass.
+        # A type bound out of the deployed Assembly-CSharp* is one the user lacks.
+        # A failed read-back is a failure.
         if "$MONO" "$IKDASM" "$(cygpath -w "$dll")" > "$WORK/il.txt"; then
             leaked="$(grep -o "\['\?Assembly-CSharp[^]]*]AvatarBridge[A-Za-z0-9_.]*" "$WORK/il.txt" | sort -u)"
         else

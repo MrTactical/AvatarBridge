@@ -1,24 +1,8 @@
-// Clears up after a physics addon that could not be converted, and says
-// where to put the physics back.
-//
-// Rigs like cake PB are a cascade: a dozen staged bones, each doing one
-// job and feeding the next, with constraints copying the composed result
-// onto the avatar's real bones. No mesh is skinned to any of it.
-//
-// That cascade cannot be rebuilt out of independent solvers. Converting
-// each stage separately gives a dozen things swinging their own way, and
-// the constraints faithfully copy the mess onto the mesh. Five attempts at
-// reproducing one of these produced five different wrong avatars, so the
-// tool no longer tries.
-//
-// What it does instead: PhysBoneConverter skips the rig's chains, this
-// pass removes every relay reading from the dead rig, and the report names
-// the bone to put a cloth on. A relay left behind would copy a pose
-// nothing moves any more, and a position or scale relay OVERRIDES
-// animation, so removing it is also what lets a contact-driven squish
-// reach the bone.
-//
-// Runs after the constraint pass: the relays do not exist until then.
+// Cleans up an unconvertible helper-rig physics addon (a cake PB style cascade of unskinned
+// staged bones relayed onto real bones by constraints). Independent solvers cannot rebuild it:
+// five attempts gave five wrong results. So its chains are skipped, relays reading from it are
+// removed (a position or scale relay overrides animation, blocking squish), and the report names
+// the bone for a cloth. After the constraint pass, which creates the relays.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -51,14 +35,8 @@ namespace AvatarBridge
 
             var skinned = PhysBoneConverter.SkinnedBones(ctx);
 
-            // The rig is the highest ancestor whose whole subtree moves no
-            // mesh. Climbing stops at the first ancestor holding a skinned
-            // bone, which keeps an ordinary chain from dragging the armature
-            // in with it. Its scale and position targets live outside the
-            // PhysBones, so the chain roots alone are not the rig.
-            // It also stops below anything visible: an unskinned group of
-            // rigid accessories moves no skinned mesh either, and climbing
-            // into it deleted every accessory in it.
+            // Highest ancestor moving no mesh (chain roots alone miss its targets). Stops at skinned
+            // bones and below anything visible: climbing into rigid accessories deleted them.
             var rig = new HashSet<Transform>();
             var tops = new HashSet<Transform>();
             foreach (var chain in ctx.HelperRigChains)
@@ -88,13 +66,8 @@ namespace AvatarBridge
                     constraint.GetSources(sources);
                     if (!sources.Any(s => s.sourceTransform != null && rig.Contains(s.sourceTransform))) continue;
 
-                    // The bone the rig was driving, which is where a cloth
-                    // goes. It is often not weighted itself, since the relay
-                    // writes a holder and the mesh hangs below it, so the
-                    // test is whether a cloth there would move any mesh at
-                    // all, not whether this exact bone deforms. Climbing to
-                    // a skinned ancestor instead lands on Hips, which would
-                    // simulate the whole lower body.
+                    // The driven bone is often an unweighted holder, so test whether a cloth there moves
+                    // any mesh. Climbing to a skinned ancestor lands on Hips.
                     if (MovesMesh(t, skinned) && !targets.Contains(t))
                     {
                         suggest.Add(t.name);
@@ -105,13 +78,7 @@ namespace AvatarBridge
                 }
             }
 
-            // The rig is gone and nothing writes these bones any more, so a
-            // cloth here is free to move them. Earlier attempts put one on
-            // the same bone while relays were still writing it, and the two
-            // fought; the relays going is what makes this work.
-            //
-            // Settings come from the springiest chain the rig had. The author
-            // tuned those numbers, just on a bone nobody can see.
+            // Works only with the relays gone; with them, cloth and relay fought. Settings from the rig's springiest chain.
             var feel = ctx.HelperRigChains.OrderByDescending(c => c.Spring).FirstOrDefault();
             int made = 0;
             foreach (var bone in targets)
@@ -119,19 +86,9 @@ namespace AvatarBridge
                 if (Write(ctx, bone, feel)) made++;
             }
 
-            // Nothing simulates it, nothing reads from it, and no surviving
-            // cloth borrows a collider out of it, so what remains is a bone
-            // update per transform per frame for no motion. On one
-            // avatar that was 110 of 468 transforms.
-            //
-            // Only the tops, computed from what moves no mesh: a rig called
-            // "cake_PB" also has real skinned bones called "cake_PB_L" beside
-            // the armature, and deleting by name would take the wrong one.
-            // Unless a chain that SURVIVED was handed one of the rig's
-            // colliders. Deleting then leaves a null in that chain's list and
-            // it silently loses collision. Keeping a rig is cheap; breaking a
-            // hair chain's collision is not, and would not be noticed until
-            // somebody's hair went through their shoulder in game.
+            // Dead transforms cost an update each frame (110 of 468 on one avatar). Tops found by
+            // mesh, not name ("cake_PB_L" bones are real). Kept if a surviving chain uses one of
+            // its colliders: deleting leaves a null and that chain silently loses collision.
             int removedBones = 0, kept = 0;
             foreach (var top in tops)
             {
@@ -178,11 +135,7 @@ namespace AvatarBridge
                || t.GetComponentInChildren<Light>(true) != null
                || t.GetComponentInChildren<AudioSource>(true) != null;
 
-        // Contacts living inside the rig. Cake PB keeps its squish triggers
-        // in there, and deleting the rig took every one of them with it. The
-        // rig's physics is dead but a trigger in it is still what a hand
-        // touches, so the whole rig stays rather than lose them. Transforms
-        // are cheaper than a feature that silently stops responding.
+        // A rig holding contacts (squish triggers) stays: deleting it took them all.
         static bool CarriesContacts(Transform top)
             => top.GetComponentsInChildren<ABI.CCK.Components.CVRPointer>(true).Any(c => c != null)
                || top.GetComponentsInChildren<ABI.CCK.Components.CVRAdvancedAvatarSettingsTrigger>(true)
@@ -221,10 +174,7 @@ namespace AvatarBridge
             return false;
         }
 
-        // Curves addressing what Run deleted. They drove constraint weights
-        // and collider toggles inside the rig; left behind they would address
-        // objects that no longer exist. Its own pass, after self-containment:
-        // during Run the clips are still the author's or a package's files.
+        // Curves into what Run deleted. Own pass after self-containment: during Run the clips are still the author's.
         public static void StripCurves(BridgeContext ctx)
         {
             if (ctx.MergedController == null || deletedPaths.Count == 0) return;

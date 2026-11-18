@@ -12,23 +12,9 @@ using ABI.CCK.Components;
 
 namespace AvatarBridge
 {
-    // Writes Diagnostics.md next to the conversion report: the measurements, not the advice.
-    //
-    // The report says what happened and what to do about it, in a user's words. This says what
-    // the avatar IS; versions, settings, rig shape, where the head and eyes actually are, what
-    // the constraint graph looks like, which asset references resolve. It exists because every
-    // hard diagnosis on this project has come from someone extracting those facts by hand from a
-    // .prefab afterwards, one awk script at a time: where the eye bones sit relative to the head
-    // bone, how many humanoid bones deform mesh, whether a curve's path still resolves. The
-    // conversion already knows all of it and used to throw it away.
-    //
-    // Written for attaching to a bug report. Nothing here is advice and nothing is a judgement .
-    // numbers only, so a reader can reach their own conclusion, and so two conversions can be
-    // diffed against each other.
-    //
-    // Every section is independently guarded: a section that throws is replaced by its error and
-    // the rest of the file still gets written. A diagnostics file that fails to save is worth
-    // nothing precisely when it is needed most.
+    // Diagnostics.md: what the avatar is (versions, settings, rig, head and eyes, constraints,
+    // references), numbers only, for bug reports and diffing two conversions. Each section is
+    // guarded so one that throws cannot stop the file being saved.
     public static class DiagnosticsWriter
     {
         // UTF-8 with its marker: without one, a viewer on another system codepage read the
@@ -366,10 +352,7 @@ namespace AvatarBridge
                 .ToList();
             if (eyeish.Count > 0)
             {
-                // Mapped ones first, and never truncated away. The first version listed the first
-                // twelve in hierarchy order, which on a rig carrying a duplicate skeleton showed
-                // the template chain and hid the pair the humanoid map actually uses; the one
-                // fact the table exists to establish.
+                // Mapped first, never truncated: hierarchy order on a duplicate skeleton hid the pair actually used.
                 var ordered = eyeish.OrderByDescending(mappedEyes.Contains).Take(20).ToList();
                 text.AppendLine();
                 text.AppendLine($"Transforms with \"eye\" in the name ({eyeish.Count} found" +

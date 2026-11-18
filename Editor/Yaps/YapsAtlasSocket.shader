@@ -1,48 +1,34 @@
 // A socket publishing its world position into the screen atlas.
 //
-// Two passes and no visible geometry. The mesh is one unit quad per (level,
-// home) pair, flagged by z; both passes read the same quads and place them
-// in different pixels.
+// No visible geometry: one unit quad per (level, home), flagged by z; both
+// passes place the same quads in different pixels.
 //
-// The HEADER pixel is a COUNT, built with additive blending on alpha alone:
-// every socket adds 1/255 and the sum is how many sit in that slot. A reader
-// takes one tap for it and only opens the cell if it says anything is there,
-// so a nearly empty atlas costs one tap a cell. It was a bitmask of live
-// octants first, which does not survive two sockets in one octant: 1+1 is 2,
-// so the occupied octant stops being advertised and a neighbour that is not
-// starts. A count cannot carry.
+// HEADER pixel: a COUNT, additive on alpha, 1/255 per socket, so a reader
+// skips an empty cell in one tap. A bitmask of octants failed: two sockets in
+// one octant sum to 2 and advertise the wrong octant. A count cannot carry.
 //
-// The PAYLOAD is the socket's position within its cell and the direction it
-// faces, in one of eight buckets to a cell: by its own number where it has
-// one, else by which octant of the cell it sits in. A reader opens every
-// bucket and takes the position from the payload, so the choice is the
-// writer's alone and no reader depends on it.
+// PAYLOAD: position in the cell and facing, in one of eight buckets (by the
+// socket's number, else its octant). Readers open every bucket, so the choice
+// is the writer's alone.
 //
-// A socket publishes to every level. That costs one small draw each and
-// nothing to read, because a plug reads only the level matching its own
-// length.
+// Every level is written (one small draw each); a plug reads only its own.
 Shader "YAPS/Atlas Socket"
 {
     Properties
     {
-        // 0 ring, 1 hole, 2 one-way ring. A ring is a loop and can be
-        // entered from either face unless it is one-way; a hole has a front
-        // and a back. Shares the facing pixel's alpha with the number.
+        // A ring is entered from either face unless one-way; a hole has a
+        // front and back. Shares the facing pixel's alpha with the number.
         [Enum(Ring,0,Hole,1,OneWayRing,2)] _YAPS_Kind ("Socket kind", Float) = 0
 
-        // The socket's tag word, 20 bits in a float. Zero is untagged, which
-        // is what every socket built before version 3 and every legacy
-        // socket found by light is, and what a plug with no include list
-        // answers.
+        // 20 bits in a float. Zero is untagged: older sockets, sockets found
+        // by light, and what a plug with no include list answers.
         _YAPS_SocketTags ("Socket tag word", Float) = 0
 
-        // The wearer's owner id, animated per renderer from a synced
-        // parameter. Zero on the shared material, and zero is "unknown",
-        // which is right for a prop or a world socket.
+        // Animated per renderer from a synced parameter. Zero is "unknown",
+        // right for a prop or a world socket.
         _YAPS_Owner ("Owner id", Float) = 0
 
-        // This socket's number among its wearer's own, 1 to 15, 0 for
-        // none. Set per socket at build, on a material of its own.
+        // 1 to 15, 0 for none. Set at build on a material of its own.
         _YAPS_SocketIndex ("Own socket number", Float) = 0
     }
     SubShader
@@ -88,24 +74,19 @@ Shader "YAPS/Atlas Socket"
             int idx = home == 1 ? idxB : idxA;
             YapsAtlasCellPixels(idx, level, layout, cellPx, cellPy);
 
-            // A numbered socket takes the bucket its number gives, turned by
-            // its owner, so a wearer's own sockets never share one however
-            // close they sit (up to eight). By octant alone, two sockets a
-            // hand apart shared a bucket at whatever level a plug read, and
-            // the later draw hid the nearer. Across wearers the turn makes a
-            // clash one in eight at any distance. With no owner (a prop, a
-            // world, a copy not yet synced) the octant turns it instead,
-            // which still parts close sockets of one object.
+            // Bucket by number, turned by owner: a wearer's own sockets (up to
+            // eight) never share one. By octant alone, two sockets a hand apart
+            // shared one and the later draw hid the nearer. Across wearers a
+            // clash is one in eight. No owner: the octant turns it instead.
             int octant = (f.x > 0.5 ? 4 : 0) + (f.y > 0.5 ? 2 : 0) + (f.z > 0.5 ? 1 : 0);
             int number = (int) round(_YAPS_SocketIndex);
             int owner = YapsOwnerOf(_YAPS_Owner);
             sub = number > 0 ? (number - 1 + (owner != 0 ? owner : octant)) & 7 : octant;
             payload = f;
-            // A socket scaled to zero along Z has no +Z to normalise, and the
-            // NaN reads back as -1 on an 8-bit target. Its X and Y still span
-            // the face, so their cross is the facing. Scaled to zero on every
-            // axis it writes 0.5, zero only on a half target: 8 bits store
-            // 128/255, so the reader must take a short vector as no facing.
+            // Zero Z scale: normalising gives NaN, read as -1 on 8 bits, so the
+            // cross of X and Y is the facing. Zero on every axis writes 0.5,
+            // stored as 128/255 on 8 bits, so readers treat a short vector as
+            // no facing.
             float3x3 m = (float3x3)unity_ObjectToWorld;
             float3 z = mul(m, float3(0, 0, 1));
             if (dot(z, z) < 1e-12) z = cross(mul(m, float3(1, 0, 0)), mul(m, float3(0, 1, 0)));
@@ -190,11 +171,8 @@ Shader "YAPS/Atlas Socket"
                     : YapsAtlasNowhere();
 
                 o.payload = float4(pay, tag);
-                // The facing pixel's alpha carried a second copy of the tag,
-                // which nothing read: it is only reached once the position
-                // pixel's tag matched, and the same draw writes both, so it
-                // cannot disagree. It carries the KIND instead, and the
-                // socket's number among its wearer's own.
+                // Alpha holds the kind and number, not a second tag: the same
+                // draw writes both pixels, so a tag copy could never disagree.
                 o.other   = float4(fwd, YapsFacingEncode((int) round(_YAPS_Kind),
                                                          (int) round(_YAPS_SocketIndex)));
                 o.tags    = YapsTagsEncode((int) floor(_YAPS_SocketTags + 0.5));

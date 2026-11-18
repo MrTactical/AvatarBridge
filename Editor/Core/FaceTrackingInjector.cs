@@ -11,22 +11,10 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // CVR-VRCFT (parameter-based) face tracking, using DragonSkyRunner's "CVR Eye & Face
-    // Tracking" animator (bundled under Assets/AvatarBridge/FaceTracking). Copies the rig's
-    // layers and parameters into the generated CVR animator, then makes it work on THIS
-    // avatar without any mesh edits:
-    //
-    //   * The eye-gaze layer rotates two empties ("EyeTracking.L/.R"); those are generated
-    //     empties at the avatar's eye bones and drive each eye bone from its empty via a
-    //     RotationConstraint. The bundled ON/OFF clips toggle that constraint's source
-    //     weight against CVR's native eye-look/blink.
-    //   * The rig's clips are authored against a fixed hierarchy ("Armature/Hips/Spine/
-    //     Chest/Neck/Head/...") and a face mesh named "Body". Unity animation paths are
-    //     case-sensitive, so every referenced clip is cloned on write and its curves repathed
-    //     onto the real avatar's eye bones, generated empties, and face mesh.
-    //
-    // Any existing FT rig is stripped first (see AnimatorMerger). Eye gaze magnitude still
-    // wants per-avatar tuning per the package readme; this is a working starting point.
+    // Injects DragonSkyRunner's "CVR Eye & Face Tracking" rig. Gaze rotates generated
+    // "EyeTracking.L/.R" empties that drive the eye bones by RotationConstraint. The rig's clips
+    // assume "Armature/Hips/..." and a mesh named "Body", so they are cloned and repathed.
+    // Any existing FT rig is stripped first; gaze magnitude may still need per-avatar tuning.
     public static class FaceTrackingInjector
     {
         const string Category = "Face tracking";
@@ -181,11 +169,9 @@ namespace AvatarBridge
             }
         }
 
-        // ChilloutVR writes nothing back when a state stops animating a property, so the rig's empty
-        // off states left the face in its last tracked expression. Each one plays the face mesh's own
-        // rest values for one frame, then hands over to an empty state that leaves the same way.
-        // Held instead, those values would cover every expression that shares a shape, since the
-        // rig's layers sit above the avatar's own.
+        // CVR writes nothing back when a state stops animating, so empty off states froze the last
+        // expression. Rest values play for one frame, not held: the rig's layers sit above the
+        // avatar's and would cover every expression sharing a shape.
         static int ReleaseFaceWhenOff(List<AnimatorControllerLayer> layers, SkinnedMeshRenderer faceMesh, string faceMeshPath)
         {
             var mesh = faceMesh.sharedMesh;
@@ -438,10 +424,8 @@ namespace AvatarBridge
             return null;
         }
 
-        // The gaze clips key the empties' local Euler angles in Unity's own frame ("Down" is +X,
-        // "Left" is -Y, neutral is zero), so the empties' parent must face the way the avatar
-        // does. The head bone's own axes only do on a rig that happens to be axis-aligned; on a
-        // rolled one the eyes turned the wrong way. Under the head, so gaze still follows it.
+        // Gaze clips key local Euler in Unity's frame ("Down" +X, "Left" -Y), so the parent must face
+        // the avatar's way; a rolled head bone turned the eyes wrong. Under the head, so gaze follows it.
         static Transform MakeGazeFrame(BridgeContext ctx, Transform head)
         {
             var frame = MakeEyeTarget("EyeTracking.Frame", head, head);

@@ -22,14 +22,8 @@ namespace AvatarBridge
         public string Detail;
     }
 
-    // Orders report samples so the same example shows every run.
-    //
-    // VRCFury stamps generated objects with an id, "[VF397] Assjob", and
-    // assigns it fresh on every bake. Sorting raw text therefore reorders
-    // whenever Fury renumbers, though nothing about the avatar changed.
-    //
-    // So ordering ignores those ids: two strings differing only by a Fury number sort as equal
-    // text and fall back to a plain comparison, which keeps the set stable and total.
+    // Ignores VRCFury's "[VF397]" ids, renumbered every bake, so samples stay in the same order.
+    // Ties fall back to plain comparison to keep the order total.
     public sealed class StableSampleOrder : IComparer<string>
     {
         public static readonly StableSampleOrder Instance = new StableSampleOrder();
@@ -68,9 +62,7 @@ namespace AvatarBridge
 
         public string WeightCard;
 
-        // Texture memory the conversion gave back, for the line the window
-        // puts above the report. The report's own entry says which textures;
-        // this is the number, and nobody reads a number out of a paragraph.
+        // Texture memory freed, for the window's line above the report.
         public long BytesReclaimed;
 
         public string SurveyCard;
@@ -86,14 +78,8 @@ namespace AvatarBridge
         {
             Entries.Add(new ReportEntry { Status = status, Category = category, Subject = subject, Detail = detail });
 
-            // Only what the user has to act on reaches the console. Everything is in the report
-            // file regardless, which is the thing worth reading.
-            //
-            // Every entry used to be logged. The editor captures a full managed stack trace for
-            // each Debug call, so a large conversion; which routinely produces thousands of
-            // entries, one per cloth chain, parameter and menu control; wrote tens of thousands
-            // of stack frames into the editor log and pushed it past 38 MB. Skipped in particular
-            // was a warning, and a conversion legitimately skips a great deal.
+            // Only actionable entries reach the console: each Debug call captures a stack trace,
+            // and logging thousands of entries pushed the editor log past 38 MB.
             if (Quiet || (status != ReportStatus.Error && status != ReportStatus.Warning))
             {
                 return;
@@ -124,9 +110,7 @@ namespace AvatarBridge
             var sb = new StringBuilder();
             sb.AppendLine($"# AvatarBridge conversion report: {avatarName}");
             sb.AppendLine();
-            // Stamp the build that produced this. A report is the main thing users send when
-            // something's wrong, and without this there's no way to tell which version ran .
-            // which has already cost time chasing a "broken" fix that simply wasn't installed.
+            // Reports are what users send; without the version a "broken" fix may simply not be installed.
             sb.AppendLine($"*AvatarBridge v{BridgeDefines.Version} · Unity {Application.unityVersion} · " +
                           $"{System.DateTime.Now:yyyy-MM-dd HH:mm}*");
             sb.AppendLine();

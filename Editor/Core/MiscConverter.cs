@@ -67,12 +67,7 @@ namespace AvatarBridge
                         enabled.Add(binding.path);
                     }
 
-                    // And take the curve out. The object's own m_IsActive
-                    // gates the effect; a module curve beside it can
-                    // only fight that.
-                    // Only on a clip this conversion owns. Clips are
-                    // shared, and editing one in place reaches every
-                    // user of the real asset.
+                    // m_IsActive gates the effect; a module curve can only fight it. Owned clips only.
                     if (togglesActive.Contains(binding.path) && OwnedByThisConversion(ctx, clip))
                     {
                         AnimationUtility.SetEditorCurve(clip, binding, null);
@@ -476,10 +471,7 @@ namespace AvatarBridge
                 }
                 foreach (var (fpr, shownWhenActive) in exclusions)
                 {
-                    // Polarity is per exclusion. A hiding chop inverts
-                    // m_Enabled into isShown; a showing chop maps it
-                    // straight across. Scale-factor curves mirror
-                    // isShown directly for both.
+                    // Hiding chop inverts m_Enabled into isShown, showing maps it straight; scale curves mirror isShown.
                     var mapped = b.propertyName == "m_Enabled" && !shownWhenActive
                         ? Invert(curve)
                         : curve;
@@ -536,12 +528,8 @@ namespace AvatarBridge
         {
             const string category = "Cleanup";
 
-            // Seats get a named goodbye before the generic sweep.
-            // The client's avatar whitelist has no seat type at all,
-            // so this is a platform gap, not a conversion gap.
-            // Counted here, after the strips, so GoGo
-            // Loco's own stations (most of the wild count) vanish with GoGo instead of alarming
-            // anyone. Uses the SDKBase type so SDK2-era stations are caught too.
+            // The avatar whitelist has no seat type: a platform gap. After the strips, so GoGo's stations
+            // vanish with it. SDKBase type catches SDK2-era stations too.
             var stations = ctx.Target.GetComponentsInChildren<VRC.SDKBase.VRCStation>(true);
             if (stations.Length > 0)
             {
@@ -609,13 +597,8 @@ namespace AvatarBridge
             foreach (var cam in ctx.Target.GetComponentsInChildren<Camera>(true))
             {
                 if (cam == null) continue;
-                // ChilloutVR's own rule, from SharedFilter.ProcessCamera: a
-                // camera with no target texture is destroyed, one that
-                // renders into a RenderTexture is KEPT and depth-clamped,
-                // and the filter hands it a per-instance copy of the
-                // texture. Stripping those took a supported feature off
-                // people's avatars: a mirror, a screen, or the camera an
-                // effect blits through to reach a texture parser.
+                // CVR's SharedFilter.ProcessCamera destroys cameras without a target texture but keeps
+                // RenderTexture ones (depth-clamped, per-instance copy): mirrors, screens, parser blits.
                 if (cam.targetTexture != null)
                 {
                     cam.depth = Mathf.Clamp(cam.depth, 1f, 99f);

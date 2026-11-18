@@ -13,10 +13,7 @@ using UnityEngine.UIElements;
 
 namespace AvatarBridge
 {
-    // The Toolkit's cards, as a panel rather than a window, so the main
-    // window can host the same ones as a tab. Four windows all shaped "pick
-    // an avatar, choose something, press a button" was the arrangement
-    // nobody could navigate; the cards were never the problem.
+    // The Toolkit's cards as a panel, so the main window can host them as a tab.
     public sealed class ToolkitPanel
     {
         public ToolkitPanel(GameObject target = null, bool embedded = false, GameObject convertedFrom = null,
@@ -37,12 +34,9 @@ namespace AvatarBridge
         // the host keeps the pick or it falls back to whatever was handed over.
         readonly System.Action<GameObject> _onTargetChanged;
 
-        // The avatar this one was converted from, when the window handed it
-        // over. Conversion copies the materials it patches, so the source
-        // keeps its own set pointing at the same textures; treating those as
-        // a stranger's is what kept a converted avatar's eyes at full size.
-        // Cleared once another target is picked: to that one the source IS a
-        // stranger, and its shared textures would shrink along with it.
+        // The avatar this one was converted from. Its materials share textures with the copy, so
+        // treating them as another avatar's kept textures at full size. Cleared when another
+        // target is picked.
         GameObject _convertedFrom;
 
         // Every tool button, and whether it needs a CVRAvatar as well as a target.
@@ -209,10 +203,8 @@ namespace AvatarBridge
                     int cut = path.LastIndexOf('/');
                     if (cut < 0) continue;
                     string dir = path.Substring(0, cut);
-                    // Untagged counts only under the default root, where it is
-                    // an older version's output. A chosen root like "Assets"
-                    // has shared folders one level down, and an avatar taking
-                    // one would share its resize record with every avatar there.
+                    // Untagged counts only under the default root: a chosen root like "Assets" has
+                    // shared folders, and the resize record would be shared too.
                     bool underRoot = string.Equals(root, OutputRoot, System.StringComparison.OrdinalIgnoreCase)
                                      && dir.StartsWith(root + "/", System.StringComparison.OrdinalIgnoreCase)
                                      && dir.IndexOf('/', root.Length + 1) < 0;
@@ -233,10 +225,8 @@ namespace AvatarBridge
             return SavedOutputFolder() + "/" + CvrSetup.SafeFolderName(name);
         }
 
-        // Where a card writes. A folder the lookup found is used as it is.
-        // A new one is made and tagged the converter's way, or the next
-        // lookup reads it as another avatar's and loses the record in it.
-        // The unnumbered name goes in so a numbered folder says why.
+        // Where a card writes. A new folder is tagged the converter's way, or the next lookup
+        // reads it as another avatar's.
         string WriteFolder(BridgeReport report)
         {
             string folder = AvatarFolder();
@@ -244,10 +234,8 @@ namespace AvatarBridge
             return CvrSetup.CreateOutputDir(NamedFolder(out var source), source, report, "Toolkit");
         }
 
-        // Where a resize record waits. Before the Toolkit followed the
-        // converter it wrote under the raw object name, and a record left there
-        // is still somebody's way back. That one first: Fix it ran after the
-        // conversion, so undoing it first puts sizes back in the order they changed.
+        // Where a resize record waits, the raw object name folder first: it was written after the
+        // conversion, so undoing it first restores sizes in order.
         string RecordFolder()
         {
             string folder = AvatarFolder();
@@ -272,10 +260,8 @@ namespace AvatarBridge
         const string ReadsOnly = "reads only";
         const string Changes = "changes the avatar";
 
-        // One tool, one card. The header says whether it only reads, until a
-        // run replaces that with what the run found. fix and putBack are the
-        // costs card's: Fix it writes the record Put the textures back spends,
-        // so each run decides whether Put the textures back shows.
+        // One tool, one card. fix and putBack are the costs card's: Fix it writes the record
+        // Put the textures back spends.
         BridgeElements.Card Tool(string title, string summary, VisualElement hint, string button,
             System.Func<BridgeReport> run, string whenEmpty, bool needsAvatar = false, VisualElement option = null,
             System.Func<BridgeReport> fix = null, System.Func<BridgeReport> putBack = null, System.Func<bool> canPutBack = null)
@@ -460,10 +446,8 @@ namespace AvatarBridge
                 // clips in place. Renderers only.
                 string folder = AvatarFolder();
                 bool existed = System.IO.Directory.Exists(folder);
-                // No OutputAssetPaths.Reset: Claim deletes whatever sits on a
-                // path unclaimed this run, and this folder is shared with the
-                // conversion, so the avatar may still wear the copy there.
-                // A numbered copy after Undo is the safe cost.
+                // No OutputAssetPaths.Reset: Claim would delete copies the avatar may still wear in
+                // this shared folder. A numbered copy after Undo is the safe cost.
                 ShaderSpiPatcher.Patch(_target, folder + "/RehomedAssets", null, report);
                 // Patch makes the folder only if it writes. Tagged after, so
                 // a run that changed nothing leaves no folder claiming the name.
@@ -539,10 +523,8 @@ namespace AvatarBridge
                     return report;
                 }
                 Undo.RegisterFullObjectHierarchyUndo(_target, "Height slider");
-                // The layers and parameters go into the controller asset, which
-                // the hierarchy record does not cover. Without this, Ctrl+Z took
-                // the menu entry and left Size layers the check above then
-                // refused to add again.
+                // The controller asset is not in the hierarchy record; without this Ctrl+Z left
+                // Size layers the check above then refused to add again.
                 Undo.RegisterCompleteObjectUndo(controller, "Height slider");
                 ctx.Settings.addAvatarScaler = true;
                 int before = controller.layers.Length;

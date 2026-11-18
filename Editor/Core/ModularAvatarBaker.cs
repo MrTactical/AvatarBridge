@@ -7,17 +7,9 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    // Modular Avatar support. Like VRCFury, MA applies its features (merge armature, menus,
-    // parameters, reactive toggles, mesh cutters...) only at build time, via NDMF's pipeline.
-    // Converting an MA avatar directly would lose all of that.
-    //
-    // So this invokes NDMF's own manual bake (nadena.dev.ndmf.AvatarProcessor.ManualProcessAvatar),
-    // which clones the avatar, runs the full NDMF/MA pipeline, and hands back a baked copy with
-    // plain VRChat components. AvatarBridge then converts that copy exactly like any other.
-    //
-    // Note: a VRCFury "Build a Test Copy" already runs NDMF internally, so avatars that use MA
-    // *and* VRCFury are handled by the Fury bake; this baker is for MA-only avatars. All
-    // reflection-based: NDMF/MA may be absent and its editor API is internal.
+    // MA applies its features only at build time, so this runs NDMF's manual bake
+    // (AvatarProcessor.ManualProcessAvatar) and converts the copy. MA-only avatars: the Fury
+    // bake already runs NDMF. Reflection: NDMF may be absent and its API is internal.
     public static class ModularAvatarBaker
     {
         const string Category = "Modular Avatar";
@@ -75,11 +67,8 @@ namespace AvatarBridge
             GameObject baked;
             try
             {
-                // ManualProcessAvatar(GameObject, INDMFPlatformProvider = null). Null is NOT VRChat:
-                // it resolves to NDMF's ambient default, which starts as Generic, and a Generic bake
-                // leaves platform-neutral PortableDynamicBone components where PhysBones should be.
-                // ChilloutVR deletes those on load, which silently cost marshmallow PB avatars all
-                // their breast physics. So the VRChat platform is asked for by name.
+                // A null platform means NDMF's default, Generic, which leaves PortableDynamicBone in place of
+                // PhysBones; CVR deletes those on load (lost Marshmallow PB physics). So VRChat by name.
                 var vrchat = FindType("nadena.dev.ndmf.vrchat.VRChatPlatform")
                     ?.GetProperty("Instance", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
                     ?.GetValue(null);

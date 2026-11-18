@@ -1,71 +1,22 @@
 // Spike 4: a plug that threads through every socket it can see.
 //
-// A LIST, NOT A WINNER. The first version picked the nearest socket and threw
-// the rest of the neighbourhood away, which is what yaps_resolve.cginc does
-// today. Two sockets in range then made the plug flip between them as
-// whichever was momentarily closer to its ROOT changed, and a socket behind
-// it could beat one in front, because distance-to-root never asks which way
-// a plug points.
-//
-// So the sockets are kept as an ORDERED LIST and the plug becomes a path
-// rather than an aim. Each socket claims a range of ARC LENGTH along the
-// shaft, and the shaft is a chain of cubics: leave the root along the plug's
-// own axis, arrive at socket one against its facing, leave socket one out the
-// far side, arrive at socket two. Position and tangent are continuous at
-// every join because the segments either side share them.
-//
-// Three wanted features are then the same change: a ring mid-shaft and a hole
-// at the tip are two entries; a portal is two entries with a GAP between
-// their ranges; a duplicate is one range mapped twice. Only the first is
-// built here.
-//
-// A radius-1 read covers one cell either side, so the plug hashes the
-// MIDPOINT of its shaft rather than the root, which halves the radius the
-// same coverage needs. Cell size is a protocol constant, not a per-plug
-// setting, since sockets hash with it too: small buys precision and costs
-// reach.
-//
-// HOW MANY SOCKETS. Not the length of the list. A plug spanning L has to see
-// cells covering L/2 either side of its midpoint, so cell >= L/2r; and one
-// cell holds one socket, so sockets sit at least a cell apart. Divide the
-// one by the other and the answer is 2r+1, whatever the list length: three
-// at radius 1, five at radius 2 for 125 reads instead of 27. Raising
-// YAPS_MAX past that buys nothing. The way out is a cell holding SEVERAL
-// sockets, which decouples spacing from cell size and is not built here.
-//
-// No lights, no contacts, no animator parameters, no sync. The socket draws
-// two pixels; the plug hashes its own world position, reads the twenty-seven
-// cells around it, and deforms. Nothing is wired between them and nothing
-// tells either side the other exists.
-//
-// This is the demonstration, not the shipping deform. The real one in
-// yaps_deform.cginc works off a bake: a measured frame per vertex, an
-// arc-length parameterisation, tip and root behaviour. This takes a plain
-// cylinder along local +Z and bends it along a cubic, which is enough to
-// show that the TRANSPORT carries a usable socket and cheap enough that a
-// failure is obviously the transport's rather than the deform's.
+// A list, not a winner: picking the nearest-to-root socket flipped between
+// two in range and let one behind beat one in front. Sockets form an ordered
+// list, each claiming an arc-length range, and the shaft is a chain of cubics
+// sharing position and tangent at every join. Ring plus hole, portal (a gap
+// between ranges) and duplicate all become list entries; only the first is built.
+// Hashes the shaft MIDPOINT, halving the radius needed. Cell size is a
+// protocol constant (sockets hash with it): small buys precision, costs reach.
+// Sockets per plug are capped at 2r+1 by the neighbourhood (cell >= L/2r, one
+// socket per cell), not by YAPS_MAX: 3 at radius 1, 5 at radius 2 (125 reads vs 27).
+// Demonstration only (a cubic-bent cylinder); the shipping deform is yaps_deform.cginc.
 //
 // Reading the atlas:
-//
-//   .Load, not tex2Dlod. A cell is one pixel and any filtering blends it
-//   with its neighbours, which is exactly the failure spike 3 measured. A
-//   point read at integer coordinates is the only correct primitive here,
-//   and it is what the shipped deform already uses on _YAPS_Bake.
-//
-//   Row order is a COMPILE-TIME platform fact, not the runtime sign of
-//   _TexelSize.y. That sign is the right signal for a UV sample and the
-//   wrong one here, which cost a session to find: with it, all twenty-seven
-//   cells read the opaque screen, every one reported alpha 1, and the plug
-//   locked onto whichever piece of floor decoded nearest. Measured, not
-//   argued: the debug colours came back white with it and green without.
-//
-//   The writer places its patch in pixels from the TOP of the render
-//   target and .Load indexes memory rows directly, so the only question is
-//   which end of memory the top is, and UNITY_UV_STARTS_AT_TOP answers it.
-//
-//   Under single-pass instanced the grab is a texture ARRAY. The patch is
-//   written in clip space ignoring the eye, so both slices carry identical
-//   content and slice 0 is always right.
+//   .Load, not tex2Dlod: any filtering blends one-pixel cells (spike 3).
+//   Row order is compile time (UNITY_UV_STARTS_AT_TOP), not the runtime sign
+//   of _TexelSize.y: that read the opaque screen in all 27 cells (measured:
+//   debug white with it, green without). The writer places from the top.
+//   Under single-pass instanced the grab is an array; both slices match, so slice 0.
 Shader "YAPS/Spike Plug"
 {
     Properties
@@ -78,20 +29,13 @@ Shader "YAPS/Spike Plug"
         _Levels ("How many levels", Float) = 6
         _MeshLength ("Shaft length in the mesh, local units", Float) = 1
         _Reach ("How far it reaches, in plug lengths", Range(0.5, 4)) = 1.6
-        // How many cells out to read. This is what actually caps how many
-        // sockets a plug can thread: cells one step either way along the
-        // shaft is three cells, so three sockets, and no list length changes
-        // that. Two costs 125 reads against 27.
+        // Caps sockets per plug at 2r+1. Radius 2 costs 125 reads vs 27.
         _Radius ("Neighbourhood radius", Range(0, 3)) = 2
         _Colour ("Colour", Color) = (0.85, 0.6, 0.62, 1)
         _Miss ("Colour when it finds nothing", Color) = (0.45, 0.45, 0.48, 1)
-        // 0 normal. 1 paints what the resolve DECIDED rather than what it
-        // found, because a plug that bends at nothing looks the same as a
-        // plug reading the wrong row and only one of those is a row problem.
+        // 1 paints what the resolve decided: tells nothing found from a wrong row.
         _Debug ("Debug colours", Float) = 0
-        // 0 takes the platform default, 1 forces top-down, 2 forces
-        // bottom-up. Kept past the fix because the platform default is
-        // right on D3D by construction and unverified in game.
+        // Kept: the platform default is right on D3D but unverified in game.
         _ForceRow ("Row order: 0 auto, 1 top, 2 bottom", Float) = 0
     }
     SubShader
@@ -110,10 +54,7 @@ Shader "YAPS/Spike Plug"
             #pragma multi_compile_instancing
             #include "UnityCG.cginc"
 
-            // How many sockets one plug can thread. Eight, so the list is
-            // never the binding constraint: the neighbourhood caps it at
-            // 2r+1 long before this does, seven even at radius 3. Each entry
-            // costs about nine floats of vertex registers.
+            // Never binding: the neighbourhood caps at 2r+1 (7 at radius 3). ~9 floats of registers each.
             #define YAPS_MAX 8
 
             struct appdata
@@ -131,9 +72,7 @@ Shader "YAPS/Spike Plug"
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
-            // The grab, declared for .Load rather than for sampling. A
-            // sampler2D has no Load, and UNITY_DECLARE_SCREENSPACE_TEXTURE
-            // expands to one outside stereo instancing.
+            // Declared for .Load: UNITY_DECLARE_SCREENSPACE_TEXTURE is a sampler2D outside stereo.
             #if defined(UNITY_STEREO_INSTANCING_ENABLED) || defined(UNITY_STEREO_MULTIVIEW_ENABLED)
                 Texture2DArray _YAPS_Atlas;
                 #define YAPS_LOAD(px, py) _YAPS_Atlas.Load(int4(px, py, 0, 0))
@@ -145,19 +84,10 @@ Shader "YAPS/Spike Plug"
 
             float _Grid, _SlotPx, _OriginPx, _CellSize, _MeshLength, _Reach;
 
-            // HOW MANY COLUMNS the atlas folds its slots into, and it is NOT the grid.
-            // The two were the same number for no reason, which made the rect a wide
-            // strip: 4096 slots at 17 pixels a cell is 1088 px across, and a camera
-            // narrower than that clips the right-hand columns. A clipped slot does not
-            // read as absent, it reads as the opaque screen, so a socket whose cell
-            // hashes there vanishes until it moves to another cell. Found in the editor
-            // 2026-09-03 as a bend dropping out every few centimetres and returning when
-            // the Game view was widened.
-            //
-            // Folding is free: the same slots, a squarer block. 4096 at 32 columns is
-            // 544 x 512 instead of 1088 x 256, which fits a 720p view, a mirror texture
-            // and an eye buffer. C# derives it and sets it on both shaders, so there is
-            // one derivation rather than two that have to agree.
+            // Columns, not the grid: a 1088 px row was clipped by narrower cameras,
+            // and a clipped slot reads the opaque screen, so sockets vanished.
+            // 4096 at 32 columns is 544 x 512, fitting 720p, mirrors and eye buffers.
+            // C# derives it for both shaders.
             float _Cols;
             float _Debug, _ForceRow, _Radius, _Levels;
             fixed4 _Colour, _Miss;
@@ -182,19 +112,9 @@ Shader "YAPS/Spike Plug"
                 return h;
             }
 
-            // THE ATLAS PROTOCOL VERSION. Grid, cell size, origin, slot size and level
-            // count are constants EVERY avatar in the instance shares, because a socket
-            // hashes its world position with them and a plug addresses cells with them.
-            // So a socket written by a later version lands where this reader looks and
-            // decodes against the wrong constants, which is not absence: it reads as a
-            // real socket a few centimetres away, the same phantom a slot clash makes.
-            //
-            // It rides the TAG rather than a pixel of its own. The tag exists to reject
-            // a payload decoded against the wrong cell, and a version mismatch is that
-            // failure exactly, so the rejection is already written: no extra pixel, no
-            // extra read, no extra branch. Unretrofittable, which is why it is here
-            // before anything ships, and it must be bumped whenever ANY protocol
-            // constant changes.
+            // Bump on ANY protocol constant change (grid, cell size, origin, slot
+            // size, levels): a mismatched socket decodes as a phantom a few cm away.
+            // Rides the tag, which already rejects wrong-cell payloads: no extra read.
             #define YAPS_ATLAS_VERSION 2
 
             // Must match CellTag in the socket shader, version included. See
@@ -221,9 +141,7 @@ Shader "YAPS/Spike Plug"
                 return 3 * w * w * (b - a) + 6 * w * u * (c - b) + 3 * u * u * (d - c);
             }
 
-            // Minimal rotation carrying "from" onto "to", applied to v.
-            // Used instead of rebuilding a frame from a reference up vector,
-            // which twists as the tangent swings past the reference.
+            // Minimal rotation: a frame from a reference up vector twists as the tangent swings past it.
             float3 RotateTo(float3 v, float3 from, float3 to)
             {
                 float3 ax = cross(from, to);
@@ -249,13 +167,8 @@ Shader "YAPS/Spike Plug"
                 float  len  = length(mul((float3x3)unity_ObjectToWorld, float3(0, 0, _MeshLength)));
 
                 // ---- find a socket, knowing nothing ----
-                //
-                // WHICH LEVEL. The atlas carries several cell sizes at once,
-                // each four times the last, because one cell size cannot
-                // serve a twenty centimetre plug and a twenty metre one.
-                // Coverage wants a cell of about L/2r, so pick the level
-                // nearest that and read only there. Costs no extra taps: the
-                // socket published to every level, this reads one.
+                // Levels step 4x so one atlas serves 20 cm and 20 m plugs. Read only
+                // the level nearest L/2r; sockets publish to all.
                 int levels = max(int(_Levels), 1);
                 int R = clamp(int(_Radius), 0, 3);
                 float wantCell = len / max(2.0 * R, 1.0);
@@ -274,19 +187,13 @@ Shader "YAPS/Spike Plug"
                     bool platformFlip = true;
                 #endif
                 bool flip = _ForceRow > 0.5 ? (_ForceRow > 1.5) : platformFlip;
-                // How many of the twenty-seven claimed to hold something. If
-                // the clear is not running this is 27, and every one of them
-                // is a piece of scene colour decoded as a socket.
+                // 27 means the clear is not running.
                 int hits = 0;
 
-                // Where engagement reaches zero. Also the inclusion test
-                // for the list: a socket the plug cannot reach is not part
-                // of the path it takes.
+                // Engagement reaches zero here; also the list's inclusion test.
                 float far = len * _Reach * 1.6;
 
-                // Hashed on the MIDPOINT of the shaft rather than the root,
-                // so a radius-1 read covers the whole plug instead of only
-                // the half nearest the body. One line, no extra taps.
+                // Midpoint, so radius 1 covers the whole plug, not just the root half.
                 int3 mine = int3(floor((root + axis * (len * 0.5)) / size));
 
                 float3 sockP[YAPS_MAX];
@@ -298,9 +205,7 @@ Shader "YAPS/Spike Plug"
                     sockP[i] = 0; sockF[i] = float3(0, 0, 1); sockD[i] = 1e9; sockK[i] = -1;
                 }
 
-                // [loop], not [unroll]: the bound is a property now, and the
-                // whole point of it being one is being able to measure the
-                // cost of widening it rather than arguing about it.
+                // [loop]: the bound is a property, so widening it can be measured.
                 [loop] for (int dx = -R; dx <= R; dx++)
                 [loop] for (int dy = -R; dy <= R; dy++)
                 [loop] for (int dz = -R; dz <= R; dz++)
@@ -324,16 +229,9 @@ Shader "YAPS/Spike Plug"
                         int fromTop = int(_OriginPx) + (lvl * rowsPerLevel + gy) * slot;
                         int cellY = flip ? (texH - 1 - fromTop) : fromTop;
 
-                        // ONE tap for the header, whose alpha counts how many
-                        // sockets sit in this slot. Nearly every cell holds
-                        // nothing, and that case costs exactly this and no
-                        // more, which is what makes eight buckets affordable.
-                        //
-                        // A count rather than a bitmask of live octants: the
-                        // mask was built by adding bits, and 1+1 is 2, so two
-                        // sockets in one octant unset the octant that exists
-                        // and set one that does not. With a few sockets in a
-                        // cell the carries cascade and the cell goes dark.
+                        // One header tap (alpha = socket count); empty cells stop here,
+                        // which makes eight buckets affordable. A count, not an octant
+                        // bitmask: additive blending carries 1+1 into the wrong bit.
                         int held = int(round(YAPS_LOAD(cellX, cellY).a * 255.0));
                         if (held == 0) break;      // nothing here, and home 1
                                                    // is always written, so
@@ -344,10 +242,7 @@ Shader "YAPS/Spike Plug"
                             int px = cellX + (1 + 2 * sub) * slot;
                             float4 got = YAPS_LOAD(px, cellY);
                             if (got.a < 0.5) continue;
-                            // The header is a SUM across every cell sharing
-                            // this slot, so it can advertise octants that
-                            // belong to somebody else. The tag is what
-                            // settles it.
+                            // The header sums every cell sharing the slot; the tag settles it.
                             if (abs((got.a - 0.5) * 2 - tagWant) > 0.001) continue;
                             got1 = true;
                             hits++;
@@ -355,34 +250,18 @@ Shader "YAPS/Spike Plug"
                             float3 at = (float3(c) + got.rgb) * size;
                             float d = distance(at, root);
 
-                            // The facing pixel, read here rather than after
-                            // the sort. It costs one read per socket FOUND
-                            // rather than per cell searched, and the kind it
-                            // carries is needed before the sort, not after.
+                            // Facing read per socket found; its kind is needed before the sort.
                             float4 f4 = YAPS_LOAD(px + slot, cellY);
                             float3 fwd = normalize(f4.rgb * 2 - 1);
                             int kind = int(round(f4.a * 16.0)) - 1;
 
-                            // A HOLE has a front and a back, and a plug does
-                            // not enter one through the back. Its facing
-                            // points out of the mouth, so a mouth pointing
-                            // away from where the plug is growing from means
-                            // this plug is arriving at the wrong side.
-                            //
-                            // A RING is a loop with no wrong side, so it is
-                            // never rejected here and is turned to meet its
-                            // approach further down.
+                            // A hole is never entered from behind. A ring has no
+                            // wrong side; it is turned to meet the plug below.
                             if (kind == 1 && dot(fwd, at - root) > 0) continue;
-                            // A hash collision from across the world decodes
-                            // to a plausible payload in an implausible place,
-                            // and so does a socket too far to reach. Both are
-                            // the same test.
+                            // Rejects both far hash collisions and unreachable sockets.
                             if (d > far) continue;
 
-                            // Insertion sort, nearest first. Sorted here
-                            // rather than later because the ORDER IS THE
-                            // PATH: socket one is the one the shaft meets
-                            // first.
+                            // Nearest first: the order is the path.
                             [unroll] for (int k = 0; k < YAPS_MAX; k++)
                             {
                                 if (d >= sockD[k]) continue;
@@ -395,9 +274,7 @@ Shader "YAPS/Spike Plug"
                                 break;
                             }
                         }
-                        // Found in this home, so the other one is not this
-                        // cell's. Only a cell whose first home was taken by
-                        // somebody else falls through to look in the second.
+                        // Only a cell whose first home was taken uses the second.
                         if (got1) break;
                     }
                 }
@@ -406,9 +283,7 @@ Shader "YAPS/Spike Plug"
                 [unroll] for (int i2 = 0; i2 < YAPS_MAX; i2++)
                     if (sockK[i2] >= 0) count++;
 
-                // The arc length at which each socket sits, measured along
-                // the chain. Chords rather than true cubic arc length, the
-                // same approximation the single-socket version made.
+                // Arc length per socket, by chords rather than true cubic length.
                 float arc[YAPS_MAX + 1];
                 arc[0] = 0;
                 float3 prev = root;
@@ -417,15 +292,8 @@ Shader "YAPS/Spike Plug"
                     if (i3 >= count) { arc[i3 + 1] = arc[i3] + 1e6; continue; }
                     float3 step = sockP[i3] - prev;
                     float d3 = length(step);
-                    // A RING is turned to meet its approach. It is a loop
-                    // with no wrong side, so which of the two faces the
-                    // author happened to point it is not information, and
-                    // trusting it makes the cubic arrive travelling backwards
-                    // and tie itself in a hairpin.
-                    //
-                    // A HOLE keeps its sign. It has a front, the author chose
-                    // which, and a plug arriving at the back was dropped from
-                    // the list already rather than turned around.
+                    // A ring turns to meet its approach (its authored facing is
+                    // arbitrary; trusting it hairpins the cubic). A hole keeps its sign.
                     if (sockK[i3] == 0 && d3 > 1e-5 && dot(sockF[i3], step) > 0)
                         sockF[i3] = -sockF[i3];
                     arc[i3 + 1] = arc[i3] + d3;
@@ -440,9 +308,7 @@ Shader "YAPS/Spike Plug"
                     engaged = 1 - smoothstep(len * _Reach, far, sockD[0]);
                     if (engaged > 0)
                     {
-                        // Where this vertex sits along the shaft, and how far
-                        // off the axis. Taken in WORLD space so the object's
-                        // scale and rotation come along for free.
+                        // World space, so object scale and rotation come for free.
                         float s = dot(wv - root, axis);
                         float3 radial = wv - (root + axis * s);
 
@@ -461,11 +327,7 @@ Shader "YAPS/Spike Plug"
                         }
                         else
                         {
-                            // Leaves along whatever the previous link exited
-                            // on and arrives against this socket's facing, so
-                            // position AND tangent match at every join. That
-                            // continuity is the only reason a chain of cubics
-                            // reads as one shaft rather than as kinked parts.
+                            // Position and tangent match at every join, or the shaft kinks.
                             float3 p0 = seg == 0 ? root : sockP[seg - 1];
                             float3 t0 = seg == 0 ? axis : -sockF[seg - 1];
                             float3 p3 = sockP[seg];
@@ -504,9 +366,7 @@ Shader "YAPS/Spike Plug"
                 UNITY_SETUP_STEREO_EYE_INDEX_POST_VERTEX(i);
                 // A fixed light, so the spike looks the same in any scene.
                 float l = saturate(dot(normalize(i.nrm), normalize(float3(0.4, 0.8, -0.45)))) * 0.7 + 0.3;
-                // Colour says whether the atlas read worked, which cannot be
-                // seen from the shape alone when the plug happens to be
-                // pointing at the socket already.
+                // Shape alone cannot show a working read when the plug already points at the socket.
                 if (_Debug > 0.5) return fixed4(i.dbg, 1);
                 fixed4 c = lerp(_Miss, _Colour, saturate(i.engaged * 2));
                 return fixed4(c.rgb * l, 1);

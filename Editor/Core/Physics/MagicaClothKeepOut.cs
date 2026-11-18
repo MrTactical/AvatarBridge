@@ -9,13 +9,10 @@ namespace AvatarBridge
     // Here, not at the top: MagicaCloth 1's global namespace MagicaCloth beats a file-level using.
     using MagicaCloth2;
 
-    // Bones a BoneCloth leaves alone. MagicaCloth2 simulates every transform under its roots and
-    // has no ignore list, so a child under a cloth bone became a particle of the cloth's radius:
-    // an accessory a PhysBone ignored, or a helper object, each a ball as wide as the part that
-    // held a hand off it and shook it when pinched. A bone its per-bone attributes call
-    // invalid it neither moves nor writes, so it rides its parent as any child does: a PhysBone's
-    // ignore. Those attributes are what its own point paint stores, positions in the cloth's space.
-    // No VRChat SDK here, so the add-on builds without one.
+    // MagicaCloth2 has no ignore list: every child under a root became a cloth-radius particle that
+    // held hands off and shook when pinched. Marking a bone invalid in its point-paint attributes
+    // (cloth-space positions) makes it ride its parent, as a PhysBone ignore does. No VRChat SDK,
+    // so the add-on builds without one.
     public static class MagicaClothKeepOut
     {
         // Every bone under the cloth's roots listed, keep and all below invalid. A bone the cloth
@@ -85,10 +82,8 @@ namespace AvatarBridge
             return null;
         }
 
-        // MagicaCloth2 reads a cloth's transforms afresh when it starts, and ChilloutVR applies a
-        // saved avatar size before that, so a cloth without initData kept gravity in metres. Its
-        // editor writes initData only when it draws a cloth's gizmo or inspector; this writes it the
-        // same way. False when the cloth does not validate, and it builds as before.
+        // CVR applies a saved avatar size before the cloth starts, so without initData gravity stayed in
+        // metres. Its editor writes initData only when drawing; this does the same. False if invalid.
         public static bool Pin(MagicaCloth cloth)
         {
             var sdata = cloth.SerializeData;

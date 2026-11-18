@@ -5,10 +5,8 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the seat goodbye (task #28). VRCStation is the sit-on-me chair; the
-    // decompiled client's avatar whitelist has no seat type, so the honest ceiling is a Skipped
-    // entry naming each; counted after the strips, so GoGo Loco's own stations never alarm
-    // anyone (that half is verified in the wild on a GoGo corpus avatar).
+    // Seat report (task #28). CVR's avatar whitelist has no seat type, so each VRCStation gets a
+    // Skipped entry, counted after the strips so GoGo Loco's own stations never show.
     public static class StationReportTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Seat report")]

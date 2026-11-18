@@ -68,9 +68,8 @@ namespace AvatarBridge.Regression
                              ?? (plug != null ? plug.transform : skin.transform);
                 Vector3 root = marker.position, fwd = marker.forward, up = marker.up;
 
-                // Every numbered writer material made before the capture
-                // materials exist: a material asset created after them left
-                // every later capture reading nothing, twice.
+                // Writer materials before capture materials: one created after
+                // them left every later capture reading nothing.
                 foreach (var (kind, oneWay) in new[] { (YapsSocket.SocketKind.Hole, false), (YapsSocket.SocketKind.Ring, false), (YapsSocket.SocketKind.Ring, true) })
                 {
                     var warm = MakeSocket("__Warm", kind, oneWay, true, false);
@@ -79,10 +78,7 @@ namespace AvatarBridge.Regression
                     UnityEngine.Object.DestroyImmediate(warm);
                 }
 
-                // Every plug slot onto the capture shader, carrying the patched
-                // material's whole YAPS block by name.
-                // Copies, so nothing the tester or the toolkit writes reaches
-                // the converted avatar's own assets.
+                // Copies, so nothing written here reaches the avatar's own assets.
                 var sources = skin.sharedMaterials.Select(m => m != null ? new Material(m) : null).ToArray();
                 var mats = skin.sharedMaterials;
                 var capture = new List<(Material mat, float count)>();
@@ -260,11 +256,9 @@ namespace AvatarBridge.Regression
                     $"worst vertex {Moved(Capture(hdr, 0f)) * 1000f:0.0} mm");
                 foreach (var s in own) s.gameObject.SetActive(false);
 
-                // 2. A socket found anywhere round the tip, for every kind a
-                // plug meets: YAPS sockets by the atlas, with and without the
-                // lights it must answer before, and DPS-style sockets by their
-                // marker lights alone. A contact-only socket (older TPS) has
-                // nothing a shader can read, so there is nothing to find.
+                // 2. Found round the tip: YAPS by atlas, with and without lights,
+                // and DPS by marker lights alone. Contact-only (older TPS) sockets
+                // have nothing a shader can read, so are not tested.
                 var plumbing = new GameObject("__Atlas");
                 YapsAtlas.AddGrab(plumbing.transform);
                 YapsAtlas.AddClear(plumbing.transform);
@@ -336,14 +330,10 @@ namespace AvatarBridge.Regression
                     UnityEngine.Object.DestroyImmediate(sock);
                 }
 
-                // 3. A neighbour. Two atlas holes on one line, the second
-                // nearer: the plug must take the nearer. Another avatar's pair
-                // is numbered and owned, as a wearer's sockets are; one object's
-                // is numbered with no owner, as a prop's; two objects are each
-                // numbered by their own root, as world sockets are. A bucket
-                // shared in one cell lets the later draw hide the other. The gap
-                // view saturates at a length, so the tier view tells a far answer
-                // from none.
+                // 3. Two holes on one line: the nearer wins. Cases: owned pair
+                // (wearer), unowned pair (prop), two roots (world). A shared cell
+                // bucket lets the later draw hide the other. The gap view
+                // saturates at one length, so the tier view tells far from none.
                 var pairs = new (string what, int farNumber, int nearNumber, int owner, bool strict)[]
                 {
                     ("another avatar's", 1, 2, 4242, true),
@@ -573,22 +563,18 @@ namespace AvatarBridge.Regression
                         Log($"    twin {pb} chain: {Chain(16)}");
                     }
                     fail += Check($"{w.label}: no seam opens past 0.5 mm", seam < 0.5e-3f);
-                    // Crushed behind the opening is the socket hiding what went
-                    // in. Floors from the first measurement, 2026-09-23: at most
-                    // 50 edges crushed outside it (of 5902 to 13450) and 5.84x,
-                    // that with a socket right beside the base.
+                    // Crushed behind the opening is the socket hiding what went in.
+                    // Measured floor: at most 50 edges crushed outside it (of 5902
+                    // to 13450) and 5.84x, with a socket right beside the base.
                     fail += Check($"{w.label}: under 1% of edges crushed outside the opening ({crushedOutside}), none past 6x",
                         crushedOutside <= edges.Count / 100 && stretch < 6f);
                     fail += Check($"{w.label}: no step past ten times the socket's move", jump < 10f * stride * length);
                     UnityEngine.Object.DestroyImmediate(walker);
                 }
 
-                // 7. Seeded scenarios: a hole comes in from a shell of
-                // directions, sweeps past the tip at a depth and withdraws,
-                // with rule 1, 2 and 4 held at every step, and found at its
-                // deepest from every camera, a small view included. -yapsSeed and
-                // -yapsScenarios choose them; -yapsScenario runs one alone,
-                // which is the repro line a failure prints.
+                // 7. Seeded scenarios, rules 1, 2 and 4 at every step, found at the
+                // deepest point from every camera. -yapsScenario runs one alone:
+                // the repro line a failure prints.
                 {
                     int seed = int.TryParse(Arg("-yapsSeed"), out int seedArg) ? seedArg : 1;
                     int scenarios = int.TryParse(Arg("-yapsScenarios"), out int countArg) ? countArg : 6;
@@ -659,11 +645,10 @@ namespace AvatarBridge.Regression
                     UnityEngine.Object.DestroyImmediate(visitor);
                 }
 
-                // 8. Two sockets on the path, a ring and then a hole, walked in
-                // along the plug's axis until they sit at half a length and a
-                // whole one. Every case above has one socket on the path, so a
-                // chain folding back at each link went unseen. No generator: the
-                // seeded scenarios keep the numbers they always drew.
+                // 8. A ring then a hole on the axis, walked in to 0.5 and 1 lengths.
+                // The other cases have one socket on the path, so a chain folding back
+                // at each link went unseen. No generator, so seeded scenarios keep
+                // their numbers.
                 {
                     var thread = MakeSocket("__Chain ring", YapsSocket.SocketKind.Ring, false, true, false, 1);
                     var end = MakeSocket("__Chain hole", YapsSocket.SocketKind.Hole, false, true, false, 2);
@@ -724,12 +709,10 @@ namespace AvatarBridge.Regression
                     UnityEngine.Object.DestroyImmediate(end);
                 }
 
-                // 5. A ring on the plug's own shaft, where the reporter's bend
-                // ended. Building it under the avatar numbers it and tells the
-                // plug, so the plug must do what its own-socket ticks say, with
-                // the stand-in owner as the game does with the real id. The
-                // plug's own materials go back on while it builds, as copies,
-                // so the ticks land where the capture can copy them from.
+                // 5. A ring on the plug's own shaft: built under the avatar it gets
+                // a number, so the plug must obey its own-socket ticks. The plug's
+                // materials go back on while it builds, so the ticks land where the
+                // capture copies them from.
                 var shaftBone = skin.bones.Where(b => b != null)
                     .OrderBy(b => (b.position - (root + fwd * (0.5f * length))).sqrMagnitude).First();
                 skin.sharedMaterials = sources;
@@ -759,11 +742,8 @@ namespace AvatarBridge.Regression
                 }
                 UnityEngine.Object.DestroyImmediate(shaftRing);
 
-                // 6. Pictures: the plug from above as a hole comes in from the
-                // side, one frame a stage. Through the capture shader, shaded
-                // from the bent normals: the avatar's own materials carry the
-                // YAPS code from when it was converted, and showed that
-                // instead. Only with -yapsShots <folder>.
+                // 6. Pictures through the capture shader: the avatar's own materials
+                // carry the YAPS code from conversion time and showed that instead.
                 string shots = Arg("-yapsShots");
                 if (shots != null)
                 {

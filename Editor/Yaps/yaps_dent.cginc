@@ -1,40 +1,23 @@
-// YAPS, the SOFT-BODY SQUASH. Flesh keeps its volume: pressed flat one way,
-// it grows the others.
+// YAPS, the SOFT-BODY SQUASH. Flesh keeps its volume: pressed flat one way, it grows the others.
 //
-// Every move here is a function of world position alone, smooth, and never
-// folds, so every layer at a point (skin, a top, a bra) takes the same move
-// and keeps its order. The first dents moved each vertex by its own facing or
-// snapped layers onto one surface, and the skin came through the top in
-// stripes and blotches.
+// Every move is a smooth, non-folding function of world position alone, so every layer at a
+// point (skin, top, bra) moves alike and keeps its order. Per-vertex facing, or snapping layers
+// to one surface, showed skin through the top in stripes.
 //
-// A soft PART (a breast, a cheek) is pressed by its partner, along the line
-// between them; by hands reaching into it, the own arms and every other
-// player's, from their side; and lying back, by its own weight. Pressed from one
-// side it first bends away, swinging about where it meets the body. A hand then
-// dents it where it presses, the flesh it moves rising in a rim around the dent;
-// only what the dent cannot take moves the whole part. Heavy flesh moves where
-// it is touched; a part that flattened all over under one finger read as a
-// water balloon. The whole-part squash runs along the line the presses mostly
-// share, each side moving in by what pressed it, so two hands from opposite
-// sides squeeze instead of cancelling, and it grows across by exactly what keeps
-// its volume. Neither part of a pair is ever moved away from the other: with the
-// contact on, what overlaps is pressed in where the two meet, the part driven
-// further keeping its round front and the other taking a hollow its shape, and
-// what that pushes back swells out round it. Then the own arms and hands, as
-// capsules, ease the skin out of their way.
+// A part is pressed by its partner, by hands (own arms and other players'), and lying back by
+// its weight. It first swings away about where it meets the body; a hand then dents it locally,
+// the moved flesh rising in a rim, and only the excess moves the whole part (whole-part give
+// under one finger read as a water balloon). The whole-part squash runs along the presses' shared
+// line, each side moving by what pressed it, so opposite hands squeeze rather than cancel, and it
+// widens to keep volume. A pair never moves apart: overlap is pressed in where they meet, the
+// part driven further keeping its round front, the other taking its shape. Own arms and hands,
+// as capsules, then ease skin out of the way.
 //
-// How big a part is toward any side is an ellipsoid of six reaches measured at
-// rest, in a frame from bones no cloth moves: toward the partner, away from it,
-// out of the body, into it, and either way across.
+// A part's size is an ellipsoid of six reaches measured at rest, in a frame from bones no cloth
+// moves. Which part a vertex is comes from baked skin weights: guessing from position tore the
+// skin between neighbours.
 //
-// Which part a vertex is comes from the mesh's own skin weights, baked per
-// vertex: its weight to a part's bones is its share of that part. Guessed from
-// position and facing instead, neighbours either side of a guess went
-// different ways and tore the skin; skin weights fade into the chest the way
-// the avatar was painted, so the squash does too.
-//
-// The positions arrive from a material data provider every frame, on every
-// client, locally: nothing is synced and no camera renders.
+// Positions come from a material data provider each frame, locally: nothing syncs, no camera.
 
 #ifndef YAPS_DENT_INCLUDED
 #define YAPS_DENT_INCLUDED
@@ -49,9 +32,8 @@
 // How wide the contact's edge rounds over, in overlap depths. Eased over a fixed sliver of the
 // reach, the edge was a crease down the middle however deep the overlap.
 #define YAPS_SQUASH_ROUND 1.0
-// How much of what a pair overlaps the whole part takes, flattening toward its partner and
-// growing the other ways to keep its volume; the contact presses only the rest. Pressed all at
-// the contact, the two met as halves of one ball cut down a plane.
+// Share of a pair's overlap the whole part takes; the contact presses the rest. All at the
+// contact, the two met as halves of one ball cut down a plane.
 #define YAPS_SQUASH_BULK 0.6
 // How close two squeezes count as level, as a share of the stronger: within it their lines
 // share the flattening, wholly when exactly level.
@@ -67,10 +49,9 @@ float _YAPS_DentPower;
 float _YAPS_DentSpill;
 Texture2D _YAPS_DentOwn;       // per vertex: its share of parts 0 to 3 in r, g, b, a
 Texture2D _YAPS_DentSwing;     // per vertex: the weight each part's chain of bones carries, the same way
-// Each part's own surface: how far its skin reaches from its centre each way, follow units, on an
-// octahedral grid of YAPS_SURFACE squared directions in its frame, part m in rows from m times
-// that. Read only where its flag is set: a material patched before it reads whatever Unity binds
-// for a texture it never set, and an unset flag reads 0.
+// Each part's skin reach from its centre, follow units, on an octahedral grid of YAPS_SURFACE^2
+// directions, part m from row m * YAPS_SURFACE. Read only where flagged: an unset texture
+// binds whatever Unity has.
 Texture2D _YAPS_SquashSurface;
 float4 _YAPS_SquashSurfaceOn;
 #define YAPS_SURFACE 32
@@ -106,14 +87,12 @@ float _YAPS_SquashPulse;    // test builds: a squeeze from the outside that come
 float4 _YAPS_SquashHands;   // x own arms' press gain, y other players' hand radius in metres at a 1.6 m viewpoint, z their press gain, w skin stride in bytes (0 none)
 float4 _YAPS_SquashTune;    // x lying-back weight, as a share of the reach out; y strength of every press; z bend give, as a share of the reach out; w deepest dent, as a share of the reach toward the hand
 float _YAPS_SquashPlug;     // a plug's press gain
-// The pair as soft tissue, solved at the build (YapsSoftBody.cs). Per renderer, laid out as
-// _YAPS_DentOwn, sixteen bits a number: in r each vertex's row in the table plus one, 0 for none;
-// in g the top bit set for the second pair, and below it how much of the row the vertex takes, a
-// layer easing off it as it stands off the skin.
+// The pair as soft tissue, solved at build (YapsSoftBody.cs). Laid out as _YAPS_DentOwn, 16 bits
+// a number: r the vertex's table row plus one (0 none); g top bit for the second pair, below it
+// the vertex's share of the row (layers ease off it).
 Texture2D _YAPS_SoftRow;
-// YAPS_SOFT_ENTRIES pairs of texels a row, YAPS_SOFT_ROWS rows to a line: for each press and
-// depth, the vertex's move in the pair's frame (the first part's toward, out and across), in bytes
-// about 127 scaled by a's share of the first part's reach, then its normal's turn the same way.
+// Per press and depth, the vertex's move in the pair's frame (toward, out, across), bytes about
+// 127 scaled by a's share of the reach, then the normal's turn likewise.
 Texture2D _YAPS_SoftTable;
 #define YAPS_SOFT_ENTRIES 30
 #define YAPS_SOFT_ROWS 32
@@ -137,16 +116,14 @@ float4 _CVR_PlayerChestPositions[255];
 float4 _CVR_PlayerRootPositions[255];   // w the player's viewpoint height
 };
 
-// The same slots again, from a helper mesh weighted one vertex to each and skinned. The provider
-// reads transforms in a script LateUpdate, before the cloth writes its bones and after it put
-// them back to rest, so a follow read there never moves. Skinning runs after the cloth.
+// The same slots from a skinned helper mesh, one vertex each. The provider reads in LateUpdate
+// while the cloth's bones sit at rest, so it never sees the swing; skinning runs after the cloth.
 #if SHADER_TARGET >= 45
 ByteAddressBuffer _YAPS_SquashSkin;
 #endif
 
-// Where the slots come from, set once per vertex: 1 the skinned buffer, 2 it reads empty, 3 it
-// reads somewhere the first rest slot is not, 0 no helper. Anything but 1 reads the matrices,
-// so a buffer that never arrives costs the cloth push and nothing else.
+// Slot source per vertex: 1 skinned buffer, 2 empty, 3 disagrees, 0 no helper. Anything but 1
+// reads the matrices, so a missing buffer costs only the cloth push.
 static int yapsSkin;
 
 int YapsSkinState()
@@ -156,11 +133,9 @@ int YapsSkinState()
     uint stride = (uint) _YAPS_SquashHands.w;
     float3 s = asfloat(_YAPS_SquashSkin.Load3(4 * stride));
     if (all(s == 0)) return 2;
-    // Every slot against its matrix, which agree but for a frame of motion and the cloth's swing
-    // (an empty one sits on the host in both); arms by an arm's length, as the IK may hold a hand
-    // far from the pose the matrices saw. One slot off reads them all from the matrices: remote
-    // copies blew up in metres-long streaks, and mixing the two sources put a pair's halves in
-    // different frames.
+    // Every slot checked against its matrix (arms within an arm's length, IK may move hands).
+    // One off reads all from matrices: remote copies streaked metres long, and mixing sources
+    // split a pair across frames.
     uint i = 0;
     [loop]
     for (; i < 20; i++)
@@ -304,11 +279,9 @@ float YapsSpan(YapsPart p, float3 w)
     return p.unit * rsqrt(max(dot(c * c, c >= 0 ? p.front : p.back), 1e-8));
 }
 
-// Where the line S + D s, centred on the part and in its frame, D a unit vector, leaves the part's
-// own surface toward +D, from where it leaves the ellipsoid, s: one step as if the line ran
-// straight out from the centre there, then three secant steps, unrolled since ChilloutVR's shader
-// filter cuts loops short. Eased back to s where the steps end off the surface, as where the line
-// passes outside it, so the answer never jumps.
+// Where line S + D s (part frame, D unit) leaves the part's own surface, starting from the
+// ellipsoid's s: one radial step, then three secant steps, unrolled since CVR's shader filter
+// cuts loops short. Eased back to s where the steps miss, so it never jumps.
 float YapsLeave(YapsPart p, float3 S, float3 D, float s)
 {
     if (!p.own) return s;
@@ -369,14 +342,12 @@ float3 YapsTurn(float3 v, float3 f, float3 t)
     return v * c + cross(k, v) + k * (dot(k, v) / max(1 + c, 1e-4));
 }
 
-// The part's frame turned with its swing about the bone it hangs from: a swing turns a part as
-// much as it moves it, and read as sliding, a part turned to face its partner front first met it
-// with the side it no longer showed.
+// The frame turned with the part's swing: read as sliding, a turned part met its partner with a
+// side it no longer showed.
 YapsPart YapsTurned(YapsPart p)
 {
     if (!p.framed) return p;
-    // In the rest's units: the bone it hangs from rides the rest's bone, and a bone between them
-    // scaled by a toggle scales the follow but never moves it.
+    // Rest units: a toggle scaling a bone between scales the follow but never moves it.
     float3 hang = (p.a * _YAPS_SquashHangToward[p.m] + p.o * _YAPS_SquashHangOut[p.m] + p.u * _YAPS_SquashHangAcross[p.m]) * YapsUnit(4 + p.m);
     // Not baked, or the part hangs from its own centre: nothing to turn about.
     if (dot(hang, hang) < 1e-12) return p;
@@ -400,10 +371,8 @@ void YapsAdd(inout float3 S, inout float3x3 M, float3 v)
     M += float3x3(v.x * v, v.y * v, v.z * v) / l;
 }
 
-// A capsule from a to b of radius r reaching into a part: the press toward it, by how far.
-// Never more than the line is from the part's centre: an arm passing through turns the line to
-// it right over in a few frames, and pressed full depth there the whole part flipped from one
-// side to the other. Held to that, the turn moves the skin no faster than the arm.
+// Capped at the line's distance from the centre: an arm passing through flips the line in a
+// few frames, and at full depth the whole part flipped sides.
 float3 YapsPress(YapsPart p, float3 a, float3 b, float r)
 {
     float3 ab = b - a;
@@ -415,9 +384,7 @@ float3 YapsPress(YapsPart p, float3 a, float3 b, float r)
     return press > 0 ? to / dist * press : 0;
 }
 
-// Two presses as one, each weighted by its depth to the fourth: the deeper leads, and one
-// overtaking the other eases across. Taking the deeper alone jumped the dent from one to the
-// other the moment it overtook, and the part swung with it.
+// Weighted by depth^4 so an overtake eases across; the deeper alone jumped the dent.
 void YapsMerge(inout float3 v, inout float r, float3 v2, float r2)
 {
     float a = dot(v, v), b = dot(v2, v2);
@@ -436,16 +403,13 @@ void YapsMerge(inout float3 v, inout float r, float3 v2, float r2)
 void YapsSources(int k, out int arms, out int hands, out int plugs)
 {
     arms = _YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0 ? 6 : 0;
-    // Every player's hands, the wearer's among them, which the arms above already are: a
-    // hand by either own hand is skipped. Capped at 64 players for cost.
+    // Includes the wearer's own, skipped later. Capped at 64 players for cost.
     hands = _YAPS_SquashHands.z > 0 && _YAPS_SquashHands.y > 0 ? 2 * min((int) round(CVRGlobalParams1.y), 64) : 0;
     plugs = _YAPS_SquashPlug > 0 && YapsUnit(18 + k) > 0 ? 4 : 0;
 }
 
-// Press s of those: a capsule from a to b of radius r, pressing by scale, and with a finger out a
-// thinner one from fa to fb of radius rf; into is the arm it belongs to, 3 for any other. False
-// when it is absent, or too far from c to press: near past c, a hand's length and its radius.
-// ownL and ownR are the own hands, at the socket between the pair.
+// Press s: capsule a-b radius r by scale, plus a finger fa-fb radius rf; into is the arm, 3 for
+// any other. False when absent or out of reach. ownL/ownR are the own hands, at the socket.
 bool YapsSource(int s, int arms, int hands, float3 c, float near, float3 ownL, float3 ownR, float3 at,
     out float3 a, out float3 b, out float r, out float scale, out bool finger, out float3 fa, out float3 fb, out float rf, out int into)
 {
@@ -471,13 +435,10 @@ bool YapsSource(int s, int arms, int hands, float3 c, float near, float3 ownL, f
     }
     else if (s < arms + hands)
     {
-        // The globals carry only the wrist, a palm's length out from the skin while the palm is
-        // on it, so a ball there never reached the part: the hand runs on from it, away from that
-        // player's chest, for a ninth of their viewpoint height.
-        // The gesture rides in each hand's w, the numbers an avatar's GestureLeft reads: -1 open,
-        // 0 to 1 a fist closing, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and roll.
-        // A fist ends at the knuckles; a finger out runs on, thin, to where the fingertips are.
-        // Which way the palm faces is not carried, so two fingers out are one thicker one.
+        // Globals carry only the wrist, a palm's length off the skin, so the hand runs on away
+        // from the chest for a ninth of viewpoint height. w is the gesture as GestureLeft reads
+        // it: -1 open, 0 to 1 fist, 2 thumbs up, 3 finger gun, 4 point, 5 victory, 6 rock and
+        // roll. A fist ends at the knuckles, a finger runs on thin. Palm facing is not carried.
         // ponytail: the line from the chest stands in for the forearm, which the globals do not carry.
         int i = (s - arms) >> 1;
         float tall = _CVR_PlayerRootPositions[i].w;
@@ -488,13 +449,12 @@ bool YapsSource(int s, int arms, int hands, float3 c, float near, float3 ownL, f
         float4 hand = ((s - arms) & 1) == 0 ? _CVR_PlayerLeftHandPositions[i] : _CVR_PlayerRightHandPositions[i];
         float3 h = hand.xyz;
         float g = hand.w;
-        // Most hands in a full room are nowhere near: out past the part's reach, a hand's
-        // length and its radius, it cannot press. Saves the press for the ones that can.
+        // Early out for hands that cannot reach.
         float reachable = near + 0.11 * tall + r;
         if (dot(h - c, h - c) > reachable * reachable) return false;
         if (dot(h, h) < 1e-6) return false;
-        // Eased out by either own hand rather than cut, since the globals and the slots
-        // are read at different moments and a quick own hand would flicker in as another's.
+        // Eased, not cut: globals and slots are read at different moments, so a quick own
+        // hand would flicker in as another's.
         float own = saturate(min(dot(h - ownL, h - ownL), dot(h - ownR, h - ownR)) / mine - 1);
         if (own <= 0) return false;
         float3 arm = h - chest;
@@ -510,11 +470,8 @@ bool YapsSource(int s, int arms, int hands, float3 c, float near, float3 ownL, f
     }
     else
     {
-        // A plug in the socket, anyone's, from the light it announces itself with: its base and
-        // its length. The light gives no direction, so the shaft runs from the base through the
-        // socket for the plug's length, and presses like another hand. Only while it reaches the
-        // socket, so a plug merely near the pair parts nothing, easing out over the last fifth of
-        // its length rather than letting go at once.
+        // A plug from its light (base and length; no direction, so base through socket).
+        // Only while it reaches the socket, easing out over its last fifth.
         // ponytail: the radius is a tenth of the length, since the light carries none; 6 cm at most
         // (3.5 cm drew a long thick plug thin). Real girth needs a channel the light does not have.
         uint i = s - arms - hands;
@@ -533,15 +490,11 @@ bool YapsSource(int s, int arms, int hands, float3 c, float near, float3 ownL, f
     return true;
 }
 
-// The hands reaching into the part, as presses toward each hand by how far it is in, with its
-// radius: both own arms first, then other hands, the deepest and the rest merged.
-// One loop over every source, arms, then hands, then plugs, so the press and the merge are
-// compiled once each: a loop per source inlined them four times, and an upload compiles this
-// for every variant of every patched shader.
+// Presses from own arms, other hands and plugs. One loop over all sources so press and merge
+// compile once: a loop each inlined them four times, in every patched variant.
 void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
 {
-    // Per arm, its bones merged, the deepest leading: upper arm, forearm and hand overlap at
-    // the joints, and adding all three pressed one forearm in twice.
+    // Per arm, bones merged: adding them pressed a forearm in twice at the joints.
     int arms, hands, plugs;
     YapsSources(p.m >> 1, arms, hands, plugs);
     float3 ownL = YapsSlot(10), ownR = YapsSlot(14);
@@ -557,9 +510,8 @@ void YapsHandsPress(YapsPart p, inout float3 hv[4], inout float hr[4])
         float3 v = YapsPress(p, a, b, r) * scale;
         float vr = r;
         if (finger) YapsMerge(v, vr, YapsPress(p, fa, fb, rf) * scale, rf);
-        // Into the slots others share, 2 and 3: the deepest press, and the rest merged into
-        // the other. With two presses that is both as they are; a third eases into the
-        // shallower instead of one dropping out whole as another overtook it.
+        // Shared slots: 2 the deepest, 3 the rest merged, so a third eases in instead of one
+        // dropping out whole.
         if (into == 3 && dot(v, v) > dot(hv[2], hv[2]))
         {
             float3 tv = hv[2];
@@ -602,17 +554,13 @@ float3 YapsSoftBytes(float4 t)
     return (round(t.xyz * 255) - 127) / 127;
 }
 
-// The pair's soft body, baked at the build: how far every hand is into each part each way a palm
-// pressed it there, and the answers to those presses added up. A capsule presses a part only once
-// it is in past the skin by the true distance; then square to the capsule, as a palm presses
-// along its normal, shared over the part's five ways by the square of how near it points to
-// each, and each way's depth taken on that way's own line, as its answer was baked. Measured to
-// the nearest end instead, a palm held above the centre read as pressing from above; read square
-// to it alone, a palm under one part read as lifting its partner. The deepest capsule each way
-// counts, as a palm and its fingers press one dent. What both outsides are pressed alike is the
-// squeeze, both pressed at once at the bake: summed from one side each, a squeeze counted the
-// partner shoved away twice. Each answer read at its depth, straight between the two baked and on
-// past the second. row is the vertex's row plus one, negative for the second pair, and its share.
+// The baked soft body: each hand's depth into each part along each baked palm direction, and the
+// baked answers summed. A capsule counts only past the skin, then square to itself, shared over
+// the five ways by cos^2, each depth on that way's own line. (Nearest end read a palm above the
+// centre as from above; square alone read a palm under one part as lifting its partner.) Deepest
+// capsule per way. Equal outside presses on both are the squeeze, baked together: summed per side
+// it shoved the partner twice. Answers interpolate between the two baked depths and extrapolate
+// past. row: row plus one, negative for the second pair, and the share.
 void YapsSoftMove(float3 row, inout float3 world, inout float3 n, bool hasNormal)
 {
     if (row.x == 0 || row.y <= 0) return;
@@ -754,12 +702,9 @@ void YapsSoftMove(float3 row, inout float3 world, inout float3 n, bool hasNormal
     }
     world += (P0.a * move.x + P0.o * move.y + P0.u * move.z) * (unit0 * row.y);
     if (hasNormal) n = normalize(n + (P0.a * turn.x + P0.o * turn.y + P0.u * turn.z) * row.y);
-    // Then out of the two capsules in deepest, to a tenth of a radius off them, eased in over a
-    // fifth either side. The answers come within a centimetre or two of the tissue solved under the
-    // same hands, which stays a few millimetres off the palm; the rest showed through the palm, and
-    // skin pushed exactly onto it speckled where the two drew on one spot. Deeper in, each keeps a
-    // tenth of its order: all put on the one shell, a layer standing off the skin, deep in the
-    // palm, folded over itself along the hand's edge.
+    // Then out of the two deepest capsules to 0.1 radius off, eased over 0.2 either side: the bake
+    // lands within a cm or two, and skin exactly on the palm speckled. Deeper in each keeps a tenth
+    // of its order, or stacked layers folded along the hand's edge.
     [unroll]
     for (int kc = 0; kc < 2; kc++)
     {
@@ -786,13 +731,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float4 own = _YAPS_DentOwn.Load(int3(vertexId % width, vertexId / width, 0));
     // Parts the live tissue carries are left to it (yaps_jelly.cginc), their baked presses too.
     own *= 1 - saturate(_YAPS_JellyParts);
-    // Between two parts a vertex carries a share of each, both eased toward their peaks at the
-    // build, so they can come to more than one: it took most of both moves, and the pair tore
-    // down the cleavage where its neighbours took less.
+    // Shares can sum past one between parts; unnormalised, the pair tore down the middle.
     own /= max(own.r + own.g + own.b + own.a, 1);
     float partShare = saturate(own.r + own.g + own.b + own.a);
-    // Read only where a pair was baked: a material patched before reads whatever Unity binds for
-    // a texture it never set. Skin around the parts that is none of theirs moves with them too.
+    // Only where baked: an unset texture binds whatever Unity has. Skin around the parts
+    // moves with them too.
     float3 softRow = 0;
     if (any(_YAPS_SoftDepth != 0))
     {
@@ -807,8 +750,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
     float swings[4] = { swing.r, swing.g, swing.b, swing.a };
     yapsSkin = YapsSkinState();
 
-    // A skinned mesh arrives in world space under an identity matrix, a plain
-    // mesh in its own; going through the matrix serves both.
+    // Skinned meshes arrive in world space (identity matrix); the matrix serves both.
     float3 world = mul(unity_ObjectToWorld, float4(position, 1)).xyz;
     float3 n = mul(normal, (float3x3)unity_WorldToObject);
     bool hasNormal = dot(n, n) > 0;
@@ -821,8 +763,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
 
     float3 squashAxis[4], squashCentre[4], partN[4];
     float squashPlane[4], squashReach[4], squashContact[4], squashDeep[4], squashBow[4], partDone[4];
-    // Cleared before the loop, not in it: ChilloutVR's shader filter can end the loop early, and
-    // the meet below read the parts it never reached from uninitialised registers.
+    // Cleared before the loop: CVR's shader filter can end it early, leaving uninitialised registers.
     [unroll]
     for (int z = 0; z < 4; z++)
     {
@@ -836,16 +777,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         partN[z] = 0;
         partDone[z] = 0;
     }
-    // The filter adds each loop pass's instruction count to one counter and breaks every loop once
-    // it passes the Loop Limit, which this loop's first pass always does. So the vertex's own part
-    // goes first, and is the one that survives.
+    // The filter breaks every loop once a shared instruction count passes the Loop Limit, which
+    // this loop's first pass always does, so the vertex's own part goes first.
     int first = 0;
     [unroll]
     for (int f = 1; f < 4; f++) first = shares[f] > shares[first] ? f : first;
     float3 mapped = 0;
     float3 mappedN = n;
-    // Looped, not unrolled, here and in the arm, hand and plug loops: four copies of this body took the
-    // compiler minutes on every patched shader, and a user waits on that at the first build.
+    // Looped: four unrolled copies took minutes to compile per patched shader.
     [loop]
     for (int j = 0; j < 4; j++)
     {
@@ -856,8 +795,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         YapsPart p = YapsPartAt(m, YapsSlot(m), unit);
         float reach = p.reach;
         float3 d = world - p.centre;
-        // Two copies of one avatar sharing a material would share each other's follows: a
-        // vertex far from the part it belongs to is not this copy's, and stays.
+        // Far from its part: another copy of the avatar sharing the material.
         if (reach <= 0 || dot(d, d) > 16 * reach * reach) continue;
 
         float3 S = 0;
@@ -872,10 +810,8 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float start = (m < 2 ? _YAPS_SquashPair.x : _YAPS_SquashPair.z) * YapsUnit(m & 2);
         // How far each reaches toward the other as turned by its swing.
         float frontS = reach, frontO = start - reach;
-        // The contact reaches only across the part's own breadth: a strap over the chest lay past
-        // the seam too, and was pressed and swollen by centimetres where nothing touched it. Cut
-        // off sooner, a deep press let the two cross at the top and bottom of the seam; cut by the
-        // distance out of the part's shape, real skin past it tore.
+        // Contact only across the part's breadth (1 to 1.5 of its extent): wider swelled a strap
+        // over the chest, narrower let the pair cross at the seam's ends.
         float onSeam = 1;
         if (paired)
         {
@@ -887,20 +823,14 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             if (po.framed) frontO = YapsExtent(YapsTurned(po), -axis);
         }
         float over = frontS + frontO - length(toward);
-        // A pair modelled overlapping keeps that overlap as its rest: only what it is pressed past
-        // it flattens, and the contact eases in over it as over the last of a gap. Flattened from
-        // the touch, the pair met in a straight slot with nobody near.
+        // A pair modelled overlapping keeps that as rest; else it met in a straight slot untouched.
         float rested = paired ? max(reach + _YAPS_SquashReach[m ^ 1] * YapsUnit(m ^ 1) - start, 0) : 0;
         over -= rested;
 
-        // The hands on this part, and on its partner when that could reach this one: of the
-        // partner only how far its hands bend it this way is kept, so a hand pushing one part into
-        // the other makes it the one that leads below, as a swing does. Seen from the pushed part
-        // alone, the other was never pushed, and both pressed flat down the middle. One loop, so
-        // the press and the dent compile once.
-        // Each hand dents the part first, up to the deepest dent, easing in: soft tissue takes a
-        // light touch where it lands. Bent away first, a touch swung the whole part. Past both
-        // the dent and the moves below, the hand goes in and the capsules carry the skin.
+        // Hands on this part, and how far the partner's hands bend it this way, so a part pushed
+        // into the other leads (seen alone, both pressed flat). One loop, compiled once.
+        // Each hand dents locally first, up to the deepest dent: bent away first, a touch swung
+        // the whole part. Past that, the capsules carry the skin.
         // Cleared before the loop, which the shader filter may cut short.
         float3 dentW[4] = { float3(0, 0, 0), float3(0, 0, 0), float3(0, 0, 0), float3(0, 0, 0) };
         float dentDepth[4] = { 0, 0, 0, 0 }, dentR[4] = { 0, 0, 0, 0 }, spare[4] = { 0, 0, 0, 0 };
@@ -957,12 +887,10 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         {
             float first = m < 2 ? _YAPS_SquashPair.y : _YAPS_SquashPair.w;
             float share = (m & 1) == 0 ? first : 1 - first;
-            // The overlap, the hands' bends with it. What one part drove in further than the other
-            // swings the other away about its base, as far as its bend gives, and the rest presses
-            // a hollow the leader's shape; what both drove in alike presses flat down the middle,
-            // each its share. Read as the difference of the two swings against the overlap: the
-            // follows settle well off their edit-mode rests in play, inward too, by the same on
-            // both sides, and over the sum of the swings that settling read as driven alike.
+            // What one drove in further swings the other away within its give, the rest pressing a
+            // hollow; what both drove alike presses flat, each its share. The lead is the swings'
+            // difference: follows settle off their edit-mode rests equally in play, which a sum
+            // read as driven alike.
             float meet = over + bendSelf + bendOther;
             float self = bendSelf, other = bendOther;
             if (YapsUnit(4 + m) > 0 && YapsUnit(4 + (m ^ 1)) > 0)
@@ -971,21 +899,16 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 other += dot(YapsSlot(4 + (m ^ 1)) - YapsSlot(m ^ 1), axis);
             }
             float lead = clamp((other - self) / max(meet, YAPS_SQUASH_SOFT * reach), -1, 1);
-            // Of what one drove in further, the other swings away from all but GIVE, and both
-            // squash by that, each its share: flesh gives where it is pushed as well as moving.
-            // Swung away by all of it, a pushed part squashed nothing and neither did the one
-            // pushing it. The seam still bows by the whole lead.
+            // GIVE of the lead squashes both instead of swinging; swung by all of it, neither
+            // squashed. The seam still bows by the whole lead.
             float drive = lead * (1 - YAPS_SQUASH_GIVE);
             float takes = drive > 0 ? lerp(share, 1, drive) : share * (1 + drive);
             squashBow[m] = lead;
             squashDeep[m] = max(meet, 0) * takes;
-            // Swung away from the leader below. The seam stays at the leader's front, so what it
-            // swings away is pressed no more.
+            // Swung away from the leader; the seam stays at the leader's front.
             shunt = -axis * min(max(meet, 0) * max(drive, 0), reach);
-            // Test builds show where the slots came from by where the pulse plays: both pairs
-            // for the skinned buffer, the first pair alone when it reads empty, the second when
-            // it reads wrong. It squeezes from the outside, as a share of the start, so the pair
-            // is seen to swing in and meet; flattened where it stood, it read as no contact.
+            // Test builds: where the pulse plays shows the slot source (both pairs skinned, first
+            // pair empty, second wrong). From outside, so the pair is seen to swing in and meet.
             bool shown = yapsSkin <= 1 || (yapsSkin == 2) == (m < 2);
             float pulse = shown ? _YAPS_SquashPulse * start * (0.5 - 0.5 * cos(_Time.y * 2)) : 0;
             squeeze = -axis * pulse * strength;
@@ -994,14 +917,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             squashReach[m] = reach;
             // Signed, so a pair apart meets midway across the gap.
             squashPlane[m] = dot(axis, p.centre) + frontS + bendSelf - meet * takes;
-            // Eased in over the last of the gap: switched on at the touch, the skin by the seam
-            // jumped back onto it.
+            // Eased in over the last of the gap, or seam skin jumped at the touch.
             squashContact[m] = takes > 0 && _YAPS_SquashShape.w > 0 ? saturate(1 + (meet - min(rested, YAPS_SQUASH_SOFT * reach)) / (YAPS_SQUASH_SOFT * reach)) : 0;
         }
-        // Pushed off its rest by anything its cloth collides with: pressed from the side the
-        // push came from. Downward is left out, or the sag the cloth settles into would read
-        // as a press from above all the time. Off by default: every swing of the cloth read
-        // as a press too.
+        // Cloth push off rest, as a press from that side. Not downward, or the settled sag reads
+        // as a constant press. Off by default: every swing read as a press.
         if (YapsUnit(4 + m) > 0 && _YAPS_SquashPush.x > 0)
         {
             float3 push = p.centre - YapsSlot(4 + m);
@@ -1034,12 +954,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 bendSpan = bendFrom + outE;
             }
         }
-        // Shunted by its partner, by all the partner drove in further. Taken through the give a
-        // hand meets, it moved a few centimetres and the leader went through it. It moves the
-        // skin below by the weight the part's bones carry, as a push on the part would: laid on
-        // by share, a layer bridging the gap between a pair, its share stepping from one part to
-        // the other across a centimetre or two, was pulled apart by the whole shunt, and capped
-        // by share, a layer's edge was torn where the part's share ends.
+        // Shunted by all the partner drove in further (through a hand's give it moved only cm and
+        // the leader went through). Applied by bone swing weight, not part share: by share, a layer
+        // bridging the pair tore apart, or tore where the share ends.
         if (!p.framed) shunt = 0;
         float3 swung = bend + shunt;
         [unroll]
@@ -1047,18 +964,15 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             YapsAdd(S, M, dentW[hl] * max(spare[hl] - bendBy * max(dot(dentW[hl], bendDir), 0), 0));
         float sq = length(squeeze);
         if (sq > 0) YapsAdd(S, M, squeeze * max(1 - bendBy * max(dot(squeeze, bendDir), 0) / (sq * sq), 0));
-        // Bent toward its partner further than its hands took it, by the test pulse, it meets it
-        // there too: without the contact the two passed through each other. Eased in with the
-        // bend, as the contact moves skin that is near it, not only past.
+        // Bent toward the partner (pulse included) it meets it too, eased in with the bend;
+        // without this they passed through each other.
         if (squashReach[m] > 0 && _YAPS_SquashShape.w > 0)
         {
             squashContact[m] = max(squashContact[m], saturate(dot(swung, squashAxis[m]) / (YAPS_SQUASH_SOFT * reach)));
             squashDeep[m] += max(dot(swung, squashAxis[m]) - bendSelf, 0);
             squashDeep[m] = max(squashDeep[m] - max(-dot(swung, squashAxis[m]), 0), 0);
-            // The whole part gives first, as flesh does: its front goes back by its bulk share and
-            // it grows the other ways, so the seam below presses only what is left, a smaller
-            // patch rounding into a part squashed all over. Read before the seam's own cut-off,
-            // which differs vertex to vertex, so the whole part moves as one.
+            // The whole part gives its bulk share first, the seam presses the rest. Before the
+            // seam's per-vertex cut-off, so the part moves as one.
             float bulk = YAPS_SQUASH_BULK * squashDeep[m] * squashContact[m];
             if (bulk > 0)
             {
@@ -1068,15 +982,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             squashContact[m] *= onSeam;
         }
 
-        // The squeeze lines, solved exactly: M's largest eigenvalue in closed form, its line as
-        // the longest cross of two rows of M less that, then the two across it in their plane, so
-        // the three stay square. Flattened along the strongest alone, two presses at an angle
-        // swung the whole flattening over as one overtook the other. Iterated, a line was only as
-        // good as its start: the second grew from rounding noise and threw the part a hand's
-        // width; the first, from the sum, never turned up while presses from either side
-        // cancelled in it, and from the longest column it jumped when another grew longer with
-        // two squeezes nearly level. Each put the whole part on a wrong line for a frame. Which
-        // way a line points never matters: flattened along its reverse, front and back swap.
+        // Squeeze lines solved exactly: M's largest eigenvalue in closed form, its line the longest
+        // cross of two rows of (M - top I), then the two across it, kept square. Iterating depended
+        // on the start and threw the part a hand's width for a frame. Sign never matters.
         float3 ax[3];
         float3x3 I3 = float3x3(1, 0, 0, 0, 1, 0, 0, 0, 1);
         float mean = (M[0][0] + M[1][1] + M[2][2]) / 3;
@@ -1105,14 +1013,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         ax[1] = e1 * cos(turn) + e2 * sin(turn);
         ax[2] = cross(ax[0], ax[1]);
 
-        // Along each line, each side moved in by the press from that side: exact when every
-        // press lies on a line, a squeeze putting half on each side. Grown along the others by
-        // just enough to keep the volume. Grown faster, the old overfill made a squashed part a
-        // third bigger than it started.
-        // Two squeezes nearly level leave their lines free to swing round each other in a few
-        // frames, and each line read its own width of the part, so the flattening swung with
-        // them. Toward level, the pair shares one strength and one width, which no turn of the
-        // lines within their plane can change; each keeps how far off centre the part reaches.
+        // Each side of a line moves in by its press; the others grow by just enough to keep volume
+        // (more made a squashed part a third bigger). Nearly level squeezes swing their lines
+        // freely, so toward level they share one strength and width, which no turn changes.
         float flat[3], grow[3], shift[3], along[3];
         float onL[3], wide[3], off[3];
         [unroll]
@@ -1172,16 +1075,11 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 nm = normalize(ax[0] * (dot(ax[0], nm) / along[0]) + ax[1] * (dot(ax[1], nm) / along[1]) + ax[2] * (dot(ax[2], nm) / along[2]));
             if (lean > 0 && lean < 1) nm = normalize(nm - p.o * dot(bend / bendSpan, nm));
         }
-        // Each dent, centred where the hand meets the part at rest. Inside, the skin lies on the
-        // hand: a bowl as deep as the dent and as wide as a ball of the hand's size pressed that
-        // deep, (1 - t) of the depth at t = (distance / width)^2. Round its edge what the bowl
-        // moved rises into a shoulder, (1 - t) o^2 with o falling from 1 to 0, a third of the
-        // depth high at 1.35 widths and back to rest by 1.86: tissue does not compress, and the
-        // old low rim spread the same volume out to three widths, too thin to see, so the dent
-        // read as lost volume. Both move along the line from the part's centre, which keeps the
-        // volume exactly on a ball; moved along the hand's line instead, the rim slid round the
-        // sides unseen and a deep dent lost 6%. Never narrower than one and a half depths, or
-        // the skin could fold.
+        // Each dent: a bowl (1 - t) deep at t = (distance / width)^2, width that of a hand-sized ball
+        // pressed that deep, min 1.5 depths or the skin folds. The moved volume rises in a shoulder,
+        // (1 - t) o^2, a third of the depth at 1.35 widths, rest by 1.86 (a wider rim was invisible
+        // and read as lost volume). Moved along the line from the centre, exact on a ball; along
+        // the hand's line a deep dent lost 6%.
         [unroll]
         for (int e = 0; e < 4; e++)
         {
@@ -1203,34 +1101,26 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
                 nm = normalize(nm + g * dot(d, nm) / max(1 - sink - dot(g, d), 0.1));
             }
         }
-        // Swung about its base: the tip takes the whole shunt and the base none. Moved whole, the
-        // skin tore where a part's weights step near the body.
+        // Swung about the base, or skin tore where weights step near the body.
         float spanS = (_YAPS_SquashIn[m] + _YAPS_SquashOut[m]) * unit;
         float swingOut = spanS > 0 ? saturate((dot(squashed, p.o) + _YAPS_SquashIn[m] * unit) / spanS) : 0;
         mapped += (moved - world) * shares[m] + shunt * swings[m] * swingOut;
         partN[m] = nm;
         partDone[m] = 1;
     }
-    // Blended in part order whichever part went first: each lerp leans on the last, so a vertex
-    // two parts share took a different normal when the order changed.
+    // In fixed part order: each lerp leans on the last, so order changed shared normals.
     [unroll]
     for (int o = 0; o < 4; o++)
         if (hasNormal && partDone[o] > 0) mappedN = normalize(lerp(mappedN, partN[o], shares[o]));
     world += mapped;
     n = mappedN;
 
-    // Where the pair still overlaps, each side is pressed against the seam where the two meet,
-    // stopping just short of it, deeper layers closer behind. The seam is a ball bowed round the
-    // leader's front, so the part that led stays round and the other takes a hollow; pressed flat
-    // to a plane whichever moved, the patch showed past the partner as a dark fold. Letting a
-    // fifth through as the other surfaces do, both sides crossed into each other lying nearly
-    // flat, where two meshes can draw as a jagged seam. Short of the seam the press fades out
-    // over a width that grows with the overlap, so the patch rounds into the part as flesh does
-    // where it is pressed: at v before the stop it goes to KEEP v + (1 - KEEP) v (1 - e^(v / width)),
-    // level with the seam at the patch's edge and never folding. What is pushed back swells out
-    // round the patch.
-    // Rolled: written out four times, its part rebuilds and surface reads made the squash's vertex
-    // program twice the size and an upload's body compile ~10x the jelly's.
+    // Where the pair overlaps, each side presses to just short of the seam, deeper layers closer
+    // behind. The seam bows round the leader's front (flat, the patch showed past the partner as a
+    // dark fold; letting a fifth through drew a jagged seam). Short of it the press fades over a
+    // width growing with overlap: KEEP v + (1 - KEEP) v (1 - e^(v / width)), never folding. What
+    // is pushed back swells out round the patch.
+    // Rolled: unrolled it doubled the vertex program and the body compiled ~10x the jelly's.
     [loop]
     for (int c = 0; c < 4; c++)
     {
@@ -1239,17 +1129,12 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float bow = squashBow[c];
         float stop = YAPS_SQUASH_MEET * squashReach[c];
         float width = max(YAPS_SQUASH_ROUND * squashDeep[c], stop);
-        // The seam bows by the lead round the leader's front, from its six reaches: toward this
-        // part when the other leads, away when this one does, flat when they lead alike. The
-        // skin is pressed back along the line. A ball of the reach toward the partner was twice
-        // the front's real reach out of the body, and the hollow cut the still part open where
-        // the leader was not; pressed back along the ball's radius, its skin wrapped round over
-        // the leader's front as a lip.
+        // The seam bows by the lead round the leader's actual shape, pressed back along the line.
+        // A ball of its toward-reach cut the still part open; pressing along its radius wrapped a lip.
         float3 q = world - squashCentre[c];
         float along = dot(q, facing);
         float3 side = q - facing * along;
-        // How far the leader's front falls back along the line at this distance off it: where
-        // the line through here leaves the leader's turned shape on the side facing the other.
+        // Where the line through here leaves the leader's turned shape.
         int lc = bow > 0 ? c ^ 1 : c;
         YapsPart L = YapsTurned(YapsPartAt(lc, YapsSlot(lc), YapsUnit(lc)));
         float3 w = bow > 0 ? -facing : facing;
@@ -1262,17 +1147,13 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         float3 Wt = L.framed ? (P0 >= 0 ? L.front : L.back) / (L.unit * L.unit) : 1 / (L.reach * L.reach);
         float qa = dot(Wt, Wd * Wd), qb = dot(Wt, S * Wd), qc = dot(Wt, S * S) - 1;
         float disc = qb * qb - qa * qc;
-        // Past the leader's outline the seam carries on away from the part pressed, so the hollow
-        // stays whole at any lead. Curving back on the leader's own side, it dragged the skin
-        // past the fitted shape back into a point.
+        // Past the outline it carries on away, so the hollow stays whole; curving back made a point.
         float leave = (-qb + (bow > 0 ? sign(disc) : 1) * sqrt(abs(disc))) / max(qa, 1e-12);
         leave = YapsLeave(L, S, Wd, leave);
         float v = along - (squashPlane[c] - dot(squashCentre[c], facing) + bow * (pole - leave)) + stop;
-        // Leading, it gives only where it is inside the other, as far as it leads: pressed all
-        // over its front, its edge creased where nothing touched it. Driven alike, both go to the
-        // seam, as the other's fitted shape misses some of its skin and the two tore apart there.
-        // How deep is read square to the other's fitted shape: along the line it ran to its full
-        // depth a vertex away from where the line only grazed the other, and the skin stepped there.
+        // Leading, it gives only where inside the other, by the lead (all over, its edge creased);
+        // alike, both go to the seam. Depth read square to the other's shape: along the line it
+        // stepped where the line only grazed.
         if (bow < 0)
         {
             YapsPart P = YapsTurned(YapsPartAt(c ^ 1, YapsSlot(c ^ 1), YapsUnit(c ^ 1)));
@@ -1284,8 +1165,7 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
             v = lerp(v, min(v, inside * abs(dot(N, facing)) * rsqrt(max(dot(N, N), 1e-12))), -bow);
         }
         if (v <= -10 * width) continue;
-        // The seam's own facing there, which the pressed skin turns to and is pressed out along:
-        // the leader's front, as much as it leads, from its own surface where one was baked.
+        // The seam's facing: the leader's front by the lead, from its baked surface if any.
         float3 X = L.own ? YapsSurfaceNormal(L, S + Wd * leave) : (S + Wd * leave) * Wt;
         float3 nL = L.framed ? L.a * X.x + L.o * X.y + L.u * X.z : facing;
         nL *= dot(nL, facing) >= 0 ? 1 : -1;
@@ -1307,20 +1187,15 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         }
         float held = shares[c] * squashContact[c];
         float back = (v - to) * held;
-        // What the press pushes back swells out round the patch, as a marshmallow pressed on
-        // glass: the patch spreads and the side swells most at the seam, level there and dying
-        // away over a width. Falling away from the seam itself, the two sides met in a ridge
-        // along the bottom of a pair pressed hard together. The swell holds the cap the overlap
-        // pushed back, as deep as the press across a patch of radius sqrt(2 reach deep); its
-        // profile spans two widths. A rim half that size a width out read as two parts cut flat
-        // down a seam.
+        // Pushed-back volume swells round the patch like a marshmallow on glass: most at the seam,
+        // dying over two widths (falling from the seam made a ridge; half as big read as a flat
+        // cut). Holds the cap the overlap pushed back, patch radius sqrt(2 reach deep).
         float deep = squashDeep[c];
         float ring = sqrt(max(2 * squashReach[c] * deep, 1e-12));
         float behind = max(-v, 0) / width;
         float swell = _YAPS_DentSpill * squashReach[c] * deep * deep / (4 * ring * width) * held * (1 + behind) * exp(-behind);
         float3 away = side / max(length(side), ring);
-        // Out along the seam's normal to where its tangent plane is, not back along the line:
-        // the same where the seam is flat, and off a bowed front it slides round it as skin does.
+        // Along the seam's normal, so skin slides round a bowed front.
         world += away * swell - seamN * (dot(seamN, facing) * back);
         if (hasNormal)
         {
@@ -1330,11 +1205,9 @@ void YapsDentDeform(inout float3 position, inout float3 normal, inout float3 tan
         }
     }
 
-    // The own arms and hands, a capsule per bone from one joint to the next. Skin inside is
-    // eased out along the line from the bone. A hand meets no resistance and passes through a
-    // body, so the move tops out smoothly at half the radius: following it all the way
-    // scooped a tunnel through the part. Near the bone it lets go, since skin either side of
-    // it went opposite ways and the bone sweeping past flicked it across.
+    // Own arms and hands, a capsule per bone. Skin eases out, capped at half the radius (a hand
+    // passes through bodies; following it scooped a tunnel), and lets go near the bone, where a
+    // sweeping bone flicked skin across.
     if (_YAPS_SquashPush.w > 0 && _YAPS_SquashHands.x > 0)
     {
         [loop]

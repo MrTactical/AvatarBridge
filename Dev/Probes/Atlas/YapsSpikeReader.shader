@@ -1,11 +1,8 @@
 // Grabs the screen and reads back the corner the writer stamped.
 //
-// The named GrabPass is the whole question: it is the only way an avatar
-// shader can see what another avatar rendered, and nobody has tested whether
-// ChilloutVR's asset filter keeps it. If it survives an upload, there is a
-// transport here that costs no light slots, no contact pairs and no sync
-// bits, and that a viewer cannot switch off the way they can switch off
-// avatar lights.
+// A named GrabPass is the only way to see what another avatar rendered. If CVR
+// keeps it through upload, it is a transport with no light slots, contacts or
+// sync bits, which viewers cannot switch off like lights.
 Shader "YAPS/Spike Reader"
 {
     Properties
@@ -61,9 +58,7 @@ Shader "YAPS/Spike Reader"
                 // Some targets hand back a flipped grab.
                 if (_YAPS_SpikeAtlas_TexelSize.y < 0) uv.y = 1 - uv.y;
                 float4 got = UNITY_SAMPLE_SCREENSPACE_TEXTURE(_YAPS_SpikeAtlas, uv);
-                // Green means the value came back through the grab, red
-                // means it did not. Two small patches cannot be compared by
-                // eye, and in game there is no readback to fall back on.
+                // Green = came back through the grab. In game there is no readback.
                 float err = max(abs(got.r - _SpikeValue.r),
                             max(abs(got.g - _SpikeValue.g), abs(got.b - _SpikeValue.b)));
                 return err < 0.01 ? float4(0, 1, 0, 1) : float4(1, 0, 0, 1);

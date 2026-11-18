@@ -63,9 +63,7 @@ namespace AvatarBridge
 
             Undo.RegisterFullObjectHierarchyUndo(root, "YAPS prop");
 
-            // Stamped so a prop built months ago can say which version
-            // made it. Nothing revisits a prop, so every fix reaches new
-            // ones and no existing one, and the two look identical.
+            // Stamped: nothing revisits a prop, so old ones miss later fixes.
             foreach (var s in root.GetComponentsInChildren<YapsSocket>(true))
             {
                 s.builtBy = BridgeDefines.Version;

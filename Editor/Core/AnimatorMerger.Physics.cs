@@ -1,8 +1,5 @@
-// The physics half of the animator merge: an avatar's own toggles
-// switching the cloth that replaced its PhysBones.
-//
-// A partial class of AnimatorMerger. Same access, same signatures, one
-// compiled type.
+// The physics half of the animator merge: the avatar's toggles switching the cloth that
+// replaced its PhysBones.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -18,10 +15,8 @@ namespace AvatarBridge
         internal static void RewirePhysicsToggles(AnimatorController master, BridgeContext ctx)
         {
             var chains = ctx.ConvertedPhysicsChains;
-            // Zero chains still matters when style synthesis is on: an avatar whose ONLY
-            // physics would be a synthesized rig must reach phase 1 below. It matters
-            // too when every chain failed: the PhysBone toggles left stranded are
-            // reported below. Only a target of None means nobody wanted physics.
+            // Zero chains still runs: a synthesized rig needs phase 1, and stranded PhysBone
+            // toggles must be reported. Only a target of None skips.
             if (chains == null || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles
                                    && ctx.Settings.physicsTarget == PhysicsTarget.None))
             {
@@ -41,24 +36,19 @@ namespace AvatarBridge
 
             var rewired = new Dictionary<AnimationClip, AnimationClip>();
             int curvesAdded = 0, clipsTouched = 0, deactivationsMirrored = 0, offsAsserted = 0;
-            // Which cloth bindings each rewired clip switches on, and
-            // which may be asserted off elsewhere. A target is off-safe
-            // only while every activating container passed the
-            // shared-rider test.
+            // Cloth bindings each clip switches on. A target is off-safe only while every
+            // activating container passed the shared-rider test.
             var activatedByClip = new Dictionary<AnimationClip, HashSet<EditorCurveBinding>>();
             var offSafe = new Dictionary<EditorCurveBinding, bool>();
             // Every chain a binding reaches: grouped strands share one cloth's enabled flag.
             var chainByTarget = new Dictionary<EditorCurveBinding, List<BridgeContext.ConvertedPhysicsChain>>();
             var physicslessStyles = new HashSet<Transform>();
-            // Chains left running when their style hides, because a mesh outside the toggled
-            // object rides them. Named in the report so "this cloth never stops" is explained
-            // rather than mysterious.
+            // Chains left running when their toggle hides, because an outside mesh rides them.
+            // Reported, so "this cloth never stops" is explained.
             var sharedChains = new SortedSet<string>(StringComparer.Ordinal);
 
-            // PhysBone on/off curves with nowhere to land: the chain
-            // produced no physics, so there is no component to retarget.
-            // The toggle then does nothing, silently, while every other
-            // part of it converts. Reported with the skip that caused it.
+            // PhysBone curves whose chain produced no component, so the toggle silently does
+            // nothing. Reported with the skip that caused it.
             var strandedToggles = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 
             bool ChainInSubtree(Transform container)
@@ -74,9 +64,7 @@ namespace AvatarBridge
                 return false;
             }
 
-            // Everything that depends on a chain's simulated bones:
-            // meshes weighted to them, and anything parented beneath.
-            // Built once per chain.
+            // Meshes weighted to a chain's bones and anything parented beneath, once per chain.
             var ridersByChain = new Dictionary<BridgeContext.ConvertedPhysicsChain, List<Transform>>();
             List<Transform> RidersOf(BridgeContext.ConvertedPhysicsChain chain)
             {
@@ -114,12 +102,8 @@ namespace AvatarBridge
                 return riders;
             }
 
-            // The toggled object owns the chain: the simulated bones live
-            // inside it, not just the component that drove them.
-            //
-            // Who is weighted to them then does not matter. A body mesh is
-            // weighted to anything grafted onto the body and stays visible
-            // while the toggle hides the geometry.
+            // The bones live inside the toggled object, so riders do not matter: a body mesh is
+            // weighted to anything grafted on and stays visible while the toggle hides the part.
             bool ChainOwnedBy(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
             {
                 var chainRoot = chain.Root != null ? chain.Root
@@ -127,9 +111,7 @@ namespace AvatarBridge
                 return chainRoot != null && (chainRoot == animated || chainRoot.IsChildOf(animated));
             }
 
-            // True when a mesh outside the toggled object rides this
-            // chain. Something still visible needs those bones moving,
-            // so the cloth must not stop with the object.
+            // A mesh outside the toggled object rides this chain, so the cloth must keep running.
             bool ChainSharedOutside(BridgeContext.ConvertedPhysicsChain chain, Transform animated)
             {
                 foreach (var rider in RidersOf(chain))
@@ -142,9 +124,8 @@ namespace AvatarBridge
                 return false;
             }
 
-            // A self-contained rig: most of the container's skinned-mesh
-            // bones live inside it. Clothing skinned to body bones does
-            // not qualify. The rig root is the deepest common ancestor.
+            // Self-contained rig: most of the container's skinned bones live inside it (clothing
+            // on body bones does not qualify). Root is the deepest common ancestor.
             bool IsSelfContainedRig(Transform container, out Transform rigRoot)
             {
                 rigRoot = null;
@@ -185,14 +166,12 @@ namespace AvatarBridge
                 return true;
             }
 
-            // A toggled container with its own rig and no converted
-            // chain never had physics in the source either. Reported,
-            // so "broken" reads as "always rigid".
+            // A toggled rig with no converted chain had no physics in the source either. Reported,
+            // so it reads as "always rigid", not broken.
             void NotePhysicslessStyle(Transform container)
             {
-                // With no chain converted at all, "never had physics" cannot be told
-                // apart from "its PhysBones failed to convert", so say nothing. The Toolkit's card
-                // cannot see cloth placed by hand, so "nothing simulated" is not its to say.
+                // With no chain converted, "never had physics" and "failed to convert" look the same,
+                // so say nothing. The Toolkit's card cannot see hand-placed cloth either.
                 if (ctx.Standalone || (chains.Count == 0 && !ctx.Settings.addPhysicsToRiggedStyles))
                 {
                     return;
@@ -244,9 +223,8 @@ namespace AvatarBridge
                         continue;
                     }
 
-                    // Recorded before the search, cleared by a match below. A PhysBone curve that
-                    // finds no chain is the stranded case; object toggles are not, because an
-                    // object toggle still does its own job whether or not physics rode along.
+                    // Recorded, cleared by a match below. Only a PhysBone curve can be stranded: an
+                    // object toggle still does its own job.
                     bool physBoneRetargeted = false;
 
                     bool anyChainInSubtree = false;
@@ -266,18 +244,14 @@ namespace AvatarBridge
                                 continue;
                             }
                             anyChainInSubtree = true;
-                            // Hosts INSIDE the toggled subtree already ride along (DynamicBone
-                            // lives on the source object; and toggling the avatar root covers
-                            // everything). Only an outside host needs the extra curve.
+                            // Hosts inside the toggled subtree already ride along; only an outside
+                            // host needs the extra curve.
                             if (host == animated || host.IsChildOf(animated))
                             {
                                 continue;
                             }
-                            // Onto the component, not the holder's active
-                            // flag. Holders are created active, with the
-                            // cloth carrying the off state on its own
-                            // enabled flag. An activation on m_IsActive
-                            // would change nothing.
+                            // Onto the component: holders stay active and the cloth carries the off
+                            // state, so m_IsActive would change nothing.
                             target = chain.Physics != null
                                 ? EditorCurveBinding.FloatCurve(
                                     AnimationUtility.CalculateTransformPath(host, root),
@@ -330,10 +304,8 @@ namespace AvatarBridge
                         }
                         if (objectToggle && !CurveActivates(curve))
                         {
-                            // Mirrored, not dropped: CVR restores nothing,
-                            // so cloth switched on runs forever. Only a
-                            // container deactivation needs the proof that
-                            // nothing visible still rides these bones.
+                            // Mirrored: CVR restores nothing, so cloth switched on runs forever.
+                            // Only a container deactivation needs the shared-rider proof.
                             if (source != animated && !ChainOwnedBy(chain, animated)
                                 && ChainSharedOutside(chain, animated))
                             {
@@ -348,12 +320,8 @@ namespace AvatarBridge
                         }
                         else
                         {
-                            // An activation. Recorded rather than acted
-                            // on; the off-asserting states are not known
-                            // until every clip has been through this.
-                            // Both kinds of toggle count. A component
-                            // curve only matches its own chain and is
-                            // always safe to stop.
+                            // An activation, recorded: the off states are known only after every
+                            // clip. A component curve matches only its own chain, always safe to stop.
                             bool safe = source == animated || ChainOwnedBy(chain, animated)
                                         || !ChainSharedOutside(chain, animated);
                             if (!safe)
@@ -467,13 +435,9 @@ namespace AvatarBridge
             }
 
 #if AVATARBRIDGE_MAGICA
-            // Phase 1, before any curve is copied: "Add physics to
-            // toggled rigs that have none". A toggled self-contained rig
-            // with no converted chain gets a synthesized MagicaCloth.
-            // Done here because only the animator knows what is toggled.
-            // The new chain registers itself for phase 2 wiring.
-            // Asked for, and this target cannot do it. Said out loud rather
-            // than left as a setting that quietly does nothing.
+            // Phase 1, before any curve is copied: a toggled rig with no chain gets a synthesized
+            // MagicaCloth, here because only the animator knows what is toggled. It registers for
+            // phase 2. A target that cannot do it says so.
             if (ctx.Settings.addPhysicsToRiggedStyles
                 && ctx.Settings.physicsTarget != PhysicsTarget.MagicaCloth2)
             {
@@ -525,9 +489,8 @@ namespace AvatarBridge
                         }
                     });
                 }
-                // Outermost first, skipping any rig inside one already given a cloth.
-                // In hash order a nested pair either simulated the inner bones twice
-                // or left the outer rig rigid, varying run to run.
+                // Outermost first, skipping rigs inside one already clothed. Hash order simulated
+                // nested bones twice or left the outer rig rigid, varying per run.
                 int Depth(Transform t)
                 {
                     int depth = 0;
@@ -559,13 +522,9 @@ namespace AvatarBridge
                 });
             }
 
-            // Bindings the finished controller already switches off. A
-            // synthetic stop is for one nothing takes back; on a paired
-            // chain it would leave both halves disabled.
-            // Does this state hide everything that rides the chain?
-            //
-            // On a dropdown the other rider is usually another option, which
-            // this state hides too. So the question is asked per state.
+            // Bindings the controller already switches off: a synthetic stop on a paired chain
+            // would disable both halves. Per state, does it hide everything riding the chain? On a
+            // dropdown the other rider is usually another option this state hides too.
             bool HidesEveryRider(EditorCurveBinding target, AnimationClip clip)
             {
                 if (!chainByTarget.TryGetValue(target, out var chains)) return false;
@@ -631,30 +590,19 @@ namespace AvatarBridge
                     }
                 });
                 bool selector = IsSelector(layer, states);
-                // A binding refused by the shared-rider test is kept for a
-                // selector, and proved per state below: the thing riding
-                // those bones is often just ANOTHER option of the same
-                // dropdown, which that state hides too.
+                // A binding the shared-rider test refused is kept for a selector and proved per
+                // state below.
                 activatedHere.RemoveWhere(b => alreadySwitchedOff.Contains(b)
                                                || (!selector && (!offSafe.TryGetValue(b, out bool ok) || !ok)));
-                // Two states is the plain toggle. A SELECTOR is the other
-                // shape that qualifies: a dropdown whose states are all
-                // entered from AnyState on one parameter's value, so they
-                // are mutually exclusive by construction and each one IS
-                // the off half of the others.
-                //
-                // Anything else is left alone for the reason this used to
-                // stop at two: on a general machine the other states are
-                // unrelated, and a stop written into them would switch off
-                // physics they know nothing about.
+                // Two states, or a selector (all states entered from AnyState on one parameter, so
+                // each is the others' off half). On any other machine the states are unrelated, and
+                // a stop written into them would switch off physics they know nothing about.
                 if (activatedHere.Count == 0 || (states.Count != 2 && !selector))
                 {
                     continue;
                 }
 
-                // Cloned per layer, never shared: the same clip can be the off state of this
-                // toggle and of an unrelated layer, and a stop written into the shared asset
-                // would have that other layer switching off physics it knows nothing about.
+                // Cloned per layer: the same clip can be another layer's off state too.
                 var perLayer = new Dictionary<AnimationClip, AnimationClip>();
                 foreach (var state in states)
                 {
@@ -727,10 +675,7 @@ namespace AvatarBridge
             }
         }
 
-        // The bones a mesh is actually weighted to.
-        //
-        // Not skinned.bones. That is the skeleton it was bound against, and
-        // a body mesh lists every bone on the avatar at zero weight.
+        // Bones a mesh is actually weighted to. Not skinned.bones: a body lists every bone at zero weight.
         static readonly Dictionary<SkinnedMeshRenderer, List<Transform>> WeightedBonesCache =
             new Dictionary<SkinnedMeshRenderer, List<Transform>>();
 
@@ -746,10 +691,8 @@ namespace AvatarBridge
             if (mesh != null && bound != null && bound.Length > 0)
             {
                 var used = new HashSet<int>();
-                // GetAllBoneWeights, not mesh.boneWeights: the legacy view
-                // keeps four influences per vertex, and dropping the rest
-                // could call a real rider unridden, which is the dangerous
-                // direction of this test to be wrong in.
+                // GetAllBoneWeights: boneWeights keeps four influences and could miss a real rider,
+                // the dangerous way for this test to be wrong.
                 var weights = mesh.GetAllBoneWeights();
                 for (int i = 0; i < weights.Length; i++)
                 {
@@ -764,11 +707,8 @@ namespace AvatarBridge
             return bones;
         }
 
-        // A dropdown: every state reached from AnyState, all testing the
-        // same parameter. One value is live, so the others are its off half.
-        //
-        // Strict on purpose. Full coverage and a single parameter keep a
-        // sequence or a wait state from passing as a set of alternatives.
+        // A dropdown: every state reached from AnyState on one parameter. Strict, so a sequence or
+        // wait state never passes as a set of alternatives.
         static bool IsSelector(AnimatorControllerLayer layer, List<AnimatorState> states)
         {
             if (states.Count < 2) return false;

@@ -1,11 +1,6 @@
-// Fixture avatars for the corpus classes it never had, and the
-// BHFBUNNY face look, in one headless pass.
-//
-// Fixture_DeformSocket: a socket with a dedicated blendshaped mesh, so
-// the bake path and the shader's depth stages finally run under
-// regression. Fixture_HeadTransplant: a hand-built vrcfAlwaysVisibleHead
-// exactly as VRCFury bakes it, disabled, with a socket beneath it, so
-// the transplant class is finally in the corpus.
+// Fixture avatars for corpus classes it lacked, plus a face-slider look, in one headless pass.
+// Fixture_DeformSocket runs the bake path and depth stages; Fixture_HeadTransplant is a
+// disabled vrcfAlwaysVisibleHead as VRCFury bakes it, with a socket beneath.
 //
 //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.Run
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
@@ -25,8 +20,7 @@ namespace AvatarBridge.Dev
     public static class FixtureBuilder
     {
         const string SourceScene = "Sootie Scene";
-        // Beside the digests, so the log survives a reimport. Same variable
-        // the regression runner reads.
+        // Beside the digests, so the log survives a reimport.
         static readonly string Log =
             (Environment.GetEnvironmentVariable("AVATARBRIDGE_REPO") ?? ".") + "/Regression/fixture-builder.log";
         static StringBuilder _log = new StringBuilder();
@@ -56,10 +50,8 @@ namespace AvatarBridge.Dev
                     .IndexOf(nameContains, StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
-        // Only the new one. Run() rebuilds all three from the source
-        // scene, which would overwrite two fixtures the corpus already has
-        // a baseline for, and the source scene has been edited by hand
-        // since they were made, so they would not come back the same.
+        // This fixture alone: Run() would rebuild fixtures that have baselines from a source
+        // scene edited by hand since, so they would not come back the same.
         //
         //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunStrafeOnly
         public static void RunStrafeOnly()
@@ -79,15 +71,11 @@ namespace AvatarBridge.Dev
                 code = 1;
             }
             File.WriteAllText(Log, _log.ToString());
-            // Guarded the way Run is: called from an open editor this would
-            // otherwise close Unity on whoever ran it.
+            // From an open editor, Exit would close Unity.
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
-        // The tagged pair alone, for the same reason RunStrafeOnly exists:
-        // the other fixtures have baselines and the source scene has moved
-        // under them, so rebuilding the set would diff avatars this has
-        // nothing to do with.
+        // The tagged pair alone, for the same reason as RunStrafeOnly.
         //
         //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunTaggedOnly
         public static void RunTaggedOnly()
@@ -133,9 +121,8 @@ namespace AvatarBridge.Dev
             if (Application.isBatchMode) EditorApplication.Exit(code);
         }
 
-        // The prop case: a plug and a ring-and-socket body as they stand before Make
-        // prop, in a scene with no avatar. The corpus makes each a prop and verifies it
-        // every run; built once here so the input holds still while the code moves.
+        // A plug and a ring-and-socket body before Make prop, in a scene with no avatar.
+        // Built once so the corpus input holds still while the code moves.
         //
         //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Dev.FixtureBuilder.RunPropsOnly
         public static void RunPropsOnly()
@@ -149,11 +136,8 @@ namespace AvatarBridge.Dev
                 string target = dir + "/Fixture_Props.unity";
                 var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
-                // Its own mesh, beside the scene: the test plug's default is
-                // overwritten by every test plug anyone spawns.
-                // Baked under a root of its own name: the bake folder follows the
-                // root, and a bare test plug's "YAPS Test Plug" folder is shared
-                // with the smoke test's plug. The fixture lost its material there.
+                // Own mesh and own root name: the default mesh and the "YAPS Test Plug"
+                // bake folder are shared with every other test plug, and it lost its material there.
                 var holder = new GameObject("Fixture Prop Plug");
                 var plug = YapsNativeBuilder.BuildTestPlug(holder.transform, select: false, meshPath: dir + "/Fixture_Props Plug Mesh.asset");
                 if (plug == null) throw new Exception("the test plug did not build: YAPS Simple Lit missing?");
@@ -274,17 +258,9 @@ namespace AvatarBridge.Dev
             _log.AppendLine("  deform socket on Hips, 2 blendshapes, YAPS Simple Lit");
         }
 
-        // A named tag on both ends, and the only refuse list in the corpus.
-        //
-        // Every socket in the corpus wears the shared tag and nothing else,
-        // and no plug anywhere names a word or refuses one, so run 396 read
-        // "refusing=0" 27 times out of 27. That leaves the whole exclude
-        // path walked only by YapsTagProbe, which tests the fold in
-        // isolation and never runs a conversion: nothing checks that an
-        // authored excludeTags reaches the material the plug ships with.
-        //
-        // Shared is off on purpose at both ends. With it on the pair matches
-        // regardless and the named word proves nothing.
+        // A named tag on both ends and the corpus's only refuse list: run 396 read "refusing=0"
+        // 27 of 27, so nothing checked that excludeTags reaches the shipped material.
+        // Shared is off at both ends, or the pair matches regardless.
         static void AddTaggedPair(VRCAvatarDescriptor d)
         {
             var socket = new GameObject("Fixture Tagged Socket");
@@ -315,9 +291,7 @@ namespace AvatarBridge.Dev
             return comp;
         }
 
-        // Through SerializedObject rather than reflection: a rule entry is
-        // a Fury type this has no reference to, and the serialiser makes one
-        // without naming it.
+        // SerializedObject, not reflection: it makes a Fury rule entry without naming its type.
         static void TagSocket(Component socket, string tag)
         {
             var so = new SerializedObject(socket);
@@ -346,9 +320,7 @@ namespace AvatarBridge.Dev
             entry.stringValue = tag;
         }
 
-        // Fury climbs for a renderer, and a plug with none is not a plug a
-        // user would have. A primitive is enough: nothing here reads the
-        // shape, only that one exists.
+        // Fury climbs for a renderer; any shape will do.
         static void PlugMesh(GameObject host)
         {
             var primitive = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
@@ -364,9 +336,8 @@ namespace AvatarBridge.Dev
                 new Material(shader != null ? shader : Shader.Find("Standard"));
         }
 
-        // The user's class, built by hand exactly as Fury's bake leaves
-        // it: a disabled proxy head pinned to the real one by constraint,
-        // with the socket beneath it. The transplant must save this.
+        // As Fury's bake leaves it: a disabled proxy head constrained to the real one, socket
+        // beneath. The transplant must save this.
         static void AddTransplantSocket(VRCAvatarDescriptor d)
         {
             var head = Bone(d, HumanBodyBones.Head);
@@ -434,9 +405,8 @@ namespace AvatarBridge.Dev
             return mesh;
         }
 
-        // Convert BHFBUNNY, then drive the face sliders and say exactly
-        // which blendshapes move and which curves claim them. The sweep
-        // says responded=0 where the baseline said 2; this names why.
+        // Convert, drive the face sliders, and log which blendshapes move and which curves claim
+        // them: the sweep said responded=0 where the baseline said 2.
         static void BhfFaceLook()
         {
             string scenePath = FindScene("BHFBUNNY");
@@ -514,19 +484,9 @@ namespace AvatarBridge.Dev
         }
 
 
-        // A Base layer whose locomotion tree has a DIFFERENT clip on the
-        // left and the right of every sideways direction.
-        //
-        // The corpus has never held this shape: every avatar in it either
-        // mirrors its strafe or has no velocity tree at all, so the graft's
-        // folding of east and west into one direction bucket has never had
-        // anything to lose. Here it does. Grafted correctly the CCK tree
-        // ends up with StrafeL at x<0 and StrafeR at x>0; folded, one of
-        // them is written to both sides and the other never appears.
-        //
-        // The digest records blend tree children as position=>motion, so
-        // the failure and the fix are both readable there without a single
-        // extra field.
+        // A locomotion tree with a different clip left and right. No corpus avatar has one, so
+        // folding east and west into one bucket lost nothing. Correct: StrafeL at x<0, StrafeR
+        // at x>0; folded, one clip on both sides. The digest's position=>motion shows it.
         static void AddAsymmetricStrafe(VRCAvatarDescriptor d)
         {
             string dir = "Assets/FixtureAssets";
@@ -615,8 +575,7 @@ namespace AvatarBridge.Dev
             clip.SetCurve("", typeof(Animator), "LeftHand.Index.1 Stretched", AnimationCurve.Constant(0f, 1f, -1f));
             AssetDatabase.CreateAsset(clip, clipPath);
 
-            // The second brings its own mask with every part on, which the converter used to
-            // leave alone as authored.
+            // The second brings its own all-on mask, which must not be left as authored.
             string maskPath = dir + "/Fix_AllOn.mask";
             AssetDatabase.DeleteAsset(maskPath);
             var allOn = new AvatarMask();

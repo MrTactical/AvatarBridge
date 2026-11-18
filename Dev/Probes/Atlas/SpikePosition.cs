@@ -4,18 +4,10 @@
 //
 //   Tools > Avatar Bridge > Dev > Atlas > Screen atlas: position round trip
 //
-// Spike 1 proved a named GrabPass survives a ChilloutVR upload and returns
-// what another object rendered. It round-tripped a constant, so it said
-// nothing about carrying a real position. This drops a marker you can drag
-// around, publishes its own world position from its own matrix, reads the
-// grab back and reports the error in MILLIMETRES.
-//
-// The encoding here is deliberately the naive one, normalised across a fixed
-// box around the world origin, because the point is to measure where it
-// falls down. A half float carries about three decimal digits of relative
-// precision, so the error should grow with distance from the origin. If it
-// does, that is the argument for encoding an offset within a spatial-hash
-// cell instead, where the payload is never more than half a cell wide.
+// A draggable marker publishes its world position; the grab is read back and
+// the error reported in mm. Deliberately naive encoding (a fixed box round the
+// origin): a half float has ~3 digits, so error should grow with distance,
+// which argues for an offset within a hash cell instead.
 using UnityEditor;
 using UnityEngine;
 
@@ -79,9 +71,7 @@ public class SpikePosition : EditorWindow
         var root = new GameObject(Root);
         Undo.RegisterCreatedObjectUndo(root, "YAPS atlas position spike");
 
-        // The marker. An ORDINARY mesh, never skinned: Unity skins into world
-        // space and hands a SkinnedMeshRenderer an identity matrix, so a
-        // skinned marker could not publish where it is.
+        // Never skinned: a skinned renderer gets an identity matrix.
         var marker = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         marker.name = MarkerName;
         marker.transform.SetParent(root.transform, false);
@@ -108,9 +98,7 @@ public class SpikePosition : EditorWindow
         _result = "Built. Press Play, then drag the marker in the scene view.";
     }
 
-    // Saved as an asset, not made in the scene: a material created with
-    // new Material() does not carry its shader into an upload, which cost
-    // two uploads to learn on spike 1.
+    // Saved as an asset: a scene-only new Material() drops its shader from the upload.
     static Material Asset(string name, Shader shader)
     {
         const string dir = "Assets/YapsSpike";

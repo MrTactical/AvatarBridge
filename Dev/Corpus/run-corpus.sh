@@ -1,16 +1,7 @@
 #!/usr/bin/env bash
-# Launch a corpus run, throttled.
-#
-# A run is 87 avatars and well over an hour on a machine somebody is
-# trying to use. Unthrottled it takes the whole box: Unity at Normal
-# priority across every core makes the editor, the browser and the game
-# stutter, and the run is never urgent enough to be worth that. So every
-# corpus run goes through here, at BelowNormal and short of a full core
-# count, and takes longer on purpose.
-#
-# Costs about double the wall clock. That is the trade being made
-# deliberately, not an accident: nobody is waiting on the result inside a
-# minute, and the machine stays usable the whole time.
+# Launch a corpus run, throttled: BelowNormal and short of all cores, so the
+# machine stays usable (87 avatars, over an hour). About double the wall clock,
+# on purpose.
 #
 #   Dev/Corpus/run-corpus.sh                 the default, YAPS on
 #   Dev/Corpus/run-corpus.sh --yaps-off      the opt-out path
@@ -25,19 +16,14 @@
 #                                            since every body shader compiles the jelly
 #   Dev/Corpus/run-corpus.sh --per-process N at most N conversions per Unity (default 30, 0 = one Unity)
 #
-# AVATARBRIDGE_YAPS=1 is what a user gets and what Regression/Yaps
-# compares against; unset measures convertYapsSystems false, which lands
-# in Regression/. Both baselines are real and both have to hold.
+# AVATARBRIDGE_YAPS=1 compares against Regression/Yaps; unset measures
+# convertYapsSystems false against Regression/. Both baselines must hold.
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-# Machine-specific paths live in Dev/local.cfg, which is gitignored: the
-# corpus project and the Unity install are wherever this machine put them.
-#
-# Held first, because local.cfg assigns plainly and is sourced after: a
-# value passed for one run was being overwritten by the file and the run
-# went ahead on the file's number, saying so in a line nobody rereads.
+# Machine paths live in the gitignored Dev/local.cfg. Environment values are
+# held first because local.cfg assigns plainly and would overwrite them.
 env_project="${AVATARBRIDGE_PROJECT:-}"
 env_unity="${AVATARBRIDGE_UNITY:-}"
 env_cores="${AVATARBRIDGE_CORES_TO_LEAVE:-}"
@@ -78,8 +64,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-# The advisor picks the physics target itself, and the harness files an
-# advisor run under Advisor/ whatever AVATARBRIDGE_PHYSICS says.
+# The advisor picks the solver itself and files under Advisor/ regardless.
 if [ "$advisor" = "1" ] && [ "$dynbone" = "1" ]; then
     echo "--dynbone does not combine with --advisor: the advisor chooses the solver" >&2
     exit 2
@@ -104,10 +89,9 @@ log="$REPO/Regression/corpus-run-$label-$suffix.log"
 [ -d "$PROJECT" ] || { echo "no project at $PROJECT" >&2; exit 1; }
 
 # Batch Unity cannot open a project the GUI has open: it dies in
-# HandleProjectAlreadyOpenInAnotherInstance, which reads as a crash and
-# exits 1 like a changed digest. An open editor holds Temp/UnityLockfile,
-# so an exclusive open fails; one a crash left behind opens fine and is no
-# obstacle. Exit 3 is the only refusal, so a missing powershell never blocks.
+# HandleProjectAlreadyOpenInAnotherInstance and exits 1 like a changed digest.
+# An open editor holds Temp/UnityLockfile exclusively; a crash's leftover does
+# not. Only exit 3 refuses, so a missing powershell never blocks.
 lock="$PROJECT/Temp/UnityLockfile"
 if [ -f "$lock" ]; then
     powershell.exe -NoProfile -Command "
@@ -119,11 +103,9 @@ if [ -f "$lock" ]; then
     fi
 fi
 
-# The deployed copy, not the repo: the corpus tests what was installed.
-# A run against a stale deploy measures yesterday's code and looks clean.
-# Every shipped folder deploy.sh copies, not one file: a fix in Editor/Core
-# alone passed a one-file check. Repo-side only, since deploy copies rather
-# than mirrors and the deploy legitimately holds more (Editor/DevTools).
+# The corpus tests the deploy, so a stale one measures old code and looks clean.
+# Every shipped folder (a one-file check missed an Editor/Core fix). Repo-side
+# only: the deploy legitimately holds more (Editor/DevTools).
 dest="$PROJECT/Assets/AvatarBridge"
 stale=$(for d in AvatarScaler Editor FaceTracking Presets Runtime; do
     [ -d "$REPO/$d" ] || continue
@@ -147,11 +129,9 @@ fi
 
 export AVATARBRIDGE_REPO="$(cygpath -w "$REPO" 2>/dev/null || echo "$REPO")"
 if [ "$yaps" = "1" ]; then export AVATARBRIDGE_YAPS=1; else unset AVATARBRIDGE_YAPS; fi
-# Unset unless asked for: a value left in the environment would otherwise
-# turn a normal run into the advisor profile and compare it against nothing.
+# Unset unless asked: a leftover value silently changes the profile.
 if [ "$advisor" = "1" ]; then export AVATARBRIDGE_PROFILE=advisor; else unset AVATARBRIDGE_PROFILE; fi
-# Same trap: a leftover value files the run under DynamicBone/ while the
-# log still says it was the default.
+# Same trap: a leftover files the run under DynamicBone/.
 if [ "$dynbone" = "1" ]; then export AVATARBRIDGE_PHYSICS=DynamicBone; else unset AVATARBRIDGE_PHYSICS; fi
 if [ "$soft" = "1" ]; then export AVATARBRIDGE_SOFT=1; else unset AVATARBRIDGE_SOFT; fi
 case "$scope" in
@@ -165,11 +145,9 @@ esac
 
 echo "corpus: $suffix -> $log"
 
-# One Unity converts at most this many avatars, then the next carries on from the digests
-# already written. A single process ran past about 70 at 24 GB and died in the native
-# allocator, losing the rest of the night; the same avatar converted fine in a fresh one.
-# It is one run, under one authorization: the parts share Current/ and the last one writes
-# the summary. 0 keeps the whole run in one process.
+# At most this many avatars per Unity, then a fresh one resumes from the
+# digests: one process died in the native allocator past ~70 at 24 GB. Still
+# one run: parts share Current/, the last writes the summary. 0 = one process.
 export AVATARBRIDGE_PER_PROCESS="$per_process"
 unset AVATARBRIDGE_RESUME
 
@@ -180,10 +158,8 @@ launch() {
         -logFile "$1" &
     local unity_pid=$!
 
-    # Throttle the process just launched, by its Windows pid. Matching every
-    # process named Unity also caught an editor open on another project, left it
-    # slowed after the run, and could stop before the batch Unity was even up.
-    # Helpers it spawns afterwards inherit both settings.
+    # By Windows pid: matching by name also throttled other open editors.
+    # Helpers it spawns inherit both settings.
     local winpid
     winpid=$(cat "/proc/$unity_pid/winpid" 2>/dev/null || echo 0)
     powershell.exe -NoProfile -Command "
@@ -228,8 +204,7 @@ while :; do
     if [ "$code" = "4" ]; then
         echo "part $part: stopped at its cap, $now digests so far; going on in a fresh Unity"
     elif [ "$now" -gt "$had" ] && [ "$part" -lt 20 ]; then
-        # A crash after progress: the avatar it died on gets a fresh process, which is
-        # what converted it last time. One that never gets further stops the run below.
+        # Crash after progress: retry in a fresh process. No progress stops the run.
         echo "part $part: Unity stopped (exit $code) without a summary after $now digests; resuming in a fresh Unity"
     else
         break
@@ -240,9 +215,8 @@ while :; do
 done
 rm -f "$began"
 
-# Unity exits 1 for its own failures too, so the code alone cannot say a
-# digest changed. The harness logs its summary as "[Regression/<scope>]";
-# without that line the run never got as far as comparing.
+# Unity exits 1 for its own failures too; without a "[Regression/<scope>]"
+# summary line the run never got to comparing.
 if [ "$code" = "0" ]; then
     echo "corpus finished, exit 0: no digest changed"
 elif grep -q '^\[Regression/' "$log" 2>/dev/null; then

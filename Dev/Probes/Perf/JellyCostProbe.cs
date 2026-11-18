@@ -128,9 +128,8 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // Its own copy of every controller the avatar plays: the tissue declares its parameters in
-        // each, and the unpacked copy still played the source avatar's own files (one took twelve
-        // parameters, 2026-11-07).
+        // Its own copy of every controller: the tissue declares parameters in each, and an unpacked
+        // copy still plays the source avatar's files (one took twelve parameters).
         static void OwnControllers(CVRAvatar avatar)
         {
             var swaps = new Dictionary<RuntimeAnimatorController, RuntimeAnimatorController>();
@@ -368,9 +367,8 @@ namespace AvatarBridge.Regression
                     }
                     one.Release();
                 }
-                // -costHalf: the same chains on half-float copies of their textures, timed in turns with the
-                // float ones, near and awake. Whether the state's memory traffic is what a GPU waits on:
-                // if halving it moves little, a half-precision state has nothing to win.
+                // -costHalf: the chains on half-float copies, timed in turns with the float ones, near and
+                // awake: if halving memory traffic moves little, a half-precision state wins nothing.
                 if (Flag("-costHalf"))
                 {
                     var all = chains.ToList();
@@ -414,10 +412,9 @@ namespace AvatarBridge.Regression
                         Log($"A/B all parts, near, eight hands, {Mathf.RoundToInt(1 / dt)} fps: old {a[3]:0.000} ({a[0]:0.000} to {a[6]:0.000}) ms, new {b[3]:0.000} ({b[0]:0.000} to {b[6]:0.000})");
                     }
                 }
-                // The step-rate switches, off and on in turns: frames in a row on the step's own clock,
-                // _Time and unity_DeltaTime moved on a frame's time per frame, so a gated frame costs
-                // what it does in game. Steps counts the frames whose clock (texel 25) moved. A cap of 1 prices
-                // a frame the gate skips; of 1000, the gate on that never skips.
+                // The step-rate switches, off and on in turns, with _Time and unity_DeltaTime advanced
+                // per frame so a gated frame costs what it does in game. Steps counts frames whose clock
+                // (texel 25) moved. Cap 1 prices a skipped frame; cap 1000, the gate never skipping.
                 if (chains[0].passes[0].blitMaterial.HasProperty("_Cap"))
                 {
                     var all = chains.ToList();

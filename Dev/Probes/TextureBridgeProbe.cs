@@ -1,19 +1,8 @@
-// D1's first question: can a value cross from the GPU into a synced parameter
-// with no contact anywhere?
-//
-// The chain is atlas shader -> RenderTexture -> CVRTexturePropertyParser task
-// -> a public field on a component -> animator parameter -> AAS. This probe
-// covers the half that can be proven here, and says plainly where the other
-// half begins.
-//
-// CVRBlitter is REAL CCK code: a public Execute that calls Graphics.Blit,
-// driven off Camera.onPreRender. It runs in the editor and can be called
-// directly, so the texture half is falsifiable locally.
-//
-// CVRTexturePropertyParser is a STUB: its Update body is empty and the client
-// carries the implementation. Nothing local can prove the parser, the field
-// write, or the sync. That half needs an upload, and a stub proving nothing is
-// exactly the trap the CCK sets.
+// D1: can a value cross from the GPU into a synced parameter with no contact?
+// Chain: atlas shader -> RenderTexture -> CVRTexturePropertyParser -> component
+// field -> animator parameter -> AAS. Only the texture half is provable here:
+// CVRBlitter is real CCK code, but the parser is a stub (empty Update, the
+// client has the real one), so the parser, field write and sync need an upload.
 //
 //   -executeMethod AvatarBridge.Regression.TextureBridgeProbe.Run
 #if CVR_CCK_EXISTS && UNITY_EDITOR
@@ -32,11 +21,8 @@ namespace AvatarBridge.Regression
 
         public static void Run()
         {
-            // LINEAR, not the default. A gamma render texture converts on the
-            // way in and out, and the first run of this probe read 0.6431 back
-            // from a written 0.3725: the sRGB curve, not a broken transport.
-            // The parser reads raw pixel values, so any RT in this chain has to
-            // be linear or every value arrives gamma-mangled.
+            // Linear: a gamma RT read 0.6431 back from a written 0.3725 (the sRGB
+            // curve). The parser reads raw pixels, so every RT in the chain must be linear.
             var origin = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGB32,
                 RenderTextureReadWrite.Linear);
             var destination = new RenderTexture(1, 1, 0, RenderTextureFormat.ARGB32,
@@ -95,8 +81,7 @@ namespace AvatarBridge.Regression
             Debug.Log($"PROBE parser: {parser.tasks.Count} task(s) accepted, texture {parser.texture.width}x" +
                 $"{parser.texture.height}");
 
-            // What the CCK will and will not do for us, read off the type
-            // rather than assumed.
+            // Read off the type rather than assumed.
             var update = typeof(CVRTexturePropertyParser).GetMethod("Update",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             var body = update?.GetMethodBody();

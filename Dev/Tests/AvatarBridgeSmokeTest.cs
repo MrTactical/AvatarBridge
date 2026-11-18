@@ -28,11 +28,8 @@ namespace AvatarBridge.Regression
             Results.Clear();
             var created = new List<GameObject>();
             var generated = GeneratedFiles.Snapshot();
-            // A batch run inherits whatever scene was open last, and a corpus
-            // avatar left sitting in it has baked plugs near everything: the
-            // preview then finds one already close and spawns none, and the
-            // scan counts plugs this test never made. The editor keeps the
-            // scene the person is looking at.
+            // Batch inherits the last scene; an avatar left in it has baked plugs,
+            // so the preview spawns none and the scan counts foreign plugs.
             if (Application.isBatchMode)
             {
                 UnityEditor.SceneManagement.EditorSceneManager.NewScene(
@@ -314,11 +311,10 @@ namespace AvatarBridge.Regression
                     UnityEngine.Object.DestroyImmediate(shaft);
                 }
             });
-            // A converted plug's author's Self rules ride on its material, and
-            // the conversion adopts a component onto it, as here: the rules
-            // were once read only for a plug WITHOUT one, which is no real
-            // conversion. Not humanoid, so both sockets count as on the hips,
-            // and path order makes the hole bit 1 and the ring bit 2.
+            // Self rules ride on the material and conversion adds a component, so
+            // rules read only for a plug without one missed every real conversion.
+            // Not humanoid: both sockets count as on the hips; path order makes
+            // the hole bit 1 and the ring bit 2.
             Step("YAPS > A converted plug's own-socket rules", () =>
             {
                 var baked = avatar.GetComponentInChildren<YapsPlug>(true).Target.sharedMaterials[1];

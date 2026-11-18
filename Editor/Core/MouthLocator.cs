@@ -3,21 +3,9 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Finds where an avatar's mouth actually is, for ChilloutVR's voice position.
-    //
-    // This used to be the head bone, which sits at the base of the skull; so on anything with a
-    // muzzle the voice came out of the neck, and ChilloutVR builds its in-game mouth pointer from
-    // this value. On a flat human face the error is a couple of centimetres; on a snouted avatar
-    // it is most of a head.
-    //
-    // The good source is the avatar's own geometry. A viseme blendshape stores a per-vertex delta,
-    // so an open-mouth viseme like "aa" IS a map of which vertices form the mouth: take the ones
-    // that move most, average their positions, and the answer is measured rather than guessed,
-    // and correct for any head shape, muzzle length or species, with no assumptions about proportion.
-    //
-    // Falls back to the jaw bone (right for jaw-flap avatars, which have no visemes to read, but
-    // it sits at the hinge rather than the lips) and then to the head bone, which is what every
-    // conversion did before. Never returns something worse than it used to.
+    // Mouth position for the voice and CVR's mouth pointer. The head bone is at the skull base,
+    // most of a head off on a muzzle. An "aa" viseme's most-moved vertices map the mouth on any
+    // head shape. Falls back to the jaw bone (at the hinge, not the lips), then the head bone.
     public static class MouthLocator
     {
         public enum Method
@@ -183,10 +171,7 @@ namespace AvatarBridge
             Vector3 world = sum / total;
             Vector3 local = Local(root, world);
 
-            // A wrong answer here is worse than the old one, so it has to pass a sanity check
-            // before it is trusted: the mouth belongs near the head, and never above eye level.
-            // If a mesh's bind poses are odd or a "viseme" shape drives something else entirely,
-            // this catches it and the caller falls through to the jaw or head bone.
+            // Near the head and below eye level, else odd bind poses or a misnamed viseme fall through.
             if (head != null)
             {
                 Vector3 headLocal = Local(root, head.position);

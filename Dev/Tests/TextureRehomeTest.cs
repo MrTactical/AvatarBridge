@@ -7,28 +7,14 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for rescuing a material's textures out of VRCFury's temp folder.
+    // Rescuing textures out of VRCFury's temp folder. Fury can store textures as sub-assets of its
+    // FX controller; copying the container whole shipped the controller too. A texture inside
+    // anything else comes out alone; a file of only textures is copied whole.
     //
-    // Fury keeps baked textures as sub-assets of whatever file it is writing, and one user's bake
-    // put four of them inside its FX controller. The rescue copied the container whole, so the
-    // output carried Fury's entire FX controller, layers and clips included, for the sake of the
-    // pictures in it. A texture inside anything else now comes out alone; a file of nothing but
-    // textures is still copied whole, byte for byte.
-    //
-    // The textures are made the way Fury's arrive: compressed, and not readable, after a reload
-    // from disk. A non-readable texture has no pixels a script can read, and an earlier fix
-    // avoided cloning on the grounds that the clone would come out blank, so the pixels are
-    // compared on the GPU, original against copy. A bake run in the same session hands over
-    // live textures that were never reloaded, so one of those goes through too, made unreadable
-    // the way a script makes it.
-    //
-    // Meshes and materials are written in one batch, with one delete for what a previous run
-    // left. So a mesh and a second material slot go through too, and the conversion runs twice
-    // into one folder: the second must replace the first's files in place, not number new ones.
-    //
-    // A second texture file of the same name, from another folder, is copied under a numbered
-    // name, and the import renames its main texture to match. That one is found as the main
-    // asset, since no name in the copy matches the source any more.
+    // Textures arrive compressed and unreadable after a reload (or unreadable and live, from a bake
+    // in the same session), so pixels are compared on the GPU. The conversion runs twice into one
+    // folder: the second must replace files in place, not number new ones. A same-named texture
+    // from another folder gets a numbered copy whose main asset the import renames.
     public static class TextureRehomeTest
     {
         const string Temp = "Packages/com.vrcfury.temp/__ABTextureRehomeTest";

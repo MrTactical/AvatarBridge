@@ -9,20 +9,10 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge
 {
-    // Folds sibling PhysBones that would produce identical cloths into one
-    // multi-root cloth.
-    //
-    // A VRCPhysBone has one root; authors who want 26 hair strands write 26
-    // components, and converting one-for-one lands 26 solvers on the avatar
-    // where MagicaCloth2 wants one component holding 26 root bones. Every
-    // extra component is its own proxy mesh and its own solver team, so the
-    // count is a real cost, not just a long hierarchy.
-    //
-    // The bar for merging is "the two components would have been identical
-    // anyway": same settings, same colliders, same on/off state, same
-    // parent, same classified kind, same segment lengths, same mesh thickness.
-    // Anything a merge could not express (an ignore list, a PhysBone parameter,
-    // a toggle on one chain) keeps its own component.
+    // Folds sibling PhysBones that would produce identical cloths into one multi-root cloth.
+    // A PhysBone has one root, so 26 strands are 26 components; in MagicaCloth2 each is its
+    // own proxy mesh and solver team. Merges only when the cloths would be identical anyway;
+    // an ignore list, a parameter or a per-chain toggle keeps its own component.
     public static class PhysBoneChainGrouping
     {
         const string Category = "PhysBones -> MagicaCloth2";
@@ -126,24 +116,18 @@ namespace AvatarBridge
             {
                 return null;
             }
-            // Exclusions are per component in MagicaCloth2: it has no ignore
-            // list, so they are expressed by rooting around the excluded
-            // bones, and that root set belongs to one chain.
+            // MagicaCloth2 has no ignore list; exclusions are a per-chain root set.
             if (data.Ignores.Count > 0 || data.HumanoidExclusions.Count > 0 || data.ToeExclusions.Count > 0)
             {
                 return null;
             }
-            // A curve is sampled along the chain by normalised depth, so two
-            // chains of different length read different values off the same
-            // curve even when every other number matches.
+            // Curves sample by normalised depth, so different lengths read different values.
             if (HasCurve(data.PullCurve) || HasCurve(data.SpringCurve) || HasCurve(data.StiffnessCurve)
                 || HasCurve(data.ImmobileCurve) || HasCurve(data.RadiusCurve))
             {
                 return null;
             }
-            // Anchored volumes are measured and given collision bones per side.
-            // A merged left and right would share one radius and one collision
-            // bone, so they stay apart whatever their settings say.
+            // Anchored volumes get a radius and collision bone per side, so left and right stay apart.
             var cls = MagicaPresetLibrary.Classify(data);
             if (cls == null || MagicaClothWriter.SoftBodyClasses.Contains(cls.Name))
             {
@@ -244,8 +228,7 @@ namespace AvatarBridge
             return paths;
         }
 
-        // Rounded, because two strands of one hairstyle are authored by
-        // copying a component and the odd float differs in the last bit.
+        // Rounded: copied components differ in the last float bit.
         static string F(float value) => value.ToString("0.####");
     }
 }

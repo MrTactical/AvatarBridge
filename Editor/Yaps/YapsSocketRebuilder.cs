@@ -1,8 +1,6 @@
-// The rebuild: a converted socket stops being VRCFury's rig retuned and
-// becomes what the YAPS tool builds. Read what Fury placed, strip
-// Fury's machinery, let the native builder emit a fresh rig, and point
-// the author's depth reactions at the rebuilt channel. Every socket bug
-// that reached a user lived in the difference between the two rigs.
+// Replaces a converted socket's VRCFury rig with the one the YAPS toolkit builds:
+// read what Fury placed, strip it, build fresh, repoint the author's depth reactions.
+// One rig, so converted and native sockets cannot diverge.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -32,19 +30,14 @@ namespace AvatarBridge
             public Transform Root;
             public bool IsHole;
             public bool EmitLights;
-            // What the author's reaction layers read, one entry per stay
-            // task on a penetrating-filtered trigger.
+            // One per stay task on a tip-filtered trigger.
             public List<string> DepthParams = new List<string>();
-            // What SPS called this socket. Filled by the caller, because
-            // the words live on a component the bake destroys and only the
-            // VRChat side of the tool can read one.
+            // Filled by the caller: only the VRChat side can read the SPS component.
             public List<string> Tags = new List<string>();
             public int Lights, Pointers, Triggers;
         }
 
-        // Runs before anything retunes the sockets. Kind, light emission
-        // and the depth channel are read here because the evidence is
-        // exactly what gets stripped.
+        // Reads kind, lights and depth channel first: the evidence is what gets stripped.
         public static Dictionary<Transform, Spec> ReadAndStrip(BridgeContext ctx, List<Transform> socketRoots)
         {
             var specs = new Dictionary<Transform, Spec>();
@@ -91,12 +84,9 @@ namespace AvatarBridge
             return specs;
         }
 
-        // VRCFury bakes every socket branch inactive and relies on SPS's enable
-        // service, which does not survive conversion. Wake the socket,
-        // everything under it, and every STUCK ancestor up to the avatar root.
-        // An object some clip can switch stays as found: the menu owns it, and
-        // only what NOTHING can switch is woken. This keyed off the marker
-        // lights, which the strip removes, so it keys off the socket itself.
+        // VRCFury bakes socket branches inactive for SPS's enable service, which does
+        // not survive conversion. Wakes what NO clip can switch, on the socket, below
+        // it and up to the root; anything a menu owns stays as found.
         public static void Wake(BridgeContext ctx, List<Transform> socketRoots)
         {
             var switchable = Switchable(ctx);
@@ -132,12 +122,8 @@ namespace AvatarBridge
             }
         }
 
-        // Every object path a clip can switch, counting only layers that can
-        // actually assert. Fury merges its socket exclusivity at weight zero,
-        // and a path animated ONLY by a dead layer is not controllable by
-        // anything; treating it as menu-owned left sockets dark, the exact bug
-        // the rebuild exists to end. The first layer always runs regardless of
-        // its stated weight.
+        // Only layers that can assert: Fury's exclusivity merges at weight 0, and
+        // counting it left sockets dark. The first layer runs whatever its weight.
         public static HashSet<string> Switchable(BridgeContext ctx)
         {
             return Switchable(ctx.MergedController);
@@ -194,11 +180,8 @@ namespace AvatarBridge
                 && t.allowedTypes.Any(a => TipTypes.Contains(a));
         }
 
-        // OGB and its kin read plug tips too, so a haptics receiver the user
-        // chose to keep looks exactly like a depth trigger to the tip filter.
-        // Its parameters say what it is. Kept in step with
-        // SystemStripper.HapticsParamPrefixes, which cannot be referenced here:
-        // the stripper only exists when the VRChat SDK does.
+        // Haptics receivers read plug tips too; their parameters tell them apart.
+        // Keep in step with SystemStripper.HapticsParamPrefixes (VRChat SDK only).
         static readonly string[] HapticsPrefixes = { "OGB", "pcs/", "WH_" };
 
         static bool IsHaptics(CVRAdvancedAvatarSettingsTrigger t)
@@ -211,10 +194,8 @@ namespace AvatarBridge
                           || n.StartsWith("#" + p, StringComparison.Ordinal)));
         }
 
-        // Fury's rig off the subtree: protocol lights, socket-role
-        // pointers, and the depth triggers whose parameters were just
-        // recorded. The renderer, the root and anything user-made stay.
-        // Haptics and any trigger not filtered to a plug tip stay too.
+        // Protocol lights, socket pointers and tip depth triggers. The root, renderer,
+        // haptics and anything user-made stay.
         static void Strip(Transform root, Spec spec)
         {
             foreach (var l in root.GetComponentsInChildren<Light>(true).Where(YapsScanner.IsProtocolLight).ToList())
@@ -230,10 +211,8 @@ namespace AvatarBridge
                 spec.Pointers++;
                 RemoveHost(p.transform, root, p);
             }
-            // Only a channel that can be repointed is stripped. Several
-            // parameters cannot collapse to one without changing what
-            // plays when, so those sockets keep their triggers and their
-            // layers exactly as authored.
+            // Several parameters cannot collapse to one without changing what
+            // plays, so those sockets keep their triggers as authored.
             if (spec.DepthParams.Count <= 1)
             {
                 foreach (var t in root.GetComponentsInChildren<CVRAdvancedAvatarSettingsTrigger>(true).ToList())
@@ -243,9 +222,8 @@ namespace AvatarBridge
                     RemoveHost(t.transform, root, t);
                 }
             }
-            // Fury's WorldSpace plumbing: constraints that pinned the stripped
-            // lights. Below the root only, since a constraint ON the root is what
-            // places the socket itself and stays.
+            // Fury's constraints that pinned the lights. Below the root only: one
+            // on the root places the socket itself.
             foreach (var c in root.GetComponentsInChildren<UnityEngine.Animations.IConstraint>(true).ToList())
             {
                 var component = c as Component;
@@ -255,11 +233,9 @@ namespace AvatarBridge
             PruneEmpty(root);
         }
 
-        // Fury's rig off a converted plug, before the fresh announce: its
-        // tracker light would sit beside the new one, doubling the Raliv
-        // signal and taking a second vertex slot, and its pointers win the
-        // announce's dedupe over fresh ones on the measured frame. Only a
-        // plug that converted is stripped; a failed one keeps what works.
+        // Before the fresh announce: Fury's tracker light would double the DPS
+        // signal and take a vertex light slot, and its pointers would win the
+        // dedupe. Only for plugs that converted.
         public static void StripPlugRig(Transform plugRoot)
         {
             if (plugRoot == null) return;
@@ -277,8 +253,7 @@ namespace AvatarBridge
             PruneEmpty(plugRoot);
         }
 
-        // The component's object when nothing else lives there, otherwise
-        // just the component. The root itself is never removed.
+        // The whole object if nothing else lives there. Never the root.
         static void RemoveHost(Transform host, Transform root, Component doomed)
         {
             if (host != root && host.childCount == 0
@@ -290,8 +265,7 @@ namespace AvatarBridge
             UnityEngine.Object.DestroyImmediate(doomed);
         }
 
-        // Holders Fury made that now hold nothing. Bottom-up, so an empty
-        // chain goes in one pass.
+        // Bottom-up, so an empty chain goes in one pass.
         static void PruneEmpty(Transform root)
         {
             var all = root.GetComponentsInChildren<Transform>(true)
@@ -317,30 +291,19 @@ namespace AvatarBridge
         // channel, and the author's layers pointed at it.
         public static void Finish(BridgeContext ctx, Dictionary<Transform, Spec> specs)
         {
-            // Fields first, on every socket, then the builds: the light
-            // cap ranks a socket against ALL of them, so building while
-            // half still carry default fields hands out too many slots.
+            // Fields on every socket first: the light cap ranks against all of them.
             foreach (var pair in specs)
             {
                 if (pair.Key == null) continue;
                 var socket = pair.Key.GetComponent<YapsSocket>();
-                // A failed bake reported itself, but the socket was already
-                // stripped, and lights and pointers need no bake. Rebuild
-                // the rig anyway or the failure costs more than it used to.
+                // Already stripped, and lights and pointers need no bake, so
+                // rebuild even after a failed bake.
                 if (socket == null) socket = pair.Key.gameObject.AddComponent<YapsSocket>();
                 socket.kind = pair.Value.IsHole ? YapsSocket.SocketKind.Hole : YapsSocket.SocketKind.Ring;
                 socket.emitLights = pair.Value.EmitLights;
-                // Always, never only when there is something to say. The
-                // component defaults to the shared word so a socket built
-                // here is answered by picky plugs; a socket CONVERTED from
-                // SPS gets whatever SPS said instead, and an author who
-                // turned the shared tag off there meant it.
+                // Always, even empty: an author who turned SPS's shared tag off meant it.
                 socket.tags = new List<string>(pair.Value.Tags);
-                // Stamped like the native and prop builders do. The stale card is
-                // guarded on this being non-empty, so leaving it blank meant a
-                // CONVERTED socket could never report itself out of date, and converted
-                // avatars are the ones most likely to be: a socket built before 4.4.0
-                // carries half-size trigger volumes and a hole flag that reads wrong.
+                // Blank would hide the stale card for converted sockets.
                 socket.builtBy = BridgeDefines.Version;
             }
 
@@ -355,15 +318,12 @@ namespace AvatarBridge
                 var socket = root.GetComponent<YapsSocket>();
                 if (socket == null) continue;
 
-                // No rename: the author's clips may bind paths through this
-                // object, and a renamed path is a silenced channel. The
-                // label, and so the depth parameter, derives from the bone.
+                // No rename: the author's clips may bind paths through this object.
                 YapsSocketBuilder.Build(socket);
                 rebuilt++;
 
-                // Two same-kind sockets on one bone share a label; sharing
-                // a parameter as well would hand both reactions to whichever
-                // socket a plug touched last.
+                // Two same-kind sockets on one bone share a label, but must not
+                // share a parameter.
                 string wanted = YapsSocketReactions.Parameter(socket);
                 for (int n = 2; taken.Contains(wanted); n++)
                 {
@@ -371,17 +331,12 @@ namespace AvatarBridge
                         .Replace("/Depth", n.ToString() + "/Depth");
                 }
                 taken.Add(wanted);
-                // The sync choice is the wearer's setting, same as before the rebuild:
-                // local and free by default, synced at 32 bits a socket when they ask
-                // the room to see the shapes. The setting worked by matching Fury's
-                // names, which the repoint erases, so it is honored here by the prefix.
+                // Local by default, 32 bits a socket when synced.
                 if (!ctx.Settings.syncSocketDepthForOthers) wanted = "#" + wanted;
                 string parameter = YapsSocketReactions.EnsureDepthChannel(socket, ctx.MergedController, wanted);
-                // Trigger-written, so nothing in the controller reads it unless
-                // the repoint happened, and the orphan prune would take it.
+                // Trigger-written, so the orphan prune would otherwise take it.
                 ctx.ContactParameters.Add(parameter);
-                // Recorded as built, so the toolkit's Remove knows this name
-                // and takes it out once nothing reads it.
+                // So Remove knows this name.
                 socket.builtParameter = parameter;
                 if (spec.DepthParams.Count == 1)
                 {
@@ -390,8 +345,6 @@ namespace AvatarBridge
                 }
                 else if (spec.DepthParams.Count > 1)
                 {
-                    // Several channels was a deliberate authoring choice;
-                    // collapsing them to one would change what plays when.
                     left.Add($"{socket.name}: {spec.DepthParams.Count} depth parameters left as authored");
                 }
             }
@@ -408,12 +361,8 @@ namespace AvatarBridge
             }
         }
 
-        // LAST of everything that writes a socket's active state. The
-        // lighthouse lights the chosen socket, and switches it on only when no
-        // toggle of its own can; it reads which toggles exist off the
-        // controller, so every toggle has to be wired first. One wired after
-        // it read as no toggle, and the lighthouse then held that socket on
-        // over its own switch.
+        // LAST of everything writing a socket's active state: it reads which toggles
+        // exist, and a toggle wired after it got overridden.
         public static void Lighthouse(BridgeContext ctx)
         {
             string lighthouse = YapsLighthouse.Build(ctx.CvrAvatar, ctx.MergedController);
@@ -423,10 +372,8 @@ namespace AvatarBridge
                 "(32 bits).");
         }
 
-        // Fury's socket exclusivity merges at weight zero, and ChilloutVR
-        // has no runtime layer-weight control, so the layers can never
-        // assert: pure residue, and residue this table of bugs grew in.
-        // Only the exact Fury naming at exactly zero weight is removed.
+        // Fury's exclusivity merges at weight 0 and CVR has no runtime layer weight,
+        // so they never run. Only Fury's naming at exactly 0 is removed.
         static void RemoveExclusivityLayers(BridgeContext ctx)
         {
             var controller = ctx.MergedController;
@@ -449,9 +396,7 @@ namespace AvatarBridge
             }
         }
 
-        // The one rename the repoint needs: every place a controller reads a
-        // parameter by name. Clips are deliberately untouched, since they
-        // animate blendshapes and never name the parameter.
+        // Every place a controller reads a parameter by name. Clips never name it.
         public static bool RenameParameterEverywhere(AnimatorController controller, string from, string to)
         {
             if (controller == null || string.IsNullOrEmpty(from) || from == to) return false;
@@ -461,8 +406,7 @@ namespace AvatarBridge
             for (int i = 0; i < parameters.Length; i++)
             {
                 if (parameters[i].name != from) continue;
-                // The target may already exist (a second socket repointed
-                // here first); then the old parameter is simply dropped.
+                // Target may exist already; then just drop the old one.
                 if (parameters.Any(p => p.name == to))
                 {
                     controller.RemoveParameter(i);
@@ -530,8 +474,7 @@ namespace AvatarBridge
             if (tree == null) return;
             if (tree.blendParameter == from) tree.blendParameter = to;
             if (tree.blendParameterY == from) tree.blendParameterY = to;
-            // A Direct tree weights each child by name, and smoothing trees read
-            // the depth that way. Children is a copy, so it is written back.
+            // Direct trees weight children by name. Children is a copy, so write back.
             var children = tree.children;
             for (int i = 0; i < children.Length; i++)
             {

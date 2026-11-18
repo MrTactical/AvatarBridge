@@ -1,17 +1,10 @@
 // Builds the D1 test rig: a drop-in prefab that puts a value on the GPU and
 // shows, in game, how far into C# it gets.
 //
-// The editor can prove the blitter half and nothing else, because
-// CVRTexturePropertyParser ships as an empty stub and the client carries the
-// real one. So this makes the rest visible rather than measurable: the value
-// drives a cube's height and a light, and either they move in game or the
-// parser never runs.
-//
-// The shader emits a sawtooth on time, not a constant. A constant is
-// indistinguishable from a default that was never written, and the phase of a
-// sawtooth answers the second question too: a remote copy ramping in step with
-// the wearer's means the value crossed the network, and out of step means that
-// client computed its own.
+// The CCK's CVRTexturePropertyParser is an empty stub, so the value drives a
+// cube's height and a light: they move in game or the parser never ran.
+// A sawtooth, not a constant (which looks like an unwritten default). A remote
+// copy in phase with the wearer's means it crossed the network.
 //
 //   -executeMethod AvatarBridge.Regression.D1PrefabBuilder.Build
 #if CVR_CCK_EXISTS && UNITY_EDITOR
@@ -126,9 +119,7 @@ namespace AvatarBridge.Regression
 
         static RenderTexture MakeTexture(string file)
         {
-            // Linear, never the default. A gamma render texture applies the
-            // sRGB curve on the way in and out, and the parser samples raw
-            // pixels: a probe that skipped this read 0.6431 back from 0.3725.
+            // Linear: the parser reads raw pixels, and gamma read 0.6431 back from 0.3725.
             var rt = new RenderTexture(4, 4, 0, RenderTextureFormat.ARGB32,
                 RenderTextureReadWrite.Linear)
             {
@@ -145,11 +136,8 @@ namespace AvatarBridge.Regression
             AssetDatabase.CreateAsset(asset, Folder + file);
         }
 
-        // The driver only pushes its fields into animator parameters from
-        // OnDidApplyAnimationProperties, which Unity raises when a clip
-        // animates one of its properties. Nothing animates slot 1, so this clip
-        // animates slot 2 purely to make that callback fire; slot 2 is wired to
-        // "-none-" and the driver skips it.
+        // The driver only pushes from OnDidApplyAnimationProperties, raised when a
+        // clip animates it. This animates the unwired slot 2 just to fire it.
         static void MakePumpClip()
         {
             var clip = new AnimationClip { frameRate = 60f };

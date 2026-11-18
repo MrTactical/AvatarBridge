@@ -1,11 +1,7 @@
-// The contact channel on an avatar the toolkit built. No longer built:
-// Build only takes out what an older version left. A plug finds a socket
-// through the screen atlas, with marker lights where the atlas cannot
-// answer.
-//
-// Build is also where every toolkit door that bakes a plug ends, so the
-// avatar-wide wiring lives here: the owner id, the tag choosers, the
-// readout toggle, and the check that every curve written binds.
+// Takes out the contact channel older versions built; plugs find sockets
+// through the atlas and marker lights. Every plug bake ends here, so the
+// avatar-wide wiring lives here too: owner id, tag choosers, readout toggle,
+// and the check that every curve binds.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -25,10 +21,8 @@ namespace AvatarBridge
         // "YAPS0E publish", they write "YAPS <label> reactions".
         static readonly Regex Mine = new Regex(@"^#?YAPS\d");
 
-        // Takes out any channel an earlier build left, and builds none. The
-        // plug's shader stopped reading it: a contact only clears on exit, and
-        // a socket deleted or switched off inside one never exits, so the plug
-        // stayed bent toward nothing. Returns the lines for the build log.
+        // Builds none: a contact clears only on exit, so a socket switched off
+        // inside one left the plug bent toward nothing. Returns log lines.
         public static List<string> Build(CVRAvatar avatar)
         {
             var lines = new List<string>();
@@ -45,9 +39,7 @@ namespace AvatarBridge
             // knows as a fact the socket is not its own.
             string owner = YapsOwner.Wire(avatar);
             if (owner != null) lines.Add("✓ " + owner);
-            // After the bakes, like the id. The choosers were built by the
-            // socket step alone, so an avatar with plugs and no sockets never
-            // got one, and neither did a plug baked from its own inspector.
+            // After the bakes, so plug-only avatars and inspector bakes get one.
             var dead = new List<string>();
             foreach (var controller in YapsOwner.Targets(avatar))
             {
@@ -70,9 +62,7 @@ namespace AvatarBridge
         public static int Clear(CVRAvatar avatar)
         {
             if (avatar == null) return 0;
-            // The controllers the avatar ships, plus the Animator's slot older
-            // builds wrote into. The slot alone missed a channel built into the
-            // uploaded controller, which then shipped with nothing reported.
+            // The shipped controllers plus the Animator's slot older builds used.
             var animator = avatar.GetComponent<Animator>();
             var legacy = BridgeContext.Underlying(animator != null ? animator.runtimeAnimatorController : null);
             var controllers = YapsOwner.Targets(avatar);
@@ -107,9 +97,7 @@ namespace AvatarBridge
             return n;
         }
 
-        // What a previous build wired, and nothing else. Drivers are only
-        // taken when everything they carry is the channel's own: an avatar
-        // may have drivers of its own, which are not the toolkit's to delete.
+        // Drivers only when everything they carry is the channel's own.
         static void Clear(CVRAvatar avatar, List<AnimatorController> controllers)
         {
             foreach (var t in avatar.GetComponentsInChildren<Transform>(true).ToList())

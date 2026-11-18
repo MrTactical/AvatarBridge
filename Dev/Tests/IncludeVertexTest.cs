@@ -7,11 +7,10 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // A vertex function in an include is patched once for every pass that uses it. Passes
-    // are patched last first, so the shadow caster usually goes first, and a caster that
-    // fails is skipped as cosmetic. It used to mark the include done before failing, so
-    // every later pass returned "already patched" with nothing injected: the plug drew
-    // straight with no refusal (found on two popular toon shaders by the shader sweep).
+    // An include's vertex function is patched once for every pass using it, last pass first, so
+    // the shadow caster usually goes first and its failure is skipped as cosmetic. Marking the
+    // include done before failing made later passes report "already patched" with nothing
+    // injected: the plug drew straight, no refusal (seen on two popular toon shaders).
     public static class IncludeVertexTest
     {
         const string Dir = "Assets/IncludeVertexTest";

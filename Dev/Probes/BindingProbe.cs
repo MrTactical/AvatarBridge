@@ -7,18 +7,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Everything in a converted controller that writes one object's bindings, and; the part that
-    // answers "why is this stuck"; every state in the OWNING layer that writes nothing to it.
-    //
-    // ChilloutVR does not restore Write Defaults. A binding stays wherever the last state to write
-    // it left it, so a value latches the moment control passes to a state that is silent about it.
-    // Which means the interesting output here is not the clip that switches something ON; it is
-    // the list of states in the same layer that say NOTHING, because those are where it sticks.
-    //
-    // Written because hand-parsing the .anim YAML for this exact question produced garbage: a
-    // grep window around a path match picks up whichever binding happens to sit nearby, and the
-    // attribute and value it prints belong to a different curve. The object model pairs them
-    // correctly and nothing else does.
+    // Everything that writes one object's bindings, plus every state in the owning layer that
+    // writes nothing to it: CVR does not restore Write Defaults, so values stick in silent states.
+    // Grepping .anim YAML pairs attributes with the wrong curve; the object model does not.
     //
     // AVATARBRIDGE_PROBE_CONTROLLER  the .controller asset path
     // AVATARBRIDGE_PROBE_PATH        substring of the object path to follow
@@ -113,10 +104,7 @@ namespace AvatarBridge.Regression
                 }
                 else
                 {
-                    // WHY it is silent, in the terms the assert pass reasons in; a state with an
-                    // unconditional exit is deliberately skipped there, on the theory that nobody
-                    // lingers in it. If that theory is wrong for this state, the value latches and
-                    // this is the line that says so.
+                    // The assert pass skips states with an unconditional exit; if one lingers, it latches.
                     var t = state.transitions ?? new AnimatorStateTransition[0];
                     bool unconditional = t.Any(x => x != null && (x.conditions == null || x.conditions.Length == 0));
                     string why = state.motion == null ? "no motion at all"

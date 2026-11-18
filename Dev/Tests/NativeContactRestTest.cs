@@ -8,18 +8,13 @@ using VRC.SDK3.Dynamics.PhysBone.Components;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for a contact's or collider's rest state under native toggles (audit PHY-03).
+    // Contact/collider rest state under native toggles (audit PHY-03). A contact with rootTransform
+    // on a bone is rebuilt under that bone, so its own object no longer switches it; under CVR's
+    // native toggles the host stayed live from load and fired under objects that start off.
     //
-    // A contact anchored outside its own object (rootTransform on a bone) is rebuilt under that
-    // bone, so its object switching off no longer switches it. With animator toggles the host
-    // starts off and the toggle's clips carry it. With ChilloutVR's native toggles the host stayed
-    // live from load, so a contact under an object that starts off, or that nothing ever turns on,
-    // fired anyway.
-    //
-    // The case that keeps this honest is the disabled component: its host must start off AND stay
-    // out of the toggle, or switching the object on wakes a contact the author turned off. A fix
-    // that only turned hosts off at rest would fail the first toggle case instead, because the
-    // toggle skipped every host that was off.
+    // Key case: a disabled component's host must start off AND stay out of the toggle, or the
+    // toggle wakes a contact the author turned off. Turning hosts off at rest alone fails the first
+    // toggle case, because the toggle skipped every host that was off.
     public static class NativeContactRestTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Contact rest state under native toggles")]

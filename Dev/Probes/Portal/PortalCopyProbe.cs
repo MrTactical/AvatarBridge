@@ -14,11 +14,9 @@
 //                                             the mouths ringed, as PNGs for a film
 //       [-portalFilmHost <name>]              the copy host it films; the first by default
 //
-// S3's band probe, its plug, hosts, poses and cameras, with the plug given a
-// second copy as the duplicate builds one: every vertex copied, on one point
-// at the plug's origin, its normal and tangent the root's up and forward, the
-// bake extended by the shipped ExtendBake. Every host is patched with the
-// copy's variant, plus Simple Lit without it on the plain plug.
+// PortalBandProbe's plug, hosts, poses and cameras, plus a second copy as the
+// duplicate builds it (bake extended by the shipped ExtendBake). Every host
+// gets the copy's variant, plus Simple Lit without it on the plain plug.
 //
 // Per pose and enable, the deform's own output through the capture, against
 // the atlas with the exit and against the same atlas without it:

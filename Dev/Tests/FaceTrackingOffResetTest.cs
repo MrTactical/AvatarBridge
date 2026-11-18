@@ -7,14 +7,10 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the face letting go when tracking turns off (audit FT-02).
-    //
-    // The bundled rig's off states are empty, Write Defaults on. ChilloutVR writes nothing back
-    // when a state stops animating a property, so turning Face or Eye Tracking off left the face in
-    // its last tracked expression. Each off state must play the face mesh's own rest values, read
-    // from the mesh rather than assumed 0, and then hand over to an empty state, because the rig
-    // sits above the avatar's own layers: rest values held there would cover every expression that
-    // shares a shape.
+    // Face letting go when tracking turns off (audit FT-02). CVR writes nothing back when a state
+    // stops animating, so empty off states froze the last expression. Each off state plays the
+    // mesh's own rest values (not assumed 0), then hands over to an empty state: the rig sits above
+    // the avatar's layers, so held rest values would cover every expression sharing a shape.
     public static class FaceTrackingOffResetTest
     {
         const string Face = "Body";

@@ -13,28 +13,16 @@
 //       [-dupCompareAlso <file>]           another file, reported and not gated
 //       [-dupNoStereo]                     skip the single-pass instanced compiles, minutes per host
 //
-// Build is the builder: a copy of every corner of the plug submesh's
-// triangles whose three corners are all on the plug and carry a frame,
-// appended after every vertex, and those triangles added to the same submesh
-// over the copies. Always from the mesh under it, so copies never compound.
-// The deform tells the copy apart by _YAPS_CopyStart, the original vertex
-// count.
+// Build copies every plug triangle whose corners all carry a frame, appended
+// after every vertex in the same submesh, always from the mesh under it so
+// copies never compound. _YAPS_CopyStart is the original vertex count.
+// The copy is ANCHORED on one point (see YapsCopyHide in yaps_deform), its
+// shape from dupFrom's bake extended, never a bake over the copies, which
+// would measure a point.
 //
-// ANCHORED, not weighted as their originals. With the originals' weights a
-// bent plug's copy vertices recovered roots spread by up to 119 mm, and near
-// where the copy starts drawing a triangle hid one corner at a time. So every
-// copy sits on one point, the bake's origin, wholly on the root's bone, its
-// normal and tangent the root's up and forward, no blendshape deltas, colours
-// and UVs its original's. Every copy vertex skins the same numbers, so every
-// test the deform makes answers once for the whole copy, and a viewer without
-// the deform sees nothing. Its shape is its original's bake entry: dupFrom's
-// bake, extended, never a bake over the copies, which would measure a point.
-//
-// The probe makes a skinned plug with a body behind it and runs: split, bake,
-// duplicate, the bake extended, readout. Then, through the scratch deform
-// with YAPS_DUPLICATE on, with sockets drawn into a screen atlas in several
-// arrangements, on Simple Lit and Poiyomi and lilToon hosts, HDR, 8-bit and
-// an 8-bit sRGB atlas, under a shadowing light and a pixel point light:
+// Checks, through the scratch deform with YAPS_DUPLICATE on, on Simple Lit,
+// Poiyomi and lilToon hosts, HDR, 8-bit and 8-bit sRGB atlases, under a
+// shadowing light and a pixel point light:
 //   a hidden copy: the frame with the copy's triangles is the frame without
 //     them, pixel for pixel, and every copy vertex is one point
 //   a drawn copy: the first copy's rings reach its socket and the second's

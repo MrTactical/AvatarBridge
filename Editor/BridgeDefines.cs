@@ -9,17 +9,9 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Keeps AvatarBridge's optional-dependency scripting defines in sync with what is
-    // actually installed in the project. This file must always compile, so it may not
-    // reference any SDK, CCK, MagicaCloth2 or DynamicBone types directly.
-    //
-    // Defines managed here:
-    //   AVATARBRIDGE_MAGICA   - MagicaCloth2 is present
-    //   AVATARBRIDGE_DYNBONE  - DynamicBone (or the VRLabs stub) is present
-    //   AVATARBRIDGE_YAPS     - the YAPS add-on is installed
-    //
-    // The VRChat SDK and the CCK manage their own defines (VRC_SDK_VRCSDK3 and
-    // CVR_CCK_EXISTS) which the rest of this package is gated behind.
+    // Syncs AVATARBRIDGE_MAGICA, AVATARBRIDGE_DYNBONE (DynamicBone or the VRLabs stub) and
+    // AVATARBRIDGE_YAPS with what is installed. Must always compile, so it may not reference
+    // SDK, CCK, MagicaCloth2 or DynamicBone types. The SDK and CCK set their own defines.
     [InitializeOnLoad]
     public static class BridgeDefines
     {

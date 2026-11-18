@@ -18,10 +18,8 @@ namespace AvatarBridge
     //   Int   + menu toggles        -> Dropdown (one option per used value) or Toggle
     //   Float + radial/puppet menu  -> Slider
     //
-    // The generated entries deliberately have no GameObject targets: the converted FX
-    // layers already react to the parameters, the entries only exist so CVR shows menu
-    // controls and saves the values to the profile. Sync comes from the animator's own
-    // parameter list, entry or not.
+    // No GameObject targets: the FX layers already react; entries exist for the menu and
+    // profile saving. Sync comes from the animator's parameter list.
     public static class ParameterMenuConverter
     {
         const string Category = "Parameters & menu";
@@ -98,13 +96,8 @@ namespace AvatarBridge
             var puppets = new List<PuppetPair>();
             WalkMenu(vrc.expressionsMenu, "", uses, visited, ctx, puppets);
 
-            // Outward-facing beats the flag. VRChat's 256-bit budget
-            // taught authors and VRCFury to de-sync menu parameters and
-            // carry them through side channels that do not survive
-            // conversion, so "not synced" is untrustworthy on anything
-            // a menu drives. A control whose effect nobody else can see
-            // is a broken feature, and ChilloutVR's budget is 3200
-            // bits: menu-driven parameters sync here regardless.
+            // VRChat's 256-bit budget pushed menu parameters into side channels that do not survive
+            // conversion, so "not synced" is untrustworthy. CVR has 3200 bits: menu parameters sync.
             if (ctx.Settings.preserveParameterSyncState
                 && vrcParams != null && vrcParams.parameters != null)
             {
@@ -167,12 +160,7 @@ namespace AvatarBridge
                     {
                         continue; // already covered by its Joystick2D entry
                     }
-                    // Never build a control for a parameter the stripper is about to take. The
-                    // joystick path has refused these since 2.32.3; the slider/toggle/dropdown
-                    // path did not, so a stripped system's menu. GoGo's decoratively-labelled
-                    // "- (-)" controls and its 256-value emote dropdown; was faithfully rebuilt
-                    // as Advanced Avatar Settings and then left dangling once the layers reading
-                    // it were removed.
+                    // Never for a parameter the stripper takes, or the stripped system's menu dangles.
                     if (SystemStripper.WillBeStripped(ctx, p.name))
                     {
                         ctx.Report.Skipped(Category, $"Menu control for \"{p.name}\" not created",
@@ -225,10 +213,7 @@ namespace AvatarBridge
                     continue;
                 }
 
-                // Leave anything the stripper is about to take. GoGo Loco ships a puppet on
-                // "Go/PuppetX"/"Go/PuppetY", and renaming those to a joystick's "-x"/"-y" moved
-                // them out of the "Go/" family the stripper recognises; so GoGo's puppet
-                // survived removal, wearing a joystick and a meaningless generated name.
+                // Stripper's first: renaming "Go/PuppetX" to "-x" hid it from the "Go/" match and it survived.
                 if (SystemStripper.WillBeStripped(ctx, puppet.X) ||
                     SystemStripper.WillBeStripped(ctx, puppet.Y))
                 {
@@ -259,11 +244,8 @@ namespace AvatarBridge
                 // joystick arriving at other players is worse than none.
                 ctx.PreserveParameters.Add(candidate + "-x");
                 ctx.PreserveParameters.Add(candidate + "-y");
-                // And the base name, which is not a parameter at all but is what ChilloutVR
-                // derives the two axes from. Left out, the rename pass sees a name it doesn't
-                // recognise as synced and prefixes the entry to "#TailController"; which then
-                // derives "#TailController-x", matching nothing, and the dead-entry sweep removes
-                // the control as unused. The axes were preserved; the name they hang off wasn't.
+                // The base name too: CVR derives the axes from it. Left out, it became "#Name", the
+                // axes "#Name-x" matched nothing, and the dead-entry sweep removed the control.
                 ctx.PreserveParameters.Add(candidate);
 
                 result.Add(new CVRAdvancedSettingsEntry
@@ -313,11 +295,8 @@ namespace AvatarBridge
         {
             bool hasMenu = paramUses != null && paramUses.Count > 0;
 
-            // ChilloutVR supplies some values itself; gestures, locomotion, visemes, and the
-            // stream-fed trigger/mute/VR-mode parameters. Avatars commonly declare those as
-            // synced so their FX can read them, but a menu control for one is worse than
-            // useless: the game overwrites it every frame, so the control does nothing while
-            // still occupying menu space and sync budget.
+            // Game-driven values (gestures, locomotion, visemes, stream-fed): overwritten every
+            // frame, so a menu control does nothing but cost space and sync.
             if (CvrParameterNames.IsGameDriven(p.name))
             {
                 ctx.Report.Skipped(Category, p.name,
@@ -382,11 +361,8 @@ namespace AvatarBridge
                     };
 
                 case VRCExpressionParameters.ValueType.Float:
-                    // VRCFury bakes most toggles as float parameters driven by blend
-                    // trees. When every menu use is a toggle/button, expose a checkbox
-                    // (writing 0/1 into the float) instead of a slider. Only while every toggle
-                    // writes 0 or 1: presets at 0.25/0.5/0.75 would collapse onto one checkbox
-                    // that reaches none of them, so those stay a slider.
+                    // VRCFury bakes toggles as floats: a checkbox if every use writes 0 or 1. Presets
+                    // at 0.25/0.5/0.75 stay a slider, a checkbox would reach none of them.
                     bool allToggles = hasMenu && paramUses.All(u =>
                         u.Type == VRCExpressionsMenu.Control.ControlType.Toggle ||
                         u.Type == VRCExpressionsMenu.Control.ControlType.Button);
@@ -492,12 +468,8 @@ namespace AvatarBridge
             int maxValue = Mathf.Max(valueNames.Count > 0 ? valueNames.Keys.Max() : 0, (int)p.defaultValue);
             maxValue = Mathf.Min(maxValue, 255);
 
-            // ChilloutVR dropdowns map option INDEX to the parameter value, so reaching value
-            // N needs N+1 entries here. AnimatorMerger.CompactIntDropdowns usually renumbers
-            // the parameter afterwards and removes the gaps entirely; this fills them as
-            // usefully as possible for the cases where it can't: a value the animator responds
-            // to gets its state's name (a working option the VRChat menu never exposed), and
-            // one nothing reacts to is labelled as such rather than an ambiguous "---".
+            // Dropdown index is the value, so N needs N+1 entries. Gaps CompactIntDropdowns cannot
+            // remove get the reacting state's name, or a label saying nothing reacts.
             var options = new List<CVRAdvancedSettingsDropDownEntry>();
             int live = 0, inert = 0;
             for (int i = 0; i <= maxValue; i++)
@@ -709,10 +681,7 @@ namespace AvatarBridge
             return trimmed;
         }
 
-        // Menu labels naming the source system read YAPS after conversion.
-        // Display only: parameter names stay, since ChilloutVR restores a
-        // saved profile by parameter name. DPS is not matched; it also means
-        // damage per second.
+        // Labels only: profiles restore by parameter name. Not DPS, which also means damage per second.
         static string YapsLabel(BridgeContext ctx, string display)
         {
             if (ctx == null || !ctx.Settings.convertYapsSystems || string.IsNullOrEmpty(display))

@@ -1,14 +1,8 @@
 // Wires a scene for the own-body atlas test, and says what it found.
-//
-// The rule being tested lives in the SHIPPED resolver, so the spike rig is no
-// use here: YapsSpikePlug.shader reimplements the reader rather than including
-// yaps_resolve.cginc, and testing a copy proves nothing about the original.
-// The instrument has to be a real patched plug on a real avatar.
-//
-// The hips themselves come from YapsFakePlayers, which needs nothing in the
-// scene. This reads back the three things that decide whether the test runs at
-// all: two bodies, the fake hips switched on, and the two material flags. Each
-// of them fails by rejecting nothing, which reads exactly like a pass.
+// Needs a real patched plug: the spike shader reimplements the reader instead
+// of including yaps_resolve.cginc, so it proves nothing about the shipped rule.
+// Checks two bodies, fake hips on (YapsFakePlayers), and the two material
+// flags: each fails by rejecting nothing, which reads like a pass.
 //
 //   Tools/Avatar Bridge/Dev/Atlas/Own-body test: wire fake players
 #if CVR_CCK_EXISTS && UNITY_EDITOR
@@ -59,10 +53,7 @@ namespace AvatarBridge.Regression
                 var plugs = PatchedMaterials(avatar.gameObject);
                 if (plugs.Count == 0)
                 {
-                    // Say WHICH of the two it is. No component means the avatar
-                    // was never rigged; components but no patched material means
-                    // it was rigged and not built, and those want different
-                    // buttons.
+                    // Never rigged and rigged-but-not-built want different buttons.
                     int rigPlugs = avatar.GetComponentsInChildren<YapsPlug>(true).Length;
                     int rigSockets = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
                     report.AppendLine($"    no patched plug material. YapsPlug {rigPlugs}, " +
@@ -73,9 +64,7 @@ namespace AvatarBridge.Regression
                 }
                 foreach (var m in plugs)
                 {
-                    // Both flags have to be right or the test measures nothing.
-                    // SelfTag under zero switches ownership off entirely, and
-                    // the atlas off sends the plug back to lights and contacts.
+                    // SelfTag below zero switches ownership off; atlas off falls back to lights.
                     float self = m.GetFloat("_YAPS_SelfTag");
                     float atlas = m.HasProperty("_YAPS_UseAtlas") ? m.GetFloat("_YAPS_UseAtlas") : -1f;
                     report.AppendLine($"    {m.name}: SelfTag {self:0.##}" +

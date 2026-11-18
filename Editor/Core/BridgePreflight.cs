@@ -6,27 +6,10 @@ using System.Linq;
 
 namespace AvatarBridge
 {
-    // Checks the TOOLCHAIN before a conversion starts; is the thing that bakes this avatar
-    // actually there and actually compiled.
-    //
-    // Written after a day lost to this. A GoGo Loco
-    // ".unitypackage" was imported over the project and overwrote Packages/com.vrcfury.vrcfury
-    // with a partial bundled copy: 50 files, no package.json. Unity cannot load a package
-    // without one, so VRCFury never compiled, never registered its build hooks, and every avatar
-    // converted as though it had no VRCFury components at all. Nothing said a word. The symptom
-    // arrived much later as conversions where every avatar had quietly lost its "VF#_"
-    // parameters and grown an "NDMFAvatarRoot" that should have been consumed by the bake.
-    //
-    // WHY THIS SHAPE, and not a list of known packages. Conversions were measured before this was
-    // designed: of 60, 7 hit a dependency failure, and every one was an avatar ADD-ON
-    // . Dismay PCS, a bespoke GoGo build, Wholesome SPS. Not one was the core toolchain. Those
-    // add-ons are also exactly where a hardcoded list fails: they are niche, they are sometimes
-    // custom builds that exist in one project on earth, and VRCFury ALREADY detects them and
-    // names the missing files precisely; a report entry carries that message today.
-    //
-    // So this deliberately does not enumerate anything avatars might carry. It asks one question
-    // nobody else asks: the project claims to have a baker, so is the baker loaded? That is the
-    // failure with no other detection, and it is cheap to answer.
+    // Is the project's baker actually loaded and compiled? A package imported over VRCFury left
+    // it without package.json, so it never compiled and every avatar silently lost its Fury
+    // features. Not a list of known add-ons: of 60 conversions, 7 dependency failures were all
+    // niche add-ons, which VRCFury already detects and names.
     public static class BridgePreflight
     {
         const string Category = "Preflight";

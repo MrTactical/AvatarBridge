@@ -5,11 +5,9 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for texture density across per-slot material copies. Squash gives every
-    // renderer slot its own copy of a material, and density was keyed by material, so a texture
-    // took the most stretched slot's density with that one slot's area: the "across X m2" figure
-    // covered one share, and the resize advice shrank. Copies drawing the same maps at the same
-    // tiling are one surface again; a different tiling stays apart.
+    // Texture density across per-slot material copies. Keyed by material, a squash's per-slot
+    // copies each counted one slot's area, so "across X m2" covered one share. Copies with the same
+    // maps and tiling are one surface; a different tiling stays apart.
     public static class TextureDensityTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Texture density")]

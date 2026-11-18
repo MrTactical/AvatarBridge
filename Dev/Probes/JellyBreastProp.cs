@@ -1,9 +1,7 @@
-// A breast pair as a prop: a torso front on a board, built from nothing of any avatar's, given the
-// squash and the live tissue by the same calls an avatar's build makes, so a hand in game meets the
-// worn path's skin, step and probes on something anyone can spawn and pass round.
-//
-// The worn build hangs the jelly from the humanoid trunk, so the stand carries a mannequin rig
-// for the build alone: a humanoid Animator lends it the trunk and is removed once it has.
+// A breast pair as a spawnable prop: a torso front on a board, given the squash and live tissue by
+// the same calls an avatar's build makes, so the worn path can be tested in game by anyone.
+// The worn build hangs the jelly from the humanoid trunk, so a mannequin rig with a humanoid
+// Animator lends it one, removed after the build.
 #if CVR_CCK_EXISTS && UNITY_EDITOR && AVATARBRIDGE_MAGICA
 using System.Collections.Generic;
 using System.Linq;
@@ -32,11 +30,9 @@ namespace AvatarBridge.Regression
         // down. The patch is cast onto the globe, so it only has to reach past where the skin
         // rejoins the chest; across it stops at the middle, where the other's starts.
         const float BreastY = 1.13f, Apart = 0.25f, Upper = 0.43f, Lower = 0.40f;
-        // Each breast a hyper pair's globe, perky and round, about 60 x 60 x 56 cm: an ellipsoid centred Out from the
-        // chest and Sag below its patch, radius Across wide, Top above and Bottom below (the lower
-        // pole the fuller), Front to the tip and Rear back into the chest, which widens the base.
-        // 30 cm across on 25 apart: the globes overlap and each patch stops at the middle, so the
-        // pair rest pressed flat against each other down the cleavage, as a squeezed pair does.
+        // Each globe an ellipsoid about 60 x 60 x 56 cm, centred Out from the chest and Sag below its
+        // patch; Rear reaches into the chest to widen the base. 30 cm radius on 25 apart: the globes
+        // overlap, so the pair rest pressed flat down the cleavage.
         const float Out = 0.25f, Sag = 0.0f, Across = 0.30f, Top = 0.29f, Bottom = 0.31f, Front = 0.31f, Rear = 0.32f;
         // The top half leans back by Slope, so the upper pole runs down to the tip as a slope rather
         // than a shelf, and the tip turns Turn degrees out. The globe joins the chest through a fillet
@@ -119,9 +115,8 @@ namespace AvatarBridge.Regression
             body.sharedMesh = mesh;
             body.bones = bones;
             body.rootBone = chest;
-            // A shader the patcher reads straight: on Standard it would swap in YAPS Standard and hide
-            // which material the build made. A soft sheen and no glow: a glow of its own tone lit every
-            // side alike and left the globes reading flat under the film's lights.
+            // Simple Lit: on Standard the patcher swaps in YAPS Standard and hides which material the
+            // build made. No glow: it lit every side alike and the globes read flat.
             var skin = new Color(0.93f, 0.74f, 0.64f);
             var look = new Material(Shader.Find(YapsNativeBuilder.SimpleLitName)) { color = skin };
             look.SetFloat("_Glossiness", 0.42f);
@@ -140,13 +135,10 @@ namespace AvatarBridge.Regression
             sd.rootBones = new List<Transform> { chains[0], chains[2] };
             // Every viewer's copy, seen or not, as the jelly's probes.
             sd.cullingSettings.cameraCullingMode = MagicaCloth2.CullingSettings.CameraCullingMode.Off;
-            // Heavy: 0.4 of the board's own movement, the measured heft lever; more damping would slow
-            // the return too. A softer pull to rest (0.14 at the root to 0.04 at the tip, from 0.2 to
-            // 0.04) swings it slower and wider, and less of its speed lost on the way back (0.65,
-            // from 0.8) lets it overshoot and settle over a few swings. The chains are twice as long
-            // now, so the same pull already lets gravity hang them further. Held within 40 degrees,
-            // from 30, room to hang and swing; the chain, 13 and 0 degrees down at rest, still stops
-            // over 30 degrees off the plate, so a board turned over does not fold it in.
+            // Heft: world inertia 0.4 is the measured lever; more damping would slow the return too.
+            // A soft pull to rest (0.14 root to 0.04 tip) and 0.65 attenuation swing wide and settle
+            // over a few swings. A 40 degree limit leaves room to hang and still stops a turned-over
+            // board folding the chain in.
             sd.inertiaConstraint.worldInertia = 0.4f;
             sd.angleRestorationConstraint.stiffness.SetValue(0.14f, 1f, 0.3f);
             sd.angleRestorationConstraint.velocityAttenuation = 0.65f;
@@ -187,11 +179,8 @@ namespace AvatarBridge.Regression
             }
             said = worn;
 
-            // Soft heavy flesh on the pair's feel, as the inspector would set it: softer and looser
-            // (firmness 0.8, taut 0.8), a hand moving less of the heavier whole (give 0.9), the whole
-            // swinging further and springing back slower (swing 1.2, spring back 0.8), deeper dents
-            // and a bigger slap ring for a part twice the size (depth 1.3, slap 1.3); the fill-back's
-            // settle as tuned.
+            // Soft heavy flesh for a part twice the size: looser, a hand moving less of the whole,
+            // wider slower swing, deeper dents and a bigger slap ring.
             var jelly = prop.GetComponentsInChildren<Transform>(true).First(t => t.name.StartsWith(YapsJelly.Worn + " "));
             var settings = YapsSquash.SettingsOf(prop.transform);
             var feel = settings.feels.First(f => f.part == jelly.name.Substring(YapsJelly.Worn.Length + 1));

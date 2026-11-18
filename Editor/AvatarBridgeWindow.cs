@@ -10,9 +10,7 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    // The AvatarBridge control panel. Two modes: Convert (needs the
-    // VRChat SDK) and Set up (any humanoid, CCK only). Without the
-    // VRChat SDK the window still works and offers Setup.
+    // Convert needs the VRChat SDK; Set up works on any humanoid with the CCK only.
     // UI Toolkit, like the CCK and the SDK; see BridgeTheme.
     public class AvatarBridgeWindow : EditorWindow
     {
@@ -42,13 +40,8 @@ namespace AvatarBridge
         [SerializeField] GameObject toolsSource;
         [SerializeField] string settingFilter = "";
 
-        // The tools tab exists either way: none of the Toolkit's cards need
-        // the VRChat SDK, and a project without it is exactly who they are
-        // for. Its panel is rebuilt each time rather than kept, so it always
-        // reads the scene as it is now.
+        // Tools needs no VRChat SDK, and its panel is rebuilt each time so it reads the current scene.
 #if VRC_SDK_VRCSDK3
-        // Convert only exists when the VRChat SDK does: without it there is
-        // nothing to convert FROM.
         enum Mode { Convert, Setup, Tools }
         [SerializeField] Mode mode = Mode.Convert;
         [SerializeField] VRCAvatarDescriptor avatar;
@@ -90,17 +83,14 @@ namespace AvatarBridge
                 {
                     settings = new BridgeSettings();
                 }
-                // Three answers on two flags. Settings saved by the release
-                // with two independent ticks can hold the fourth pair, which
-                // reads as "Leave" while YAPS still runs. Convert wins.
+                // Three answers on two flags; older settings can hold the fourth pair, which reads
+                // as "Leave" while YAPS still runs. Convert wins.
                 if (settings.convertYapsSystems && !settings.stripSpsSystems)
                 {
                     settings.stripSpsSystems = true;
                 }
             }
-            // Old saved settings can point inside the tool's folder,
-            // where an update erases every conversion. Only the old
-            // default is rewritten; a customised path is the user's.
+            // The old default sat inside the tool's folder, which an update erases. A custom path is left.
             if (settings.outputFolder == "Assets/AvatarBridge/Output")
             {
                 settings.outputFolder = "Assets/AvatarBridgeOutput";
@@ -232,33 +222,27 @@ namespace AvatarBridge
             BuildAvatarPicker(pick.Body);
             body.Add(pick);
 
-            // Three folds, split by who can answer the question. Everything the avatar decides
-            // for itself is folded away under "Automated"; what is left in the open is the
-            // short list nothing in the file can settle. Before this, forty-odd toggles sat at
-            // one level with no way to tell which of them anyone was expected to think about.
+            // Folds split by who can answer: what the avatar decides goes under "Automated", the
+            // open list is what nothing in the file can settle.
             var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3);
             BuildAnalyseSection(choose.Body);
 
-            // The two settings that change nothing, only what you are told. Under the results,
-            // which are why anybody pressed the button.
+            // Settings that change only what the report says, kept under the results.
             choose.Section("What the report tells you");
             AddReadingOptions(choose.Body);
 
-            // Physics first and open: which solver to convert into is the biggest decision in
-            // the window and it is the wearer's, not the avatar's.
+            // Physics first and open: the solver is the biggest choice, and the wearer's.
             var physics = BuildPhysicsFold(out var tuning);
             var manual = BuildManualFold();
             var automated = BuildAutomatedFold();
 
-            // Grouping alone does not make one setting findable, and two of the folds are often
-            // shut, so one box searches all of them.
+            // Folds are often shut, so one box searches all of them.
             settingSearch = BridgeElements.SearchField(tuning != null
                 ? new[] { physics, tuning, manual, automated }
                 : new[] { physics, manual, automated });
             settingSearch.tooltip = "Find a setting: searches Physics, Manual options and Automated options.";
             settingSearch.RegisterValueChangedCallback(e => settingFilter = e.newValue);
-            // The box has no placeholder in 2022.3; without a heading it read as a stray input
-            // belonging to the report toggles above.
+            // No placeholder in 2022.3; without a heading it reads as part of the report toggles.
             choose.Section("Find a setting");
             choose.Body.Add(settingSearch);
             choose.Body.Add(physics);
@@ -266,8 +250,7 @@ namespace AvatarBridge
             choose.Body.Add(automated);
             body.Add(choose);
 
-            // A toggle that rebuilds must not drop the query. Attached by now, so setting it
-            // filters exactly as typing does.
+            // A rebuild must keep the query; attached by now, so this filters as typing does.
             if (!string.IsNullOrEmpty(settingFilter))
             {
                 settingSearch.value = settingFilter;
@@ -282,9 +265,8 @@ namespace AvatarBridge
             body.Add(run);
         }
 
-        // The report's own "Put the textures back" goes with the report, which
-        // a domain reload or a closed window drops. The record is a file in
-        // the output folder, so it is found again by the lookup that made it.
+        // The report's own revert button dies with the report on a reload or a closed window. The
+        // record is a file in the output folder, so it is found again here.
         void BuildStoredRevert(VisualElement parent)
         {
             if (avatar == null) return;
@@ -309,8 +291,7 @@ namespace AvatarBridge
             parent.Add(BridgeElements.ObjectPicker<VRCAvatarDescriptor>("VRChat avatar", avatar, picked =>
             {
                 avatar = picked;
-                // Findings belong to the avatar they were measured on. Keeping them across a
-                // swap would show one avatar's shader and PhysBone counts under another's name.
+                // Findings belong to the avatar they were measured on.
                 advice = null;
                 adviceFilter = null;
                 MatchOptionalLayersToAvatar();
@@ -337,9 +318,7 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------ analyse ----
 
-        // Action first, agreement last. A list that opens with six green "already set" rows
-        // buries the one red one, and the red one is why anybody pressed the button. The chips
-        // follow the same order.
+        // Action first, agreement last, so green "already set" rows never bury a red one. Chips too.
         static readonly (AdviceKind kind, string noun)[] AdviceOrder =
         {
             (AdviceKind.Blocked, "blocked"), (AdviceKind.Change, "recommended"), (AdviceKind.Manual, "your call"),
@@ -391,9 +370,7 @@ namespace AvatarBridge
                 }
             }
 
-            // Same shape as the conversion report below: verdict, chips,
-            // rows. Two different-looking lists in one window is two
-            // things to learn instead of one.
+            // Same shape as the conversion report: verdict, chips, rows.
             int blocked = CountOf(AdviceKind.Blocked);
             int yours = CountOf(AdviceKind.Manual);
             parent.Add(BridgeElements.Notice(
@@ -449,19 +426,12 @@ namespace AvatarBridge
 
         AdviceKind? adviceFilter;
 
-        // Named for the hint under the layer list. Cleared and re-decided
-        // on every avatar swap, so it always describes the current one.
+        // Named in the hint under the layer list; re-decided on every avatar swap.
         readonly List<string> autoOffLayers = new List<string>();
 
-        // The optional layer settings persist between avatars, so a tick
-        // meant for the last one rides along and claims this avatar has a
-        // layer it does not. Runs on selection only, never on rebuild: a
-        // box the user ticks deliberately must stay ticked.
-        //
-        // Skipped entirely for a baker's avatar. VRCFury and Modular
-        // Avatar build controllers during the bake, and the conversion
-        // reads the slot afterwards; unticking on the strength of an
-        // empty slot here would drop a layer that does arrive.
+        // Layer ticks persist between avatars, so the last avatar's tick would claim a layer this
+        // one lacks. Selection only, never on rebuild, so a deliberate tick stays. Skipped for
+        // VRCFury and Modular Avatar: their bake builds controllers, so an empty slot here lies.
         void MatchOptionalLayersToAvatar()
         {
             autoOffLayers.Clear();
@@ -525,10 +495,8 @@ namespace AvatarBridge
                     () =>
                     {
                         a.Apply(settings);
-                        // Re-measure rather than mark the row done: applying one setting can
-                        // change what the others should be (a physics target of None has no toe
-                        // question), and a stale list is how a reader ends up applying advice
-                        // that stopped being true two presses ago.
+                        // Re-measure: one setting can change what the others should be (a physics
+                        // target of None has no toe question).
                         Reanalyse();
                         ScheduleRebuild();
                     }));
@@ -563,9 +531,8 @@ namespace AvatarBridge
             }
         }
 
-        // One label per value, in declaration order. Spelled out, not derived:
-        // nicifying gave "Magica Cloth 2" and "Cvr Native Targets", which the
-        // tooltips and the README spell otherwise.
+        // One label per value, in declaration order. Spelled out: nicifying gave "Magica Cloth 2"
+        // and "Cvr Native Targets", which the tooltips and README spell otherwise.
         static PopupField<string> EnumPopup<T>(string label, string tooltip, string[] labels, T current, Action<T> set)
             where T : Enum
         {
@@ -620,16 +587,14 @@ namespace AvatarBridge
             b.Add(BridgeElements.Bind("Convert toe PhysBones",
                 "Off by default: simulated toes wiggle with every step in ChilloutVR. Skipped chains are listed in the report.",
                 settings.convertToePhysBones, v => settings.convertToePhysBones = v));
-            // Both writers grow radii and colliders from it, so hiding it on
-            // DynamicBone left a setting nobody could see still changing the output.
+            // Both writers grow radii and colliders from it, so it shows for DynamicBone too.
             b.Add(BridgeElements.Bind("Size for the largest a slider makes the body",
                 "Collision radius cannot be animated, so it is sized for body sliders at full.",
                 settings.sizePhysicsForLargest, v => settings.sizePhysicsForLargest = v));
 
             if (settings.physicsTarget == PhysicsTarget.MagicaCloth2)
             {
-                // Closed by default. These are escape hatches for a
-                // chain that came out wrong, not decisions to make.
+                // Closed: escape hatches for a chain that came out wrong, not decisions.
                 tuning = new BridgeElements.Card("Advanced physics tuning", "MagicaCloth2 feel", false)
                     .Nested().Remember("Converter.PhysicsTuning");
                 var t = tuning.Body;
@@ -686,8 +651,7 @@ namespace AvatarBridge
 
             card.Section("Face tracking");
             AddFaceTrackingOptions(b);
-            // Baking, cleanup, toggle rebuilding and masking always
-            // run. Necessary steps are not options.
+            // Baking, cleanup, toggle rebuilding and masking always run, so they are not options.
 
             card.Section("Remove VRChat-only systems");
             b.Add(BridgeElements.Bind("Remove GoGo Loco (recommended)",
@@ -699,34 +663,23 @@ namespace AvatarBridge
                     settings.gogoEmotes, v => settings.gogoEmotes = v));
             if (!settings.stripGogoLoco)
             {
-                // GoGo cannot fully function in CVR; it leans on
-                // VRChat-only animator primitives. Say so where the
-                // decision is made.
+                // GoGo leans on VRChat-only animator primitives, so it cannot fully work in CVR.
                 b.Add(BridgeElements.Notice(Tone.Warn,
                     "Experimental. GoGo replaces ChilloutVR's locomotion, so tick Base, Additive and Action below " +
                     "or there is none.",
                     "Poses don't lock movement, floor poses keep a standing viewpoint, and the quick-menu emotes stop."));
             }
 #if !AVATARBRIDGE_YAPS
-            // No add-on in the project, so "Convert to YAPS" is not an answer
-            // this build can give. Offering it and quietly removing instead is
-            // the worst of the three.
+            // Without the add-on, "Convert to YAPS" would quietly remove instead, so it is not offered.
             b.Add(BridgeElements.Notice(Tone.Info,
                 "Penetration (DPS, TPS, SPS) is removed. The YAPS add-on rebuilds it; install it and the " +
                 "choice appears here.",
                 action: BridgeElements.ExternalLink("Get the YAPS add-on (GitHub)", BridgeLinks.YapsRepo)));
-            // Nothing written to the settings here. These persist in
-            // EditorPrefs, which are per USER on this machine and not per
-            // project, so forcing them off in a project without the add-on
-            // forced them off in every project WITH it: the next avatar
-            // converted anywhere had its penetration removed and rebuilt
-            // nothing, with the window still reading Convert. BridgeConverter
-            // already collapses the choice for the run itself, which is where
-            // it belongs, since that touches only the copy being converted.
+            // Never write the settings here: EditorPrefs are per user, not per project, so forcing
+            // them off here turns penetration off in every project that has the add-on.
+            // BridgeConverter collapses the choice for the run itself.
 #else
-            // One question over two settings, three answers; the fourth
-            // combination the ticks allowed is not offered. Radio buttons stack
-            // like the toggles around them.
+            // One question over two settings, three answers; the fourth combination is not offered.
             b.Add(BridgeElements.Choice("Penetration",
                 "Convert to YAPS: rebuilt for ChilloutVR with the author's tuning, and works with DPS, TPS " +
                 "and SPS already on the platform.\n" +
@@ -840,9 +793,7 @@ namespace AvatarBridge
                 BridgeElements.BetaTag()));
 
 #if AVATARBRIDGE_YAPS
-            // Opt-ins live here, not beside the choice they qualify: a
-            // feature nobody can find is a feature nobody turns on. All of
-            // them need the add-on, so without it no tick here could ever act.
+            // Opt-ins live here, not beside the choice they qualify, so they get found. All need the add-on.
             card.Section("Opt-ins");
             var optIns = BridgeElements.Indent(
                 BridgeElements.Hint("Off unless you switch them on, and each says what it costs."));
@@ -948,9 +899,8 @@ namespace AvatarBridge
             {
                 return;
             }
-            // Deferred on purpose. The conversion runs asset imports, prefab work and thousands of
-            // log calls; running it straight out of an event callback freezes the panel mid-repaint
-            // and gives no chance to show that anything is happening.
+            // Deferred: run straight from the callback, the conversion freezes the panel mid-repaint
+            // with no sign that anything is happening.
             converting = true;
             primary?.SetLabel("Converting…");
             primary?.SetActive(false);
@@ -963,8 +913,7 @@ namespace AvatarBridge
             EditorApplication.delayCall += () =>
             {
                 try { lastReport = BridgeConverter.Convert(target, chosen); reportSource = source; }
-                // A filter left from the previous run can select a status the new report has none of,
-                // which shows an empty list and an unclickable chip to clear it with.
+                // An old filter can select a status the new report lacks: empty list, disabled chip.
                 finally { converting = false; reportFilter = null; Rebuild(); }
             };
         }
@@ -1005,8 +954,7 @@ namespace AvatarBridge
 
             var choose = new BridgeElements.Card("Choose what gets set up").Step(2, 3);
             choose.Body.Add(BridgeElements.Hint("Viewpoint and visemes are always detected and wired; blink too unless Auto-wire blink blendshapes is off."));
-            // Where the converter puts them: what the report TELLS you, kept
-            // apart from what gets built.
+            // As in the converter: what the report tells you, apart from what gets built.
             choose.Section("What the report tells you");
             AddReadingOptions(choose.Body);
 
@@ -1037,11 +985,8 @@ namespace AvatarBridge
                     var selectedBefore = Selection.activeGameObject;
                     lastReport = CvrSetup.Run(setupAvatar, settings);
                     reportSource = setupAvatar;
-                    // So the setup flow ends where the convert flow does:
-                    // with somewhere to go. Setup works on the object it was
-                    // given unless it cloned, and Selection is what it leaves
-                    // pointing at the result. Only a selection the run changed
-                    // counts: a run that threw leaves the user's own one.
+                    // Hand the result on, as the convert flow does. Only a selection the run changed
+                    // counts: a run that threw leaves the user's own.
                     var selected = Selection.activeGameObject;
                     if (lastReport.ConvertedRoot == null)
                     {
@@ -1069,9 +1014,7 @@ namespace AvatarBridge
 
         // ---------------------------------------------------------- shared sections ----
 
-        // The two that only ever READ. Shared by both flows: an avatar built
-        // for ChilloutVR has as much to learn about itself as a converted
-        // one, and the setup report is the same report.
+        // The two read-only settings, shared by both flows.
         void AddReadingOptions(VisualElement parent)
         {
             parent.Add(BridgeElements.Bind("Say what this avatar costs (recommended)",
@@ -1082,8 +1025,7 @@ namespace AvatarBridge
                 settings.surveyAvatar, v => settings.surveyAvatar = v));
         }
 
-        // One copy of each control both flows show: the README quotes these
-        // labels verbatim, and a second copy is a second place to drift.
+        // One copy of each shared control: the README quotes these labels verbatim.
         void AddCloneToggle(VisualElement parent)
         {
             parent.Add(BridgeElements.Bind("Work on a clone (recommended)",
@@ -1188,8 +1130,7 @@ namespace AvatarBridge
             return chip;
         }
 
-        // The end of the flow: pick, analyse, tweak, convert, optimise. Hands the avatar to the
-        // tools rather than acting here, and only offered when there is something to take off.
+        // Hands the avatar to the tools, only when there is something to take off.
         Button SlimButton()
         {
             var root = lastReport.ConvertedRoot;
@@ -1210,12 +1151,9 @@ namespace AvatarBridge
                 ButtonKind.Strong);
         }
 
-        // What "Make it lighter" would reclaim, for the offer on the button.
-        // Measured once per report rather than per redraw: a survey and a
-        // weight reading of a big avatar is real work, and this runs inside
-        // a UI rebuild. Keyed on the report, not the avatar: converting again
-        // in place keeps the same CVRAvatar. Cleared by the revert and on every
-        // tab switch, since a Toolkit fix changes the saving without a new report.
+        // What "Make it lighter" would reclaim. Measured once per report, since it is slow on a big
+        // avatar. Keyed on the report: converting in place keeps the same CVRAvatar. Cleared by the
+        // revert and on tab switch, since a Toolkit fix changes the saving without a new report.
         long SavingFor(ABI.CCK.Components.CVRAvatar cvr)
         {
             if (_savingFor != null && _savingFor == lastReport) return _saving;
@@ -1229,9 +1167,7 @@ namespace AvatarBridge
         BridgeReport _savingFor;
         long _saving;
 
-        // The avatar the last report's run came from, whose materials point
-        // at the same textures and are not somebody else's. Recorded at run
-        // time: the other tab's avatar is unrelated to this report.
+        // The source of the last report's run, recorded then: the other tab's avatar is unrelated.
         GameObject reportSource;
 
         void BuildReport(BridgeElements.Card card)
@@ -1260,8 +1196,7 @@ namespace AvatarBridge
             // The full list lives in the report file; this shows what
             // the chips select. Default: everything needing a look.
             var rows = new List<VisualElement>();
-            // Filled on the first subject that is not a path, then shared by
-            // every row: one walk of the avatar per rebuild, not one per row.
+            // Filled once per rebuild and shared by every row.
             Dictionary<string, Transform> byName = null;
             foreach (var entry in lastReport.Entries)
             {
@@ -1272,8 +1207,7 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // Most subjects are object paths or names. Ones that
-                // still resolve become clickable; prose ones do not.
+                // Subjects that still resolve to an object become clickable.
                 var found = ResolveSubject(entry.Subject, ref byName);
                 rows.Add(found != null
                     ? BridgeElements.ReportRow(entry, BridgeElements.Btn("Show",
@@ -1281,8 +1215,7 @@ namespace AvatarBridge
                         $"Selects \"{found.name}\" in the Hierarchy."))
                     : BridgeElements.ReportRow(entry));
             }
-            // A clean run has nothing to list, and an empty bordered box reads as something that
-            // failed to load rather than as good news.
+            // An empty bordered box reads as a failed load, not good news.
             if (rows.Count > 0)
             {
                 b.Add(BridgeElements.Hint(reportFilter.HasValue
@@ -1294,10 +1227,8 @@ namespace AvatarBridge
 
             if (lastReport.BytesReclaimed > 0)
             {
-                // The undo, beside the announcement. This one happens without
-                // being asked now, so the way back cannot live in another
-                // window: the record is a file in the output folder, and the
-                // saved report sits in that same folder.
+                // The undo sits beside the announcement, since this happens unasked. The record
+                // and the saved report share the output folder.
                 string outputDir = string.IsNullOrEmpty(lastReport.SavedReportPath)
                     ? null
                     : System.IO.Path.GetDirectoryName(lastReport.SavedReportPath);

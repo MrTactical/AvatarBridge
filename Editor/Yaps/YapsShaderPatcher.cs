@@ -3,11 +3,9 @@
 // Inspired by VRCFury's SPS. No SPS code is read or emitted here.
 // See docs/YAPS-CLEAN-ROOM.md.
 //
-// Clones the source unit, adds the properties, edits the vertex stage
-// of EVERY pass, compiles, and only then repoints the material. Every
-// pass, or a bent mesh casts a straight shadow. Includes are inlined so
-// the copy survives in a bundle. Struct members are found by semantic:
-// the same field is called vertex, pos and positionOS in the wild.
+// Clones the source, adds properties, edits the vertex stage of EVERY pass (or the shadow
+// stays straight), compiles, then repoints the material. Includes are inlined so the copy
+// survives in a bundle. Struct members are found by semantic (vertex, pos, positionOS...).
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -24,12 +22,9 @@ namespace AvatarBridge
     {
         const string Category = "YAPS";
 
-        // Which deforms a patch compiles. Each one costs its compile in every pass whether the
-        // material calls it or not: the plug's took most of a squash copy's wait, 10 s of 12.
-        // Jelly, the live tissue, is only ever asked for by name, so All keeps meaning what a patch
-        // made before roles compiled.
-        // JellyUnread is how many of the jelly's four state slots go unread, from the last, as a
-        // number in its two bits: each slot read is a load at every read. 0, a patch from before.
+        // Which deforms a patch compiles; each costs its compile in every pass (the plug's was
+        // 10 s of a squash copy's 12). Jelly only by name, so All keeps its old meaning.
+        // JellyUnread: how many of the four jelly slots go unread, a number in two bits.
         [Flags]
         public enum Roles { Plug = 1, Socket = 2, Squash = 4, All = Plug | Socket | Squash, Jelly = 8, JellyUnread = 48 }
 
@@ -47,18 +42,12 @@ namespace AvatarBridge
         static string RolesDeclaration(Roles roles) => roles == Roles.All ? ""
             : $"        [HideInInspector] {RolesProperty} (\"YAPS deforms compiled in\", Float) = {(int) roles}\n";
 
-        // Every patched shader, from every conversion and build, in one folder. Its name hashes
-        // everything it is made from, so the same source patched for another avatar, a variant,
-        // or a conversion whose folder was deleted finds the copy already compiled. A folder per
-        // output compiled the same text again in each, about a minute a shader: the include paths
-        // are compiled in, so an identical copy elsewhere misses the cache.
+        // One shared folder, names hashed from inputs, so a repeat patch reuses the compiled copy.
+        // Include paths are compiled in, so a folder per output recompiled each, ~1 min a shader.
         public const string SharedFolder = "Assets/YAPS/Generated/Shaders";
 
-        // What the emitted code IS, never a number somebody has to change when
-        // it moves. A constant like that was forgotten twice in one day: a
-        // property was added to the block below and every already-patched
-        // shader went on without it, silently, because the name it hashes to
-        // had not moved.
+        // Hashed from the emitted code, not a hand-bumped constant, which was forgotten and
+        // left patched shaders silently stale.
         static string EmittedVersion(string yapsSource) => Hash(yapsSource + PropertyBlock + FogPerPixel + VertexLightPixelOnly);
 
         // Fog's vertex half on PC is the same in every mode, the clip depth. Passed always and
@@ -295,13 +284,8 @@ namespace AvatarBridge
         _YAPS_SoftBelow (""YAPS soft body across toward the feet per pair, 1 or -1"", Vector) = (0,0,0,0)
 ";
 
-        // The name the patch of `original` would carry if it were made now.
-        // Null when the question cannot be answered, which callers must read as
-        // "leave it alone" rather than "it is stale".
-        //
-        // This is what lets a rebuild notice the tool has moved on. Without it
-        // a shader fix reaches nobody who already converted: their bake
-        // refreshes, their shader does not, and the two disagree in silence.
+        // The name a patch made now would carry, so a rebuild notices shader fixes.
+        // Null means "leave it alone", not "stale".
         public static string CurrentNameFor(Material patchedOrOriginal)
         {
             if (patchedOrOriginal == null || patchedOrOriginal.shader == null) return null;
@@ -320,11 +304,8 @@ namespace AvatarBridge
             return NameCache[(shader, duplicate)] = PatchedName(unit[0].Text, NameHash(sourcePath, unit, yaps));
         }
 
-        // The answer depends on the material's shader and on files in the
-        // project, nothing else, so it holds until something imports. The
-        // material panel asks on every GUI event, and each answer read the
-        // whole include closure and hashed it. Failures are never kept: a
-        // read that failed once is tried again.
+        // Valid until something imports; the material panel asks per GUI event and each
+        // answer hashes the include closure. Failures are not cached.
         static readonly Dictionary<(Shader, bool), string> NameCache = new Dictionary<(Shader, bool), string>();
 
         sealed class NameCacheReset : AssetPostprocessor
@@ -343,14 +324,8 @@ namespace AvatarBridge
         static string NameHash(string sourcePath, List<ShaderSpiPatcher.SourceFile> unit, string yaps) =>
             Hash(sourcePath + EmittedVersion(yaps) + unit.Count + string.Concat(unit.Select(f => f.Text)));
 
-        // Whether a patched material is carrying code this version no longer
-        // emits. False whenever it cannot be told.
-        //
-        // The original is recovered from the patch itself, never from the
-        // component: a CONVERTED avatar adopts its components and never records
-        // what it was baked from, so a check needing that field would quietly
-        // do nothing for most avatars. The patch carries its source shader's
-        // name in a hidden property's description, the one place a string rides.
+        // False whenever it cannot tell. The original comes from the patch itself (its source
+        // name rides in a hidden property's description): converted avatars never record it.
         public static bool IsStale(Material patched)
         {
             // Patched ones only. An unpatched material is its own source, so it
@@ -391,11 +366,8 @@ namespace AvatarBridge
             m.enableInstancing = false;
         }
 
-        // The shader a material already carrying YAPS needs to take on one more role: its own
-        // when that is compiled in and current, else its original patched again with both. A
-        // plug baked into a squashed body kept the squash-only copy and would never bend, and a
-        // stale copy that had the role kept the old code: the jelly went on with none of a newer
-        // draw's properties. Null when the original is gone from the project.
+        // A shader with one more role: its own if compiled in and current, else the original
+        // repatched with both (a plug on a squash-only copy never bent). Null if the original is gone.
         public static Shader WithRole(Material patched, Roles role, BridgeReport report) => WithRole(patched, role, report, out _);
 
         // With why it came back null, if it did.
@@ -426,17 +398,8 @@ namespace AvatarBridge
             finally { UnityEngine.Object.DestroyImmediate(stand); }
         }
 
-        // Every patched material in the PROJECT, not only the ones something
-        // bakes.
-        //
-        // Both bake paths re-patch what has fallen behind, which reaches an
-        // avatar because its scene is open and Build was pressed. A PROP is a
-        // prefab sitting in the project and nothing ever opens it, so a
-        // shader-level fix reached everybody except props, and the only cure
-        // was to build a new one: no answer for a prop somebody has already
-        // positioned and tuned. Avatars in scenes nobody opened and anything
-        // imported from someone else's package are the same blind spot in two
-        // more shapes.
+        // Every patched material in the project: bakes only reach what is open, so props,
+        // unopened scenes and imported packages never got shader fixes.
         public static string SweepProject()
         {
             var guids = AssetDatabase.FindAssets("t:Material");
@@ -540,42 +503,14 @@ namespace AvatarBridge
                    (failed.Count > 0 ? $" {BridgeElements.Count(failed.Count, "file", "files")} could not be moved: {string.Join(", ", failed.Take(3).Select(Path.GetFileName))}." : "");
         }
 
-        // What the patched shader is called, and it is not cosmetic.
-        //
-        // Poiyomi strips a shader from the BUILD when it carries Thry's two
-        // marker properties and is not named "Hidden/Locked/...", reading that
-        // as an unlocked uber-shader. A patch of a Poiyomi material inherits
-        // both markers, so under any other name it is excluded from the bundle
-        // and the avatar uploads PINK: correct in the editor, missing in game,
-        // which is the worst failure this tool can produce.
-        //
-        // A patch of a locked Poiyomi IS locked, so the name is honest as well
-        // as necessary. Shaders with no Thry markers keep the plain name.
-        //
-        // The name does a second job. Auto-lock-on-upload takes every material
-        // whose shader uses the optimizer and is not already locked, and its
-        // test for "already locked" is this exact prefix, before Thry 2.7x (see
-        // MarkLocked for what 2.7x reads instead). Swept into a lock,
-        // THESE properties resolve to constants, and those are the ones animation
-        // drives, so the deform would freeze at whatever the material held.
-        //
-        // Hence BOTH markers, not just the editor's: the sweep keys on
-        // ThryShaderOptimizerLockButton, and a shader carrying that without the
-        // editor marker would have been named plainly and swept.
-        //
-        // An ALREADY LOCKED source is the third signal, and the one that
-        // matters most. Locking strips both markers, so a locked Poiyomi looks
-        // like no Thry shader at all, was named plainly, and was swept into a
-        // lock of its own. That turns a declaration into a constant:
-        //
-        //     float4 _YAPS_SocketPos;   ->   float4 0.5;
-        //
-        // which does not compile at all. The editor never shows it, because
-        // nothing there forces the shadow caster pass to compile. Play mode
-        // does, the pass fails, and it reads as the bake coming undone.
-        //
-        // So the shaders that most need the protective name were the only ones
-        // that could not get it.
+        // The name is not cosmetic. Before Thry 2.7x (see MarkLocked for after):
+        //  - Poiyomi strips from the build any shader with Thry's two markers not named
+        //    "Hidden/Locked/...", so the avatar uploads pink.
+        //  - Auto-lock-on-upload treats that prefix as "already locked"; locked again, the
+        //    animated _YAPS_ properties become constants and the deform freezes.
+        // Hence either marker triggers it, and so does an already-locked source (locking
+        // strips the markers): relocked, "float4 _YAPS_SocketPos;" becomes "float4 0.5;",
+        // which fails only when Play mode compiles the shadow caster.
         static string PatchedName(string sourceText, string hash)
         {
             bool thry = sourceText != null
@@ -585,21 +520,16 @@ namespace AvatarBridge
             return (thry ? "Hidden/Locked/YAPS/" : "Hidden/YAPS/") + hash;
         }
 
-        // Thry 2.7x no longer reads the name: both the upload lock and the build strip ask
-        // whether the lock button property defaults to 1, which only Thry's own lock writes.
-        // A patch of a locked Poiyomi inherits the 1. A patch of an UNLOCKED one kept 0, so the
-        // upload locked it again into "Hidden/Locked/Hidden/Locked/YAPS/...", whose baked
-        // properties do not compile, and a build without that lock would strip it.
+        // Thry 2.7x reads the lock button's default (1 = locked) instead of the name. A patch of
+        // an unlocked one kept 0, so upload relocked it into code that does not compile.
         static readonly Regex LockButtonDefault = new Regex(
             @"(\[ThryShaderOptimizerLockButton\][^\r\n]*\)\s*=\s*)0\b");
 
         static string MarkLocked(string text) => LockButtonDefault.Replace(text, "${1}1");
 
-        // Writes the patched copies of many materials and imports them in two batches, includes
-        // then shaders, so a Patch after it finds each one already in place. Every import alone
-        // runs every installed package's import hooks, about a minute each in a large project,
-        // and a squash patches twenty. A copy that failed to compile is left to Patch, which
-        // writes it again and reports why.
+        // Writes many copies and imports in two batches (includes, then shaders): each lone
+        // import runs every package's hooks, ~1 min in a large project, and a squash patches
+        // twenty. Failed copies are left to Patch to rewrite and report.
         public static void Prewrite(IEnumerable<Material> materials, Roles roles = Roles.All)
         {
             var list = materials.Where(m => m != null).Distinct().ToList();
@@ -647,10 +577,8 @@ namespace AvatarBridge
         // go stale, and dropped at the pass's end because a squash's copies run to megabytes.
         static Dictionary<string, (string[] Texts, int Passes, string Refusal, int Shadows, bool Frameless)> Prewritten;
 
-        // Across conversions and editor restarts: which copy a source came out as, so a conversion
-        // that would write the same copies again skips the text edits, ten to twenty seconds an
-        // avatar on a body of many Poiyomi materials. Keyed on what the edits read plus this build
-        // of the tool, so new patch code misses it; a copy changed or gone since misses it too.
+        // Persistent memo of source to copy, skipping the text edits (10 to 20 s an avatar with many
+        // Poiyomi materials). Keyed on edit inputs and tool build; changed or missing copies miss.
         // ponytail: the file only grows, one line a new copy; clear Library to reset it.
         static Dictionary<string, (string[] Paths, long[] Sizes, long[] Times, int Passes, int Shadows, bool Frameless)> Memo;
         static readonly string Build = "\0" + typeof(YapsShaderPatcher).Assembly.ManifestModule.ModuleVersionId;
@@ -1203,11 +1131,9 @@ namespace AvatarBridge
             missingFrame = false;
             var pattern = new Regex($@"(\w+)\s+{Regex.Escape(vertName)}\s*\(");
 
-            // Look inside THIS program block first. A flattened shader repeats its
-            // whole vertex function per pass, and searching the file from the start
-            // handed every pass the same first copy, patching it once per pass at
-            // offsets computed before the previous edits. It shreds the
-            // preprocessor and reports as an undeclared 'endif'.
+            // This program block first: a flattened shader repeats the vertex function per
+            // pass, and a file-wide search patched the first copy repeatedly at stale offsets
+            // (reported as an undeclared 'endif').
             ShaderSpiPatcher.SourceFile file = unit[0];
             Match head = Match.Empty;
             if (blockStart >= 0 && blockEnd <= file.Text.Length)
@@ -1373,13 +1299,9 @@ namespace AvatarBridge
             // passes deform in vertTess, then the domain calls the vert other passes patched,
             // and the plug bent twice and left the screen.
             body.AppendLine($"#ifdef {EntryDefine(vertName)}");
-            // The block runs before the host's own setup, and an instanced
-            // variant reads unity_ObjectToWorld through the instance id, which
-            // is 0 until that runs: every batched copy deformed in the first
-            // one's frame. Repeated only when the host already calls it on this
-            // parameter outside any #if, so the input is known to carry the id.
-            // A second call sets the same values, and outside instancing it is
-            // empty.
+            // Runs before the host's setup, and instanced variants read unity_ObjectToWorld via
+            // the instance id (0 until set), so every batched copy deformed in the first's frame.
+            // Repeated only when the host calls it on this parameter outside any #if; harmless twice.
             int bodyClose = MatchBracket(file.Text, braceOpen, '{', '}');
             string hostBody = bodyClose > braceOpen
                 ? file.Text.Substring(braceOpen, bodyClose - braceOpen) : "";
@@ -1409,18 +1331,9 @@ namespace AvatarBridge
             body.AppendLine(tangentField != null
                 ? $"    float3 yapsTangent = {parameterName}.{tangentField}.xyz;"
                 : NoTangent);
-            // BOTH ends, unconditionally, and this is deliberate.
-            //
-            // Each guards itself on its own enable, _YAPS_Enabled for a plug and
-            // _YAPS_SocketPower for a socket, both defaulting to an immediate
-            // return. So a material is whichever end its properties say it is,
-            // decided at conversion time rather than by which variant of the
-            // patcher happened to run.
-            //
-            // The alternative was a socket-mode patcher, which means two emitted
-            // bodies to keep in step. Every expensive bug on this feature has come
-            // from two things that had to agree and quietly stopped agreeing.
-            // The body stays one; the roles' defines only decide which calls compile.
+            // Both ends, always: each returns at once unless its own enable is set, so the
+            // material's properties decide. One body, not two to keep in step; role defines
+            // only decide which calls compile.
             body.Append(DeformCalls(idExpression));
             body.AppendLine($"    {parameterName}.{positionField}.xyz = yapsPosition;");
             if (normalField != null)
@@ -1505,14 +1418,10 @@ namespace AvatarBridge
             return true;
         }
 
-        // A shader with no caster of its own takes its shadow from its Fallback,
-        // which knows nothing of the deform, so a bent or squashed part throws a
-        // straight shadow. Unity's own caster goes into each SubShader instead,
-        // where WrapUnityShadowCaster reaches it. Not when the Fallback cuts
-        // alpha (this caster would shadow the cut parts solid), not beside a
-        // shared include block (it can declare what UnityStandardShadow
-        // declares), and not for surface shaders, whose lit passes the patcher
-        // never reaches, so only the shadow would bend.
+        // A Fallback caster knows nothing of the deform, so Unity's caster goes into each
+        // SubShader for WrapUnityShadowCaster. Not when the Fallback cuts alpha (cut parts would
+        // shadow solid), beside a shared include block (duplicate declarations), or for surface
+        // shaders (only the shadow would bend).
         internal static bool AddStandardCaster(ShaderSpiPatcher.SourceFile file)
         {
             string text = file.Text;
@@ -1647,14 +1556,8 @@ namespace AvatarBridge
         static bool LooksLikeMetaPass(string text, int programIndex)
             => PassTagIs(text, programIndex, "Meta");
 
-        // Read this pass's LightMode tag.
-        //
-        // Scoped by the END of the previous program block, never by looking
-        // back for the word "Pass". A flattened shader inlines its includes,
-        // and names like CGI_PoiPassShadow contain "Pass", so the backward
-        // search landed inside the previous pass and read the wrong tag.
-        // Whatever sits between one ENDCG and the next CGPROGRAM is exactly
-        // this pass's declaration.
+        // Scoped from the previous ENDCG, not a backward search for "Pass": inlined names
+        // like CGI_PoiPassShadow contain it and read the wrong tag.
         static bool PassTagIs(string text, int programIndex, string lightMode)
         {
             int from = 0;
@@ -1712,13 +1615,8 @@ namespace AvatarBridge
                 return null;
             }
 
-            // Dependency order, since inlining removes the include guards' ability
-            // to reorder anything.
-            //
-            // The socket include comes along on every patch, plug or socket. It
-            // costs a few unused functions in a shader that will not call them, and
-            // it means one emitted body serves both ends rather than two divergent
-            // inline lists to keep in step.
+            // Dependency order: inlined, the include guards cannot reorder. The socket
+            // include always comes, so one body serves both ends.
             string[] names =
             {
                 "yaps_props.cginc", "yaps_atlas.cginc", "yaps_resolve.cginc", "yaps_deform.cginc",
@@ -1886,11 +1784,8 @@ namespace AvatarBridge
             return result;
         }
 
-        // Why the copy would not draw on a material like `like`, once compiled as wearing it compiles
-        // it: every pass, in the material's variant. The import compiles too little to tell (no
-        // warning shows until a material wears the copy), so a copy whose compile then timed out
-        // passed the check below and drew garbage. A compiled copy is reused, so checking it again
-        // costs nothing, and the wear that follows compiles nothing more.
+        // Why the copy would not draw on `like`, compiled as wearing would (every pass, its
+        // variant). Import compiles too little: a copy that then timed out drew garbage. Free on reuse.
         static string Compiled(Shader shader, Material like)
         {
             var stand = new Material(shader) { hideFlags = HideFlags.HideAndDontSave, shaderKeywords = like.shaderKeywords };

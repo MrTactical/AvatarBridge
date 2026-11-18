@@ -1,7 +1,4 @@
-// How a run ends, for a conversion and for a native setup.
-//
-// Both do different work and finish the same way: validate, read the
-// avatar for its cards, write the description, write the report, save.
+// The shared end of a conversion and a native setup.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -44,11 +41,8 @@ namespace AvatarBridge
             Debug.Log("[AvatarBridge] Report step (ms): " + string.Join(", ", times));
         }
 
-        // The two cards, from one reading of the avatar: the weight card asks
-        // the survey which blendshapes anything animates and which renderers
-        // nothing can switch on, so building the model twice would be waste.
-        //
-        // Never allowed to take a finished avatar down with it.
+        // One reading for both cards: the weight card asks the survey what is animated and
+        // switchable. Never allowed to take a finished avatar down with it.
         static void ReadAvatar(BridgeContext ctx)
         {
             if (ctx.CvrAvatar == null) return;
@@ -60,10 +54,7 @@ namespace AvatarBridge
                 if (ctx.Settings.surveyAvatar)
                 {
                     ctx.Report.SurveyCard = AvatarSurvey.Markdown(survey);
-                    // Also as rows. The cards are sections of a file, and a
-                    // file is not where anybody looks after pressing Convert:
-                    // the window shows entries, so findings that exist only
-                    // in the markdown are findings nobody sees.
+                    // Also as rows: the window shows entries, and markdown-only findings go unseen.
                     AvatarSurvey.Fill(ctx.Report, survey);
                 }
                 if (ctx.Settings.weighAvatar)
@@ -89,10 +80,7 @@ namespace AvatarBridge
             ctx.Report.SavedReportPath = path;
             Debug.Log($"[AvatarBridge] {label} written to {path}");
 
-            // Never allowed to take a finished avatar down: the markdown is
-            // the deliverable, these two are a bonus, and a crash here would
-            // lose both. Both used to be guarded on the VRChat SDK, which is
-            // why a native setup never got them; neither needs it.
+            // Guarded: the markdown is the deliverable and a crash here would lose it.
             try
             {
                 DiagnosticsWriter.Write(ctx, reportName);

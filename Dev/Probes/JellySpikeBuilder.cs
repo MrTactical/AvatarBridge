@@ -1,32 +1,17 @@
-// The jelly spike: can ChilloutVR run a soft body on an avatar, every frame, and at what cost?
+// The jelly spike: can ChilloutVR run a soft body on an avatar every frame, and at what cost?
 //
-// A lattice of particles lives in a float render texture, where each particle is in its left half
-// and where it was a pass before in its right. Two blitters run by a render controller step it from
-// that texture into a twin and back, a pass each, no temporary and no copy: every particle is
-// pulled toward where the rigid fit of its 3x3x3 neighbourhood puts it (shape matching), the back
-// face is held on an anchor the material data provider hands in, and the hands the first pass
-// found in reach push it out of the way. Past 6 m from the viewer's head it hangs rigid and does
-// next to no work; as a prop, settled, untouched and on an anchor that has not moved, it sleeps,
-// the same, until a hand or the anchor wakes it. Several regions can share the texture and the two
-// passes, each a block of rows on an anchor of its own. A mesh draws the lattice's surface from the same texture. Nothing is baked,
-// nothing is synced, and each client steps its own copy.
+// Particles live in a float render texture (current in the left half, previous in the right). Two
+// blitters ping-pong it into a twin, no temporary or copy: shape matching over each 3x3x3
+// neighbourhood, back face held on an anchor from the material data provider, hands in reach push
+// it. Past 6 m from the viewer it hangs rigid; a settled, untouched prop sleeps until woken. Several
+// regions share the texture, a block of rows each. Nothing is baked or synced; each client steps
+// its own copy.
 //
-// A plain cube rides the front: the second pass writes where the front centre is, and how its
-// neighbourhood has turned, into two texels of the state's last row, a third blitter copies them
-// into a 3x1 texture, and a texture parser writes those into a transform's local position and
-// Euler angles. The third texel is the far switch, which the same parser hands to the two steps'
-// blitters, so far off they stop altogether. The wear build leaves the cube, its pass and its
-// parser out. Nothing on the cube's own shader knows
-// the tissue, so its riding says whether anything attached to a bone could follow the tissue too.
-//
-// On an avatar's own breasts (needs the YAPS squash built): one lattice over the pair, fitted to
-// their skin with its back face on the chest wall, the body's squash materials patched with the
-// YAPS Jelly role to move each vertex by it, the pair's bone physics switched off. Its tissue rests
-// lifted by the sag gravity gives it, so upright it keeps the modelled shape.
-//
-// A cost meter floats above it: the frame time, and every half second a load of 32 more copies of
-// the step, on a second lattice nobody draws, switched on and off, the difference read as what one
-// pass costs on that machine.
+// A test cube rides the front through a texture parser (position and Euler texels, plus the far
+// switch that stops the steps), proving a bone could follow the tissue. The wear build omits it.
+// On an avatar's breasts (needs the squash built) one lattice covers the pair, the squash materials
+// get the Jelly role, bone physics goes off, and the rest is lifted by the sag so upright keeps shape.
+// A cost meter toggles 32 extra steps every half second and reads one pass's cost from the difference.
 //
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Build
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.Bench -jellyOut <dir>
@@ -35,13 +20,11 @@
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.TuneBreasts -jellyScene <scene> -jellyPrefab <prefab> -jellyOut <dir>
 //   -executeMethod AvatarBridge.Regression.JellySpikeBuilder.FilmBreasts -jellyScene <scene> -jellyPrefab <prefab>
 //
-// Bench times a frame the way a viewer pays for the prefab (its two passes, one texture into the
-// other, and the rider's copy; the parser's readback apart) at 90 fps, where the first pass predicts and the second fits,
-// and at 60, where each steps, for one pair's lattice and four times that, with no players, 64 far
-// off, 64 with eight hands in reach, and the viewer 1 m and 20 m off, and asleep; times chains of plain copies,
-// for what a pass costs before it works; and checks the tissue settles and swings back sanely.
-// Pass -force-device-index 1 to run it on a second GPU, the CPU's own, for a low-end machine. Verify plays the prefab in
-// batch with the CCK's own render controller and a swinging anchor. Batch, never -nographics.
+// Bench times what a viewer pays (two passes plus the rider's copy, readback apart) at 90 fps
+// (predict then fit) and 60 (a step each), across lattice sizes, player counts, hands in reach,
+// viewer distance and sleep; times plain copy chains as a floor; checks settle and swing-back.
+// -force-device-index 1 runs it on the integrated GPU. Verify plays the prefab with the CCK's
+// render controller and a swinging anchor. Batch, never -nographics.
 #if CVR_CCK_EXISTS && UNITY_EDITOR
 using System;
 using System.Collections.Generic;
@@ -66,10 +49,9 @@ namespace AvatarBridge.Regression
     {
         // A state row's texels: the particles' two halves, then the probes' readout.
         const int Wide = Readout + ProbesMax;
-        // A new folder from 2026-10-27: an editor that rebuilt the old one by delete and remake
-        // could no longer load its materials at all, so its assets start again under new GUIDs.
-        // The probe prop's in a folder of its own, so building it leaves a worn jelly's assets be. Kept
-        // in the session, which a Play mode's reload keeps too.
+        // Fresh folder: rebuilding by delete and remake left an editor unable to load the old
+        // folder's materials. The probe prop has its own; the flag is in SessionState so a Play
+        // mode reload keeps it.
         static string Home => SessionState.GetBool(K + "prop", false) ? "Assets/AvatarBridge_JellyProp" : "Assets/AvatarBridge_JellySpike";
         // The second pair's jelly is a chain of its own, its assets beside the first's and the
         // shaders shared: a copy each would compile every variant twice.
@@ -184,10 +166,8 @@ namespace AvatarBridge.Regression
             return prop;
         }
 
-        // A spawnable to grab, its content id kept when given. The pickup goes on the spawnable
-        // itself, which the client syncs as the prop's own place, and its collider on the same
-        // object, for the caller to size. With no rigidbody the client adds a kinematic one, so a
-        // jelly let go hangs where it was left.
+        // Pickup and collider on the spawnable itself, which the client syncs. With no rigidbody the
+        // client adds a kinematic one, so a released jelly hangs where it was left.
         internal static GameObject Shell(string name, string id)
         {
             var prop = new GameObject(name);
@@ -268,8 +248,7 @@ namespace AvatarBridge.Regression
             return made;
         }
 
-        // The holder's trigger, the prop's own synced value, moves twitch through the prop's animator,
-        // its clips and controller in folder. The animator, for the caller to give more parameters.
+        // The holder's trigger, synced by the prop, moves twitch through the prop's animator.
         internal static Animator Twitched(GameObject prop, Transform twitch, string folder)
         {
             string path = AnimationUtility.CalculateTransformPath(twitch, prop.transform);
@@ -1433,11 +1412,10 @@ namespace AvatarBridge.Regression
                       $"{body.bones[weights[start].boneIndex0].name}, {200f * radius:0} cm across, at {local[start].x:0.00}, {local[start].y:0.00}, {local[start].z:0.00} on the avatar");
         }
 
-        // Batch: the user's route on -jellyPrefab's avatar, alone in -jellyScene: the squash's own
-        // Build, which puts the jelly on over it, twice, then its Strip. Each build one jelly a part,
-        // each on its own slot, and the squash materials reading it; stripped, nothing of the jelly
-        // left. With -jellyPaint the painted parts, four on and the fifth refused. It writes to the
-        // conversion's own materials and controllers, which the script running it puts back.
+        // Batch: the user's route on -jellyPrefab's avatar: the squash's Build twice, then Strip.
+        // Each build: one jelly per part, each on its own slot; stripped, nothing left. With
+        // -jellyPaint, four parts on and the fifth refused. Writes the conversion's own assets,
+        // which the calling script restores.
         public static void BuildCheck()
         {
             var args = Environment.GetCommandLineArgs();
@@ -2012,10 +1990,9 @@ namespace AvatarBridge.Regression
                 rigs[c].Release();
             }
 
-            // As worn, without the test cube, and what a far copy still costs once the parser has
-            // switched its steps off; and one pass stepping in place, the client's route for a texture
-            // in and out the same (a temporary, then a copy back), against the two into the twin.
-            // That pass takes a whole step at a 60th, which costs what one at a 90th does.
+            // As worn without the cube, and a far copy with its steps switched off; and one pass
+            // stepping in place (the client's temporary-and-copy route) against two into the twin.
+            // In place takes a whole step at a 60th, which costs what one at a 90th does.
             var worn = new Rig(Size, rider: false);
             var test = new Rig(Size);
             var far20 = new Rig(Size);
@@ -4113,17 +4090,11 @@ namespace AvatarBridge.Regression
                     var st = ReadState();
                     halfMost = Mathf.Max(halfMost, st[Side(n) * Wide + 25].w);
                 }
-                // Last, another player's collider: a ball of a hand's size put in the probes' cloth and
-                // dynamic bones as the client puts it, from 7 cm off the first breast's frontmost probe to
-                // 3 cm past it, with no player's hand in the arrays, so only the probes can dent it.
-                // Then the same ball as a slap, 10 cm in three frames, and that slap again with a
-                // player's hand on its path, as the client gives a hand both: a ring each, the second
-                // the arrays', the probes' taken for it.
-                // Or, its probes feeling the world (-jellyWorld), a wall slid 3 cm into the first's
-                // front, held and taken away, a kinematic body as a moving world solid is: it should
-                // dent the first, barely move the second, and the dent spring back once it goes.
-                // Both kinds on (the first half of the probes cloth, the second balls), the wall comes once
-                // the collider has gone.
+                // Last, a hand-sized collider ball in the probes' cloth, 7 cm off the front probe to 3 cm
+                // past, with no hand in the arrays so only probes can dent. Then as a slap (10 cm in three
+                // frames), then that slap with a hand on its path: a ring each.
+                // With -jellyWorld, a kinematic wall slid 3 cm in and out: it should dent the first,
+                // barely move the second, and spring back. With both on, the wall follows the ball.
                 bool cloth = jelly.GetComponentsInChildren<Behaviour>(true).Any(c => c.name.StartsWith("Jelly Probes"));
                 int wv = cloth ? v - 180 : v;
                 bool balls = jelly.GetComponentsInChildren<Transform>(true).Any(t => t.name.StartsWith("Jelly Probe Ball"));
@@ -4415,11 +4386,10 @@ namespace AvatarBridge.Regression
                                $"the furthest particle {100f * Vector3.Distance(heldAt, wristBone.position):0.0} cm off the wrist, {100f * Vector3.Distance(heldAt, onArm):0.0} cm off the forearm";
                 }
             }
-            // Then a hand on the first's front, closed to a fist there, pulled 8 cm straight out over
-            // a third of a second, held, and opened as it goes: what it gripped follows it, the whole
-            // leans after, and let go it springs back with a ring. Its far side a centimetre into the
-            // skin however closed, so closing neither presses nor lets go of it. Closed in one frame,
-            // as a controller's grip button does: closed over five, it gripped only by the frame.
+            // Then a fist on the first's front, pulled 8 cm out over a third of a second, held, and
+            // opened: the grip follows, the whole leans after, and it springs back with a ring. Its far
+            // side stays 1 cm into the skin. Closed in one frame like a grip button: closed over five,
+            // it gripped only by the frame.
             if (frame >= 2450 && frame < 2740)
             {
                 var box = jelly.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0).materials[0].GetVector("_JellyBox0");
@@ -4778,13 +4748,11 @@ namespace AvatarBridge.Regression
             }
             if (++frame < BreastFrames) return;
             foreach (var b in blits) b.SetFloat("_Solid", solid0);
-            // First, while the state is as the run left it: -jellyCost below leaves it switched far.
-            // A plug through the pair's socket, from below and a little out, 10 cm past it: the share
-            // of the picture it moves with the jelly on, against the squash alone and twice alike.
-            // With none in the gap (the squash's empty node, scaled to zero), one between the two
-            // regions' middles, straight into the slot the draw reads: the provider writes its
-            // matrices once a frame, and this is one frame. Its skinned copy, left on the host, then
-            // disagrees, so the shader reads every slot from the matrices.
+            // Before -jellyCost, which leaves the state switched far. A plug 10 cm through the pair's
+            // socket: the share of the picture it moves with the jelly on, against the squash alone
+            // and twice alike. With no socket in the gap, one is written straight into the slot the
+            // draw reads (the provider writes once a frame, and this is one frame), so the shader
+            // reads every slot from the matrices.
             string plugSaid = "no squash slots, so no plug";
             bool plugOk = true, plugReaches = true;
             var follow = swing.GetComponentsInChildren<CVRMaterialDataProvider>(true).FirstOrDefault(q => q.shaderPropertyName == "_YAPS_SquashFollow");

@@ -16,27 +16,14 @@ namespace AvatarBridge
         // DPS's digits, at VRCFury's exact trailing 6.
         //
         // A decoder reads range % 0.1 against 0.01 hole, 0.02 ring, 0.05 front,
-        // 0.09 plug tip. Raliv's shader accepts anything within 0.005 of those;
-        // toy mods reading the same protocol in C# accept 0.001. +0.0006 is
-        // inside both, so DPS content and a mod each read the socket.
+        // 0.09 plug tip. Raliv's shader accepts within 0.005, C# toy mods
+        // within 0.001; +0.0006 is inside both. An offset of +0.003 (outside
+        // the mods' window) once hid sockets from mods to stop bystander
+        // buzzing; the mod now bounds reach by the stated length instead.
         //
-        // These were +0.003 from 2026-08-23, inside Raliv's window and outside
-        // the mod's, answering a report of controllers buzzing two metres from
-        // a converted avatar. That bought the room quiet at the price of the
-        // wearer's own hardware, and shed the sound mods with the toy ones,
-        // since no range tells the two apart.
-        //
-        // Restored 2026-09-08: the mod that caused the report now bounds reach
-        // by the length the protocol states instead of guessing it from the
-        // first renderer under the root, so it engages on contact. The merge
-        // closes the bystander case, which is what the offset was standing in
-        // for.
-        //
-        // The trailing 6 is not decoration. It is what VRCFury emits, and a
-        // range that ties loses slot fights by draw order rather than
-        // reliably. The fourth decimal does not survive: the shader
-        // reconstructs range from an attenuation uniform and loses about
-        // 0.0005, inside the 0.001 the mods read at.
+        // The trailing 6 is what VRCFury emits: a tied range loses slot fights
+        // by draw order. The shader loses about 0.0005 rebuilding range from
+        // attenuation, inside the mods' 0.001.
         public const float HoleRange = 0.4106f;
         public const float RingRange = 0.4206f;
         public const float FrontRange = 0.4506f;
@@ -112,17 +99,14 @@ namespace AvatarBridge
 
         public const string SocketPropPrefabPath = PrefabFolder + "/YAPS Ring and Socket Prop.prefab";
 
-        // A prop that is two sockets rather than a plug: a ring to pass
-        // through and a hole to enter, on one body somebody can spawn and
-        // hand around. The plug prop above is its other half.
+        // A ring and a hole on one spawnable body; the plug prop's other half.
         [MenuItem("Tools/Avatar Bridge/YAPS/Create a ring-and-socket prop prefab")]
         public static void CreateSocketPropPrefab()
         {
             EnsureFolder(PrefabFolder);
             var root = new GameObject("YAPS Ring and Socket Prop");
 
-            // Something to see and to grab. A prop with no renderer is an
-            // invisible thing to pick up, which is no use to anyone in game.
+            // Something to see and grab.
             var body = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             body.name = "Body";
             body.transform.SetParent(root.transform, false);
@@ -130,9 +114,7 @@ namespace AvatarBridge
             // Its own collider would fight the one MakeProp fits to the prop.
             Object.DestroyImmediate(body.GetComponent<Collider>());
 
-            // Facing opposite ways on purpose: a plug approaches the ring
-            // from above and the hole from below, so one prop serves both
-            // without the two competing for the same approach.
+            // Opposite facings, so the two never compete for one approach.
             var ring = BuildPreviewSocket("Ring", YapsSocket.SocketKind.Ring);
             ring.transform.SetParent(root.transform, false);
             ring.transform.localPosition = new Vector3(0f, 0.03f, 0f);
@@ -160,13 +142,8 @@ namespace AvatarBridge
                       "before uploading.");
         }
 
-        // A socket in the scene rather than a prefab on disk, for previewing a
-        // plug against. Same construction as the universal prefabs, so there is
-        // one definition of what a socket is.
-        //
-        // withLights false builds one that only the atlas can find. The light
-        // path is so forgiving that it covers for whatever else is broken, so
-        // a preview that emits lights says nothing about the atlas.
+        // A scene socket for previewing, built like the prefabs. withLights
+        // false tests the atlas alone: the forgiving light path hides faults.
         public static GameObject BuildPreviewSocket(string name, YapsSocket.SocketKind kind,
             bool withLights = true)
         {
@@ -216,10 +193,7 @@ namespace AvatarBridge
             Selection.activeGameObject = go;
         }
 
-        // Kind changed on the component: the markers must say so too. Any
-        // root light under the socket takes the new range, any SPS root
-        // pointer the new name, the toolkit's own folders are rebuilt, and
-        // a default-named object is renamed to match.
+        // Kind changed: lights, pointers, folders and a default name follow.
         public static void ApplyKind(YapsSocket socket)
         {
             if (socket == null) return;
@@ -259,13 +233,9 @@ namespace AvatarBridge
 
         // --- the build ---------------------------------------------------
 
-        // Unity gives a mesh four vertex light slots, refills them every frame
-        // from the ranges in reach, and a socket takes two. Every lit socket
-        // competes for those slots on every avatar standing near it, not just
-        // its own, and a crowd of them makes the winners change frame to frame.
-        // A converted avatar is capped the same way a socket built here is.
-        // Holes first, then rings, then hierarchy order, so a rebuild keeps the
-        // same ones.
+        // Unity gives a mesh four vertex light slots per frame and a socket
+        // takes two, on every avatar nearby. Holes first, then rings, then
+        // hierarchy order, so a rebuild keeps the same ones.
         public static bool WithinLightCap(YapsSocket socket)
         {
             if (socket == null) return false;
@@ -273,18 +243,10 @@ namespace AvatarBridge
             return lit.IndexOf(socket) < StartLit;
         }
 
-        // How many sockets start lit: one, whatever is on the avatar. Four
-        // slots, two to a socket, and a tracker light takes one of the four
-        // before any socket does. The tracker that matters is rarely on this
-        // avatar: it belongs to the prop or the partner entering the socket,
-        // and there is no way to count those at build time. So one slot is
-        // always held for a tracker the build cannot see, and the lighthouse
-        // menu moves which socket is lit after that.
-        //
-        // Getting this wrong broke holes and left rings working. The tracker
-        // outranks every marker at 0.4906, a front is 0.4506 and a ring root
-        // 0.4206, so with two sockets lit the fifth candidate is always the
-        // hole root at 0.4106 and Unity drops exactly that one.
+        // One socket starts lit: a slot is held for the entering tracker, which
+        // belongs to someone else and cannot be counted at build. The
+        // lighthouse menu moves it. With two lit, the ranking (tracker 0.4906,
+        // front 0.4506, ring root 0.4206, hole root 0.4106) dropped the hole.
         const int StartLit = 1;
 
         // The sockets asking for lights on this avatar, in the order they
@@ -329,8 +291,7 @@ namespace AvatarBridge
                 if (!YapsScanner.IsProtocolLight(l)) continue;
                 int d = YapsScanner.LightDigit(l);
                 // 1 to 4 legacy roots, 7 the YAPS root; 5 and 6 legacy fronts, 0
-                // the YAPS front. A rebuild that did not know the YAPS digits
-                // would add a second pair beside them.
+                // the YAPS front.
                 if ((d >= 1 && d <= 4) || d == 7) hasRootLight = true;
                 if (d == 5 || d == 6 || d == 0) hasFrontLight = true;
             }
@@ -343,10 +304,8 @@ namespace AvatarBridge
             Replace(t, LightsName, lights =>
             {
                 if (!socket.emitLights) return;
-                // Every lit-capable socket CARRIES its pair; only the one within
-                // the cap starts enabled. A disabled light never enters Unity's
-                // per-mesh ranking, so the rest cost nothing until the lighthouse
-                // menu hands them the slot.
+                // Every socket carries its pair; only the capped one starts on. A
+                // disabled light never enters Unity's ranking.
                 if (!hasRootLight) MarkerLight(lights, "Root", hole ? HoleRange : RingRange, Vector3.zero);
                 if (!hasFrontLight) MarkerLight(lights, "Front", FrontRange, new Vector3(0, 0, FrontOffset));
                 lights.gameObject.SetActive(WithinLightCap(socket));
@@ -365,14 +324,8 @@ namespace AvatarBridge
             {
                 string spsRoot = hole ? "SPSLL_Socket_Hole" : "SPSLL_Socket_Ring";
                 bool anySpsRoot = havePointers.Any(k => k.StartsWith("SPSLL_Socket_Root") || k.StartsWith("SPSLL_Socket_Hole") || k.StartsWith("SPSLL_Socket_Ring"));
-                // Each tag twice: the bare one and its _SelfNotOnHips twin.
-                //
-                // The twin is not a duplicate, it is the SELF channel. A socket's
-                // own Self trigger listens for the twin ALONE, so a socket
-                // carrying only the bare tag answers everybody else and is dead
-                // to the person wearing it.
-                //
-                // YapsPropBuilder has always emitted both. Sockets did not.
+                // Each tag twice: the _SelfNotOnHips twin is the SELF channel,
+                // which the Self trigger listens for alone.
                 if (!anySpsRoot)
                 {
                     Pointer(pointers, "Socket Root", spsRoot, Vector3.zero);
@@ -400,18 +353,15 @@ namespace AvatarBridge
             var avatar = socket.GetComponentInParent<CVRAvatar>(true);
             BuildExit(socket, avatar);
 
-            // The writer comes back unnumbered. Its avatar numbers it again,
-            // with every plug's answer, whichever door built the socket; a
-            // prop's or a world's still wants the number, for its bucket.
+            // The avatar renumbers it; a prop's or world's still needs one for its bucket.
             if (avatar != null) YapsOwner.ApplySelf(avatar.gameObject);
             else YapsOwner.NumberWriters(YapsNativeBuilder.AvatarRoot(socket.transform).gameObject, false);
         }
 
         // --- portals ----------------------------------------------------------
 
-        // Named for the entrance, so the owner layer's path to it holds from
-        // build to build, and outside the exit's own folders, which its
-        // rebuild replaces.
+        // Named for the entrance so the owner layer's path holds; outside the
+        // exit's folders, which its rebuild replaces.
         public static string ExitName(YapsSocket entrance) => "Atlas Exit (from " + entrance.name + ")";
 
         // The writer is the entrance's whose name it carries. A duplicated

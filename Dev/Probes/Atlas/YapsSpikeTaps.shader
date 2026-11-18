@@ -1,25 +1,11 @@
 // What do the neighbourhood taps actually cost?
 //
-// One grab per camera turned out to be below the noise floor. The cost that
-// has never been measured is the other half: a plug's VERTEX shader reading
-// the atlas once per neighbouring cell, for every vertex. A radius-1
-// neighbourhood is twenty-seven cells, and a three thousand vertex plug is
-// then eighty-one thousand texture reads a frame, per plug, per camera.
-// That is a different order of thing from a single full-screen copy.
-//
-// _Taps is the count, so the same mesh can be measured at 0, 8 and 27 and
-// the slope read off directly.
-//
-// The accumulator matters: a compiler will delete a sample whose result is
-// never used, and a tap test that optimises itself away measures nothing.
-// Every read is folded into the vertex position, by an amount too small to
-// see but too real to remove.
-//
-// Caveat worth carrying: this samples through a plain sampler2D with
-// tex2Dlod, because sampling in a vertex shader needs an explicit LOD and
-// the stereo macro has no vertex-stage form. Under single-pass instanced the
-// real thing reads a texture array, which may not cost exactly the same. The
-// SHAPE of the answer, flat, linear, or ruinous, is what this is for.
+// The grab is below the noise floor; this measures the vertex taps: 27 per
+// vertex at radius 1, so a 3000-vertex plug does 81,000 reads per camera.
+// Set _Taps to 0, 8, 27 and read the slope. Reads fold into the position, or
+// the compiler deletes them.
+// Plain sampler2D + tex2Dlod (the stereo macro has no vertex form); the real
+// texture array may cost differently. This gives the shape, not the number.
 Shader "YAPS/Spike Taps"
 {
     Properties
@@ -52,10 +38,7 @@ Shader "YAPS/Spike Taps"
                 UNITY_SETUP_INSTANCE_ID(v);
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(o);
 
-                // Read the atlas once per neighbouring cell, the way a plug
-                // would. The UVs walk a small patch so the reads are not all
-                // the same texel, which is what a real neighbourhood does to
-                // the cache.
+                // UVs walk a patch so reads hit different texels, as a real neighbourhood does.
                 float3 acc = 0;
                 int taps = (int)_Taps;
                 [loop] for (int i = 0; i < taps; i++)

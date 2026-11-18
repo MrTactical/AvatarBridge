@@ -23,24 +23,19 @@ namespace AvatarBridge
         None
     }
 
-    // All user-facing conversion options. Serialized so the window
-    // remembers them. Settings the avatar can measure belong in the
-    // Automated card with an AvatarAdvisor check; settings that depend
-    // on intent belong in Manual. Headers here group by subject only;
-    // the window builds its own layout.
+    // Serialized so the window remembers them. Settings the avatar can
+    // measure go in the Automated card with an AvatarAdvisor check;
+    // intent-dependent ones go in Manual. Headers group by subject only.
     [Serializable]
     public class BridgeSettings
     {
-        // Baking, cleanup, toggle rebuilding and masking always run.
-        // Necessary steps are not options.
+        // Baking, cleanup, toggle rebuilding and masking always run, so are not options.
         [Header("General")]
         public bool cloneAvatar = true;
-        // Outside the tool's own folder. Deleting Assets/AvatarBridge
-        // to update must never erase conversions.
+        // Outside the tool's folder, so deleting it to update never erases conversions.
         public string outputFolder = "Assets/AvatarBridgeOutput";
-        // The scene copy becomes an instance of the prefab saved in the output folder, so later
-        // edits can be applied to it. Off by default: converting again overwrites that prefab,
-        // and an older copy still linked to it would change with it.
+        // Off: converting again overwrites the saved prefab, and an older linked
+        // scene copy would change with it.
         public bool linkConvertedPrefab = false;
 
         [Header("Animator layers to merge")]
@@ -67,87 +62,57 @@ namespace AvatarBridge
         [Header("Physics")]
         public PhysicsTarget physicsTarget = PhysicsTarget.MagicaCloth2;
         public bool deleteConvertedPhysBones = true;
-        // Name converted physics holders (MagicaCloth2 or DynamicBone) after their PhysBone
-        // parameter so the GrabbyBones mod drives the avatar's _IsGrabbed / _Angle grab-reactive logic.
+        // Name physics holders after their PhysBone parameter so the GrabbyBones
+        // mod drives the avatar's _IsGrabbed / _Angle logic.
         public bool grabbyBonesSupport = true;
-        // Simulate PhysBones that would produce identical cloths with one
-        // multi-root cloth. A VRCPhysBone has one root, so a hairstyle built
-        // strand by strand is one component per strand; MagicaCloth2 takes
-        // any number of roots per component, and every component saved is a
-        // proxy mesh and a solver team. Only merges chains that match on
-        // settings, colliders, parent, kind, bone lengths and mesh thickness,
-        // and that nothing toggles on its own.
+        // Merge identical PhysBone chains into one multi-root cloth: each MagicaCloth2
+        // component costs a proxy mesh and a solver team. Only chains matching on
+        // settings, colliders, parent, kind, bone lengths and mesh thickness, and
+        // that nothing toggles on its own.
         public bool groupIdenticalPhysBones = true;
         // Start each cloth from the MagicaCloth2 preset that fits the
         // chain. Structure comes from the PhysBone either way.
         public bool useMagicaPresets = true;
-        // After the preset loads, apply what the PhysBone says about
-        // gravity (converted to where the chain settles), immobile (as
-        // inertia against the same frame) and wind (none), turn off the
-        // preset's own angle limit and depth inertia, and raise its five
-        // speed limits.
+        // Over the preset: PhysBone gravity (as settle point), immobile (as inertia)
+        // and wind (none); preset angle limit and depth inertia off, speed limits raised.
         public bool fitToPhysBone = true;
-        // Derive damping and angle restoration from the PhysBone's
-        // pull, spring and stiffness. Both solvers are position
-        // integrators at fixed rates (60 Hz vs 90 Hz), so a real
-        // conversion exists; PhysBoneSolverMap holds it. Replaces the
-        // preset's damping, restoration and its velocity attenuation only.
+        // Both solvers integrate positions at fixed rates (60 Hz vs 90 Hz), so a real
+        // conversion exists (PhysBoneSolverMap). Replaces damping, restoration and
+        // velocity attenuation only.
         public bool derivePhysicsFromPhysBone = true;
-        // Size each chain's particles from the mesh those bones move.
-        // The source PhysBone radius is not used; in VRChat it only
-        // governs PhysBone-collider contact and is routinely near zero.
+        // The PhysBone radius only governs PhysBone-collider contact in VRChat and is
+        // routinely near zero, so particles are sized from the mesh instead.
         public bool fitRadiusToMesh = true;
 
-        // Fit each converted collider to the body part it sits on.
-        // A PhysBone collider is one radius end to end; the capsule
-        // tapers. The measurement replaces the source's numbers.
+        // A PhysBone collider is one radius end to end; the capsule tapers.
         // Only the host bone's own vertices are read.
         public bool fitCollidersToMesh = true;
 
 
-        // Measure the mesh again with every animated blendshape at
-        // full reach and keep the larger reading. MagicaCloth2's
-        // radius cannot be animated, so collision covers the body
-        // when a size slider is up. Shrinking shapes cost nothing.
+        // MagicaCloth2's radius cannot be animated, so measure again with every animated
+        // blendshape at full reach and keep the larger reading.
         public bool sizePhysicsForLargest = true;
-        // Honour the source's Angle/Hinge/Polar limit as a distance
-        // bound from rest, allowing for the limit at every joint. A
-        // distance bound removes motion rather than adding a restoring
-        // force, so it cannot start vibration. A soft body has no distance
-        // bounds in MagicaCloth2, so a breast or belly gets the limit as an
-        // angle limit; thighs and a butt get none.
+        // Source Angle/Hinge/Polar limit as a distance bound from rest: it removes motion
+        // instead of adding force, so it cannot start vibration. Soft bodies have no
+        // distance bounds in MagicaCloth2: breast or belly get an angle limit, thighs and butt none.
         public bool boundSwingToSourceLimit = true;
-        // Bound the particle to half the bone gap. Off since the
-        // radius became a measurement; on a soft body this throws most
-        // of the measurement away. The overlap it guards against only
-        // matters with self-collision, which ships off.
+        // Half the bone gap. Off: on a soft body it throws away most of the measured
+        // radius, and the overlap it guards only matters with self-collision, which ships off.
         public bool capParticleRadius = false;
-        // Simulated toes wiggle with every step in CVR, which reads as
-        // broken. Chains rooted at or under a Toes bone are skipped
-        // with a report entry unless this is on.
+        // Simulated toes wiggle with every step in CVR and read as broken, so Toes chains are skipped.
         public bool convertToePhysBones = false;
-        // Deliberately departs from the source. A chain the author
-        // never wired stays uncollided either way; this improves on
-        // the original rather than reproducing it.
+        // Departs from the source: a chain the author never wired stays uncollided otherwise.
         public bool autoAssignNearbyColliders = false;
-        // Invents physics the author never made. A toggled style with
-        // its own rig and mesh but no PhysBone gets a synthesized
-        // MagicaCloth, preset by classification. Off because some
-        // rigged props are rigid on purpose. MagicaCloth2 only. The
-        // Toolkit's PhysBones card leaves it off: it cannot see cloth
-        // placed by hand.
+        // Synthesizes MagicaCloth for a toggled rigged style with no PhysBone. Off: some
+        // rigged props are rigid on purpose. The Toolkit leaves it off, it cannot see hand-placed cloth.
         public bool addPhysicsToRiggedStyles = false;
 
         [Header("VRChat-only system stripping")]
-        // Measure the converted avatar and say what to fix: texture memory
-        // against the surface it covers, contacts against the instance's
-        // budget, triangles, cloth, locked shader copies. Reads only, and
-        // changes nothing it finds.
+        // Read-only: texture memory per surface, contacts against the instance budget,
+        // triangles, cloth, locked shader copies.
         public bool weighAvatar = true;
-        // Read the animator, the menu and the components into one model and
-        // report what the avatar can and cannot do: features nothing can
-        // reach, toggles a layer above always overrides, states that can never
-        // play, what lost its driver in the conversion. Reads only.
+        // Read-only: unreachable features, overridden toggles, states that never play,
+        // what lost its driver in the conversion.
         public bool surveyAvatar = true;
         // CVR provides locomotion and emotes natively. GoGo's layers
         // fight them while burning sync budget.
@@ -160,28 +125,19 @@ namespace AvatarBridge
         public bool stripSpsSystems = true;
         // Convert DPS, TPS and SPS into YAPS instead of stripping them.
         public bool convertYapsSystems = true;
-        // Keep VRChat's OGB/PCS/Wholesome haptics contacts. Off: they are
-        // stripped with their triggers. Each is a contact, and ChilloutVR
-        // budgets 512 overlapping pairs per frame for the whole instance,
-        // so a hundred of them per avatar is what breaks contacts in a
-        // crowd. Only worth it to drive a toy from them.
+        // Off by default: ChilloutVR budgets 512 overlapping contact pairs per frame for
+        // the whole instance, and a hundred haptics contacts per avatar breaks contacts
+        // in a crowd. Only worth it to drive a toy.
         public bool keepHapticsContacts = false;
-        // Keep the OGB haptics parameters synced instead of local, so OSC
-        // toy apps see them under their VRChat names. 32 sync bits each.
-        // Needs keepHapticsContacts.
+        // So OSC toy apps see them under their VRChat names. 32 sync bits each. Needs keepHapticsContacts.
         public bool syncHapticsForOsc = false;
-        // Keep each socket's depth parameter synced, so the author's own
-        // depth reactions play for the room. 32 bits per depth parameter, usually one per socket.
+        // So the author's depth reactions play for the room. 32 bits per depth parameter.
         public bool syncSocketDepthForOthers = false;
-        // Breasts and butt squash against each other and against hands, in the body shader.
-        // Needs the YAPS add-on, not converted penetration. Off: the parts swing as before. Tuned
-        // afterwards on the avatar's YAPS Squash component. A humanoid's pairs go on the jelly
-        // instead, live tissue stepped on the GPU every frame that only dents the skin; their cloth
-        // and Dynamic Bones still swing them and feel other players' hands. The solved presses apply
+        // Needs the YAPS add-on. A humanoid's pairs go on the jelly (GPU tissue that only
+        // dents the skin; cloth and Dynamic Bones still swing them). Solved presses apply
         // only to parts the tissue cannot take.
         public bool squashSoftParts = false;
-        // Comma-separated. Matched as parameter prefixes and
-        // layer-name substrings.
+        // Comma-separated parameter prefixes and layer-name substrings.
         public string extraStripKeywords = "";
         // Curves writing material properties the shader lacks, the
         // signature of a locked Poiyomi shader. Dead in VRChat too.
@@ -194,36 +150,18 @@ namespace AvatarBridge
         // receivers keep reacting to other players' hands.
         public bool createDefaultColliderPointers = true;
 
-        // A zone authored on a body part a slider can grow keeps its
-        // authored size while the mesh grows past it, so the touch
-        // lands inside the body and never reaches it. Measured like
-        // the physics sizes: at rest and with every animated shape at
-        // full reach. A zone one slider grows is animated along with
-        // it; growth spread across shapes holds the grown size.
+        // A zone on a part a slider grows stays authored size while the mesh grows past it,
+        // so touches land inside the body. One slider: animated along; spread growth: held grown.
         public bool sizeContactZonesForLargest = true;
 
-        // Resize textures the avatar carries at more resolution than its
-        // mesh can show, at the end of the conversion, and record what
-        // changed so it can be put back.
-        //
-        // ON. A texture nothing else in the project uses is left at the
-        // author's size otherwise, and the one thing that shares it is the
-        // VRChat copy of this same avatar: same mesh, same density, so the
-        // size that fits one fits the other. Anything a material outside
-        // this avatar touches is refused and named instead.
-        //
-        // Sizes, and a smaller format where a PNG or JPG's own pixels allow
-        // it. Stripping renderers and tidying the animator stay on the
-        // button, where the avatar is in front of you.
+        // Resizes over-resolved textures and records it so it can be undone. On: the only
+        // other user of such a texture is the VRChat copy of the same avatar, where the same
+        // size fits. Textures shared with outside materials are refused and named. Sizes, plus a
+        // smaller format where a PNG or JPG's own pixels allow. Renderer stripping stays on the button.
         public bool slimTexturesOnConvert = true;
 
-        // Copy shaders lacking single-pass instanced support into
-        // RehomedAssets with the macros added, and repoint materials.
-        // Originals are never modified; a copy that fails to compile
-        // is discarded. The macros are mode-agnostic.
-        //
-        // Off by default. Compilation can be verified; appearance
-        // needs checking in both eyes.
+        // Copies non-SPI shaders with the macros added; originals untouched, copies that fail
+        // to compile are discarded. Off: compiling can be verified, both-eye appearance cannot.
         public bool patchNonSpiShaders = false;
 
         [Header("Other components")]
@@ -233,13 +171,11 @@ namespace AvatarBridge
         // If the descriptor set no blink blendshape, detect blink
         // shapes on the face mesh and wire CVR's Eye Blink Settings.
         public bool wireBlinkBlendshapes = true;
-        // Inject the bundled scaler: a "Height" slider, 0.25x to 4x
-        // geometric, centred on the measured eye height. Also enables
-        // ConstraintScaleRelay so props scale with the avatar.
+        // "Height" slider, 0.25x to 4x geometric around the measured eye height. Also
+        // enables ConstraintScaleRelay so props scale with the avatar.
         public bool addAvatarScaler = true;
-        // Native sets up CVRFaceTracking; DragonSkyRunner injects that
-        // package's rig; None leaves it alone. The two set-up modes
-        // strip any existing FT rig.
+        // Native sets up CVRFaceTracking, DragonSkyRunner injects that package's rig, None
+        // leaves it alone. Both set-up modes strip any existing FT rig.
         public FaceTrackingMode faceTrackingMode = FaceTrackingMode.Native;
     }
 }

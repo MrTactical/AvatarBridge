@@ -15,11 +15,8 @@ namespace AvatarBridge
     //   Gun           6             3
     //   Thumbs Up     7             2
     //
-    // CVR also exposes GestureLeftIdx/GestureRightIdx (Int, [-1..6]), the discrete gesture
-    // without analog fist weighting, but the CCK's stock controller never references them.
-    // So discrete conditions become threshold bands on the GestureLeft/GestureRight floats,
-    // the idiom the stock controller uses (AnimatorMerger.RewriteGestureCondition). Blend
-    // tree thresholds are remapped on the same floats, so fist weighting stays smooth.
+    // The stock controller never uses GestureLeftIdx/RightIdx, so discrete conditions become float
+    // threshold bands (AnimatorMerger.RewriteGestureCondition), keeping fist weighting smooth.
     public static class GestureMap
     {
         public static readonly HashSet<string> GestureParameters = new HashSet<string>

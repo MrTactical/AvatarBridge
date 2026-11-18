@@ -28,13 +28,11 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             fail = 0;
-            // A shader the patcher takes, whose bakes land on generated
-            // materials keyed by source and renderer; and a material already on
-            // a YAPS shader, which is baked in place and records no original.
-            // Standard would test neither: the patcher refuses it, and each
-            // bake falls back to a fresh Simple Lit copy of its own.
-            // The project's Poiyomi may be patched in place already, so a plain
-            // shader of the probe's own is the one guaranteed to be foreign.
+            // A patchable foreign shader (bakes land on generated materials)
+            // and one already on YAPS (baked in place, no original). Standard
+            // tests neither: refused, each bake gets its own Simple Lit copy.
+            // The project's Poiyomi may already be patched, so the probe's own
+            // plain shader is the one sure to be foreign.
             string shaderPath = YapsNativeBuilder.OutputRoot + "/__SharedSlotProbeShader/Probe.shader";
             System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(shaderPath));
             System.IO.File.WriteAllText(shaderPath, ProbeShader);

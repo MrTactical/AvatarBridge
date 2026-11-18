@@ -1,13 +1,7 @@
-// What the CCK's upload panel will refuse, found before anybody opens it. The
-// panel hides its Upload button while any of five rules fails, and three of
-// them are import settings no conversion touches, so a converted avatar can
-// read as finished and still be refused. Each rule here gathers what the CCK
-// gathers (CCK_BuildManagerWindow.ContentValidation), so a clean result here
-// is a clean panel there.
-//
-// Plus the one the panel never mentions: the upload saves the avatar as a
-// prefab, and a prefab keeps no reference to an object that is not a saved
-// asset or part of the avatar. Those arrive in game as nothing.
+// What the CCK upload panel will refuse. It hides Upload while any of five rules fails, three
+// of them import settings no conversion touches. Each rule gathers what
+// CCK_BuildManagerWindow.ContentValidation gathers. Plus one the panel never checks: the
+// upload saves a prefab, so references to unsaved non-avatar objects arrive as nothing.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -54,7 +48,7 @@ namespace AvatarBridge
             Unsaved(report, root);
 #if AVATARBRIDGE_YAPS
             YapsNativeBuilder.ReportLostShaders(report, root);
-            // Read back now as well as at the build: a tester's depth map was written over as garbage
+            // Read back now as well as at the build: a depth map was overwritten with garbage
             // minutes after a clean conversion.
             foreach (var worn in root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " ")))
                 if (YapsJelly.Unsaved(worn.gameObject) is string lost)

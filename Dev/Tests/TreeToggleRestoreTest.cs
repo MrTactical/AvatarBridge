@@ -7,30 +7,17 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the blend-tree half of the off-state restore.
-    //
-    // VRCFury rewrites toggle LAYERS into 1D blend trees nested under one Direct tree, so the
-    // toggle's off half stops being an empty animator state and becomes an empty tree CHILD.
-    // FillEmptyStatesWithRestoreClips only ever read state.motion, so those toggles switched on
-    // and never off; reported in the wild on an avatar whose whole wardrobe was one-way.
-    //
-    // The gates being pinned here are the ones that decide whether this is a repair or a new bug:
-    //
-    //   - only 1D trees, because they NORMALISE; a restore in a Direct child would merely add
-    //     itself to whatever else the parent is summing;
-    //   - only two children with exactly one empty, the tree spelling of VRChat's toggle idiom;
-    //   - a property animated by TWO toggles in one layer is restored by NEITHER, because a
-    //     Direct parent sums its children rather than letting the top one win: the toggle
-    //     switched ON would write 0, the sibling's restore would write 1, and the sum reads on;
-    //   - Animator-type bindings are never snapshotted. Fury's AAP trees wear this exact shape
-    //     and pinning one would freeze a value the math exists to compute;
-    //   - an off half that animates only paths already dead in VRChat is as empty as a missing
-    //     one; one on a path the conversion renamed is not, since the path repair puts it back
-    //     later, and nor is one that animates a live material property, though the value reads
-    //     as missing to a script;
-    //   - a slider with no empty child whose ends animate different properties: at one end the
-    //     tree says nothing about the other's, and CVR leaves it wherever the last rebind found
-    //     it. Each end gets the others' at rest, on a copy, so a clip shared elsewhere is untouched.
+    // Off-state restore for blend trees. VRCFury turns toggle layers into 1D trees under one Direct
+    // tree, so the off half is an empty tree CHILD, not an empty state; reading only state.motion
+    // left those toggles one-way. Gates pinned here:
+    //   - only 1D trees: they normalise, a Direct child just adds to the sum;
+    //   - only two children with exactly one empty;
+    //   - a property two toggles in one layer animate is restored by neither (the Direct sum reads on);
+    //   - Animator-type bindings are never snapshotted (Fury's AAP trees have this shape);
+    //   - an off half animating only paths dead in VRChat counts as empty; renamed paths and live
+    //     material properties do not;
+    //   - a slider whose ends animate different properties: each end gets the other's rest value,
+    //     on a copy, since CVR leaves it wherever the last rebind found it.
     public static class TreeToggleRestoreTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Blend-tree toggle restore")]

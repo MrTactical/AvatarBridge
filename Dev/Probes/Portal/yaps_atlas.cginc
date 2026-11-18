@@ -9,11 +9,8 @@
 // 4096 cells. Two homes, so a clash needs both.
 #define YAPS_ATLAS_GRID    64
 
-// Columns, not the grid. A rect wider than
-// the view clips slots, and they read as opaque.
-// 28 keeps the rect inside 1024 square, which is
-// what a mirror capped at 1024 renders into. 32
-// was 1064 wide once the owner pixel arrived.
+// A rect wider than the view clips slots. 28 fits a mirror capped at
+// 1024 square; 32 was 1064 wide with the owner pixel.
 #define YAPS_ATLAS_COLS    28
 
 #define YAPS_ATLAS_SLOTPX  1
@@ -23,28 +20,17 @@
 #define YAPS_ATLAS_CELL    0.02
 #define YAPS_ATLAS_LEVELS  4
 
-// A header, then eight octants.
 // One header pixel, then FOUR per octant: position, facing, tags, owner.
-// Version 5 added the owner. Version 3 added the tags and version 4 changed what is in them, from a
-// fifteen-bit enum over rgb to a twenty-bit folded hash over rgba. Same
-// pixel count and same rect, and still a different protocol: an old
-// untagged socket wrote alpha 1, which the new decoder reads as five bits
-// set rather than none, so a pattern living up there would match a socket
-// that had no tags at all. The version is what refuses that. A socket's tag word needed a pixel of its
-// own: the facing pixel's alpha carries the kind, and the position pixel's
-// carries the owner tag the whole read is gated on. The tag pixel spends
-// all four of its channels, which is why the word is 20 bits and why the
-// tags fold into one rather than taking a slot each.
+// Same layout can still be a different protocol: an untagged socket wrote
+// alpha 1, which a later decoder reads as five tag bits. The version refuses
+// that. Other alphas are taken (facing: kind, position: cell tag), so tags
+// get all four channels of their own pixel, hence 20 bits and the fold.
 #define YAPS_ATLAS_OCTPX     4
 #define YAPS_ATLAS_CELLSLOTS (1 + 8 * YAPS_ATLAS_OCTPX)
 
-// The owner, 24 bits over rgba at six a channel: the low 24 bits of
-// the wearer's user id, which a plug compares with its own to tell its
-// avatar's sockets from anybody else's at any distance. Six bits for
-// the same reason tags take five; a wrong owner is silent too.
-//
-// Zero is UNKNOWN, never a match: a prop, a world socket, a remote
-// copy whose id has not synced yet. The reader falls back to geometry.
+// Owner: low 24 bits of the wearer's user id, six bits a channel (not
+// eight, as with tags: a wrong owner is silent). Zero is UNKNOWN, never a
+// match (prop, world socket, unsynced remote); the reader uses geometry.
 #define YAPS_ATLAS_OWNERBITS 6
 #define YAPS_ATLAS_OWNERMAX  63
 
@@ -74,16 +60,11 @@ int YapsOwnerOf(float animated)
     return (int) round(animated) & 0xFFFFFF;
 }
 
-// The facing pixel's alpha: the socket's kind, and its number among its
-// wearer's own sockets, 1 to 15, 0 for none. A plug keeps a bit per number
-// for which of its wearer's sockets it may enter, so the choice itself
-// never crosses the screen, only which socket this is. Offset by one so an
-// unwritten pixel still reads as no kind at all.
-//
-// Version 7: three kinds, not two. 0 ring, 1 hole, 2 a ring entered from
-// its front alone. A third kind costs a factor of three rather than a bit,
-// which is what fits: 1 + 2 + 3 * 15 is 48, and six bits hold 63, where a
-// separate one-way bit would have needed 64.
+// Facing alpha: kind, and the socket's number among its wearer's, 1 to 15,
+// 0 none. The plug holds the allowed numbers, so the choice never crosses
+// the screen. Offset by one so an unwritten pixel reads as no kind.
+// Kinds: 0 ring, 1 hole, 2 front-only ring. A factor of three fits
+// (1 + 2 + 3 * 15 = 48 of 63); a one-way bit would need 64.
 #define YAPS_ATLAS_SOCKETMAX 15
 #define YAPS_KIND_RING    0
 #define YAPS_KIND_HOLE    1
@@ -105,18 +86,11 @@ void YapsFacingDecode(float a, out float kind, out int index, out bool oneWay)
     index = code < 0 ? 0 : code / 3;
 }
 
-// The tag word, 20 bits over rgba at five bits a channel. Five and not
-// eight: the grab is a half float and these are written once rather than
-// summed, so eight would probably survive, but a tag that decodes wrong
-// sends a plug somewhere nobody asked for, silently.
-//
-// It is a FOLD, not a set of slots. Each tag lights three of the twenty
-// bits, picked by its own hash, and the socket publishes the OR of its
-// tags. SPS instead gives a socket eight slots and writes each 32-bit hash
-// whole, which the atlas cannot afford: every extra pixel per octant costs
-// eight per column of width, so eight slots would take the rect past 2600
-// wide and no mirror would resolve. Alpha joins rgb here for the same
-// reason, four channels being all there is.
+// Tag word: 20 bits, five a channel. Not eight: the grab is a half float,
+// and a wrong decode silently sends a plug somewhere nobody asked for.
+// A FOLD (each tag lights three bits, the socket ORs them), not SPS's eight
+// 32-bit slots: each extra pixel per octant costs eight per column, and
+// eight slots would put the rect past 2600 wide, beyond any mirror.
 #define YAPS_ATLAS_TAGBITS 5
 #define YAPS_ATLAS_TAGMAX  31
 
@@ -139,13 +113,10 @@ float4 YapsTagsEncode(int tags)
         ((tags >> (3 * YAPS_ATLAS_TAGBITS)) & YAPS_ATLAS_TAGMAX) / (float) YAPS_ATLAS_TAGMAX);
 }
 
-// One mixed word per cell and salt, and every field is cut from one: the
-// slot, the second home and the tag. They used to multiply each axis by an
-// odd constant and XOR, and negating an odd product flips every bit but the
-// lowest on both sides, so h(-x, y, -z) was h(x, y, z) whenever x and z were
-// odd. Slot, second home and tag all matched, and a socket near the world's
-// origin also answered from its mirror across the vertical axis through it
-// (protocol 9). Added, then mixed (lowbias32), so no sign pattern survives.
+// Slot, second home and tag are all cut from this word. Multiply-and-XOR
+// per axis failed: h(-x, y, -z) == h(x, y, z) for odd x and z, so a socket
+// answered from its mirror across the origin (protocol 9). Added, then
+// mixed (lowbias32), so no sign pattern survives.
 uint YapsAtlasMix(int3 c, uint salt)
 {
     uint h = asuint(c.x) * 0x8DA6B343u + asuint(c.y) * 0xD8163841u + asuint(c.z) * 0xCB1AB31Fu + salt;
@@ -183,38 +154,23 @@ float YapsAtlasCellSize(int level)
     return YAPS_ATLAS_CELL * pow(4.0, level);
 }
 
-// Who owns the payload. An offset alone cannot say.
-//
-// Seven bits, odd numerators. The writer stores 0.5 + tag / 2, which
-// is (128 + k) / 255: an exact step on an 8-bit target. k / 255 over
-// eight bits put every even k half a step off, read back 1/255 wrong
-// against a 0.001 window, and left half of all cells dead on any
-// camera without HDR (protocol 8). A slot clash passes the tag 1 in 128,
-// at random now; the range test behind it throws out most of those.
+// Who owns the payload. Seven bits, odd numerators: the writer stores
+// 0.5 + tag / 2 = (128 + k) / 255, exact on an 8-bit target. Plain k / 255
+// read even k 1/255 off against a 0.001 window, killing half the cells
+// without HDR (protocol 8). A clash passes 1 in 128; the range test
+// catches most of those.
 float YapsAtlasTag(int3 c)
 {
     uint h = YapsAtlasMix(c, 0xC2B2AE35u + YAPS_ATLAS_VERSION * 0x27D4EB2Fu);
     return (1 + 2 * (h >> 25)) / 255.0;
 }
 
-// THE LAYOUT FOLLOWS THE TARGET. The full rect is 932 by 596, and a view
-// smaller than that (a small mirror, a camera at a low resolution, the
-// self portrait) used to draw nothing, which left every plug in it to the
-// marker lights. A target that cannot hold the full rect now gets as many
-// cells as it can hold. Writers and readers draw into and read from the
-// same target, so both work out the same layout from _ScreenParams and
-// nothing has to travel. Where the full rect fits, the layout is exactly
-// the full one.
-//
-// No version bump. A version 6 writer draws nothing and a version 6 reader
-// reads nothing in a target too small for the full rect, which is the only
-// place the layout differs.
-//
-// Fewer cells cost what the grid size table in YAPS5.md says they cost:
-// more sockets clash on both homes and vanish, and more strangers share the
-// slots a plug opens, each passing the cell tag one time in 128. Still
-// better than no atlas at all. The floor stops it at about a tenth of the
-// full grid; a 256 square target holds 434 cells and clears it.
+// The layout follows the target. The full rect is 932 by 596; a smaller
+// view (mirror, low-res camera, self portrait) gets as many cells as fit,
+// worked out alike by writer and reader from _ScreenParams. No version
+// bump: version 6 draws nothing in such a target anyway.
+// Fewer cells mean more clashes (grid table in YAPS5.md). The floor is
+// about a tenth of the grid; a 256 square target holds 434 cells.
 #define YAPS_ATLAS_MINCELLS 384
 
 struct YapsAtlasLayout { int cols; int cells; int rows; };
@@ -294,16 +250,10 @@ bool YapsAtlasFits()
 }
 
 // --- the margin directory (PORTAL SPIKE) --------------------------------
-//
-// Rows 0 to 7 above the cells, which no cell ever draws or reads. A portal
-// exit publishes its own pose there, keyed by its owner and the number of
-// the entrance, so the cell protocol stays 9 and an older reader never looks.
-// Four pixels an entry: position fraction and tag, facing and number, the
-// cell index, the owner. Its own version salts the tag alone.
-//
-// Four is the floor at D5's reach and precision: the key is 28 bits, the
-// pose 72 (a 24-bit cell index, three 8-bit fractions, three 8-bit facing
-// components), 100 bits against three pixels' 96.
+// Rows 0 to 7 above the cells, unused by them. A portal exit publishes its
+// pose keyed by owner and entrance number, so the cell protocol stays 9.
+// Four pixels: position fraction and tag, facing and number, cell index,
+// owner. Four is the floor: 28-bit key + 72-bit pose = 100 bits > 96.
 #define YAPS_ATLAS_DIR_VERSION 1
 #define YAPS_ATLAS_DIR_ROWS    8
 #define YAPS_ATLAS_DIR_PX      4
@@ -311,16 +261,13 @@ bool YapsAtlasFits()
 // +-41 m of its entrance, unwrapped there, so anywhere in the world.
 #define YAPS_ATLAS_DIR_CELL    0.32
 
-// How a key finds its slot. All three keep the match (tag, number and the
-// whole owner) and the four pixels; they differ in arithmetic only.
-//   0  the S1 design: two homes, a hash each, slots by modulo
-//   1  one home, S1's hashing
-//   2  two homes; the tag's own hash places home A, a second hash home B
-//      only on a miss, and slots come by multiply and shift, never a divide
-// GPU time cannot tell the three apart, so availability decides. An entry
-// whose only slot a later draw takes is a plain hole in that view: with 20
-// live, one home loses 0.5% of entries at 1864 slots and 2.0% at 472, two
-// homes 0.02% and 0.23% (simulated). 2 is the default, as 0 without the divide.
+// How a key finds its slot (arithmetic only, same match and pixels):
+//   0  two homes, a hash each, slots by modulo
+//   1  one home
+//   2  two homes, home B only on a miss, multiply and shift, no divide
+// GPU time cannot tell them apart, so availability decides. With 20 live,
+// one home loses 0.5% at 1864 slots and 2.0% at 472, two homes 0.02% and
+// 0.23% (simulated).
 #ifndef PORTAL_LOOKUP
 #define PORTAL_LOOKUP 2
 #endif
@@ -409,16 +356,10 @@ bool YapsDirRead(uint px, int py, int owner, int n, float4 p0, inout float3 exit
     return ok;
 }
 
-// Where the exit of the hole keyed `key` (owner << 4 | number) is, from the
-// margin. One tap a home, then three on the home that answers. Tag, number
-// and the whole owner must all match, so a clash fails safe to a plain hole
-// and never to a wrong exit. exitAt comes in as the entrance; both are
-// written only on a hit.
-//
-// Home B only when A carries another tag. A tag that matches with the
-// wrong owner stops there too: one more way to fail safe, 1 in 128.
-// One return, not several: fxc reads an early one as a value that may
-// never be set, a warning on every host.
+// Exit of the hole keyed owner << 4 | number. Tag, number and owner must
+// all match, so a clash fails safe to a plain hole, never a wrong exit.
+// exitAt comes in as the entrance; both are written only on a hit.
+// One return: fxc warns on an early one as possibly unset.
 bool YapsPortalExit(int key, inout float3 exitAt, inout float3 exitFwd)
 {
     int owner = key >> 4;

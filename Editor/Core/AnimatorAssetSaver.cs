@@ -5,26 +5,14 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Persists an in-memory AnimatorController (built by AnimatorDeepCopier / the merger)
-    // as an asset. Every sub-object created with "new" must be added to the asset file or
-    // Unity silently drops it on reload.
+    // Saves an in-memory controller. Every sub-object made with "new" must be added to the file,
+    // or Unity silently drops it on reload.
     //
-    // REPLACING AN EXISTING BUILD MUTATES IT; it never deletes, byte-copies or reimports.
-    //
-    // This file used to keep the GUID stable the other way: build the new controller in a
-    // scratch folder, File.Copy its bytes over the old asset, force a synchronous reimport.
-    // The GUID survived; the OBJECT did not. A reimport destroys the native controller and
-    // every sub-asset and creates replacements, so everything still holding the old ones (the
-    // Animator window and its "AnimatorStateMachine has been destroyed" spam, tester tools,
-    // anything with domain reload switched off) was left holding corpses. With Unity's
-    // "Enter Play Mode Options" on, nothing between conversions throws that stale state
-    // away, and pressing Play re-awakes Animators against it: a session-long crash series,
-    // SIGSEGV inside GenerateGraph/DoBlendTreeEvaluation, preceded by
-    // "Assertion failed: 'MecanimDataWasBuilt()'"; a graph built from controller data that
-    // was never rebuilt. Hand-edited controllers never crash like this, because hand-editing
-    // MUTATES the existing object. Now so does this: same GUID because it is the same FILE,
-    // same native object because nothing ever destroys it, and Unity rebuilds its mecanim
-    // data the ordinary lazy way it does for any edited controller.
+    // REPLACING AN EXISTING BUILD MUTATES IT; never delete, byte-copy or reimport. A reimport
+    // destroys the native controller and its sub-assets, leaving open windows and tools holding
+    // dead objects; with Enter Play Mode Options on, Play then crashes (SIGSEGV in
+    // GenerateGraph/DoBlendTreeEvaluation after "MecanimDataWasBuilt()" asserts). Mutating keeps
+    // the same object, as hand-editing does.
     public static class AnimatorAssetSaver
     {
         public static AnimatorController Save(AnimatorController controller, string assetPath)
@@ -38,9 +26,8 @@ namespace AvatarBridge
                 return controller;
             }
 
-            // Empty the old asset: every sub-object is about to be superseded, and leaving
-            // them would accumulate one dead copy of everything per reconversion. The ROOT is
-            // deliberately never touched; being the same object is the whole point.
+            // Empty the old asset, or each reconversion leaves a dead copy of everything. The
+            // root is never touched: staying the same object is the point.
             foreach (var sub in AssetDatabase.LoadAllAssetsAtPath(assetPath))
             {
                 if (sub != null && sub != existing)
@@ -95,10 +82,8 @@ namespace AvatarBridge
             }
         }
 
-        // For a layer added AFTER Save has already run. The walk above has
-        // been and gone by then, so such a layer has to embed itself or it
-        // serializes with a null state machine: correctly named, driving
-        // nothing, and silent about it.
+        // For a layer added after Save ran: unembedded, it serializes with a null state machine,
+        // driving nothing, silently.
         internal static void EmbedLayer(AnimatorControllerLayer layer, AnimatorController asset)
         {
             if (layer == null || asset == null

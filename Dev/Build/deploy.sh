@@ -5,19 +5,12 @@
 #   Dev/Build/deploy.sh                 every project that has it
 #   Dev/Build/deploy.sh "/d/path/A"     just these
 #
-# With no arguments it scans AVATARBRIDGE_PROJECT_ROOTS, a colon-separated
-# list of directories holding Unity projects, set in Dev/local.cfg.
+# No arguments: scans AVATARBRIDGE_PROJECT_ROOTS (colon-separated, Dev/local.cfg).
 #
-# The corpus runs against the DEPLOYED copy, never the repo, so a run
-# started without deploying first measures whatever was installed last
-# time and comes back clean having tested nothing. That happened on
-# 2026-08-27: the corpus was launched against a 4.3.4 deploy while the
-# repo sat at 4.4.0 with fifty-six commits of changes.
-#
-# Copies rather than mirrors. Deleting what is not in the repo would take
-# the corpus harness out of the corpus project, which lives under
-# Editor/DevTools and is put there by the package build, not by this. What
-# the repo no longer has is listed as ORPHAN instead.
+# The corpus runs against the DEPLOYED copy, so skipping a deploy tests
+# nothing (2026-08-27: a 4.3.4 deploy measured while the repo was at 4.4.0).
+# Copies, never mirrors: deleting would remove the harness the package build
+# put under Editor/DevTools. Files gone from the repo are listed as ORPHAN.
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SHIPPED=(AvatarScaler Editor FaceTracking Presets Runtime)
@@ -55,18 +48,14 @@ for proj in "${projects[@]}"; do
         cp -r "$REPO/$d" "$dest/"
         [ -f "$REPO/$d.meta" ] && cp "$REPO/$d.meta" "$dest/"
     done
-    # The dev harness under Editor/DevTools is the package build's to
-    # install, but a copy of it that stops compiling stops the whole
-    # project, and a corpus run died on a probe an older build left there.
-    # Refresh by name what is already present; add nothing, delete nothing.
+    # A stale harness copy that stops compiling stops the project (a corpus run
+    # died on one). Refresh by name what is present; add and delete nothing.
     if [ -d "$dest/Editor/DevTools" ]; then
         stale=0
         while IFS= read -r have; do
-            # The harness folders and their subfolders, never all of Dev: that
-            # let a gitignored spike sharing a name replace the harness copy.
-            # check-projects.sh resolves the same way. Last match wins, as in
-            # the package build. A missing folder fails find, and pipefail
-            # would end the deploy on it.
+            # Harness folders only, never all of Dev: a gitignored spike sharing
+            # a name replaced the harness copy. Last match wins, as in the
+            # package build. "|| true": a missing folder fails find under pipefail.
             src=$(find "$REPO"/Dev/{Corpus,Tests,Probes,Scenes,Tester} -name "$(basename "$have")" -type f 2>/dev/null | tail -n 1) || true
             [ -n "$src" ] || continue
             cmp -s "$src" "$have" || { cp "$src" "$have"; stale=$((stale + 1)); }
@@ -77,8 +66,7 @@ for proj in "${projects[@]}"; do
         [ -f "$REPO/$f" ] && cp "$REPO/$f" "$dest/"
         [ -f "$REPO/$f.meta" ] && cp "$REPO/$f.meta" "$dest/"
     done
-    # Copying never deletes, so a file the repo renamed or removed keeps
-    # compiling here. Name it; deleting stays a decision made by hand.
+    # A file the repo removed keeps compiling here. Name it; delete by hand.
     for d in "${SHIPPED[@]}"; do
         [ -d "$dest/$d" ] || continue
         while IFS= read -r f; do

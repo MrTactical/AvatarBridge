@@ -13,10 +13,8 @@ namespace AvatarBridge
     {
         const string Category = "PhysBones";
 
-        // Where a writer parks what it makes. Here rather than in either
-        // writer because both call it and the two compile on different
-        // defines: with these in the Magica writer, a project that had
-        // DynamicBone and not MagicaCloth would not compile at all.
+        // Where a writer parks what it makes. Here because the two writers compile on different
+        // defines; in the Magica writer, a DynamicBone-only project would not compile.
         internal static Transform CollectionUnder(BridgeContext ctx, string name)
         {
             var target = ctx.Target.transform;
@@ -68,11 +66,9 @@ namespace AvatarBridge
             }
             hosts.Add(hostPath);
 
-            // A new host is live from load, so a collider that shipped switched off came out
-            // always on. The host takes the off state the hierarchy does not already give it: a
-            // disabled component, or an inactive object the host is not under (a rootTransform
-            // elsewhere). RepointColliderEnableCurves carries the switching onto it, a native
-            // toggle ToggleNativizer.WithContactHosts.
+            // A new host is live from load, so an off collider came out always on. The host takes
+            // any off state the hierarchy does not already give it. RepointColliderEnableCurves
+            // carries the switching, a native toggle ToggleNativizer.WithContactHosts.
             bool live = original.enabled;
             if (!live)
             {
@@ -324,10 +320,8 @@ namespace AvatarBridge
                 }
                 else if (enabled.Count > 1)
                 {
-                    // Two solvers on one chain always fight; they take turns moving the same
-                    // bones and the result is jitter, not a blend. Nothing is deleted, because
-                    // which variant the author wanted is their call: the extras are switched
-                    // off so only one drives the chain, and a checkbox puts any of them back.
+                    // Two solvers on one chain jitter. The extras are switched off, not deleted,
+                    // so a checkbox puts any of them back.
                     for (int i = 1; i < enabled.Count; i++)
                     {
                         enabled[i].enabled = false;
@@ -377,11 +371,8 @@ namespace AvatarBridge
                     DeleteConverted(ctx, physBones);
                     break;
 #else
-                    // The break belongs inside this #if rather than after the #endif: without
-                    // MagicaCloth2 the branch above ends in a return, which leaves a trailing
-                    // break unreachable and earns CS0162 in every project that picked DynamicBone.
-                    // A warning naming AvatarBridge is the first thing someone checks when they
-                    // suspect the tool.
+                    // Inside the #if: without MagicaCloth2 the branch above returns, and a trailing
+                    // break would warn CS0162 in every DynamicBone project.
                     ctx.Report.Error(Category, "MagicaCloth2 is not installed", ctx.Standalone
                         ? "Import MagicaCloth2, or choose DynamicBone in the Convert tab's Physics options, and press again."
                         : "Import MagicaCloth2 (or choose the DynamicBone target) and convert again.");
@@ -475,10 +466,8 @@ namespace AvatarBridge
                 "may need grabbing to work at all.");
         }
 
-        // Every bone any skinned mesh lists. Built once per run, here and by
-        // HelperRigCleanup. Listed, not weighted, unlike the constraint pass:
-        // a helper rig judged by this gets deleted, and a listed bone that is
-        // deleted leaves a hole in that renderer's bone array.
+        // Every bone any skinned mesh lists, once per run (also HelperRigCleanup). Listed, not
+        // weighted: deleting a listed bone leaves a hole in the renderer's bone array.
         internal static HashSet<Transform> SkinnedBones(BridgeContext ctx)
         {
             var used = new HashSet<Transform>();
@@ -493,17 +482,9 @@ namespace AvatarBridge
             return used;
         }
 
-        // A chain that moves nothing on its own: no mesh is weighted to any
-        // bone in it. Some rigs are built this way: a cascade of
-        // helper bones, each stage doing one job and feeding the next, with
-        // constraints copying the composed result onto the avatar's real
-        // bones.
-        //
-        // Converting each stage separately does not reproduce that. The
-        // cascade stops composing and the constraints faithfully copy a
-        // dozen solvers fighting, which lands on the mesh as deformation.
-        // The chain is recorded so a later pass, once constraints exist, can
-        // put ONE chain on the real bone it was driving.
+        // A chain no mesh is weighted to: a helper cascade whose constraints copy the result onto
+        // real bones. Converted stage by stage, a dozen solvers fight and deform the mesh, so it
+        // is recorded for a later pass to put one chain on the real bone.
         static bool SkipHelperRigChain(BridgeContext ctx, PhysBoneChainData chain, HashSet<Transform> skinned)
         {
             if (chain.Root == null) return false;
@@ -534,21 +515,12 @@ namespace AvatarBridge
             return true;
         }
 
-        // A chain whose only motion was stretch and squish. Neither solver can
-        // lengthen a bone, so converting one builds a chain that SWINGS where
-        // the author asked for scale, and bones meant to stay put wander.
-        //
-        // Cake PB is the common case: its Squish chains are pull 1, spring 0,
-        // stiffness 0, max squish 1, and the squish itself is driven by the
-        // animator, which converts fine on its own. Chains with real spring or
-        // stiffness are left alone; they lose the squish and keep the swing
-        // they were also doing. So are chains with pull below 1 or any
-        // gravity: spring 0 only removes momentum, and those still lag and hang.
-        //
-        // Unless nothing anyone sees moves with them. A grab-and-stretch
-        // handle is built that way, and its stretch drives the animator. Let
-        // through, it skins no mesh, so the helper-rig path took it, deleted
-        // it with the empty bones around it, and reported a cascade.
+        // A chain whose only motion was stretch and squish. Neither solver lengthens a bone, so
+        // it would swing where the author asked for scale. Cake PB Squish chains are the common
+        // case (pull 1, spring 0, stiffness 0, max squish 1; the animator does the squish).
+        // Real spring or stiffness, pull below 1 or any gravity: kept, they still swing or hang.
+        // Also caught when nothing visible moves with it: a grab-and-stretch handle drives the
+        // animator, and the helper-rig path would delete it as a cascade.
         static bool SkipSquishOnlyChain(BridgeContext ctx, PhysBoneChainData chain, HashSet<Transform> skinned,
             Dictionary<Transform, List<Component>> driven)
         {
@@ -598,10 +570,8 @@ namespace AvatarBridge
             return false;
         }
 
-        // Every constraint on the avatar, keyed by the transform it WRITES. A
-        // VRC constraint with Target Transform set drives that target wherever
-        // the component sits, and the constraint pass rebuilds it there, so
-        // looking only at components on the chain's own bones missed it.
+        // Every constraint keyed by the transform it writes: Target Transform drives a bone from
+        // anywhere, so checking the chain's own bones misses it.
         static Dictionary<Transform, List<Component>> ConstraintDriven(BridgeContext ctx)
         {
             var driven = new Dictionary<Transform, List<Component>>();
@@ -611,13 +581,8 @@ namespace AvatarBridge
                 {
                     continue;
                 }
-                // Unity's constraints count too, not just VRChat's. 2.91.0 only matched
-                // "VRC*Constraint"; but the NaN is an engine-level feedback loop between a
-                // component that WRITES a rotation every frame and a solver that integrates
-                // from its own previous state, and which constraint type does the writing is
-                // irrelevant. A base authored entirely on Unity constraints sailed straight
-                // past the 2.91.0 check with a tail cloth simulating three constraint-driven
-                // bones.
+                // Unity's constraints too: the NaN is a feedback loop between any per-frame
+                // rotation writer and a solver integrating its own previous state.
                 var type = component.GetType();
                 bool vrc = type.Name.StartsWith("VRC", System.StringComparison.Ordinal)
                            && type.Name.EndsWith("Constraint", System.StringComparison.Ordinal);
@@ -651,11 +616,8 @@ namespace AvatarBridge
             {
                 return false;
             }
-            // Only the bones that can simulate. A humanoid exclusion takes its
-            // subtree out of the solver for good, so a twist constraint on a
-            // thigh must not cost a tail rooted at Hips. An author's own ignore
-            // still counts: MagicaCloth2 gives those up when honouring them
-            // would leave the chain unable to move.
+            // Only bones that can simulate: a thigh twist constraint must not cost a tail rooted at
+            // Hips. Author ignores still count, MagicaCloth2 drops them if the chain could not move.
             var simulated = new List<Transform>();
             void Walk(Transform t)
             {
@@ -674,13 +636,7 @@ namespace AvatarBridge
                 }
                 foreach (var component in writers)
                 {
-                    // Except scale. The loop above is two things writing the
-                    // SAME channel, and a scale constraint writes localScale
-                    // and nothing else: the solver moves and rotates the bone,
-                    // which a scale constraint never touches. Refusing these
-                    // too cost avatars their chain for no reason, and the
-                    // control that switched it kept converting into a menu
-                    // entry with no physics behind it.
+                    // Except scale: it writes only localScale, which the solver never touches.
                     if (WritesScaleOnly(component))
                     {
                         scaleOnly = t.name;

@@ -1,21 +1,6 @@
-// VRCFury's second head, removed, with whatever it carried moved onto the
-// head bone.
-//
-// Fury builds "vrcfAlwaysVisibleHead" as a copy of the head so a VRChat
-// player can see their own, because VRChat hides the real one in first
-// person. ChilloutVR hides yours by itself, so the copy solves a problem
-// this platform does not have, and it arrives switched OFF, waiting for a
-// Fury service that gets deleted here.
-//
-// Anything baked onto it comes off worst. A mouth socket parked there is
-// inactive, then animated off by a layer that cannot run, and answers
-// nobody. Three separate evenings went into that one socket.
-//
-// So the copy goes and its children move to the humanoid Head bone, which
-// is where a mouth socket belonged in the first place. World positions are
-// kept, and every animation path that pointed into the copy is rewritten to
-// follow, because a curve addressing a deleted object is a toggle that
-// silently stops working.
+// Removes VRCFury's "vrcfAlwaysVisibleHead" copy, which CVR does not need and which arrives
+// switched off waiting for a deleted Fury service, so anything on it (a mouth socket) answers
+// nobody. Its children move to the Head bone, world positions kept, and animation paths follow.
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
@@ -101,10 +86,8 @@ namespace AvatarBridge
                 (references > 0 ? $" and {BridgeElements.Count(references, "reference", "references")} to it, such as bone slots, moved to the head bone." : "."));
         }
 
-        // Bone slots, root bones, constraint sources and physics roots that named the copy itself
-        // follow it to the head it is pinned to, so a skin bound to it keeps its pose. Left on the
-        // destroyed copy they read null, and the vertices collapse. Transforms are skipped: their
-        // parent and child links are Unity's own bookkeeping.
+        // References to the copy move to the head, or they read null and skinned vertices collapse.
+        // Transforms are skipped: their links are Unity's own bookkeeping.
         static int RepointReferences(GameObject root, Transform copy, Transform head)
         {
             int changed = 0;

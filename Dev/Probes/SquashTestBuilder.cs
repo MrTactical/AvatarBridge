@@ -357,14 +357,10 @@ namespace AvatarBridge.Regression
             aim.worldUpVector = Vector3.up;
         }
 
-        // The squash with nothing synced. A camera on a's aim renders one quad on b's follow into a
-        // 4x4 linear texture; the quad's shader turns the camera's distance into both parts' along
-        // and across, and a texture parser writes them into the scale nodes. Every client runs it on
-        // its own copy, so each viewer's squash follows the cloth that viewer sees. Columns 0 to 3 are
-        // a's flattening, a's widening, b's flattening, b's widening, each 0..1 over its range, all
-        // on g. The parser reads 8 bits, a step of 0.0016 in scale. Only g reads 0 from every no-data
-        // case: the client's no-data colour is opaque black, which swelled b while b sat on alpha,
-        // and the error shader's magenta has r and b full, which flattened a while flattening sat on r.
+        // Columns 0 to 3: a's flattening, a's widening, b's flattening, b's widening, each 0..1, all on
+        // g. The parser reads 8 bits, a 0.0016 step in scale. Only g reads 0 in every no-data case: the
+        // client's no-data colour is opaque black (swelled b when b sat on alpha), and the error
+        // shader's magenta has r and b full (flattened a when flattening sat on r).
         public static readonly Color Rest = new Color(0f, 0f, 0f, 0f);
         // Checked by the shader, so only the reader camera draws the quad. The quad draws in the
         // last queue there is: anything else in the camera's box draws into the texture too, and
@@ -569,14 +565,9 @@ namespace AvatarBridge.Regression
         }
 #if AVATARBRIDGE_YAPS
 
-        // The squash in the YAPS-patched body shader instead: every layer over a part takes the
-        // same move, worked out on the GPU from where the parts are. A material data provider
-        // writes each part's follow (a plain child of its top carrying bone, at its centre) into
-        // the materials every frame, on every client, with nothing synced and no camera.
-        //
-        // What the in-game test answers: does the provider run on remote copies, do the client's
-        // materials take what it writes, and does the squash look right. A shader the patcher
-        // refuses is reported and its layer left as it was.
+        // Shader squash: a material data provider writes each part's follow into the materials every
+        // frame on every client, nothing synced. The in-game test answers whether the provider runs
+        // on remote copies and the materials take it. A refused shader is reported, layer untouched.
 
         [MenuItem("Tools/Avatar Bridge/Dev/YAPS/Add the squash test (shader, diagnostic)")]
         static void ShaderDiagnosticMenu()

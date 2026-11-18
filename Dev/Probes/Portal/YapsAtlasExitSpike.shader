@@ -1,16 +1,10 @@
-// A portal exit publishing its own pose into the margin directory.
-//
-// PORTAL SPIKE, beside the scratch yaps_atlas.cginc. The entrance stays an
-// ordinary protocol-9 hole; this writer draws only rows 0 to 7, which no cell
-// draws or reads, so an older reader never sees it.
-//
-// One quad per home, flagged by z, corners in UV0 and every position zero, as
-// the socket writer's quads and for the same reason. The matrix is the
-// payload: its origin is the exit and its +Z the way the shaft leaves.
-//
-// The key is the owner and the ENTRANCE's number, not this socket's own: the
-// entrance is what a plug resolves, so the entrance's number is what it asks
-// for. Its own property, so numbering an exit as a socket never rewrites it.
+// PORTAL SPIKE: a portal exit publishing its pose into the margin directory
+// (rows 0 to 7, unused by cells, so older readers never see it). The
+// entrance stays an ordinary protocol-9 hole.
+// One quad per home, flagged by z, corners in UV0, positions zero, as the
+// socket writer. The matrix is the payload: origin the exit, +Z outward.
+// Keyed by the ENTRANCE's number, which is what a plug resolves; its own
+// property, so numbering the exit as a socket never rewrites it.
 Shader "YAPS/Atlas Exit Spike"
 {
     Properties

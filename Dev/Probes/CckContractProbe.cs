@@ -9,23 +9,10 @@ namespace AvatarBridge.Regression
     // Asserts that every ChilloutVR CCK enum member AvatarBridge names in source still exists in
     // the installed CCK.
     //
-    // A member written into the source binds at COMPILE time, so if the CCK renames one the whole
-    // tool stops building; not a degraded conversion, an uninstallable tool. That happened: 3.7.1
-    // would not compile for anyone whose CCK spells its comparison operators "MoreThen"/"LessThen"
-    // rather than "MoreThan"/"LessThan", and nothing here could have found it, because the compile
-    // check builds against whichever CCK is on this machine; by definition the one that agrees.
-    //
-    // This does not fix that. Nothing short of resolving every member by name would, and that
-    // costs type safety across the codebase for a risk that is only real where a name is genuinely
-    // ambiguous. What it does is make DRIFT VISIBLE HERE: run it after updating the CCK and before
-    // a release, and a rename is caught while it is still cheap, instead of by a user who cannot
-    // install.
-    //
-    // When one does move, resolve THAT member by name; see TryOperator in AnimatorMerger; rather
-    // than converting everything.
-    //
-    // The list is maintained by hand on purpose: it is the contract, and a generated one would
-    // drift silently with the source it was generated from.
+    // Members bind at compile time, so a CCK rename makes the tool uninstallable (3.7.1 failed
+    // where the CCK spells "MoreThen"/"LessThen"); the compile check only sees the local CCK.
+    // Run after a CCK update and before a release. When one moves, resolve THAT member by name
+    // (see TryOperator in AnimatorMerger). Hand-maintained: a generated list drifts with the source.
     public static class CckContractProbe
     {
         static readonly (string Type, string[] Members)[] Required =
@@ -33,9 +20,7 @@ namespace AvatarBridge.Regression
             ("ABI.CCK.Components.AnimatorDriverTask+Operator", new[]
             {
                 "Set", "Addition", "Subtraction", "Multiplication", "Division", "Power", "NotEqual",
-                // "MoreThan" is deliberately absent: it is resolved by name because the CCK has
-                // shipped it both ways. Listing it here would fail the check on half the versions
-                // this tool is meant to support.
+                // No "MoreThan": the CCK shipped it both ways, so it is resolved by name.
             }),
             ("ABI.CCK.Components.AnimatorDriverTask+ParameterType", new[]
             {

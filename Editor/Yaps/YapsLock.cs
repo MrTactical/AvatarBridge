@@ -1,15 +1,11 @@
 // Poiyomi's own lock, run before YAPS patches, on copies of the user's materials.
 //
-// Thry 2.7x strips an unlocked Thry shader from the build, and the upload locks every
-// material still unlocked. A patch of the unlocked uber shader was locked a second time at
-// upload and did not compile. MarkLocked in YapsShaderPatcher stops that but ships the whole
-// uber shader. So an unlocked source gets a stand-in here, locked through Thry, and the patch
-// is made from the stand-in's locked shader: what a hand lock ships, with YAPS on top.
-//
-// A stand-in is named by everything its lock reads, so it is never locked twice. Relocking
-// in place writes a second shader under the same name, and the old one cannot simply go:
-// Thry puts every material with matching settings on the FIRST one's shader. Changed
-// settings make a new stand-in instead, and a reconvert finds the old one and locks nothing.
+// Thry 2.7x locks every unlocked material at upload, so a patch of the unlocked uber
+// shader was locked twice and failed to compile. MarkLocked in YapsShaderPatcher avoids
+// that but ships the whole uber shader. So an unlocked source gets a stand-in locked
+// through Thry, and the patch is made from its locked shader.
+// A stand-in is keyed by everything its lock reads, so it is never relocked: Thry puts
+// matching materials on the FIRST lock's shader, so the old one cannot simply go.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -83,9 +79,8 @@ namespace AvatarBridge
             return origin != YapsLegacyMap.Origin.SPS && origin != YapsLegacyMap.Origin.DPS && origin != YapsLegacyMap.Origin.YAPS;
         }
 
-        // Everything the locked text follows from: the material's own data, which properties
-        // stay live, and the shader with its includes. Not the material's GUID, so two
-        // materials with the same name and settings share one stand-in.
+        // Material data, live properties, shader and includes. No GUID, so identical
+        // materials share one stand-in.
         // ponytail: a texture's size and sampler reach the locked text without moving this
         // key; a reimported texture keeps the old stand-in until the material changes.
         static string Key(Material source, List<string> props) => YapsShaderPatcher.Hash(
@@ -116,16 +111,13 @@ namespace AvatarBridge
             return basis ?? m;
         }
 
-        // Basis was once 1188 s of one avatar's 1190 s slot loop. Which half, keying or
-        // loading the stand-in, is what the squash lap reports.
+        // Basis once took 1188 s of a 1190 s slot loop; these split keying from loading.
         internal static readonly System.Diagnostics.Stopwatch KeyTime = new System.Diagnostics.Stopwatch();
         internal static readonly System.Diagnostics.Stopwatch LoadTime = new System.Diagnostics.Stopwatch();
 
-        // A copy carries its basis's list of every material on that locked shader, and Thry's
-        // Unlock of the copy trashes the shader it wears unless one of those still wears it:
-        // none do, so it trashed the patch every other copy shares. Empty, Thry keeps it.
-        // And Thry's rename suffix is the material's name unless tagged: a copy saved under
-        // its own name would unlock without its renamed values and relock off the clips.
+        // Clears the copied AllLockedGUIDS: with it, Thry's Unlock of the copy trashed the
+        // patch every other copy shares. Pins the rename suffix to the source's name, or the
+        // copy unlocks without its renamed values and relocks off the clips.
         public static void Stamp(Material copy, Material source)
         {
             if (copy == null) return;
@@ -194,11 +186,8 @@ namespace AvatarBridge
             }
         }
 
-        // Stand-ins nothing needs any more, each with its locked shader, to the trash. One is
-        // needed while a material wears its shader (Thry gives matching settings the first
-        // lock's shader) or names it as the source of its YAPS patch, which Update every YAPS
-        // shader patches from again. One for settings since changed is neither once its avatar
-        // is converted again. Null when there are no stand-ins.
+        // Trashes stand-ins and their shaders that no material wears or names as its patch
+        // source (Update every YAPS shader patches from it again). Null when there are none.
         public static string PruneUnused(Func<int, bool> confirm = null, string folder = Folder)
         {
             if (!AssetDatabase.IsValidFolder(folder)) return null;

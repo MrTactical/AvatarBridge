@@ -1,11 +1,7 @@
 // Stamps a known value into a fixed corner of the screen.
 //
-// The quad ignores its own transform and its own eye: the vertex shader
-// writes clip space directly, so the patch lands on the same pixels no
-// matter where the object is, whether it faces the camera, or which eye is
-// being drawn. Under single-pass instanced that means both slices of the
-// eye texture array carry identical content, which is the whole reason this
-// is simpler here than on VRChat's double-wide.
+// Writes clip space directly, so both eye slices under single-pass instanced
+// get identical content (simpler than VRChat's double-wide).
 Shader "YAPS/Spike Writer"
 {
     Properties

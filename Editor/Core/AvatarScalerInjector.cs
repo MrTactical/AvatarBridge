@@ -9,10 +9,9 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Optional avatar scaler: the bundled smoothing layer plus a generated
-    // Size layer. The menu control is a slider, 0..1, mapped geometrically
-    // onto 0.25x to 4x of the measured height, so 1x sits at mid-slider. The
-    // blend tree approximates the exponential with a knot each sqrt(2) step.
+    // Bundled smoothing layer plus a generated Size layer. Slider 0..1 maps
+    // geometrically onto 0.25x..4x, so 1x is mid-slider; the blend tree
+    // approximates the exponential with a knot each sqrt(2) step.
     public static class AvatarScalerInjector
     {
         const string Category = "Avatar scaler";
@@ -21,9 +20,8 @@ namespace AvatarBridge
 
         const string HeightParam = "Height";
         internal const string TemplateParam = "Input";
-        // The template's other names (Output, One, StepSize...) are generic
-        // enough for an avatar's own system to use, and sharing one drives
-        // both at once. They are local scaffolding, so they get our own.
+        // The template's names (Output, One, StepSize...) are generic enough to
+        // collide with an avatar's own system, so they are renamed.
         const string Prefix = "#AvatarScaler/";
         const string OutputParam = Prefix + "Output";
         const string SizeLayer = "Size";
@@ -47,9 +45,8 @@ namespace AvatarBridge
                 return;
             }
 
-            // "Height" is kept on purpose (see the note below), so an avatar
-            // with its own would have it taken over: default forced to mid
-            // range, and its own menu entry quietly driving the scaler.
+            // "Height" keeps its name, so an avatar's own Height would be taken
+            // over: default forced to mid, its menu entry driving the scaler.
             var menu = ctx.CvrAvatar != null && ctx.CvrAvatar.avatarSettings != null
                 ? ctx.CvrAvatar.avatarSettings.settings : null;
             if (master.parameters.Any(p => p.name == HeightParam)
@@ -68,8 +65,7 @@ namespace AvatarBridge
             var copier = new AnimatorDeepCopier();
             var layers = master.layers.ToList();
             var existing = new HashSet<string>(layers.Select(l => l.name));
-            // The bundled template still says "Input", "Output" and so on internally;
-            // the parameters are renamed, so every reference in the clone has to follow.
+            // The parameters are renamed, so every reference in the clone must follow.
             var names = source.parameters.ToDictionary(p => p.name, p => Renamed(p.name));
             var clips = new Dictionary<AnimationClip, AnimationClip>();
             int added = 0;
@@ -278,9 +274,8 @@ namespace AvatarBridge
             return tree;
         }
 
-        // The template's clips write Output and the delta as Animator curves,
-        // which renaming the layer never reaches. Cloned, never edited: they
-        // are the package's own assets.
+        // The clips write Output and the delta as Animator curves, which renaming
+        // the layer never reaches. Cloned, never edited: they are package assets.
         static AnimationClip RenameInClip(AnimationClip clip, Dictionary<string, string> names,
             Dictionary<AnimationClip, AnimationClip> clips)
         {
@@ -343,11 +338,8 @@ namespace AvatarBridge
             {
                 return; // already exposed
             }
-            // A Slider, not an InputSingle: the quick menu renders InputSingle as an unclamped
-            // numeric keypad (the CCK type carries only a defaultValue; no min, max or step),
-            // which in practice meant typing 9999 and watching nothing happen. Sliders drag.
-            // First in the menu: it is the one everybody reaches for, and the
-            // end of a long list is where nobody looks.
+            // Not an InputSingle: that is an unclamped keypad (no min, max or step), so
+            // 9999 did nothing. First in the menu, as the end of a long list goes unseen.
             settings.Insert(0, new CVRAdvancedSettingsEntry
             {
                 name = HeightMenu,

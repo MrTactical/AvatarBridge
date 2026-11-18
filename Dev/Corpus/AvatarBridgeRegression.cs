@@ -1,24 +1,12 @@
 // Regression harness. Development only, never shipped.
 //
-// Converts every avatar in the project. Reduces each result to a
-// deterministic text digest. Diffs against the last accepted run.
-// Unintended changes show as text, before any in-game test.
-//
-// The digest is not the .controller YAML. That is GUID noise.
-// This records behaviour only: layers, states, transitions,
-// conditions, motions by name, parameters, CVR components.
-//
-// Deploy into the test project's Assets/Editor/ to run.
-//
-// Run headless for anything past the quick set, always through
-// Dev/Corpus/run-corpus.sh (--quick, --subset FILE, --dynbone).
-// A raw Unity.exe launch takes every core at Normal priority and
+// Converts every avatar, reduces each to a deterministic text digest of
+// behaviour (not the GUID-noisy .controller YAML), diffs against the last
+// accepted run.
+// Run through Dev/Corpus/run-corpus.sh: a raw launch is unthrottled and
 // skips the stale-deploy and open-editor checks.
-//
-// Headless is for determinism. VRCFury's Write Defaults dialog
-// changes the avatar per button pressed. Batchmode always answers
-// Auto-Fix, so runs stay comparable.
-// Interactive runs: always Auto-Fix, never "Skip and stop asking".
+// Headless for determinism: batchmode answers VRCFury's Write Defaults
+// dialog with Auto-Fix. Interactive runs: Auto-Fix, never "Skip and stop asking".
 
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System;
@@ -42,9 +30,7 @@ namespace AvatarBridge.Regression
         // (scene path, converted root), once per conversion. See ConvertAndDigest.
         public static event Action<string, GameObject> Converted;
 
-        // Digests live beside the tool, not in the Unity project.
-        // They must survive a reimport of Assets/AvatarBridge.
-        // Set AVATARBRIDGE_REPO to the checkout path before running.
+        // Digests live in the repo (AVATARBRIDGE_REPO) to survive a reimport.
         static string Repo
         {
             get
@@ -62,19 +48,11 @@ namespace AvatarBridge.Regression
             get
             {
                 string repo = Repo;
-                // A flag-on run keeps its own Baseline and Current. The two
-                // answer different questions: one asks whether existing
-                // users are unaffected, the other whether the new feature
-                // is stable, and sharing a folder would have each
-                // overwrite the other's reference.
+                // Each profile keeps its own Baseline and Current, or they overwrite each other.
                 string suffix = YapsMode ? "/Regression/Yaps" : "/Regression";
-                // The fallback solver is a different avatar at the end of the
-                // run, so its digests never share a folder with the default.
-                // Settings chosen per avatar by the advisor are a different
-                // question from one fixed profile: a digest there moves when
-                // the ADVICE moves, so the two must never compare. The advisor
-                // picks the physics target itself, so the DynamicBone folder
-                // is never added under it, or the folder name would lie.
+                // Advisor digests move when the advice moves, so never compare
+                // with the fixed profile. The advisor picks the solver itself,
+                // so no DynamicBone folder under it.
                 if (AdvisorMode)
                 {
                     suffix += "/Advisor";
@@ -90,9 +68,8 @@ namespace AvatarBridge.Regression
         }
         static string BaselineDir => Root + "/Baseline";
         static string CurrentDir => Root + "/Current";
-        // Written when a run starts and removed only when it finishes uncancelled, so a crash or
-        // a kill leaves it too. A partial Current/ looks exactly like a complete one, and
-        // accepting it would silently shrink the corpus to however far the run got.
+        // Removed only on an uncancelled finish: accepting a partial Current/
+        // would silently shrink the corpus.
         static string PartialMarker => CurrentDir + "/PARTIAL-DO-NOT-ACCEPT";
         // Digest names that have a baseline and got no digest this run, for the report.
         // Not a .txt, so neither the comparison nor Accept picks it up.
@@ -105,18 +82,9 @@ namespace AvatarBridge.Regression
             "/Samples/", "/Scenes/SampleScene", "/MISC/",
         };
 
-        // Per-project scene lists live in Regression/corpus.cfg beside
-        // the digests. Local test data, kept out of the repo like the
-        // digests. Sections [excluded] and [quickset], "#" comments.
-        //
-        // NOT under Root. Root moves per mode, and the lists do not: which
-        // scenes are avatars and which ones VRCFury cannot bake is a fact
-        // about the project, the same in every mode. Reading it from Root
-        // meant only the default mode ever found the file, so a YAPS run
-        // silently kept the five avatars the list exists to drop and
-        // digested VRCFury's failure as if it were the tool's. Silently,
-        // because a missing file reads as an empty list; the quick set
-        // throws on the same miss and was the only half anybody saw.
+        // Local scene lists: [excluded] and [quickset], "#" comments.
+        // NOT under Root, which moves per mode: other modes missed the file,
+        // read it as an empty list and digested VRCFury's bake failures.
         static string CorpusConfigPath => Repo + "/Regression/corpus.cfg";
 
         static string[] ReadCorpusSection(string section)
@@ -154,10 +122,8 @@ namespace AvatarBridge.Regression
             return extra == null ? BuiltInExcluded : BuiltInExcluded.Concat(extra).ToArray();
         }
 
-        // The quick set: the most regression-prone scenes, so a fix can
-        // be checked in minutes instead of a full run. Keep a healthy
-        // control scene in it; a control that starts moving means a fix
-        // was masking something.
+        // Most regression-prone scenes, checked in minutes. Keep a healthy
+        // control in it: a control that moves means a fix masked something.
         static string[] QuickSet()
         {
             var set = ReadCorpusSection("quickset");
@@ -243,10 +209,9 @@ namespace AvatarBridge.Regression
             Exit(Run(scenes, $"subset({scenes.Length})"));
         }
 
-        // One process ran past about 70 conversions at 24 GB and died in the native allocator,
-        // and the same avatar converted fine in a fresh one. So run-corpus.sh can cap a process
-        // (AVATARBRIDGE_PER_PROCESS) and relaunch it with AVATARBRIDGE_RESUME=1, which keeps
-        // Current/ and reads back the digests already in it. 4 means "stopped early, more to do".
+        // One process died in the native allocator past ~70 conversions at 24 GB, so
+        // run-corpus.sh caps (AVATARBRIDGE_PER_PROCESS) and resumes (AVATARBRIDGE_RESUME=1,
+        // keeps Current/). Exit 4 = stopped early, more to do.
         static bool yielded;
 
         static void Exit(int changed) => EditorApplication.Exit(yielded ? 4 : changed == 0 ? 0 : 1);
@@ -268,16 +233,11 @@ namespace AvatarBridge.Regression
             // interactive warning, and AssetDatabase queries should not be re-run per use.
             var scenes = sceneSource.ToList();
 
-            // Every number in a digest is formatted the same way regardless of the machine's
-            // locale, for the same reason BridgeConverter pins the culture: a digest written on
-            // a comma-decimal machine must diff cleanly against one written on a point-decimal
-            // machine, or the baseline is worthless the moment anyone else runs it.
+            // Invariant culture, so a comma-decimal machine diffs cleanly against a point-decimal one.
             var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
             System.Threading.Thread.CurrentThread.CurrentCulture = CultureInfo.InvariantCulture;
 
-            // VRCFury and the VRCSDK pop modals on failed bakes, so a
-            // big interactive run stops dead at the first broken avatar.
-            // Batchmode auto-answers dialogs; that is why RunAllBatch exists.
+            // VRCFury and the VRCSDK pop modals on failed bakes; batchmode auto-answers them.
             if (!Application.isBatchMode && scenes.Count > 4)
             {
                 Debug.LogWarning(
@@ -291,9 +251,7 @@ namespace AvatarBridge.Regression
             int.TryParse(Environment.GetEnvironmentVariable("AVATARBRIDGE_PER_PROCESS"), out int perProcess);
             yielded = false;
 
-            // Start from empty. A digest left behind by a previous, differently-scoped run is
-            // indistinguishable from one this run produced, and would be compared and reported
-            // as though it were current. A resume is the same run, so it keeps them.
+            // A leftover digest from another run would be compared as current. A resume keeps them.
             if (!resume && Directory.Exists(CurrentDir))
             {
                 foreach (var stale in Directory.GetFiles(CurrentDir, "*.txt")) File.Delete(stale);
@@ -339,9 +297,7 @@ namespace AvatarBridge.Regression
                     var scenePath = scenes[i];
                     string name = Path.GetFileNameWithoutExtension(scenePath);
 
-                    // Progress is per avatar; a conversion is one long
-                    // blocking call. No-op in batchmode.
-                    // Cancelable on purpose; the cancel is handled below.
+                    // Per avatar: a conversion is one blocking call. Cancel handled below.
                     if (!Application.isBatchMode)
                     {
                         var elapsed = DateTime.Now - started;
@@ -422,10 +378,8 @@ namespace AvatarBridge.Regression
                 return 0;
             }
 
-            // An avatar that stops producing a digest is a change, not a silence. A descriptor
-            // turned missing script, or a scene moved under an excluded path, used to drop out of
-            // the summary, the report and the exit code alike. Only a full run knows that every
-            // baseline should still have a scene.
+            // An avatar that stops producing a digest is a change, not a silence
+            // (missing script, scene moved under an excluded path). Full runs only.
             var vanished = noAvatar.Select(s => DigestName(s))
                 .Where(f => File.Exists(Path.Combine(BaselineDir, f)))
                 .ToList();
@@ -495,11 +449,8 @@ namespace AvatarBridge.Regression
             return Math.Max(changes.Count + vanished.Count, ran == 0 ? 1 : 0);
         }
 
-        // The digest has carried a [sweep] block since the sweep shipped,
-        // and nothing read it back: an avatar whose baseline already had
-        // stuck toggles passed silently forever. This reads it. Totals for
-        // the run, a name for anything newly stuck or refused, and a line
-        // for the old failures the baseline is still carrying.
+        // Reads the [sweep] blocks back, or a baseline with stuck toggles passes forever.
+        // Run totals, names of anything newly stuck or refused, and old failures still carried.
         class SweepTally
         {
             public int Swept, Params, Responded, Stuck, Refused, Invalid, Unswept;
@@ -562,9 +513,7 @@ namespace AvatarBridge.Regression
 
         static string ConvertAndDigest(string scenePath)
         {
-            // OpenScene from script discards unsaved changes without
-            // prompting. Wanted here: the conversion mutates the scene
-            // heavily and none of it is ever saved back.
+            // Discards unsaved changes without prompting; wanted, nothing is saved back.
             var scene = EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
             var reset = ResetScene(scene);
 
@@ -578,10 +527,7 @@ namespace AvatarBridge.Regression
             }
             if (descriptor == null) return PropDigest(scene, scenePath);
 
-            // Re-activate the source and everything above it. A saved
-            // scene can hold its source switched off from a previous
-            // conversion, and converting a deactivated avatar is not
-            // what a user does.
+            // A saved scene can hold its source switched off by an earlier conversion.
             for (var t = descriptor.transform; t != null; t = t.parent)
             {
                 if (t.gameObject.activeSelf) continue;
@@ -589,9 +535,7 @@ namespace AvatarBridge.Regression
                 reset.reactivated++;
             }
 
-            // Advice reads the avatar as it sits in the scene, so it is taken
-            // here, on the source, before Convert makes its clone: the same
-            // order the window runs it in.
+            // Advice reads the source before Convert clones it, as the window does.
             AdvisorTrace advised = null;
             var settings = AdvisorMode ? AdvisorSettings(descriptor, out advised) : CorpusSettings();
             var report = BridgeConverter.Convert(descriptor, settings);
@@ -606,10 +550,8 @@ namespace AvatarBridge.Regression
             var sb = new StringBuilder();
             sb.Append("avatar: ").Append(descriptor.gameObject.name).Append('\n');
             sb.Append("scene: ").Append(scenePath).Append('\n');
-            // No timestamp, no Unity version, no AvatarBridge version.
-            // All three change without the conversion changing, and a
-            // version bump would diff every avatar at once. The version
-            // goes once per run into Current/_run.info instead.
+            // No timestamp or versions: they change without the conversion
+            // changing. The version goes into Current/_run.info once per run.
             sb.Append('\n');
 
             AppendReset(sb, reset);
@@ -622,10 +564,8 @@ namespace AvatarBridge.Regression
             return Stable(sb.ToString());
         }
 
-        // A scene with no avatar can still be a case. Each root named "Fixture Prop..."
-        // (FixtureBuilder.RunPropsOnly) is re-baked, made a prop and verified the way a
-        // user builds one, so the prop path diffs every run like a conversion. Named
-        // roots only: plenty of scenes hold a loose plug or socket nobody meant as a case.
+        // Each root named "Fixture Prop..." (FixtureBuilder.RunPropsOnly) is re-baked,
+        // made a prop and verified as a user would. Named roots only: loose plugs are not cases.
         static string PropDigest(Scene scene, string scenePath)
         {
             var roots = scene.GetRootGameObjects()
@@ -685,10 +625,8 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // The sweep rides every corpus conversion: it drives each menu
-        // parameter and reports what does not come back. Names only,
-        // readings vary run to run, names of broken things do not. Runs
-        // last: it moves the scene, and the scene is never saved.
+        // Drives each menu parameter and names what does not come back (names
+        // only: readings vary run to run). Runs last: it moves the scene.
         static void AppendSweep(StringBuilder sb, GameObject target)
         {
             sb.Append("[sweep] ");
@@ -781,22 +719,15 @@ namespace AvatarBridge.Regression
         }
 
         // Redacts the ids VRCFury assigns fresh on every bake.
-        //
-        // Everything ORDERED in this digest sorts by StableSampleOrder, which
-        // strips the same ids to build its key. Sorting on the raw text and
-        // redacting afterwards is the bug that was here: Fury renumbers, the
-        // order changes, and the digest shows identical-looking lines in new
-        // places. It cost a full read of the contacts block to find out that
-        // nothing had changed.
+        // Ordered output sorts by StableSampleOrder, which strips the same ids:
+        // sorting raw text then redacting moved identical lines around.
         static string Stable(string s)
         {
             if (string.IsNullOrEmpty(s))
             {
                 return s;
             }
-            // A GUID stamped into an object name, fresh on every bake, the
-            // way VRCFury's numbers are. Eight contact paths on one avatar
-            // carried one and diffed on every run for it.
+            // A GUID stamped into an object name, fresh on every bake.
             s = System.Text.RegularExpressions.Regex.Replace(
                 s, @"\$[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", "$#");
             s = System.Text.RegularExpressions.Regex.Replace(s, @"VF_\d+_", "VF_#_");
@@ -811,15 +742,8 @@ namespace AvatarBridge.Regression
             public int reactivated;    // objects switched back on above and including the source
         }
 
-        // Writes the reset to disk instead of doing it in memory.
-        //
-        // A scene that was converted by hand and saved keeps the converted
-        // root and its source switched off, so every run afterwards reports
-        // "leftover conversions removed: 1", true, harmless, and noise in
-        // a diff forever. This applies the same two rules ResetScene and the
-        // convert path already use, then saves, so the scene goes back to
-        // the state the corpus assumes.
-        //
+        // Saves the ResetScene cleanup to disk, so a scene converted by hand
+        // stops reporting "leftover conversions removed: 1" every run.
         //   AVATARBRIDGE_CLEAN=<file of scene paths>
         //   Unity.exe -batchmode -quit -executeMethod AvatarBridge.Regression.RegressionRunner.CleanScenesBatch
         public static void CleanScenesBatch()
@@ -890,19 +814,13 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        // Set AVATARBRIDGE_YAPS=1 to convert with the penetration system
-        // on, the DEFAULT since 2026-08-15, so Regression/Yaps is what a
-        // user gets. Unset measures the opt-out (convertYapsSystems false),
-        // which still has to hold: it is one tick away for anyone. The
-        // folder names predate the flip and stay, so both accepted
-        // baselines remain valid.
+        // AVATARBRIDGE_YAPS=1 = the user default (Regression/Yaps). Unset measures
+        // the opt-out, which still has to hold. Folder names predate the default.
         static bool YapsMode =>
             Environment.GetEnvironmentVariable("AVATARBRIDGE_YAPS") == "1";
 
-        // AVATARBRIDGE_PROFILE=advisor converts each avatar the way a user who
-        // presses Apply all gets it, instead of the one fixed profile below.
-        // CorpusSettings answers "did the code change"; this answers "does
-        // what we recommend work", which nothing else measures.
+        // AVATARBRIDGE_PROFILE=advisor converts each avatar as Apply all would:
+        // "does the advice work", where CorpusSettings asks "did the code change".
         static bool AdvisorMode =>
             Environment.GetEnvironmentVariable("AVATARBRIDGE_PROFILE") == "advisor";
 
@@ -921,10 +839,8 @@ namespace AvatarBridge.Regression
         static BridgeSettings AdvisorSettings(VRCAvatarDescriptor descriptor, out AdvisorTrace trace)
         {
             trace = new AdvisorTrace();
-            // A new user's defaults, not CorpusSettings. Only what the corpus
-            // cannot survive is overridden, each for the reason CorpusSettings
-            // gives: a clone so the scene is reusable, one output folder, and
-            // no texture resizing, which rewrites the corpus's own imports.
+            // A new user's defaults, overriding only what the corpus cannot survive
+            // (reasons at CorpusSettings).
             var settings = new BridgeSettings
             {
                 convertYapsSystems = YapsMode,
@@ -955,9 +871,7 @@ namespace AvatarBridge.Regression
             return settings;
         }
 
-        // Which settings the advice moved, so a digest change here can be told
-        // apart: advice that changed shows on these lines, code that changed
-        // shows everywhere else. Sorted, since Analyse's order is not a promise.
+        // Advice changes show here, code changes everywhere else. Sorted: Analyse's order is no promise.
         static void AppendAdvisor(StringBuilder sb, AdvisorTrace trace)
         {
             void Section(string title, List<string> items)
@@ -987,20 +901,15 @@ namespace AvatarBridge.Regression
             convertActionLayer = true,
             convertFxLayer = true,
 
-            // OFF here, and on for a user. It rewrites import settings on
-            // the corpus's own texture assets and reimports each one, which
-            // mutates the corpus between runs and charges every avatar for
-            // it. What it does is measured by the weight card, which the
-            // digest already records.
+            // Off here, on for a user: it rewrites the corpus's own texture
+            // imports. The weight card in the digest measures it.
             slimTexturesOnConvert = false,
 
             toggleStyle = ToggleStyle.AnimatorLayers,
             preserveParameterSyncState = true,
             exposeMenulessSyncedParameters = true,
 
-            // AVATARBRIDGE_PHYSICS=DynamicBone runs the fallback solver, which
-            // the corpus otherwise never exercises. Digests land in their own
-            // folder, so the two profiles never compare against each other.
+            // AVATARBRIDGE_PHYSICS=DynamicBone runs the fallback solver, into its own folder.
             physicsTarget = Environment.GetEnvironmentVariable("AVATARBRIDGE_PHYSICS") == "DynamicBone"
                 ? PhysicsTarget.DynamicBone
                 : PhysicsTarget.MagicaCloth2,
@@ -1026,9 +935,8 @@ namespace AvatarBridge.Regression
             createDefaultColliderPointers = true,
             sizeContactZonesForLargest = true,
             patchNonSpiShaders = true,     // BETA: writes patched shader copies
-            // Off for a user, and off here unless AVATARBRIDGE_SOFT=1. Every body shader copy
-            // carries the jelly and compiles for 20-60 s, so a full run with it on took about
-            // twelve hours. Measured on a subset into its own folder instead.
+            // Off unless AVATARBRIDGE_SOFT=1: each body shader compiles the jelly for
+            // 20-60 s, a full run took ~12 h. Measure on a subset.
             squashSoftParts = SoftMode,
 
             convertConstraints = true,
@@ -1041,9 +949,7 @@ namespace AvatarBridge.Regression
 
         static void AppendSettings(StringBuilder sb, BridgeSettings s)
         {
-            // In the digest so a profile change is loud. Changing
-            // CorpusSettings diffs every digest at once, correctly:
-            // every conversion changed meaning.
+            // A profile change diffs every digest, correctly.
             sb.Append("[settings]\n");
             // Instance fields only. A const is a public static literal, so it
             // lands here too and reads as a setting nobody can set.
@@ -1065,14 +971,9 @@ namespace AvatarBridge.Regression
               .Append($"warnings={report.CountOf(ReportStatus.Warning)} ")
               .Append($"errors={report.CountOf(ReportStatus.Error)}\n");
 
-            // Only errors and warnings are listed line by line. The Converted entries number in
-            // the thousands on a big avatar (one per cloth chain, parameter and menu control) and
-            // their exact wording churns constantly; the counts above catch a change in volume,
-            // which is the part that matters.
-            //
-            // Detail is truncated on purpose. Report wording churns
-            // whenever a message improves, changing nothing about the
-            // conversion. Category and Subject carry the behaviour.
+            // Errors and warnings only: Converted entries run to thousands and
+            // their wording churns; the counts above catch volume. Detail is
+            // truncated for the same churn; Category and Subject carry behaviour.
             var notable = report.Entries
                 .Where(e => e.Status == ReportStatus.Error || e.Status == ReportStatus.Warning)
                 .Select(e => $"  {e.Status.ToString().ToUpperInvariant()} [{e.Category}] {e.Subject} | {Brief(e.Detail)}")
@@ -1081,9 +982,8 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        // What each baked plug material holds once the conversion is done. A reconvert
-        // once dropped every bake value (queue 38) and the digest showed only one missing
-        // menu row: the bake texture, vertex count and length were never written here.
+        // Baked plug material values: a reconvert dropped them all (queue 38) and
+        // the digest only showed one menu row.
         static void AppendPlugMaterials(StringBuilder sb, GameObject target)
         {
             if (target == null) return;
@@ -1142,9 +1042,7 @@ namespace AvatarBridge.Regression
             var entries = avatar.avatarSettings != null ? avatar.avatarSettings.settings : null;
             if (entries == null || entries.Count == 0) { sb.Append("  <none>\n\n"); return; }
 
-            // Sorted by machineName: the list order is menu order, which is worth seeing, but it
-            // is also the single noisiest thing in the whole digest because any pass that appends
-            // an entry shifts everything after it. Order changes show up as a separate line.
+            // Sorted by name: menu order shifts everything after any append. Order changes get their own line.
             foreach (var e in entries.OrderBy(x => x.machineName, StableSampleOrder.Instance))
             {
                 sb.Append("  ").Append(e.machineName)
@@ -1171,10 +1069,7 @@ namespace AvatarBridge.Regression
             foreach (var g in counts) sb.Append("  ").Append(g.Count().ToString("D3")).Append("  ").Append(g.Key).Append('\n');
             sb.Append('\n');
 
-            // Marker lights, by range. The range IS the protocol: it says hole,
-            // ring, front or plug tip, and every decoder on the platform reads
-            // it, including ones outside the game. A digest that only counted
-            // Light components would not have noticed the day these moved.
+            // Marker lights by range: the range IS the protocol (hole, ring, front, tip).
             var marks = target.GetComponentsInChildren<Light>(true)
                 .Where(l => l != null && l.type == LightType.Point
                             && l.color.maxColorComponent < 0.02f
@@ -1196,21 +1091,9 @@ namespace AvatarBridge.Regression
             AppendYapsTags(sb);
         }
 
-        // The tag words, both ends. A socket's word and a plug's answer
-        // and refuse lists decide whether a plug opens a socket at all, and
-        // nothing in the digest said so: the shared-tag default shipped and
-        // run 395 could not see it either way. A wrong word is silence in
-        // game, which is the failure a digest exists to catch before a
-        // person has to.
-        //
-        // Read from the bake prep, not from the target. The words live on
-        // the VRChat components and the conversion hashes them into numbers,
-        // so by the time there is a target the words are gone; the prep
-        // dictionaries are what read them, and they still hold what it read.
-        //
-        // Counted by word rather than listed per socket. Which words the
-        // avatar uses is the signal; a row per socket would churn on every
-        // rename.
+        // Tag words decide whether a plug opens a socket; a wrong word is silence in game.
+        // Read from the bake prep: the target only holds their hashes.
+        // Counted by word, since a row per socket churns on every rename.
         static void AppendYapsTags(StringBuilder sb)
         {
             var sockets = YapsBakePrep.AuthoredSocketTags;
@@ -1249,11 +1132,9 @@ namespace AvatarBridge.Regression
             }
         }
 
-        // The optimiser strips these, so the digest carries the check rather than a probe I have
-        // to remember to run. `reachable` is the one that matters and belongs at zero: it counts
-        // renderers called dead that some clip can switch on after all, read from the clips
-        // themselves instead of from the survey the call was made with. Anything above zero is a
-        // renderer the optimiser would take off a working avatar.
+        // `reachable` belongs at zero: renderers called dead that a clip can
+        // switch on, read from the clips, not the survey. Above zero, the
+        // optimiser strips a working renderer.
         static void AppendHiddenMeshes(StringBuilder sb, CVRAvatar avatar)
         {
             var survey = AvatarSurvey.Build(avatar);
@@ -1277,10 +1158,9 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        // A socket describes itself twice, once plainly and once as a _SelfNotOnHips twin, and
-        // each pointer is a contact against the instance's 512 pairs. Collapsing the pair would
-        // halve that, and `twinOnly` is what forbids it: a trigger accepting the twin WITHOUT
-        // the base is one that collapsing would silence. It belongs at zero, like `reachable`.
+        // Each socket has a plain and a _SelfNotOnHips pointer, each a contact of the
+        // instance's 512 pairs. `twinOnly` (belongs at zero) counts triggers that
+        // accept the twin without the base, which collapsing the pair would silence.
         static void AppendPointerFamilies(StringBuilder sb, CVRAvatar avatar)
         {
             var f = PointerFamilyProbe.Read(avatar);
@@ -1305,11 +1185,8 @@ namespace AvatarBridge.Regression
             sb.Append('\n');
         }
 
-        // MagicaCloth is reached by NAME rather than by a compile-time reference, so this block
-        // renders identically in every scripting-define configuration. That is not fussiness: a
-        // digest whose SHAPE depends on which packages happen to be installed cannot be diffed
-        // across machines, and a missing define would present as "this avatar lost all its
-        // cloth" rather than as "this build cannot see it".
+        // By name, not a compile-time reference, so the digest's shape does not
+        // depend on installed packages; a missing define would read as lost cloth.
         const string MagicaClothType = "MagicaCloth2.MagicaCloth";
 
         static void AppendPhysics(StringBuilder sb, CVRAvatar avatar, GameObject target)
@@ -1324,10 +1201,8 @@ namespace AvatarBridge.Regression
                 .OrderBy(c => HierarchyPath(target, c), StableSampleOrder.Instance)
                 .ToList();
 
-            // Component-enabled and object-active are counted SEPARATELY because they are
-            // separate bugs with the same symptom: cloth that starts disabled though its menu
-            // toggle defaults on, and a holder object that nothing ever activates. Reported as
-            // one "is it running" flag, either would hide behind the other.
+            // Counted separately: a disabled component and a never-activated holder
+            // are different bugs with one symptom.
             int running = 0, componentOff = 0, objectOff = 0;
             var clothPaths = new HashSet<string>(StringComparer.Ordinal);
             var clothLines = new List<string>();
@@ -1347,9 +1222,7 @@ namespace AvatarBridge.Regression
               .Append($"componentOff={componentOff} objectOff={objectOff}\n");
             foreach (var line in clothLines) sb.Append(line).Append('\n');
 
-            // Curves that switch cloth on or off, counted across the
-            // merged controller. The count moving is the signal, in
-            // either direction.
+            // Curves that switch cloth on or off; any change in the count is the signal.
             var animator = target.GetComponent<Animator>();
             var runtime = animator != null ? animator.runtimeAnimatorController : null;
             if (runtime == null && avatar != null) runtime = avatar.overrides;
@@ -1385,12 +1258,9 @@ namespace AvatarBridge.Regression
                 sb.Append($"clothCurves on={on} off={off} clips={clips}\n");
             }
 
-            // Contacts by ROUTE. Which route a contact takes decides whether anyone else sees it
-            // and whether it fires once or twice, and the three routes are indistinguishable in
-            // every other block of this digest: a "#" name is computed by each client and never
-            // transmitted, a plain name rides the settings stream, and a bridge layer is the pair
-            // of the two. A contact silently changing lanes is a behaviour change with no other
-            // trace here.
+            // Contacts by route, which decides who sees it and how often it fires:
+            // "#" names are computed per client, plain names ride the settings
+            // stream, a bridge layer pairs the two. No other block shows a lane change.
             var bridged = BridgedLocalNames(controller);
             var contacts = new List<string>();
             int local = 0, streamed = 0, carried = 0;
@@ -1477,10 +1347,7 @@ namespace AvatarBridge.Regression
             var data = cloth.GetType().GetProperty("SerializeData")?.GetValue(cloth);
             var roots = data?.GetType().GetField("rootBones")?.GetValue(data)
                 as System.Collections.IEnumerable;
-            // "<unreadable>" and "<none>" are deliberately different words: the first means the
-            // harness lost its grip on MagicaCloth's shape and every line will say it, the second
-            // means this chain genuinely hangs from nothing. Collapsing them would turn a blind
-            // harness into what looks like a fleet of rootless chains.
+            // "<unreadable>" = reflection lost MagicaCloth's shape; "<none>" = truly rootless. Keep apart.
             if (roots == null) return "<unreadable>";
             var names = new List<string>();
             foreach (var o in roots) names.Add(o is Transform t ? t.name : "<null>");
@@ -1501,11 +1368,8 @@ namespace AvatarBridge.Regression
 
         static void AppendControllers(StringBuilder sb, CVRAvatar avatar, GameObject target)
         {
-            // Every Animator in the hierarchy, nulls included. A test
-            // that cannot see a failure is not testing for it.
-            // Judged on the serialized m_Controller, not the getter;
-            // the two can disagree, and the serialized value is what
-            // the prefab saves. Disagreements print both.
+            // Every Animator, nulls included. Judged on the serialized m_Controller,
+            // which the prefab saves; the getter can disagree, then both print.
             sb.Append("[animators]\n");
             foreach (var a in target.GetComponentsInChildren<Animator>(true).OrderBy(x => HierarchyPath(target, x), StableSampleOrder.Instance))
             {
@@ -1620,12 +1484,8 @@ namespace AvatarBridge.Regression
                   .Append(st.mirror ? " mirror" : "")
                   .Append(" motion=").Append(MotionOf(st.motion)).Append('\n');
 
-                // Drivers get their WRITES named, not just their type. "behaviours:
-                // AnimatorDriver" says a state changes something and refuses to say what, which
-                // is the one fact needed to judge a transition cycle: a driver inside the cycle
-                // that writes a parameter the cycle's own conditions read can break the loop, and
-                // without the target names the digest cannot tell a real loop from a self-
-                // limiting one.
+                // Driver writes are named: a driver writing a parameter its own cycle
+                // reads can break the loop, so names tell a real loop from a self-limiting one.
                 var behaviours = st.behaviours
                     .Where(b => b != null)
                     .Select(b =>

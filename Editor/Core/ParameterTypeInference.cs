@@ -8,32 +8,12 @@ using ABI.CCK.Scripts;
 
 namespace AvatarBridge
 {
-    // Gives every parameter the animator type its own logic implies.
-    //
-    // VRCFury bakes menu parameters as FLOAT regardless of what they are, because a float
-    // can carry a bool or an int and it saves it having to reason about intent. That is fine
-    // in VRChat and wrong in ChilloutVR: CVR writes a menu value using the entry's declared
-    // type, and writing a Bool into a Float animator parameter silently does nothing; the
-    // classic "toggle does nothing in game" report.
-    //
-    // Two sources decide the real type, and neither is a guess:
-    //
-    //   1. The MENU CONTROL the parameter is bound to. A Toggle is a bool, a Dropdown is an
-    //      int, a Slider is a float; that is what the author built, carried over from the
-    //      VRChat menu. Advanced Settings entries are used rather than the VRChat expression
-    //      parameters because their machineName is kept in step with the CCK-safe renames,
-    //      so it still matches the animator by the time this runs.
-    //
-    //   2. For parameters with no menu control, how the ANIMATOR compares them. A parameter
-    //      matched with Equals/NotEqual against whole numbers reaching 2 or more is a
-    //      selector, whatever its declared type; nothing else about a float behaves that way.
-    //
-    // Against both sits one veto: anything read as a QUANTITY; a blend tree, motion time,
-    // speed, cycle offset, or a parameter an animation clip writes; stays float, because
-    // those need values between the whole numbers. The veto is checked first and is absolute.
-    //
-    // Conditions are rewritten to match whatever the parameter becomes, so no transition is
-    // left comparing a bool with "> 0.5".
+    // VRCFury bakes menu parameters as floats; CVR writes the entry's declared type, and a Bool
+    // into a Float parameter silently does nothing ("toggle does nothing in game"). The type comes
+    // from the menu control (AAS entries, whose machineName follows the renames), else from
+    // Equals/NotEqual against whole numbers 2 or more (an int selector). Veto first: anything read
+    // as a quantity (blend tree, motion time, speed, cycle offset, clip-written) stays float.
+    // Conditions are rewritten to the new type.
     public static class ParameterTypeInference
     {
         const string Category = "Animator";
@@ -253,10 +233,7 @@ namespace AvatarBridge
                 {
                     var conditions = transition.conditions;
                     bool touched = false;
-                    // A condition the parameter's new domain can NEVER satisfy was already dead
-                    // in VRChat, and mapping its operator anyway would resurrect it; a "< 0"
-                    // guard that never fired becomes "is false", which fires half the time. That
-                    // is how a working avatar arrives with an animator layer that fights itself.
+                    // Unsatisfiable in the new domain was dead in VRChat: mapping "< 0" to "is false" would revive it.
                     bool unreachable = false;
                     var surviving = new List<AnimatorCondition>(conditions.Length);
                     for (int i = 0; i < conditions.Length; i++)
@@ -272,16 +249,9 @@ namespace AvatarBridge
                             // A bool only ever reads 0 or 1.
                             switch (condition.mode)
                             {
-                                // Both ends of the range matter. "Unsatisfiable" was handled here
-                                // from the start; TAUTOLOGY was not, and it is the one VRCFury
-                                // actually writes: its remote branches are the band
-                                // "IsLocal Greater -0.001 && IsLocal Less 0.001", meaning the
-                                // value is 0. Turning "> -0.001" into "is true" made the pair say
-                                // "true AND false", so every NonLocal state Fury generated became
-                                // unreachable and the LOCAL branch played for remote viewers.
-                                // Same misreading fixed in AnimatorMerger.ReconcileConditionModes
-                                // in 3.5.26; this is the other retyping path, and the transitions
-                                // that reach it are the ones that were still floats there.
+                                // Tautologies too: VRCFury's remote band "IsLocal > -0.001 && < 0.001"
+                                // means 0; "> -0.001" as "is true" made it "true AND false", and
+                                // remotes played the local branch. Same fix as AnimatorMerger.ReconcileConditionModes.
                                 case AnimatorConditionMode.Greater:
                                     if (condition.threshold >= 1f) { unreachable = true; }
                                     else if (condition.threshold < 0f) { touched = true; continue; }

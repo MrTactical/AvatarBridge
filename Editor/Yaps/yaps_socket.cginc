@@ -1,46 +1,32 @@
-// YAPS, the SOCKET side. A socket reacts to what has entered it, in the
-// vertex shader, with no synced parameters.
-//
-// The animator route is not replaced. A contact drives a "#" local
-// parameter, every client computes it, nothing crosses the wire.
-//
-// This adds the two things that route cannot do:
-//   1. It works against content with NO CONTACTS. DPS is marker lights.
-//   2. It knows WHERE the plug is, not merely how deep.
+// YAPS, the SOCKET side: reacts in the vertex shader, with no synced parameters.
+// Beside the animator's contact route (a local "#" parameter), this works against
+// content with no contacts (DPS is marker lights) and knows where the plug is.
 //
 // A plug announces itself with ONE black vertex light:
 //   range     second decimal 8 or 9
 //   position  the plug's BASE
-//   intensity the plug's LENGTH, in metres
-//
-// Intensity is a length, never a brightness. Raliv ships 0.354 for a
-// 0.354 m model, and depth = plugLength - distance(socket, plugBase)
-// only means anything because the light sits at the BASE.
+//   intensity the plug's LENGTH, in metres (DPS ships 0.354 for a 0.354 m model)
+// depth = length - distance(socket, base) only works because the light is at the base.
 
 #ifndef YAPS_SOCKET_INCLUDED
 #define YAPS_SOCKET_INCLUDED
 
-// Brings the bake reader, YapsSafeNormalize and the light decode.
-// One bake format and one protocol serve both ends.
+// One bake format and one light protocol serve both ends.
 #include "yaps_deform.cginc"
 
-// Depth from the contact channel, as a fraction of plug length.
-// Negative when the channel has nothing to say.
+// Contact channel depth as a fraction of plug length; negative when silent.
 cbuffer YapsSocket {
 float _YAPS_SocketDepth;
 
-// The socket's position in the mesh's local space. Zero for a dedicated
-// socket mesh, set at bake time for a body mesh. Depth measures from here.
-// Ownership does not: whose-plug stays on the mesh origin.
+// Socket position in mesh space (zero for a socket mesh). Depth measures from
+// here; ownership stays on the mesh origin.
 float4 _YAPS_SocketOrigin;
 
-// Skip the self-exclusion below. Zero keeps it, as older bakes have.
-// The baker sets it when no plug of the wearer's rests within reach,
-// where the test can only get it wrong.
+// Set by the baker when no wearer plug rests within reach, where the
+// self-exclusion test can only get it wrong.
 float _YAPS_SocketNoSelfExclude;
 
-// Where each shape starts and how long it takes, in fractions of plug
-// length. Up to sixteen, so several can open together.
+// Per shape start and fade, in fractions of plug length. Up to sixteen.
 float4 _YAPS_SocketShapeStart, _YAPS_SocketShapeStart2, _YAPS_SocketShapeStart3, _YAPS_SocketShapeStart4;
 float4 _YAPS_SocketShapeFade, _YAPS_SocketShapeFade2, _YAPS_SocketShapeFade3, _YAPS_SocketShapeFade4;
 // How much of the baked shapes to apply. Zero is off, as older bakes are.
@@ -63,17 +49,10 @@ float YapsSocketStageFade(uint s)
     return v[lane];
 }
 
-// How far a shaft has travelled past this socket, as a fraction of its
-// own length. Zero when nothing has arrived. The plug's length rides in
-// the light colour's alpha, where Unity keeps vertex-light intensity.
-//
-// THE DEEPEST WINS, never the nearest. Depth is (length - distance) /
-// length, so a long plug standing off beats a short one close in. The
-// maximum also lets TWO plugs share a socket instead of one passing
-// through closed mesh.
-//
-// Distance measures from the socket, whose-plug from the owner anchor,
-// since a socket on a hand can sit in somebody else's lap.
+// Depth past this socket as a fraction of plug length. Length rides in the light
+// colour's alpha, where Unity keeps vertex-light intensity. The deepest wins, not
+// the nearest, which also lets two plugs share a socket. Whose-plug is judged
+// from the owner anchor, since a hand socket can sit in somebody else's lap.
 float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
 {
     float depth = 0;
@@ -86,22 +65,19 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
         int digit = YapsLightDigit(i);
         if (digit != 8 && digit != 9) continue;
 
-        // The wearer's own plug must not open the wearer's own socket.
-        // Its tracker sits a hand's width off permanently, so the socket
-        // read as always full. Gated, because ownership goes by nearest
-        // hip and a socket on a hand can be nearer a stranger's.
+        // The wearer's own plug sits a hand's width off for good, so the socket
+        // read as always full. Gated: ownership goes by nearest hip.
         if (_YAPS_SocketNoSelfExclude <= 0 && YapsSocketOwnPlug(ownerAnchor, i)) continue;
 
         float plugLength = unity_LightColor[i].a;
         if (plugLength <= 0.0001) continue;
 
-        // Raliv's formula. The light has to be at the base.
+        // DPS's formula. The light has to be at the base.
         float through = plugLength - distance(socketAt, YapsLightPosition(i));
         depth = max(depth, saturate(through / plugLength));
     }
 
-    // The channel wins when it has an answer, having measured it.
-    // Negative means nothing to say, which is not zero.
+    // Negative means no answer, which is not zero.
     if (_YAPS_SocketDepth >= 0)
     {
         depth = max(depth, saturate(_YAPS_SocketDepth));
@@ -109,9 +85,7 @@ float YapsPlugDepth(float3 socketAt, float3 ownerAnchor)
     return depth;
 }
 
-// The deform. Baked shape deltas, staged by depth.
-// No bezier, no frame recovery, no walk. A socket does not follow
-// anything, it opens. The author's blendshapes decided the geometry.
+// Baked shape deltas, staged by depth. A socket does not follow anything, it opens.
 void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 tangent,
                       uint vertexId)
 {
@@ -121,30 +95,21 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
     uint shapeCount = (uint) max(_YAPS_ShapeCount, 0);
     if (vertexId >= total || shapeCount == 0) return;
 
-    // Two positions, two questions. The mesh origin says whose socket
-    // this is, the baked offset where it is. Equal on a socket mesh.
-    //
-    // Right only where unity_ObjectToWorld is the renderer's own matrix,
-    // which is a plain mesh. A skinned mesh is drawn in world space with an
-    // identity matrix, so there both points land near the world origin and
-    // the baked deltas keep the bake pose. A skinned body mesh has to take
-    // the contact route until the anchor is recovered per vertex, as the
-    // plug's is.
+    // Mesh origin says whose socket, baked offset says where. Plain meshes only:
+    // skinned ones draw with an identity matrix, so both land near the world
+    // origin and a skinned body must take the contact route.
     float3 ownerAnchor = mul(unity_ObjectToWorld, float4(0, 0, 0, 1)).xyz;
     float3 socketAt = mul(unity_ObjectToWorld, float4(_YAPS_SocketOrigin.xyz, 1)).xyz;
     float depth = YapsPlugDepth(socketAt, ownerAnchor);
     if (depth <= 0) return;
 
-    // Same block layout as the plug bake, so one baker serves both.
-    // A header float, ten floats a vertex, then nine a vertex per shape.
+    // Plug bake layout: a header float, ten floats a vertex, then nine a vertex per shape.
     uint block = 1 + total * 10;
 
-    // Skinned, the vertex arrives at the avatar's live size and the offsets were
-    // baked at the bake's: skinning scales the normal and never renormalises it,
-    // so its length over the bake's carries the opening across (SocketScaleProbe).
-    // Normal and tangent offsets are stored per unit of their own length. 0 on an
-    // older bake, and on a plain mesh, whose matrix carries the size: as baked.
-    // So too on a host with no normal input, which hands over zero.
+    // Skinning scales the normal without renormalising, so its live length over the
+    // bake's carries the avatar's scale to the offsets (measured). Normal and tangent
+    // offsets are per unit of their own length. _YAPS_BakeSkinScale 0 (old bake,
+    // plain mesh) or a zero normal: as baked.
     float positionScale = 1, normalScale = 1, tangentScale = 1;
     float liveScale = length(normal);
     if (_YAPS_BakeSkinScale > 0 && liveScale > 1e-6)
@@ -160,11 +125,8 @@ void YapsSocketDeform(inout float3 position, inout float3 normal, inout float3 t
         float start = YapsSocketStageStart(s);
         float fade = max(YapsSocketStageFade(s), 0.0001);
 
-        // CUMULATIVE, as DPS is: an arrived shape stays and going deeper
-        // stacks the next on top. Never a travelling band, which would
-        // empty the part already occupied.
-        //
-        // Cosine eased, DPS's touch. A linear ramp pops at the corners.
+        // Cumulative, as DPS: arrived shapes stay, deeper ones stack. Cosine eased,
+        // as a linear ramp pops at the corners.
         float weight = saturate((depth - start) / fade);
         weight = -cos(weight * 3.14159265) * 0.5 + 0.5;
         weight *= _YAPS_SocketPower;

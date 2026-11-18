@@ -128,9 +128,8 @@ namespace AvatarBridge
                 }},
         };
 
-        // Every other _YAPS_ property is an internal, found by prefix. A hand
-        // list of them drifted from the patcher's block, and the fallback panel
-        // hides every _YAPS_ name, so a missed one showed nowhere.
+        // Every other _YAPS_ property is an internal, found by prefix: a hand
+        // list drifted, and a missed one showed nowhere.
         static readonly HashSet<string> Claimed =
             new HashSet<string>(Sections.SelectMany(s => s.Knobs).Select(k => k.Name));
 
@@ -165,10 +164,8 @@ namespace AvatarBridge
         public override void OnGUI(MaterialEditor editor, MaterialProperty[] properties)
         {
             EnsureStyles();
-            // Not ToDictionary: a shader may declare the same property name
-            // twice and Unity hands both back. Poiyomi does, and a duplicate
-            // key threw here on every repaint, which made the material
-            // uninspectable rather than merely noisy.
+            // Not ToDictionary: Poiyomi declares some names twice, and the
+            // duplicate key threw on every repaint.
             var byName = new Dictionary<string, MaterialProperty>(properties.Length);
             foreach (var p in properties) byName[p.name] = p;
             var material = editor.target as Material;
@@ -249,12 +246,8 @@ namespace AvatarBridge
             var original = OriginalEditor(material);
             if (original != null)
             {
-                // The FULL list, not the filtered one. A shader's own editor
-                // builds its UI from the properties its shader declares and looks
-                // them up by name and index; handing it a subset makes it
-                // dereference something that is not there, and Poiyomi's threw on
-                // every repaint. The YAPS ones appearing in its panel is cosmetic; taking
-                // its editor down is not.
+                // The FULL list: editors look properties up by index, and a subset
+                // made Poiyomi's throw every repaint. YAPS rows showing there is cosmetic.
                 original.OnGUI(editor, properties);
             }
             else
@@ -291,9 +284,7 @@ namespace AvatarBridge
             BridgeTheme.DrawBanner(rect, "YAPS", subText, "v" + BridgeDefines.Version);
             GUILayout.Space(6);
 
-            // A material can be running a shader older than the toolkit, and
-            // nothing said so. The material panel is where somebody reads a
-            // value and believes it, so the warning belongs here.
+            // Warn about a stale shader where values are read and believed.
             if (YapsShaderPatcher.IsStale(material))
             {
                 EditorGUILayout.HelpBox(

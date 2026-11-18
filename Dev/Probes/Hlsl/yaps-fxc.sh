@@ -1,14 +1,8 @@
 #!/usr/bin/env bash
-# Compiles the YAPS includes the way the patcher emits them, with fxc, in a
-# second. Unity is the only other way to find out, and it costs a reconvert
-# per attempt and reports line numbers in a generated file nobody can read.
-#
-# Catches the whole class of error that has cost the most time here: an
-# [unroll] the compiler refuses, which turns a local array index dynamic and
-# fails hundreds of lines from the loop that caused it.
-#
-# What it CANNOT tell you: anything about the result. It proves the code
-# compiles, never that a plug bends. That still only happens in game.
+# Compiles the YAPS includes as the patcher emits them, with fxc, in a second. In Unity
+# each attempt costs a reconvert and reports lines in an unreadable generated file.
+# Catches a refused [unroll], which makes a local array index dynamic and fails hundreds
+# of lines from the loop. Proves it compiles, never that a plug bends: only the game does.
 #
 #   yaps-fxc.sh [spike-dir]   includes found in spike-dir win over Editor/Yaps
 # Each target also prints its listing's temps, lines and slots, the budget a

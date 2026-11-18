@@ -6,22 +6,12 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the hand-pose override audit (task #15).
+    // Hand-pose override audit (task #15). FX layers named "Left Hand"/"Right Hand" sat above the
+    // promoted pair, unmasked at weight 1, and won: one had no Idle and a fist band from -0.9, so the
+    // hand rested in a fist. VRChat's FX cannot drive muscles; one merged CVR controller can.
     //
-    // A user reported "gestures are just wrong, with the wrong thresholds". Both avatars sent in
-    // had the same shape: their FX playable layer carried its own layers called "Left Hand" and
-    // "Right Hand", so the converted controller ended up with FOUR hand layers; the promoted
-    // pair at 2 and 3, the FX duplicates above them, everything unmasked at weight 1. The FX copy
-    // won. On one avatar that copy had no Idle state and a fist band starting at -0.9, parking the
-    // hand in a fist at rest; the promoted layer's own bands were correct all along.
-    //
-    // It cannot happen in VRChat; the FX playable cannot drive humanoid muscles there, so those
-    // layers never touched a finger. Merging everything into one ChilloutVR controller hands them
-    // muscles they never had.
-    //
-    // Two things are asserted, and the second is the one that keeps this honest: the offender must
-    // be stopped, and the real hand layer must NOT be, because "mask everything" would also pass a
-    // test that only checked the first.
+    // Asserts the offender is stopped AND the real hand layer is not, since "mask everything"
+    // passes the first check alone.
     public static class HandPoseOverrideTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Hand pose override audit")]

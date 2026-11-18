@@ -1,20 +1,10 @@
 // A throwaway plug, for testing the resolver on an avatar that has none.
 //
-// The rule under test lives in the plug's shader, so sockets alone measure
-// nothing. This makes the smallest thing that carries the shipped resolver: a
-// tube along +Z on YAPS/Simple Lit, which exists for exactly this, baked
-// through the real builder so the material is patched the way a real one is.
-//
-// A tube rather than Unity's cylinder primitive: that one has two rings and a
-// bend needs segments along its length to show in.
-//
-// Plain MeshRenderer, never skinned. Unity skins into world space and hands a
-// SkinnedMeshRenderer an identity matrix, so a skinned plug cannot work out
-// where its own root is.
-//
-// Sockets come with it. The bake reads SelfTag off whether the avatar carries
-// any YapsSocket, so a plug on a socketless avatar bakes to -1, ownership is
-// never asked, nothing is ever rejected, and the test passes without running.
+// The rule lives in the plug's shader: a tube along +Z on YAPS/Simple Lit,
+// baked through the real builder. A tube because the cylinder primitive has
+// two rings and cannot bend. Never skinned (identity matrix, no root).
+// Sockets come with it: a socketless avatar bakes SelfTag -1, nothing is
+// rejected, and the test passes without running.
 //
 //   Tools/Avatar Bridge/Dev/Atlas/Own-body test: build the rig
 #if CVR_CCK_EXISTS && UNITY_EDITOR && AVATARBRIDGE_YAPS
@@ -44,14 +34,9 @@ namespace AvatarBridge.Regression
                 return;
             }
 
-            // SOCKETS FIRST. The plug's bake decides SelfTag from whether the
-            // avatar has any, so a plug baked before them is baked at -1.
-            //
-            // Two. NEAR is inside engagement onset and is the case that
-            // matters. BAND is past the atlas's own reach, not past the
-            // ownership gate: for a plug this long no socket can be both
-            // visible to the grid and far enough to be rejected, so what it
-            // actually measures is where the neighbourhood scan stops.
+            // Sockets first, or the plug bakes SelfTag -1.
+            // NEAR is inside engagement onset, the case that matters. BAND is
+            // past the atlas's reach, so it measures where the scan stops.
             int already = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
             if (already == 0)
             {
@@ -60,18 +45,14 @@ namespace AvatarBridge.Regression
             }
             int sockets = avatar.GetComponentsInChildren<YapsSocket>(true).Length;
 
-            // The writer meshes ride each socket, but the rect they draw into
-            // and the read back off it live on the avatar. Without these the
-            // atlas is empty and every tier below it answers instead.
+            // Clear and grab live on the avatar; without them a lower tier answers.
             YapsAtlas.AddClear(avatar.transform);
             YapsAtlas.AddGrab(avatar.transform);
 
             var go = new GameObject("YAPS Test Plug");
             Undo.RegisterCreatedObjectUndo(go, "Add a test plug");
             go.transform.SetParent(avatar.transform, false);
-            // Hip height on the avatar's own forward, which is where a plug
-            // lives and, more to the point, where its own sockets are near
-            // enough to be the case under test.
+            // Hip height, forward: near enough its own sockets to be the case under test.
             var hip = YapsFakePlayers.HipOf(avatar);
             go.transform.position = hip != null ? hip.position : avatar.transform.position;
             go.transform.rotation = avatar.transform.rotation;
@@ -106,18 +87,10 @@ namespace AvatarBridge.Regression
             Selection.activeGameObject = go;
         }
 
-        // TEST 4. Another body's socket alongside the wearer's own, which is
-        // the case the relaxed rule can make worse rather than better.
-        //
-        // The two bodies end up almost inside each other, and that is correct.
-        // The atlas returns nothing past about 1.2 plug lengths, so for a 22 cm
-        // plug somebody else's socket is only ever visible within a quarter of
-        // a metre. In use that is exactly where it is.
-        //
-        // Both sockets sit close to their OWN hip, which the first version got
-        // wrong. Ownership is decided by the nearest hip to the socket, so a
-        // socket floating midway between two bodies belongs to whichever hip
-        // wins by a millimetre and the answer is a coin toss.
+        // TEST 4: another body's socket beside the wearer's own, where the
+        // relaxed rule can make things worse. The bodies nearly overlap, correctly:
+        // atlas reach is ~1.2 plug lengths (~25 cm for 22 cm). Each socket sits
+        // near its OWN hip, since the nearest hip decides ownership.
         [MenuItem("Tools/Avatar Bridge/Dev/Atlas/Own-body test: add the other body")]
         static void OtherBody()
         {
@@ -207,11 +180,8 @@ namespace AvatarBridge.Regression
 
         static void AddSocket(CVRAvatar avatar, string name, float ahead)
         {
-            // NO MARKER LIGHTS. A light resolves the socket too, and on the
-            // "Resolved by" view its answer is 0.75 against the atlas taps'
-            // 0.66: two centimetres apart on a plug this long, which is not a
-            // reading. With the lights gone the lower tier cannot answer at
-            // all, so anything but a quarter or full is the atlas.
+            // No marker lights: they also resolve (0.75 vs the atlas's 0.66 on
+            // "Resolved by"), too close to tell apart.
             var socket = YapsSocketBuilder.BuildPreviewSocket(
                 name, YapsSocket.SocketKind.Hole, false);
             Undo.RegisterCreatedObjectUndo(socket, "Add a test socket");
@@ -224,9 +194,7 @@ namespace AvatarBridge.Regression
             socket.transform.rotation = Quaternion.LookRotation(-avatar.transform.forward);
         }
 
-        // A tube from the origin along +Z. No caps: nothing here looks at them
-        // and a cap ring at the base is one more thing to explain when the
-        // bend pinches.
+        // No caps: a cap ring muddies a pinching bend.
         static Mesh Tube()
         {
             // Rebuilt every time rather than cached. A cached mesh survived a
@@ -256,10 +224,7 @@ namespace AvatarBridge.Regression
                 {
                     int a = r * (Sides + 1) + s;
                     int b = a + Sides + 1;
-                    // Wound so the OUTSIDE faces out. The first version had
-                    // these reversed: every triangle's normal pointed into the
-                    // tube, so Unity culled the near side and RecalculateNormals
-                    // lit what was left backwards.
+                    // Outside faces out; reversed, Unity culled the near side and lit it backwards.
                     tris[k++] = a; tris[k++] = a + 1; tris[k++] = b;
                     tris[k++] = a + 1; tris[k++] = b + 1; tris[k++] = b;
                 }

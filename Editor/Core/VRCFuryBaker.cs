@@ -10,16 +10,10 @@ using VRC.SDK3.Avatars.Components;
 
 namespace AvatarBridge
 {
-    // VRCFury support. Fury avatars only get their real FX layers / parameters / menus /
-    // PhysBones at build time, so converting them directly would lose every Fury feature.
-    //
-    // Instead of reimplementing VRCFury, this invokes its own "Build a Test Copy"
-    // pipeline: it produces a fully-baked avatar with all Fury components applied and
-    // stripped. AvatarBridge then converts that baked copy.
-    //
-    // Everything is reflection-based: VRCFury may not be installed, and its editor API
-    // is internal and changes between versions. Missing/incompatible versions degrade to
-    // a clear "build a test copy manually" instruction instead of a compile error.
+    // Fury avatars only get their real layers, menus and PhysBones at build time, so this runs
+    // Fury's own "Build a Test Copy" and the baked copy is converted. Reflection only: Fury may
+    // be absent and its editor API is internal and changes between versions; a mismatch falls
+    // back to a "build a test copy manually" instruction.
     public static class VRCFuryBaker
     {
         const string Category = "VRCFury";
@@ -68,20 +62,13 @@ namespace AvatarBridge
             var rootsBefore = GetSceneRoots();
             GameObject directResult = null;
 
-            // Fury wraps each feature in an ErrorDialogBoundary that catches the exception, shows
-            // a dialog, logs, and CARRIES ON; so a bake can fail ten times and still return
-            // normally. One real avatar did exactly that: ten feature failures, a half-built
-            // result, and a conversion report reading "Errors: 0" while every toggle was dead.
-            // Listen to the log during the bake and count what Fury swallowed.
+            // Fury's ErrorDialogBoundary catches each feature's exception, logs and carries on, so
+            // a bake with ten failures returns normally ("Errors: 0", every toggle dead). Count
+            // what it swallowed from the log.
             int furyErrors = 0;
-            // Every DISTINCT message, not just the first. A tester's report said "2 error(s)" and
-            // quoted one of them, cut off mid-path at ".../ControllersWD/GoLocoB"; so the filename
-            // Fury was asking for was unreadable and the second failure was invisible. Fury names
-            // the missing file, and that name IS the fix, so it has to survive into the report.
+            // Every distinct message, uncut: Fury names the missing file, and that name is the fix.
             var furyMessages = new List<string>();
-            // Unity's own complaint about the avatar's controller, raised while
-            // Fury reads it. Counted as a Fury failure, it told a user not to
-            // upload an avatar Fury had built, and hid the real fault.
+            // Unity's complaint about the controller while Fury reads it: not a Fury failure.
             var unityNotes = new List<string>();
             void OnLog(string condition, string stackTrace, LogType type)
             {

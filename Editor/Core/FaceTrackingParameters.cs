@@ -3,15 +3,9 @@ using System.Collections.Generic;
 
 namespace AvatarBridge
 {
-    // Recognises the parameters of an *existing* face-tracking rig baked into the avatar
-    // (VRCFaceTracking / Jerry's Templates / Pawlygon / OSCmooth). These are matched so
-    // they can be stripped (Native and DragonSkyRunner modes both replace the avatar's FT)
-    // and never turned into menu toggles.
-    //
-    // Matching is by namespace (`FT/...`, `OSCm/...`, a bare `v2/...` segment) plus the
-    // well-known names that carry none: control flags, the legacy eye parameters and the
-    // CVR-VRCFT gates. The bare `v2/` rigs are matched too: the strip runs before the
-    // CVR-VRCFT rig is injected, so there is nothing of ours yet for it to take.
+    // An existing FT rig's parameters (VRCFaceTracking, Jerry's Templates, Pawlygon, OSCmooth),
+    // to strip and never make menu toggles. By namespace (`FT/`, `OSCm/`, bare `v2/`) plus known
+    // bare names. `v2/` is safe: the strip runs before the injected rig exists.
     public static class FaceTrackingParameters
     {
         // The rig's master switches, which the tester shows as toggles.
@@ -36,10 +30,8 @@ namespace AvatarBridge
             "LeftEyeLidExpandedSqueeze", "RightEyeLidExpandedSqueeze", "EyesDilation"
         };
 
-        // A rig's own switches, read only when its layers are stripped: the menu keeps them, since
-        // with the rig kept they are its controls. A layer that reads nothing else belongs to the
-        // rig, as a viseme layer holding every mouth shape at 0 behind VisemesEnable. From Kneesox's
-        // face tracking fixer.
+        // Rig switches, matched only when its layers are stripped (otherwise they are its menu controls).
+        // A layer reading nothing else belongs to the rig. From Kneesox's face tracking fixer.
         static readonly HashSet<string> RigSwitches = new HashSet<string>
         {
             "EyeTrackingEnable", "MouthTrackingEnable", "TongueControlActive", "EyeTrackingActive 2",

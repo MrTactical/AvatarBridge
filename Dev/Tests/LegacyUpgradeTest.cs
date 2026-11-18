@@ -1,7 +1,6 @@
-// A plug on Poiyomi's built-in DPS penetrator, locked, upgraded the way the YAPS window's Build
-// and a reconvert both do it: adopted, baked, and kept on its own shader with DPS's frozen bend
-// turned off in the copy. It used to move to YAPS Simple Lit and lose the body's look, and the
-// converter never upgraded it at all, so each reconvert threw the window's work away.
+// A locked Poiyomi DPS plug upgraded as the YAPS window's Build and a reconvert both do it:
+// adopted, baked, kept on its own shader (not Simple Lit, which lost the body's look) with DPS's
+// frozen bend off in the copy. The reconvert must upgrade too, or it throws the window's work away.
 //
 // Run: -executeMethod AvatarBridge.Regression.LegacyUpgradeTest.Run
 #if CVR_CCK_EXISTS && AVATARBRIDGE_YAPS
@@ -118,9 +117,8 @@ namespace AvatarBridge.Regression
             Check(first == again && first == YapsBaker.Tail(material, renderer),
                 $"a Simple Lit stand-in names its bake after the material it stands in for ({first}, {again})");
 
-            // Beside SPS. The plug above stands in for one the SPS route converted, and a second
-            // left as DPS is what the upgrade must still take. It used to run only on an avatar
-            // with no SPS at all, and Build rebuilds every plug and socket, SPS's own included.
+            // Beside SPS: a DPS plug next to an SPS-converted one must still upgrade, not only on an
+            // avatar with no SPS. Build rebuilds every plug and socket, SPS's own included.
             var leftover = new GameObject("Leftover shaft");
             leftover.transform.SetParent(root.transform, false);
             leftover.transform.localPosition = new Vector3(0.3f, 0f, 0f);

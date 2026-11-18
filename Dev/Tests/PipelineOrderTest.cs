@@ -5,19 +5,12 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // Known-answer test for the pass-ordering invariant (task #5).
+    // Pass ordering (task #5): a pass that rewrites clips must run after the one copying them into
+    // the conversion's folder. ConstraintConverter ran nine passes early and edited the author's
+    // own clips, breaking three GoGo flight clips for VRChat; VRCFury's throwaway bake hid it.
     //
-    // The rule: a pass that rewrites animation clips must run AFTER the pass that copies those
-    // clips into the conversion's own folder. Before this was checked, BridgeConverter carried
-    // the rule as a comment; correct, and violated three lines above it. ConstraintConverter
-    // rewrote curves nine passes before self-containment and edited the avatar author's own
-    // animation files, which broke three of GoGo Loco's shipped flight clips for VRChat in a real
-    // project. It went unseen because VRCFury bakes to a throwaway copy on most avatars, so the
-    // bake regenerated the damage away on every run.
-    //
-    // The case that matters is the FIRST one: a deliberately mis-ordered pipeline must be
-    // rejected. A validator that only ever says "fine" would have passed review and caught
-    // nothing, which is exactly what the comment did.
+    // The first case matters most: a mis-ordered pipeline must be rejected, or a validator that
+    // always says "fine" passes.
     public static class PipelineOrderTest
     {
         [MenuItem("Tools/Avatar Bridge/Dev/Tests/Pass ordering invariant")]

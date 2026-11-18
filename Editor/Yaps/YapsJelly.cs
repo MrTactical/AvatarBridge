@@ -1,13 +1,10 @@
-// The jelly: a soft body for each pair the squash finds, stepped every frame on the GPU by the
-// CCK's blitters and drawn by the body shader's Jelly role. Put on over a squash build, whose
-// parts and shares it reads; a pair it refuses keeps the squash's own dent.
+// The jelly: a GPU soft body per squash pair, stepped by the CCK's blitters, drawn by the body
+// shader's Jelly role. Built over a squash; a pair it refuses keeps the squash's dent.
 //
-// A lattice of particles lives in a float render texture, each particle in its left half and where
-// it was a pass before in its right. Two blitters step it into a twin and back, a pass each: every
-// particle pulled toward where the rigid fit of its 3x3x3 neighbourhood puts it, the back face held
-// on an anchor the material data provider hands in, the hands in reach pushing it aside. A third
-// pass writes the far switch and what the jelly tells the animator into a strip the texture parser
-// reads. Nothing is baked or synced; each client steps its own copy.
+// A particle lattice in a float render texture: position in the left half, last pass's in the
+// right. Two blitters step it into a twin and back: each particle pulled to the rigid fit of its
+// 3x3x3 neighbourhood, back face on the provider's anchor, hands pushing it aside. A third pass
+// writes the far switch and animator outputs for the texture parser. Nothing baked or synced.
 #if CVR_CCK_EXISTS
 using System;
 using System.Collections.Generic;
@@ -246,27 +243,17 @@ namespace AvatarBridge
             return avatar != null ? avatar.transform : picked;
         }
 
-        // A lattice a breast, packed into one texture and one pair of passes: each swings on its root
-        // as one piece and keeps off the other, two bodies. Each fitted to the skin the squash gives
-        // that breast at least half of, a centimetre of room round it, its back face half a
-        // centimetre into the chest wall; both the larger's size, cut by its volume (BreastCells to MostCells cells each), as
-        // near cubes as the box allows. The body's squash materials gain the Jelly role, which moves
-        // each vertex by the squash's own share of each breast, and the squash leaves the pair to it.
-        // The cloth or dynamic bones swinging the pair are switched off, or they and the lattice
-        // would both swing it.
+        // One lattice per breast in one texture and pass pair, each swinging on its root and keeping
+        // off the other. Fitted to the skin the squash gives it at least half of, 1 cm of room, back
+        // face 0.5 cm into the chest; both the larger's size, BreastCells to MostCells cells, near
+        // cubes. The squash materials gain the Jelly role and the squash leaves the pair to it.
         //
-        // The first of the squash's parts whose name want matches, a pair or one side alone, hung
-        // from the trunk bone its skin's bones hang from, in the slot its place among the parts gives
-        // it (found, when given, the parts as YapsSquash.PartsOf reads them). Its assets in folder,
-        // the nth part's in folder_n; the step shader in shaders. What was done, starting "On " when
-        // it was.
-        // How deep each region's skin lies under each face of its box, on a DepthGrid square over
-        // the face: a hand is held by how far it is past the skin, not the face. A face touches the
-        // skin at its outermost point only; where a poke came in on a seat it lay 8 cm off it, so the
-        // whole of _Deepest went before the finger met the skin, and nothing dented. Each spot is the
-        // outermost skin right over it, from the triangles: the outermost of a spot's whole cell, on a
-        // round cheek, read 6 of those 8 cm short. Rows of a face each, x then y then z, plus then
-        // minus, the first region's six faces then the second's.
+        // The first squash part whose name matches want, hung from its skin's trunk bone. Assets
+        // in folder (folder_n for the nth part), step shader in shaders. Returns "On ..." when done.
+        // Skin depth under each box face on a DepthGrid square: a hand is held by its depth past
+        // the skin, not the face. A face touches only the outermost skin, 8 cm off where a poke came
+        // in on a seat, so nothing dented; whole-cell maxima read 6 of those 8 cm short. Rows per
+        // face, x y z, plus then minus, first region's six faces then the second's.
         internal const int DepthGrid = 16;
 
         static Texture2D DepthMap(int sides, float[][] shares, Vector3[] at, SkinnedMeshRenderer body, Transform chest, Quaternion undo, Vector3[] los, Vector3[] his, string folder)
@@ -501,14 +488,10 @@ namespace AvatarBridge
             // of a hand's push moves the whole. ponytail: one reference breast, not measured flesh;
             // the inspector's knobs take it from there.
             float hz = 2f * Mathf.Pow(0.5f / Mathf.Max(kilos, 1e-3f), 1f / 3f);
-            // For now the pair's own cloth swings the breast bones and each region rides its bone, the
-            // jelly the flesh on them: dents, the pair's squash, a viscous fill-back. Its own mass
-            // is then the whole's give to a hand alone, carried on the bone: stiff and fully damped, so
-            // a press moves the breast as one piece and it settles back, with no swing of its own on top
-            // of the cloth's, as the squash moves it. The weight is the cloth's: left free at the breast's own 0.75 Hz, the mass trailed
-            // every hop and drew the breast out like taffy. Options.mass puts the swinging mass back in
-            // the cloth's place, the cloth off; noMass leaves the lattices alone, for telling the
-            // mass's doing from theirs.
+            // The pair's cloth swings the bones; the jelly is the flesh on them (dents, squash, a
+            // viscous fill-back). Its mass only gives to a hand: stiff and fully damped, no swing on
+            // top of the cloth's. Left free at 0.75 Hz it trailed every hop and drew the breast out
+            // like taffy. Options.mass swaps the mass in for the cloth; noMass leaves it out.
             bool cloth = !o.mass;
             if (cloth) hz = CarriedHz;
             if (o.noMass) hz = 0f;
@@ -644,15 +627,11 @@ namespace AvatarBridge
                 }
                 // A part alone fills the second region's slots with its own, as the helper reads both.
                 provider.transforms = new[] { provider.transforms[0], provider.transforms[sides - 1], hangs[0], hangs[sides - 1] };
-                // Probes: MagicaCloth's colliders, other players' among them, as presses. The
-                // client adds every other player's colliders to every MagicaCloth an avatar carries
-                // (CVRDynamicBoneManager.UpdateComponents), hands only unless the viewer chose more,
-                // and a hand without one is given a capsule sized from its fingers. So a spring cloth
-                // of loose points on each breast's skin at rest is pushed by them, and where a point
-                // was pushed to says where a collider is. On the chest, not under the breast's bone:
-                // there the breast's own cloth would take each for a bone of its chain.
-                // MagicaCloth only: the same hand gets a DynamicBone collider too, so DynamicBone probes
-                // saw nothing more, and dented a quarter less for the same press.
+                // Probes: the client adds other players' hand colliders to every MagicaCloth
+                // (CVRDynamicBoneManager.UpdateComponents; a capsule from the fingers if none), so a
+                // spring cloth of loose points on the skin shows where a collider pushes. On the
+                // chest, not the breast bone, or the breast's cloth takes each for a chain bone.
+                // MagicaCloth only: DynamicBone probes saw nothing more and dented a quarter less.
                 bool probing = o.probes;
                 var spotsOf = new List<Vector3>[sides];
                 float reach = o.probeReach;
@@ -711,10 +690,9 @@ namespace AvatarBridge
             }
 
             // The wearer's own arms, hands and thighs press the breasts as other players' hands do:
-            // eight capsules bone to bone, the bones after the four anchors in the provider's
-            // transforms, each as thick as the body's skin round it (the median distance of the skin
-            // its bones carry). Other players' hands come from the client's arrays; the wearer's arm
-            // went through the breast in the film, as the arrays hold hands alone.
+            // eight capsules bone to bone (provider transforms after the four anchors), each as thick
+            // as the median skin distance round its bones. The client's arrays hold hands alone, so
+            // without these the wearer's arm went through the breast.
             var ownBones = new[]
             {
                 HumanBodyBones.LeftUpperArm, HumanBodyBones.LeftLowerArm, HumanBodyBones.LeftHand, HumanBodyBones.LeftMiddleDistal, HumanBodyBones.LeftUpperLeg, HumanBodyBones.LeftLowerLeg,
@@ -818,15 +796,10 @@ namespace AvatarBridge
                 }
                 if (ownRadii[c] < was) thinned.Add($"{ownBones[s0].name} {1000f * was:0} to {1000f * ownRadii[c]:0} mm");
             }
-            // The avatar's own MagicaCloth and DynamicBone colliders that its breasts' cloth collides
-            // with press the breasts as its limbs do, and come out of that cloth's lists, so they dent
-            // the skin and no longer move the bones: left in, a forearm through a breast threw the
-            // cloth about and the tissue with it, 577 mm. Other players' hands, which the client adds
-            // to the cloth at runtime, still move the bones. Each is handed as two ends, a child at
-            // either end of its capsule, so it rides its bone as the limbs do. Not one within a cell
-            // of the breasts' skin as built: it moves the lattice round that skin at rest and would
-            // dent it for good (a sphere in the cleavage left the tissue 41 mm off its rest), so it
-            // stays in the cloth, moving the bones as before.
+            // The avatar's own colliders on the breasts' cloth move into the tissue as limbs (two
+            // capsule-end children each) and out of the cloth's lists: left in, a forearm threw the
+            // cloth and tissue 577 mm. Other players' hands still move the bones. One within a cell
+            // of the skin at rest stays in the cloth: it would dent for good (41 mm in the cleavage).
             var pressing = new List<(Component c, Vector3 a, Vector3 b, float r)>();
             // The squash's Twitch: a transform to kick the mass, which takes the last
             // collider's anchors.
@@ -1132,12 +1105,10 @@ namespace AvatarBridge
             }
         }
 
-        // Each material onto the copy with these roles, the copies written and imported in one batch:
-        // one at a time, each import ran every package's import hooks, about fifty seconds a copy
-        // in a large project. A copy that would not compile is left as it was; the part's own pass
-        // reports it. A plug drawing its second copy is never batched: a stand-in made from the
-        // original shader cannot carry the value that asks for the copy. Before the parts are worn
-        // it is left to its own patch; when they settle it is patched on its own.
+        // Each material onto its copy with these roles, imported in one batch (one at a time ran
+        // every package's import hooks, ~50 s a copy). A copy that fails is left to its part's pass
+        // to report. A plug's second copy is never batched: a stand-in from the original shader
+        // cannot carry the value asking for it, so it is patched on its own once parts settle.
         static void Rewear(IEnumerable<(Material m, YapsShaderPatcher.Roles roles)> asked, BridgeReport report, bool settling)
         {
             bool Batched((Material m, YapsShaderPatcher.Roles) x) => YapsShaderPatcher.OriginalShaderOf(x.m) != null && !YapsShaderPatcher.Duplicate(x.m);
@@ -1535,11 +1506,9 @@ namespace AvatarBridge
             return Vector3.Distance(p, a + s * Mathf.Clamp01(Vector3.Dot(p - a, s) / Mathf.Max(s.sqrMagnitude, 1e-12f)));
         }
 
-        // The bone carrying most of a side's skin, share its share of each vertex, as the squash's
-        // follow rides it: of the bones
-        // below the chest and off the skeleton, when they carry a quarter of it or more; else the
-        // most weighted bone of all, the trunk itself when it carries most (a breast painted on a
-        // body with no bones of its own rode the shoulder at 5%).
+        // The bone carrying most of a side's skin (share per vertex), as the squash's follow:
+        // off-skeleton bones below the chest if they carry a quarter or more, else the most
+        // weighted bone, trunk included (a painted breast with no own bones rode the shoulder at 5%).
         static Transform Carrier(SkinnedMeshRenderer body, float[] share, Transform chest, ICollection<Transform> skeleton, bool clothed = true)
         {
             var weights = body.sharedMesh.boneWeights;
@@ -1652,11 +1621,9 @@ namespace AvatarBridge
                 MagicaClothKeepOut.Pin(cloth);
             }
 #endif
-            // The bones as the cloth swings them reach the step only through skinning, as the
-            // squash's slots do: a helper mesh skinned four points to each region's bone and four to
-            // its still copy. Its triangles have no area, so it draws nothing. "[FPR]" keeps the
-            // client's first-person copy off it, which stops skinning the wearer's renderers
-            // offscreen and froze the squash's.
+            // Cloth-swung bones reach the step only through skinning: a zero-area helper mesh, four
+            // points on each region's bone and four on its still copy. "[FPR]" keeps the first-person
+            // copy off it, which stops skinning offscreen and froze the squash's.
             var skin = new GameObject("Jelly skin [FPR]").AddComponent<SkinnedMeshRenderer>();
             skin.transform.SetParent(made.transform, false);
             Undo.RegisterCreatedObjectUndo(skin.gameObject, undo);

@@ -7,10 +7,8 @@ using UnityEngine;
 
 namespace AvatarBridge.Regression
 {
-    // A squash whose every layer refuses the patch squashes nothing. It was built anyway and
-    // reported as converted, with the refusals only in the detail (found by the corpus on an
-    // avatar whose one skin shader would not compile once patched). Standard is refused too, but
-    // its skin moves onto YAPS Standard instead.
+    // A squash whose every layer refuses the patch squashes nothing, so it must not be built or
+    // reported as converted. Standard is refused too, but its skin moves onto YAPS Standard.
     //
     // Run: -executeMethod AvatarBridge.Regression.SquashRefusedTest.Run
     public static class SquashRefusedTest

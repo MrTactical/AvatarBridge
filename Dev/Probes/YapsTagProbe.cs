@@ -1,16 +1,11 @@
 // Does the tag hash still agree with SPS, and can two tags be confused?
 //
-// The first half is interop: the hash is FNV-1a over the trimmed lowercase
-// string, and the eleven values below were read out of VRCFury rather than
-// computed here. If one of them moves, a socket somebody else's tool tagged
-// stops matching and nothing says so.
+// Interop: FNV-1a over the trimmed lowercase string; the eleven values below
+// were read out of VRCFury, so a moved one means other tools' tags silently stop matching.
 //
-// The second half is the fold. Twenty bits and three per tag leaves room
-// for one tag's pattern to sit inside another's, and then the two names are
-// the same name forever. It already happened once: taking successive
-// remainders of a single hash let "footleft" light only two bits, both of
-// them inside "handright". Distinct bits fixed it and this is what proves
-// it stayed fixed.
+// Fold: 20 bits, 3 per tag, so one pattern can sit inside another and two names
+// become one. Successive remainders of one hash once lit only two bits for
+// "footleft", both inside "handright"; distinct bits fixed it.
 #if AVATARBRIDGE_YAPS
 using System.Collections.Generic;
 using System.Linq;
@@ -77,11 +72,8 @@ namespace AvatarBridge.Dev
                 if ((wornWord & p) != p) fail.Add($"\"{t}\" lost inside the word its own socket published");
             }
 
-            // Arbitrary names, not just the eleven. The mixer decides how much
-            // of the pattern space exists at all, and a bad one collapses it
-            // without failing any single-name test: the first version reached
-            // 200 of the 1140 three-bit patterns, and "tag1" and "tag13" were
-            // the same tag forever.
+            // Arbitrary names: a bad mixer collapses the pattern space without failing
+            // any single-name test. One reached 200 of 1140 patterns; "tag1" == "tag13".
             var seen = new HashSet<int>();
             for (int i = 0; i < 10000; i++) seen.Add(YapsTags.Pattern("tag" + i));
             int space = YapsTags.Bits * (YapsTags.Bits - 1) * (YapsTags.Bits - 2) / 6;

@@ -5,20 +5,9 @@ using UnityEngine;
 
 namespace AvatarBridge
 {
-    // Until 3.7.4 this file generated declarations for ChilloutVR's
-    // client-internal contact components, so avatars could be authored
-    // against them. That conversion path is gone: the components are
-    // not in the CCK, and uploads built on them stopped being wired up
-    // by the client. Contacts convert through pointers and triggers.
-    //
-    // What remains is the cleanup. Projects that used the old path
-    // still carry the generated files under AvatarBridge/Runtime, and
-    // a future CCK shipping real contact components would collide with
-    // them. They are recognised by their header line and deleted once.
-    //
-    // Never delete this file. A package import overwrites files and removes
-    // none, so without it an install updated from before 3.7.4 keeps the
-    // old generator under this name and goes on running it.
+    // Deletes contact-component stubs generated before 3.7.4 (recognised by their header),
+    // which would collide with a future CCK's real components. Never delete this file: a package
+    // import removes nothing, so an old install would keep running the old generator.
     [InitializeOnLoad]
     public static class ContactStubPatcher
     {

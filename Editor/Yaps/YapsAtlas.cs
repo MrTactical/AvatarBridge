@@ -1,14 +1,10 @@
-// The screen atlas, editor side: the objects that write it and the one that
-// grabs it. The protocol itself lives in yaps_atlas.cginc, which is where the
-// shaders read it from.
+// The screen atlas, editor side: its writers and grab. The protocol lives in
+// yaps_atlas.cginc.
 //
-// Writing costs a handful of tiny draws per socket and two grabs, each a
-// full screen copy per camera, mirrors included. Still unproven in ChilloutVR:
-// what that costs in a crowded instance, how it behaves in mirrors and in
-// VR, and whether a viewer with custom shaders blocked sees anything at all.
-// It also paints: the payload is colour, so an occupied cell puts a few
-// pixels on screen. The clear grabs the screen before it writes, and the
-// grab's second pass puts that back over the rect.
+// Cost: a few tiny draws per socket and two full-screen grabs per camera,
+// mirrors included. Unproven in ChilloutVR: crowded instances, mirrors, VR,
+// and viewers with custom shaders blocked. The payload is colour, so the
+// grab's second pass restores what the clear found under the rect.
 //
 // No VRChat types here on purpose, so the standalone toolkit can call it.
 using System.Collections.Generic;
@@ -22,12 +18,10 @@ namespace AvatarBridge
 {
     public static class YapsAtlas
     {
-        // Must match YAPS_ATLAS_LEVELS in yaps_atlas.cginc. Only the mesh
-        // needs it here, and only to know how many quads to make.
+        // Must match YAPS_ATLAS_LEVELS in yaps_atlas.cginc.
         const int Levels = 4;
 
-        // Shared, not per conversion. Every socket on every avatar writes the
-        // same protocol, so the mesh and the two materials are one asset each.
+        // Shared, not per conversion: every avatar writes the same protocol.
         const string Folder = "Assets/YAPS";
 
         const string SocketShader = "YAPS/Atlas Socket";
@@ -36,10 +30,8 @@ namespace AvatarBridge
         const string ExitShader = "YAPS/Atlas Exit";
         const string RelayShader = "YAPS/Atlas Relay";
 
-        // Unity culls on renderer bounds and a culled object never draws. A
-        // socket culled out of frame stops publishing, and the grab has to
-        // happen while the wearer is behind the camera, because whoever is
-        // reading it is somewhere else.
+        // A culled renderer never draws, but a socket must publish and the grab
+        // must run while its wearer is behind the camera.
         const float BoundsSize = 1000f;
 
         // Must match YAPS_KIND_* in yaps_atlas.cginc.
@@ -90,13 +82,9 @@ namespace AvatarBridge
 
         public const string GrabName = "YAPS Atlas Grab";
 
-        // The clear, without which an empty cell reads as the opaque screen
-        // and every cell looks occupied. One per room is enough and a second
-        // is harmless: it paints alpha 0 over alpha 0.
-        //
-        // Placed in PIXELS from _ScreenParams like everything else in the
-        // atlas, so the object's transform is ignored and import scale cannot
-        // reach it. That is why neither this nor the grab is counter-scaled.
+        // Without a clear every cell reads occupied. One per room is enough, a
+        // second is harmless. Placed in pixels, so import scale cannot reach it
+        // and neither this nor the grab is counter-scaled.
         public static GameObject AddClear(Transform root)
         {
             var shader = Shader.Find(ClearShader);
@@ -153,13 +141,10 @@ namespace AvatarBridge
             return m;
         }
 
-        // A plug's light relay, numbered n among its wearer's plugs. Skinned, with
-        // no bones, so its bounds can be the plug's own box: Unity hands a renderer
-        // the lights nearest its bounds, so the same box gets the same four. It sits
-        // at the box's own space, the root bone, so the box lands in the same place
-        // whichever transform Unity measures a boneless mesh from. "[FPR]": the
-        // client's first-person copy switches off the wearer's shadowless
-        // renderers, and the wearer's own view has depth effects too.
+        // Skinned with no bones so its bounds can be the plug's box: Unity hands
+        // a renderer the lights nearest its bounds, so it gets the plug's four.
+        // Parented to the root bone so the box lands in the same place.
+        // "[FPR]": the first-person copy switches off shadowless renderers.
         public static SkinnedMeshRenderer AddRelay(Renderer plug, int n)
         {
             var shader = Shader.Find(RelayShader);
@@ -240,28 +225,19 @@ namespace AvatarBridge
             renderer.reflectionProbeUsage = ReflectionProbeUsage.Off;
         }
 
-        // One unit quad per (level, home), flagged by z. The writer reads that
-        // flag to decide which level it is publishing to and which of the
-        // cell's two homes it is filling. Two homes because a socket that loses
-        // a slot clash is still readable from the other one.
+        // One unit quad per (level, home), flagged by z. Two homes so a socket
+        // that loses a slot clash is still readable from the other.
         //
-        // The shader ignores this object's transform and writes clip space, so
-        // the quads themselves are never seen. The matrix is the payload.
-        //
-        // EVERY POSITION IS ZERO and the corner lives in UV0 instead, which is
-        // what keeps that true for a viewer who has custom shaders turned off.
-        // ChilloutVR replaces the shader then, not the mesh, and the
-        // replacement reads POSITION the ordinary way: corners in POSITION drew
-        // these as metre-wide grey slabs hanging off the avatar. A degenerate
-        // triangle rasterises nothing under any shader.
+        // EVERY POSITION IS ZERO, corners in UV0: with custom shaders off,
+        // ChilloutVR swaps the shader, not the mesh, and corners in POSITION
+        // drew metre-wide grey slabs. A degenerate triangle draws nothing.
         static Mesh LevelQuads()
         {
             string path = Folder + "/YAPS Atlas Quads.asset";
             int quads = Levels * 2;
             var have = AssetDatabase.LoadAssetAtPath<Mesh>(path);
-            // The UV check rebuilds a mesh saved before the corners moved off
-            // POSITION: the vertex count did not change, so counting alone
-            // would keep handing back the drawable one.
+            // The UV check catches older meshes with corners in POSITION: same
+            // vertex count, so counting alone would keep the drawable one.
             if (have != null && have.vertexCount == quads * 4
                 && have.HasVertexAttribute(VertexAttribute.TexCoord0))
             {
@@ -289,9 +265,7 @@ namespace AvatarBridge
             return Save(mesh, path, have);
         }
 
-        // One unit quad. The clear shader scales it to the atlas rect in
-        // clip space, so the mesh carries no size of its own. Corners in UV0
-        // and every position zero, for the reason given above LevelQuads.
+        // The clear shader sizes it in clip space. Positions zero, see LevelQuads.
         static Mesh UnitQuad()
         {
             string path = Folder + "/YAPS Atlas Quad.asset";
@@ -314,11 +288,8 @@ namespace AvatarBridge
             return Save(mesh, path, have);
         }
 
-        // One degenerate triangle. The grab pass writes no colour and no depth,
-        // so the draw exists only to make the grab run, and a grab runs because
-        // the pass is rendered rather than because it covers a pixel. It used
-        // to be a millimetre across; zero is the same answer without depending
-        // on how far away somebody stands.
+        // Degenerate: a grab runs because the pass is rendered, not because it
+        // covers a pixel, so zero size works at any distance.
         static Mesh GrabTriangle()
         {
             string path = Folder + "/YAPS Atlas Grab.asset";
@@ -336,9 +307,8 @@ namespace AvatarBridge
             return Save(mesh, path, have);
         }
 
-        // An outdated mesh is rewritten in place, never deleted and created
-        // again: that destroys the object and the file's identity, and every
-        // writer, clear and grab on an avatar converted earlier pointed at it.
+        // Rewritten in place, never deleted and recreated: that breaks the
+        // file's identity, which earlier conversions point at.
         static Mesh Save(Mesh mesh, string path, Mesh have)
         {
             if (have != null)
@@ -354,11 +324,8 @@ namespace AvatarBridge
             return mesh;
         }
 
-        // One material per kind, tag set and socket number, not per socket. A
-        // property block would be the obvious way to vary one property per
-        // renderer and is the wrong one: it is not serialised, so it survives
-        // the editor and not the upload. Sockets sharing all three share a
-        // material, across avatars too.
+        // One material per kind, tag set and number, shared across avatars. Not
+        // a property block: it is not serialised, so it does not survive upload.
         static Material Kind(Shader shader, int kind, IList<string> tags)
         {
             return Writer(shader, kind, YapsTags.Word(tags), 0);

@@ -9,14 +9,11 @@ namespace AvatarBridge.Regression
     // A soft-body reference for the squash: the pair as real tissue, filmed beside the shader under
     // the same hands (docs/Unfinished.md item 25). Not shipped and not bound by what ChilloutVR runs.
     //
-    // XPBD on tetrahedra: the chest voxelised from the body's own mesh at rest, each cube six
-    // tetrahedra, every one held to its rest volume, so the flesh is incompressible and what a press
-    // moves has to go somewhere; the edges soft. Behind the plane each part meets the body in, and
-    // wherever the skin carries no part, the tissue is held still: the ribcage, the sternum, the arms.
-    // The two parts are separate bodies that press and slide on each other. The hands are the
-    // capsules the shader presses with. Clothing, found over the skin along the line from each
-    // part's centre, keeps the surface it covers from stretching: it moves with the part, and what
-    // is pressed goes out where it is open. No gravity: the rest pose already hangs.
+    // XPBD on tetrahedra voxelised from the rest mesh, each held to its rest volume so flesh is
+    // incompressible; edges soft. Tissue behind each part's body plane, or under skin with no part,
+    // is held still. The two parts are separate bodies that press and slide; the hands are the
+    // shader's capsules. Clothing keeps the surface it covers from stretching, so a press goes out
+    // where it is open. No gravity: the rest pose already hangs.
     sealed class SoftBodyReference
     {
         public readonly string label;

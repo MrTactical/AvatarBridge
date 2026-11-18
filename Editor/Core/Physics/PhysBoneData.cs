@@ -29,9 +29,7 @@ namespace AvatarBridge
                 }
             }
         }
-        // What the report calls this chain. A merged group is several chains
-        // in one component, so naming it after the first root would credit
-        // one strand with the whole hairstyle's conversion.
+        // Report name; a merged group is not named after its first root alone.
         public string Label => MergedRoots.Count == 0 || Root == null
             ? (Root != null ? Root.name : "chain")
             : (Root.parent != null ? Root.parent.name : Root.name)
@@ -162,16 +160,10 @@ namespace AvatarBridge
                 }
             }
 
-            // Humanoid-mapped bones must never SIMULATE. The animator and IK write them every
-            // frame; locomotion curls the toes, IK plants the feet; and a physics solver
-            // writing the same transform fights them for it. VRChat semi-tolerates a PhysBone
-            // there; MagicaCloth2 and DynamicBone stomp the animated pose outright. Anchoring is
-            // different and stays allowed: a chain ROOTED at a humanoid bone (hair on Head, tail
-            // on Hips) is correct, because the root is kinematic and only its descendants
-            // simulate. So the rule is: any humanoid bone strictly BELOW the root joins the
-            // ignore list, exactly as if the author had excluded it; the MagicaCloth2 writer
-            // roots around it (its non-humanoid children still simulate, re-anchored) and the
-            // DynamicBone writer turns it into an exclusion.
+            // Humanoid bones must never simulate: the animator and IK write them every frame, and
+            // MagicaCloth2 and DynamicBone stomp that pose (VRChat half tolerates it). A chain
+            // rooted at one is fine, the root is kinematic. So humanoid bones strictly below the
+            // root join the ignore list; their non-humanoid children still simulate.
             if (animator != null && animator.isHuman)
             {
                 for (var bone = HumanBodyBones.Hips; bone < HumanBodyBones.LastBone; bone++)
@@ -187,14 +179,9 @@ namespace AvatarBridge
                 }
             }
 
-            // Toes, wherever they sit in the chain. The humanoid rule above only catches MAPPED
-            // bones, and a rig maps "Toes"; not Toe1_1, Toe2_1, or the digits under it; so a
-            // chain rooted higher up (a leg, a skirt, a whole-body wobble) still ran the solver
-            // through every toe joint. That is what busted feet look like after a DynamicBone
-            // conversion: the digits splay and swing while the foot itself is planted by IK.
-            // Skipping a chain whose ROOT is a toe was never enough on its own; this excludes
-            // toe bones found anywhere below the root, for both physics targets, and "Convert
-            // toe PhysBones" turns the whole rule off.
+            // Toes anywhere below the root: the rig maps only "Toes", not the digit joints, so a
+            // chain rooted higher (leg, skirt) splayed the digits while IK planted the foot.
+            // "Convert toe PhysBones" turns this off.
             if (excludeToes && data.Root != null)
             {
                 var toeRoots = new List<Transform>();
@@ -232,9 +219,8 @@ namespace AvatarBridge
                 }
             }
 
-            // Multi Child Type only means anything when the root actually branches; with a
-            // single child it's inert, so the writers shouldn't act on it. Counted after the
-            // ignore list is filled, since ignored children don't count as branches.
+            // Multi Child Type is inert unless the root branches. Counted after the ignore list,
+            // since ignored children are not branches.
             int children = 0;
             for (int i = 0; i < data.Root.childCount; i++)
             {
