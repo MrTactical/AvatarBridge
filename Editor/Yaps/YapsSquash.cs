@@ -1912,6 +1912,8 @@ namespace AvatarBridge
             string path = folder + "/" + file;
             if (Reuse != null && Reuse.Remove(path) && AssetDatabase.LoadAssetAtPath<T>(path) is T old)
             {
+                // CopySerialized carries the name too; keep the file's, or every rebuild reimports it.
+                asset.name = old.name;
                 EditorUtility.CopySerialized(asset, old);
                 EditorUtility.SetDirty(old);
                 return old;

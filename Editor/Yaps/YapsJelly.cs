@@ -348,6 +348,7 @@ namespace AvatarBridge
             }
             else
             {
+                fresh.name = tex.name;
                 EditorUtility.CopySerialized(fresh, tex);
                 Object.DestroyImmediate(fresh);
             }
@@ -1655,7 +1656,6 @@ namespace AvatarBridge
                     }
             var skinMesh = FilledMesh(folder + "/Jelly_Skin.asset", mesh =>
             {
-                mesh.name = "Jelly skin";
                 mesh.vertices = points.ToArray();
                 mesh.boneWeights = skinWeights.ToArray();
                 mesh.bindposes = skinBones.Select(b => b.worldToLocalMatrix * skin.transform.localToWorldMatrix).ToArray();

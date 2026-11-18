@@ -500,7 +500,7 @@ namespace AvatarBridge
                 }
                 string clipPath = $"{dir}/{Sanitise(layerName)} {index}.anim";
                 var saved = AssetDatabase.LoadAssetAtPath<AnimationClip>(clipPath);
-                if (saved != null) { EditorUtility.CopySerialized(clip, saved); clip = saved; }
+                if (saved != null) { clip.name = saved.name; EditorUtility.CopySerialized(clip, saved); clip = saved; }
                 else AssetDatabase.CreateAsset(clip, clipPath);
                 points.Add((clip, depth));
                 index++;

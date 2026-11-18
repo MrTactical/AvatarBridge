@@ -202,6 +202,7 @@ namespace AvatarBridge
             var saved = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
             if (saved != null)
             {
+                mesh.name = saved.name;
                 EditorUtility.CopySerialized(mesh, saved);
                 UnityEngine.Object.DestroyImmediate(mesh);
                 EditorUtility.SetDirty(saved);
