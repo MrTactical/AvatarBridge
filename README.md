@@ -3216,6 +3216,16 @@ Two things that are intended (not yet confirmed in game):
 - **A hand dents the part but does not shove it.** The avatar's physics move the part; the tissue
   only dents it.
 
+#### YAPS: a YAPS avatar moved to another project names a missing shader
+
+Each YAPS patch remembers the shader it was made from, but Unity's *Export Package* does not count
+that shader as a dependency, so the package leaves it out. Without it a rebuild in the new project
+would patch a different shader, so the squash step names the missing one instead.
+
+**Fix:** import that shader into the new project before rebuilding. When exporting, select the
+avatar, run *Tools ▸ Avatar Bridge ▸ YAPS ▸ Select the shaders a package must carry*, and export
+with that selection.
+
 #### OSC toys (OSCGoesBrrr, Lovense): the avatar converts, the toy stays silent
 
 1. **Tick *Keep the OGB / PCS haptics contacts*** (*Manual options ▸ Opt-ins ▸ OSC toys*, YAPS

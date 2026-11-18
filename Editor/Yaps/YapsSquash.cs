@@ -171,6 +171,15 @@ namespace AvatarBridge
             if (s == null) return;
             Selection.activeGameObject = s.gameObject;
             EditorGUIUtility.PingObject(s);
+            FrontInspector();
+        }
+
+        // An open Inspector is focused rather than reopened: the menu route logged a Unity-internal
+        // NullReferenceException on 2022.3.58f1.
+        public static void FrontInspector()
+        {
+            foreach (var w in Resources.FindObjectsOfTypeAll<EditorWindow>())
+                if (w.GetType().Name == "InspectorWindow") { w.Focus(); return; }
             EditorApplication.ExecuteMenuItem("Window/General/Inspector");
         }
 

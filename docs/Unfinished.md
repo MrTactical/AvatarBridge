@@ -23,6 +23,17 @@ Shortest first; the **Check** line under each heading is the thing to do. Steps 
 `Dev/Release/ingame-checklist-5.0.0.md` (local). Owed by Joe right now: items 20, 41, 42, 46 (his
 call), 47, 50 and 51; tester fluffybat has rc23 for item 51.
 
+### 56. In-game checks left by the items closed on 2026-11-18. Joe to check in game
+**Check:** each line below once in ChilloutVR (or VRChat where it says so); a failure becomes a new item.
+
+The code side of each item is done or decided and archived in `archive/Closed-2026-11.md` under
+its number; only the look in game is left here.
+
+- **(15) PlayAudio on a slash-named object, in VRChat.** Does VRChat play a source whose object
+  name has a slash? If not, the converted avatar plays a sound the original did not (checklist S6.9).
+- **(45) Editor, 2022.3.58f1:** press Squash and a row's Customise in the YAPS setup window; the
+  Console stays free of the `SerializedObjectBindingToBaseField` NullReferenceException.
+
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
 
@@ -729,12 +740,6 @@ Squeeze 0, 0.05 and 0.3 in Play mode: no tear, but no dent at 0.3 either, so the
 (batch Play mode without a Game view). Inconclusive. A trustworthy repro needs the jelly harness's render-late
 stepping, or Joe's own steps in the GUI with the repainted regions.
 
-### 55. A plug baked in the editor came out 0.5% longer than the batch bake. 2026-11-18, from the plush build session. OPEN, low
-0.6018086 against 0.5987598 for the same FBX and scene, ratio 1.005092; the same ratio showed in the hand rebuilt
-squash's bindposes. Something in the GUI session left the avatar scaled by about 0.5% when the bake read it (the
-Avatar Tester or the Height slider are the suspects). The bake should measure the avatar at its own size whatever the
-scene is doing. 3 mm on 0.6 m, no visible effect in game.
-
 ### 52. Code rot review. Joe, 2026-11-18: "a code rot review, or tech-debt review, we been writing a lot". OPEN, unblocked: 5.0.0 is published
 A whole-repo pass for what the 5.0.0 run left behind: dead code and settings nothing reads (the tissue's Give, Swing and
 Spring back are out of the UI but still in the shader and presets), migration paths for marks only test builds wrote,
@@ -820,34 +825,6 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
 - README: the options table default, the scaler's section, and a line on the hand-over between the
   two sliders. The window tooltip and the settings comment say the same.
 - Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
-
-### 45. Two squash setup notes from moving a squashed avatar between projects. 2026-11-16, from the plush build session. OPEN, low
-
-Status naming a missing source shader first shipped in 5.0.0 (5b2a5541; record in
-`archive/Closed-2026-11.md`). Left:
-- **An export helper or a setup-window warning that lists the patch sources a package must
-  carry.** A squash material's patch names its source shader only in a hidden property, so
-  `GetDependencies` misses it and a package export leaves it out.
-- **Low:** pressing Squash in the setup window logs a Unity-internal NullReferenceException in
-  `SerializedObjectBindingToBaseField.OnFieldAttached` on 2022.3.58f1. It comes from
-  `YapsSquash.Show` calling `ExecuteMenuItem("Window/General/Inspector")` (`YapsSquash.cs:180`);
-  the setup window's own call (`YapsSetupWindow.cs:646`) does the same. Try focusing an existing
-  Inspector instead of opening one through the menu, then check the console on 58f1.
-
-### 15. Moved out of 5.0.0 (Joe, 2026-10-22): one avatar's texture estimate grew. OPEN, low
-
-The PlayAudio slash question that sat here is answered by item 37's fix (record in
-`archive/Closed-2026-11.md`; the VRChat test was never run).
-- **Watch: PlayAudio on a slash-named object.** The conversion now finds the source by animation
-  path. If VRChat never played such a source, the converted avatar plays a sound the original did
-  not. One VRChat test settles it (checklist S6.9).
-- **One avatar's texture estimate grew [M]** (from item 14, archived). "About 268.0 MB of texture to
-  download" in every run from 410 to 422 (276.2 once, in 416), 274.0 in 425 and 427, with "1 set
-  of materials shares a shader" becoming "2 sets": four materials on one locked YAPS copy and two
-  on another. 424 cannot say (a probe had resized this avatar's textures that morning, reverted at
-  14:40 from its `TextureSizes.undo`). Candidates: the per-role patches (65a4466), which put
-  materials on shared copies by role, or the revert not restoring every importer exactly. Only the
-  report's estimate moved; meshes, clips and the `[physics]` block are unchanged.
 
 ### 30. Pointers for the live tissue from a VRChat skin-touch module: what is left. Approved by Joe 2026-11-06. PART BUILT and SHIPPED in 5.0.0; the rest OPEN
 
