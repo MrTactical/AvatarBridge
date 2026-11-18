@@ -740,13 +740,6 @@ Squeeze 0, 0.05 and 0.3 in Play mode: no tear, but no dent at 0.3 either, so the
 (batch Play mode without a Game view). Inconclusive. A trustworthy repro needs the jelly harness's render-late
 stepping, or Joe's own steps in the GUI with the repainted regions.
 
-### 52. Code rot review. Joe, 2026-11-18: "a code rot review, or tech-debt review, we been writing a lot". OPEN, unblocked: 5.0.0 is published
-A whole-repo pass for what the 5.0.0 run left behind: dead code and settings nothing reads (the tissue's Give, Swing and
-Spring back are out of the UI but still in the shader and presets), migration paths for marks only test builds wrote,
-duplicated helpers between the converter and the toolkit, comments that describe removed behaviour, probes whose
-flags no longer exist, and files past a size anyone can hold in their head (`YapsJelly.cs`). Report first, ranked,
-then fix in small commits with the tests and corpus around them.
-
 ### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", then "write it". PLAN, decided, NOT BUILT
 
 Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
@@ -2043,6 +2036,19 @@ are the nearest measured thing; see items 25 and 29 in the archive.
 ## Minor Ideas
 
 Small features and leftovers, after 5.0.0.
+
+### Fold into the next intentional YAPS shader change. From the code rot review (item 52), 2026-11-18
+Each changes the patched shader text, so on its own it would make every YAPS avatar read "Needs a rebuild"
+for nothing a user can see. Ride along with the next change that needs a rebuild anyway:
+- Drop `_YAPS_SocketUp`, `_YAPS_SocketFront`, `_YAPS_ChannelOrigin`, `_YAPS_ChannelForward`,
+  `_YAPS_ChannelUp`, `_YAPS_ChannelExtents` from `YapsShaderPatcher`'s property block and
+  `YapsDebugOverlay.shader`: no HLSL reads them, no C# writes them.
+- `_YAPS_SquashPulse`: a probe's diagnostic (`SquashTestBuilder`) shipped in every squash material's
+  vertex stage. Move it into the probe.
+- `yaps_resolve.cginc`: the `plugUp` parameter nothing reads.
+- The live tissue's hand, grip and own-hand loops run every frame adding zeros on a cloth-carried
+  part (`_Give` 0): guard them with `[branch] if (_Give > 0)`, or remove the free-mass mode once
+  the probes stop using `-jellyMass`.
 
 ### A per-plug menu choice for its own sockets. IDEA, not started
 
