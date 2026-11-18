@@ -1326,8 +1326,10 @@ An opt-in in the YAPS add-on, off by default. Breasts, butt and other soft parts
 hand and press against each other. It runs in the body's shader, so every layer over the skin (a
 bra, a shirt, piercings) moves with it. It costs no synced parameters and uses no contacts.
 
-Status: live tissue is confirmed in game on breasts. Other parts, the non-breast presets, clones
-and the behaviour at speed are not yet confirmed in game.
+> **Live tissue is a beta and very experimental.** The window marks it **BETA**. Test it in
+> ChilloutVR before you rely on it, and [report](#reporting-a-bug) anything that stretches, jumps or
+> flickers. It is confirmed in game on breasts; other parts, the non-breast presets, clones and the
+> behaviour at speed are not yet confirmed in game.
 
 On a humanoid avatar the parts become **live tissue**. That is the path nearly every avatar takes,
 so it comes first here.
@@ -2068,7 +2070,7 @@ converts fine.
 | *OSC toys* ▸ **Keep the OGB / PCS haptics contacts** | off | Keeps the toy-app contacts that *Penetration* otherwise strips. Plugs and sockets work either way; these only drive a toy, and each spends some of the instance's 512 contact pairs. Needs *Penetration* on *Convert to YAPS (recommended)*. See [OSC toys](#osc-toys-oscgoesbrrr-lovense-the-avatar-converts-the-toy-stays-silent) |
 | *OSC toys* ▸ **Keep OGB haptics synced (OSCGoesBrrr, Lovense)** | off | Off, the kept haptics parameters are local (free) and need manual links in OSCGoesBrrr. On, they sync and automatic detection works, at about 290 sync bits per plug or socket. Needs the contacts above kept |
 | *Penetration* ▸ **Show the avatar's OWN depth animations to other players** | off | For the bulges and reactions the avatar's author animated in VRChat. Off, each socket's depth parameter is local: free, and only the wearer sees the reaction. On, it syncs at 32 bits per depth parameter, so six sockets is about 192 of 3200. Needs *Penetration* on *Convert to YAPS (recommended)* |
-| *Soft parts* ▸ **Soft body shape: squash where parts press together** | off | Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, under a hand, and around a plug in a socket between them. On a humanoid avatar the parts become live tissue: any hand dents, grips and slaps them, and the parts' cloth still moves the bones. No sync cost. Works with *Penetration* on any answer. See [Squash](#squash-soft-parts-that-press-together) |
+| *Soft parts* ▸ **Soft body shape: squash where parts press together** | off | Beta, very experimental. Off, the parts swing as their physics make them and pass through each other. On, the body shader flattens them where they press together, under a hand, and around a plug in a socket between them. On a humanoid avatar the parts become live tissue: any hand dents, grips and slaps them, and the parts' cloth still moves the bones. No sync cost. Works with *Penetration* on any answer. See [Squash](#squash-soft-parts-that-press-together) |
 
 **Menu & extras**
 

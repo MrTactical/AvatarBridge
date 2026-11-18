@@ -886,14 +886,15 @@ namespace AvatarBridge
             }
 
             optIns.Add(BridgeElements.SubHeading("Soft parts"));
-            optIns.Add(BridgeElements.Bind("Soft body shape: squash where parts press together",
+            optIns.Add(BridgeElements.Row(BridgeElements.Bind("Soft body shape: squash where parts press together",
                 "In the body shader: pressed together they flatten and meet, anyone's hand presses them as soft tissue solved when the squash is built, and a plug in a socket between them parts them. " +
                 "Found by bone name, or by regions painted with " +
                 "Tools ▸ Avatar Bridge ▸ YAPS ▸ Squash regions; tuned on the YAPS Squash component the build adds. " +
                 "On a humanoid avatar the parts become live tissue instead, which the graphics card steps every frame: any hand dents, grips and slaps them, while their cloth still swings them and other players' hands still push it. " +
                 "The solved presses then apply only to parts the tissue cannot take. No sync cost.",
-                settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }));
-            optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press."));
+                settings.squashSoftParts, v => { settings.squashSoftParts = v; ScheduleRebuild(); }),
+                BridgeElements.BetaTag("Very experimental: test it in ChilloutVR before you rely on it.")));
+            optIns.Add(BridgeElements.Hint("Changes the skin's shape where breasts, butt, a hand or a plug press. Live tissue is a beta and very experimental."));
             if (settings.squashSoftParts)
             {
                 optIns.Add(BridgeElements.Hint(

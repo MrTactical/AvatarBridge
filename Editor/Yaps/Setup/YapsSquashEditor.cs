@@ -122,6 +122,7 @@ namespace AvatarBridge
             body.AddToClassList("ab-scroll");
             _root.Add(body);
             body.Add(BridgeElements.Notice(Tone.Info, YapsInspectorStyle.InertComponentNote));
+            body.Add(BridgeElements.Notice(Tone.Warn, YapsSquash.Experimental));
 
             // Top to bottom in the order of the work, building last as in the other windows:
             // what squashes, how it feels, then build.
