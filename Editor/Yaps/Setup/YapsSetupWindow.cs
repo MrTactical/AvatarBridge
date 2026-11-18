@@ -218,7 +218,7 @@ namespace AvatarBridge
             squash.Body.Add(BridgeElements.ButtonRow(BridgeElements.Btn("Set up squash", OpenSquash, null, ButtonKind.Strong)));
             squash.Body.Add(BridgeElements.ButtonRow(
                 BridgeElements.Btn("Remove squash", RemoveSquash,
-                    "Puts every layer back on its own material, and points the toggles back too.", ButtonKind.Danger)));
+                    "Puts every layer back on its own material, points the toggles back too, and removes the YAPS Squash component with its parts and painted regions.", ButtonKind.Danger)));
             _squashStatus = Status();
             squash.Body.Add(_squashStatus);
             _pages.Add(squash);
@@ -243,7 +243,8 @@ namespace AvatarBridge
 
         void RemoveSquash()
         {
-            if (_target == null || !YapsSquash.Has(_target.transform) && YapsSquash.Worn(_target.transform) == 0)
+            var settings = _target != null ? YapsSquash.SettingsOf(_target.transform) : null;
+            if (_target == null || settings == null && !YapsSquash.Has(_target.transform) && YapsSquash.Worn(_target.transform) == 0)
             {
                 _squashStatus.Set("Nothing to remove: the avatar picked in step 1 has no squash.", Tone.Info);
                 return;
@@ -253,7 +254,12 @@ namespace AvatarBridge
                 _squashStatus.Set(YapsNativeBuilder.NotInPlayMode, Tone.Warn);
                 return;
             }
-            _squashStatus.Set("Squash removed. Every layer and toggle is back on its own material.", Tone.Good);
+            // The whole feature goes: a component left behind read as a failed remove. Its own
+            // Inspector button is the one that keeps the parts for a rebuild.
+            if (settings != null) Undo.DestroyObjectImmediate(settings);
+            _squashStatus.Set(settings != null
+                ? "Squash removed, with its YAPS Squash component, parts and painted regions. Every layer and toggle is back on its own material. Ctrl+Z brings the component back."
+                : "Squash removed. Every layer and toggle is back on its own material.", Tone.Good);
             ShowSquashState();
         }
 

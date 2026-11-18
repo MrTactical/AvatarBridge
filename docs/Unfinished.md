@@ -710,12 +710,26 @@ recorded as sent.
 What is planned for the next release: the window's Remove squash, the code rot review, the Update button, what the 5.0.0 review
 left, the scaler's default once GS2 is on stable, then the small fixes and the speed leftovers.
 
-### 53. "Remove squash" in the YAPS window left the YAPS Squash component. Joe, 2026-11-18. OPEN, decided: remove everything
+### 53. "Remove squash" in the YAPS window left the YAPS Squash component. Joe, 2026-11-18. FIXED ON DEV 2026-11-18, compile and window check owed
 The window's button strips the build and points every layer and toggle back at its own material, but leaves the
 component (parts and painted regions) on the avatar, and its message does not say so. Harmless in game (setup data,
 stripped at upload), but it reads as a failed remove. Decided (Joe): the window's button also deletes the component,
 with Undo, and says Ctrl+Z brings it back. The component's own "Remove the squash" keeps unbuilding only, settings kept
 for the next build.
+
+### 54. Remove squash, then Rebuild in one editor session, gave a tissue that tore under the tester's Squeeze. Joe, 2026-11-18. OPEN, not reproduced
+On the plush in Joe's project: the window's Remove squash, regions repainted, then the component's Rebuild, all in
+one GUI session (Editor.log 06:46 to 07:04). In Play mode the Avatar Tester's Squeeze tore the body skin and the
+clothes into spikes as soon as it moved, nothing in the Console. The batch build of the same avatar (q1) does not
+tear at Squeeze 0, 0.05 or 0.3 (shots in Play mode, tissue on and off), and q1 uploaded feels right in game.
+Suspect: generated assets remade at the same paths in one session leave stale references. Next: reproduce in a copy
+of that project's state, then make a rebuild after a remove start from fresh assets.
+
+### 55. A plug baked in the editor came out 0.5% longer than the batch bake. 2026-11-18, from the plush build session. OPEN, low
+0.6018086 against 0.5987598 for the same FBX and scene, ratio 1.005092; the same ratio showed in the hand rebuilt
+squash's bindposes. Something in the GUI session left the avatar scaled by about 0.5% when the bake read it (the
+Avatar Tester or the Height slider are the suspects). The bake should measure the avatar at its own size whatever the
+scene is doing. 3 mm on 0.6 m, no visible effect in game.
 
 ### 52. Code rot review. Joe, 2026-11-18: "a code rot review, or tech-debt review, we been writing a lot". OPEN, unblocked: 5.0.0 is published
 A whole-repo pass for what the 5.0.0 run left behind: dead code and settings nothing reads (the tissue's Give, Swing and

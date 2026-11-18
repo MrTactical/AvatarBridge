@@ -1429,7 +1429,9 @@ Knobs write straight to the materials as you move them. No rebuild.
 **3. Build**
 
 **Build the squash** builds it, **Rebuild the squash** rebuilds, **Remove the squash** puts every
-layer back on its own material, toggles included. The step says whether the build is up to date
+layer back on its own material, toggles included, and keeps the component's settings for the next
+build. **Remove squash** on the Setup card does the same and also removes the component, with its
+parts and painted regions (Ctrl+Z brings it back). The step says whether the build is up to date
 and, if not, why. Rebuild after changing the parts, **Materials left alone**, the body, an outfit,
 or after updating YAPS.
 
