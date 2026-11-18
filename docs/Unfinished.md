@@ -59,6 +59,9 @@ its number; only the look in game is left here.
   others? If neither does, try one upload without YAPS to tell the add-on from the avatar.
 - **(49) Walking and running with live tissue:** a part nobody touches does not stretch; a hand, your
   own hand, a grip or the pair pressing wakes it; nothing at landing after fast flight.
+- **(54) Editor, the plush in Joe's project:** Remove squash, repaint the regions, then the
+  component's Rebuild, in one session; in Play mode the Avatar Tester's Squeeze dents the skin and
+  clothes without tearing them into spikes. If it tears, keep the Editor.log and reopen 54.
 
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
@@ -662,18 +665,6 @@ component (parts and painted regions) on the avatar, and its message does not sa
 stripped at upload), but it reads as a failed remove. Decided (Joe): the window's button also deletes the component,
 with Undo, and says Ctrl+Z brings it back. The component's own "Remove the squash" keeps unbuilding only, settings kept
 for the next build.
-
-### 54. Remove squash, then Rebuild in one editor session, gave a tissue that tore under the tester's Squeeze. Joe, 2026-11-18. OPEN, not reproduced
-On the plush in Joe's project: the window's Remove squash, regions repainted, then the component's Rebuild, all in
-one GUI session (Editor.log 06:46 to 07:04). In Play mode the Avatar Tester's Squeeze tore the body skin and the
-clothes into spikes as soon as it moved, nothing in the Console. The batch build of the same avatar (q1) does not
-tear at Squeeze 0, 0.05 or 0.3 (shots in Play mode, tissue on and off), and q1 uploaded feels right in game.
-Suspect: generated assets remade at the same paths in one session leave stale references. Next: reproduce in a copy
-of that project's state, then make a rebuild after a remove start from fresh assets.
-2026-11-18 batch try on the plush build copy: Strip then Build at the same paths in one session, then
-Squeeze 0, 0.05 and 0.3 in Play mode: no tear, but no dent at 0.3 either, so the tissue was most likely not stepping
-(batch Play mode without a Game view). Inconclusive. A trustworthy repro needs the jelly harness's render-late
-stepping, or Joe's own steps in the GUI with the repainted regions.
 
 ### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", then "write it". PLAN, decided, NOT BUILT
 
