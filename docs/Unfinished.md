@@ -667,55 +667,13 @@ To do when GS2 reaches stable, not before (stable has no universal scaling yet):
 The work Joe means to take on now that 5.0.0 is out (published 2026-11-18). None of it is started
 unless its heading says so.
 
-### AvatarBridge Chambers: a home world with a test wing. Joe's idea 2026-10-20. CHOSEN 2026-11-18 as the next big work, NOT STARTED
+### AvatarBridge Chambers: a home world with a test wing. Joe's idea 2026-10-20. STARTED 2026-11-18 in its own private repository
 
-Joe, 2026-10-20: a ChilloutVR world under the AvatarBridge name. One side is a home world, fully
-built, to hang out and relax in. The other side is a run of test chambers with a clinical
-test-facility mood, entirely original in look, story and names. Walk in wearing any avatar and test
-anything: whatever the CCK does, whatever the converter changed, whatever YAPS adds. Its own project
-apart from the converter, and the main focus once 5.0.0 ships.
-
-Joe, 2026-11-18, choosing it: "a neat, chill world" on the surface, and underneath it secret labs
-that test everything; the contrast between the two is the point. The adult (YAPS) labs stay in the
-same public world, locked away: props and flight off, and the adult part behind a locked door with a
-PIN nobody is given. Work happens in its own session on its own branch.
-
-**Why a world.** Physics, shaders and sync are only falsifiable in ChilloutVR. Today that proof is a
-checklist and a friend with time. A chamber that sets each check up makes it repeatable, for anyone.
-
-**What a chamber can set up that the editor cannot.** A first pass, from the in-game checklist:
-- Physics: a drop shaft and jump pads (landing, overshoot, the landing spin), a walkway with stop
-  lines (sway and settle), a turntable (body turns), a bed (lying down), a teleport pair and a
-  respawn point (cloth after a jump in position), wind if a world can push avatar cloth.
-- Mirrors and light: mirrors at several distances, a bay that cycles baked, realtime, point lights
-  and none (toon fallbacks, outlines, both eyes in VR), a floor grid with height marks (floating or
-  sinking).
-- Interaction: seats and beds (GoGo poses, emotes), world pointers aimed at an avatar's triggers,
-  props to grab, a viewer's mark for the tests that need a second player.
-- YAPS: socket and plug fixtures with marker lights, a portal pair, the glass wall from
-  "Squash against the world".  Where these live is decision 2.
-- Readouts: what a world can show about the avatar in it (parameters, contact hits) needs world
-  scripting, which is not in stable. Until then a chamber sets up the situation and the player reads
-  the result.
-
-**Known constraints.**
-- ChilloutVR declined scripting access (2026-08-19) and asked for no AI analysis of their scripting
-  implementation. World scripting gets used through its public documentation only, once it ships.
-- The clean-room rules carry over unchanged.
-- Original look and names. No borrowed franchise, in the world or in anything written about it.
-
-**Decisions for Joe.**
-1. Where it lives: a new repository under the AvatarBridge name (recommended), or a GitHub fork of
-   this one. A world shares no code with the converter, and a fork of a public repository carries
-   its whole history and stays public.
-2. ~~The YAPS chambers: a separate adult world, an adult wing behind a gate, or none.~~ DECIDED
-   2026-11-18 (Joe): the secret labs under the chill world, the adult part behind a PIN door, props and
-   flight off. To check before it goes public: ChilloutVR's rules for adult content in a public world,
-   and whether a PIN held in the world's own animator can be read out of the downloaded bundle (if it
-   can, the lock keeps out visitors, not someone who unpacks the world).
-
-**First step (5.0.0 shipped 2026-11-18, so this is next):** a spike. One lounge room and one chamber in a fresh CCK world project,
-uploaded privately, to learn the world CCK's limits before designing the rest.
+A ChilloutVR world: a chill surface to hang out in, with labs underneath that test what an avatar
+does in game (physics, mirrors and light, seats, contacts, sync, the converter's and YAPS's output).
+Chosen 2026-11-18 as the next big work. It shares no code with the converter, so it lives in its
+own private repository with its own plan, decisions and work queue; this entry is only the pointer.
+Converter work it turns up (a check that fails in a lab) comes back here as a normal item.
 
 ### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06: next after the jelly's final approval. NOT STARTED
 
