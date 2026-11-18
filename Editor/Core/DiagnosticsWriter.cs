@@ -262,12 +262,12 @@ namespace AvatarBridge
         static string ThisRun()
         {
             var (warnings, errors, start) = ProblemReport.RunCounts();
-            var process = System.Diagnostics.Process.GetCurrentProcess();
+            var (now, peak) = ProblemReport.EditorMemory();
             return Table(new[] { "", "" }, new List<string>
             {
                 Row("Unity editor memory at the start", start > 0 ? Gb(start) : "unknown"),
-                Row("Unity editor memory at the end", Gb(process.WorkingSet64)),
-                Row("Highest since the editor opened", Gb(process.PeakWorkingSet64)),
+                Row("Unity editor memory at the end", now > 0 ? Gb(now) : "unknown"),
+                Row("Highest since the editor opened", peak > 0 ? Gb(peak) : "unknown"),
                 Row("Console warnings", warnings.ToString()),
                 Row("Console errors", errors.ToString()),
             });

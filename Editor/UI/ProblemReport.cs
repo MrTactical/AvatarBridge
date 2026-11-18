@@ -268,7 +268,36 @@ namespace AvatarBridge
         {
             _warnings = 0;
             _errors = 0;
-            _startMemory = System.Diagnostics.Process.GetCurrentProcess().WorkingSet64;
+            _startMemory = EditorMemory().now;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct ProcessMemory
+        {
+            public uint Size, PageFaults;
+            public UIntPtr PeakWorkingSet, WorkingSet, PeakPagedPool, PagedPool, PeakNonPagedPool, NonPagedPool,
+                PageFile, PeakPageFile;
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern IntPtr GetCurrentProcess();
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool K32GetProcessMemoryInfo(IntPtr process, ref ProcessMemory counters, uint size);
+
+        // The editor's working set and its peak. Process.WorkingSet64 reads 0 under Unity's Mono.
+        internal static (long now, long peak) EditorMemory()
+        {
+            try
+            {
+                var m = new ProcessMemory { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<ProcessMemory>() };
+                return K32GetProcessMemoryInfo(GetCurrentProcess(), ref m, m.Size)
+                    ? ((long)m.WorkingSet.ToUInt64(), (long)m.PeakWorkingSet.ToUInt64()) : (0, 0);
+            }
+            catch
+            {
+                return (0, 0);
+            }
         }
 
         internal static (int warnings, int errors, long startMemory) RunCounts() => (_warnings, _errors, _startMemory);
