@@ -3908,7 +3908,7 @@ Found (a five-agent read plus 10 harness runs, synthesis in the session scratch)
   decimal (arm 45 and 80, collider, deep hand, dents 65.9 and 106.9 mm, walk, run, 25 fps).
 - **Own forearm live/held at one depth:** the deep own run settles asleep with the arm inside (lattice still, 92.7
   mm, nothing on the skin); not a stretch.
-- **Open:** in game with the tester. Nothing here reads the drawn skin, only the lattice; the films are the check.
+- **Open:** in game with the tester: rc23 (the dent-only hand and the eased wake) sent 2026-11-18, answer pending. Nothing here reads the drawn skin, only the lattice; the films are the check.
 
 ## 5.0.1
 
