@@ -176,9 +176,9 @@ namespace AvatarBridge
         // Breasts and butt squash against each other and against hands, in the body shader.
         // Needs the YAPS add-on, not converted penetration. Off: the parts swing as before. Tuned
         // afterwards on the avatar's YAPS Squash component. A humanoid's pairs go on the jelly
-        // instead, live tissue stepped on the GPU every frame, and their cloth and Dynamic Bones then
-        // collide at a millimetre: the tissue takes every touch. The solved presses and the stretch
-        // apply only to parts the tissue cannot take.
+        // instead, live tissue stepped on the GPU every frame that only dents the skin; their cloth
+        // and Dynamic Bones still swing them and feel other players' hands. The solved presses apply
+        // only to parts the tissue cannot take.
         public bool squashSoftParts = false;
         // Comma-separated. Matched as parameter prefixes and
         // layer-name substrings.

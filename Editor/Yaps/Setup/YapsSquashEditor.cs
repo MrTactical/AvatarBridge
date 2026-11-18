@@ -386,7 +386,7 @@ namespace AvatarBridge
                 into.Add(push);
             }
             if (!Application.isPlaying)
-                into.Add(BridgeElements.Bind("Bounce", "Swings each part up and down under it, as a jump would, to show the stretch in motion.",
+                into.Add(BridgeElements.Bind("Bounce", "Swings each part up and down under it, as a jump would.",
                     Bounce, b => Bounce = b));
             into.Add(BridgeElements.Bind("Test hand", "Another player's open hand, dragged with the handle in the scene view. It presses the part nearest it.",
                 Hand, b => { Hand = b; SceneView.RepaintAll(); }));
