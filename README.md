@@ -6,9 +6,7 @@
 A Unity Editor tool that converts a **VRChat SDK3 avatar** into a **ChilloutVR CCK 4 avatar**:
 animator, menus, physics, contacts and face tracking. You get a working avatar and a report of what to check.
 
-<p align="center">
-  <img src="docs/images/window-500.png" alt="The AvatarBridge window with no avatar picked: a blue-to-orange banner, three tabs, and three numbered steps: 1 Pick your VRChat avatar, 2 Choose what gets set up, 3 Convert" width="480">
-</p>
+https://github.com/user-attachments/assets/8785ecd8-bd2f-407c-802f-fd233cf777c9
 
 **Contents**
 
@@ -108,6 +106,10 @@ older.
 
 Open **Tools ▸ Avatar Bridge ▸ VRChat to ChilloutVR Converter** and stay on the **Convert a VRChat
 avatar** tab. The window has three numbered cards.
+
+<p align="center">
+  <img src="docs/images/window-500.png" alt="The AvatarBridge window with no avatar picked: a blue-to-orange banner, three tabs, and three numbered steps: 1 Pick your VRChat avatar, 2 Choose what gets set up, 3 Convert" width="480">
+</p>
 
 1. **Pick your VRChat avatar.** Choose the avatar in your scene.
 2. **Choose what gets set up.** The defaults suit most avatars.
@@ -744,6 +746,8 @@ live follow is lost. Bones nothing animates keep the world-space follow.
 </details>
 
 ## YAPS: penetration that works in ChilloutVR
+
+https://github.com/user-attachments/assets/474b2396-85be-40d2-b5b3-f14aaa7368f1
 
 VRChat has three penetration systems: Raliv's **DPS**, Thry's **TPS** and VRCFury's **SPS**.
 **YAPS** (Yet Another Penetration System) is a fourth, written from scratch for ChilloutVR. It ships
