@@ -952,8 +952,21 @@ namespace AvatarBridge
                 else if (existing.type != param.type &&
                          !GestureMap.GestureParameters.Contains(param.name))
                 {
-                    ctx.Report.Warning(Category, $"Parameter \"{param.name}\"",
-                        $"Type conflict between controllers ({existing.type} vs {param.type}); keeping {existing.type}.");
+                    // Float wins over Bool and Int: a blend tree reads only floats, the client writes
+                    // core values into any type, and ReconcileConditionModes rewrites the conditions.
+                    if (param.type == AnimatorControllerParameterType.Float
+                        && (existing.type == AnimatorControllerParameterType.Bool || existing.type == AnimatorControllerParameterType.Int))
+                    {
+                        ctx.Report.Approximated(Category, $"Parameter \"{param.name}\"",
+                            $"Declared {existing.type} in one controller and Float in another; kept as Float, so a blend tree can read it.");
+                        existing.defaultFloat = existing.type == AnimatorControllerParameterType.Bool ? (existing.defaultBool ? 1f : 0f) : existing.defaultInt;
+                        existing.type = AnimatorControllerParameterType.Float;
+                    }
+                    else
+                    {
+                        ctx.Report.Warning(Category, $"Parameter \"{param.name}\"",
+                            $"Type conflict between controllers ({existing.type} vs {param.type}); keeping {existing.type}.");
+                    }
                 }
             }
             master.parameters = masterParams.ToArray();
