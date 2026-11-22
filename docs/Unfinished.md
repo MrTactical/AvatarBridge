@@ -707,7 +707,8 @@ for the next build.
   every build. The rehomed materials still pointed at them; only `Packages/nadena.dev.ndmf/__Generated`
   and VRCFury's temp folder counted as temporary. `IsDoomedGeneratedPath` now treats any folder named
   `*__Generated` as temporary (test GeneratedFolderTest). Release note: "Textures baked by some build
-  tools could turn white after pressing Play." Not covered: a permanent material pointing at a
+  tools could turn white after pressing Play." The tester confirmed it fixed on build skintear2,
+  2026-11-22. Not covered: a permanent material pointing at a
   temporary texture (the rehomer only copies a texture with its material); none seen yet.
 
 ### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
