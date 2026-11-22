@@ -698,7 +698,7 @@ for the next build.
   off with the mesh bind poses corrected (skin unchanged). Measured on her output in Play mode
   (`Dev/Probes/SlideTearProbe.cs`, slid 0.35 m each way at up to 2.7 m/s): helper drift 3.9 mm to 0,
   slits gone. Release note: "Skin that Modular Avatar can hide could tear open under physics while
-  moving." Still untested in game. The corpus run after it (501skin) caught one regression, fixed the
+  moving." The tester confirmed it fixed in game on build skintear2, 2026-11-22. The corpus run after it (501skin) caught one regression, fixed the
   same day: a stand-in with an ignored branch rooted at its other branches, dropping the very bone the
   slide rig moved (`open me`, the Booba stand-ins). Stand-ins now always root at their own bone and keep
   ignores out by mark.
