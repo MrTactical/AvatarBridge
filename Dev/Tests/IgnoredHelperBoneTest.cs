@@ -72,7 +72,21 @@ namespace AvatarBridge.Regression
                 Check(standIn != null && KeptOut(standIn, buffer), "a stand-in keeps a source PhysBone's ignored bone out");
                 Check(standIn != null && !KeptOut(standIn, inner) && !KeptOut(standIn, lower), "a stand-in still moves the rest of its chain");
 
-                // 3. Stepping the bone off its parent must not move the skin.
+                // 3. A stand-in whose ignored bone is a branch of its own: it stays rooted at the
+                // bone it stands in for, which the rig moved, rather than at the other branches.
+                var slid = Bone("Slid", chest);
+                var strap = Bone("Strap", slid);
+                Bone("Strap.1", strap);
+                var tip = Bone("Tip", slid);
+                tip.localPosition += Vector3.right * 0.04f;   // apart from the strap: the cloth tells bones apart by position
+                Bone("Tip.1", Bone("Tip.0", tip));
+                ctx.PhysBoneIgnores.Add(strap);
+                write.Invoke(null, new object[] { ctx, slid, new BridgeContext.HelperRigChain { Root = slid, Pull = 0.2f, Spring = 0.5f } });
+                var slidCloth = avatar.GetComponentsInChildren<MagicaCloth>(true).FirstOrDefault(c => c.SerializeData.rootBones.Any(r => r != null && r.IsChildOf(slid)));
+                Check(slidCloth != null && slidCloth.SerializeData.rootBones.SequenceEqual(new[] { slid }), "a stand-in stays rooted at its own bone");
+                Check(slidCloth != null && KeptOut(slidCloth, strap) && !KeptOut(slidCloth, tip), "and keeps only the ignored branch out");
+
+                // 4. Stepping the bone off its parent must not move the skin.
                 var skinAfter = Skinned(skin);
                 Check(skinBefore.Zip(skinAfter, (a, b) => (a - b).magnitude).Max() < 1e-5f, "the skin stays where it was");
             }

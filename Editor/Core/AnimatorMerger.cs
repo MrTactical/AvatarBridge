@@ -7821,9 +7821,12 @@ namespace AvatarBridge
             path = path.Replace('\\', '/');
             // Only the temp roots. A broad "com.vrcfury" prefix also
             // matches the installed package, whose GUIDs are stable.
-            // The wiped folders are exactly these two:
-            return path.StartsWith("Packages/com.vrcfury.temp", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("Packages/nadena.dev.ndmf/__Generated", StringComparison.OrdinalIgnoreCase);
+            if (path.StartsWith("Packages/com.vrcfury.temp", StringComparison.OrdinalIgnoreCase)) return true;
+            // NDMF's "__Generated", and NDMF plugins that bake into a "<Name>__Generated" folder of their
+            // own (a light-controller plugin's baked textures went white after the next Play mode).
+            int file = path.LastIndexOf('/');
+            return file > 0 && path.Substring(0, file).Split('/')
+                .Any(folder => folder.EndsWith("__Generated", StringComparison.OrdinalIgnoreCase));
         }
 
         static void AuditSizeBlendshapes(AnimatorController master, BridgeContext ctx)

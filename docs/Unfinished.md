@@ -698,7 +698,17 @@ for the next build.
   off with the mesh bind poses corrected (skin unchanged). Measured on her output in Play mode
   (`Dev/Probes/SlideTearProbe.cs`, slid 0.35 m each way at up to 2.7 m/s): helper drift 3.9 mm to 0,
   slits gone. Release note: "Skin that Modular Avatar can hide could tear open under physics while
-  moving." Still untested in game.
+  moving." Still untested in game. The corpus run after it (501skin) caught one regression, fixed the
+  same day: a stand-in with an ignored branch rooted at its other branches, dropping the very bone the
+  slide rig moved (`open me`, the Booba stand-ins). Stand-ins now always root at their own bone and keep
+  ignores out by mark.
+- **Nails, stockings and dress white after leaving Play mode (FIXED).** An NDMF light-controller
+  plugin bakes lilToon textures into `Assets/<Name>__Generated/.../BakedTextures` and replaces them on
+  every build. The rehomed materials still pointed at them; only `Packages/nadena.dev.ndmf/__Generated`
+  and VRCFury's temp folder counted as temporary. `IsDoomedGeneratedPath` now treats any folder named
+  `*__Generated` as temporary (test GeneratedFolderTest). Release note: "Textures baked by some build
+  tools could turn white after pressing Play." Not covered: a permanent material pointing at a
+  temporary texture (the rehomer only copies a texture with its material); none seen yet.
 
 ### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
 

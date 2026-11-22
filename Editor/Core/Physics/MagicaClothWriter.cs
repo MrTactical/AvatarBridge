@@ -492,7 +492,9 @@ namespace AvatarBridge
             bool costsTooMuch = wholeChain > 0 && kept * 2 < wholeChain
                                 && data.HumanoidExclusions.Count == 0;
 
-            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch && unhonouredBranches.Count == 0)
+            // A stand-in exists to move its own root bone, so it never roots below it.
+            bool ownRoot = data.StandIn || data.Synthesized;
+            if (!ownRoot && sdata.rootBones.Count > deadRoots.Count && !costsTooMuch && unhonouredBranches.Count == 0)
             {
                 // At least one branch still moves: keep those, drop the statues.
                 foreach (var dead in deadRoots)
