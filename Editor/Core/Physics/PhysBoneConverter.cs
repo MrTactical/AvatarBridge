@@ -292,6 +292,8 @@ namespace AvatarBridge
             }
 
             ReportGrabbableChains(ctx, physBones);
+            foreach (var pb in physBones)
+                if (pb.ignoreTransforms != null) ctx.PhysBoneIgnores.UnionWith(pb.ignoreTransforms.Where(t => t != null));
 
             // The branches below that return convert nothing, so nothing is switched off either:
             // the Toolkit's card would leave the user's own variants disabled.

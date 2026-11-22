@@ -675,7 +675,7 @@ for the next build.
   reading it failed ("is not float type"). Float now wins over Bool and Int. Release note: "Avatars with
   VRCFury systems could fail to build when two controllers disagreed on a parameter's type."
 
-### 59. The same tester's three nitpicks, 2026-11-22. Two FIXED on dev (tests ActionAfkTypesTest, DefaultOnToggleTest), one open
+### 59. The same tester's three nitpicks, 2026-11-22. All three FIXED on dev (tests ActionAfkTypesTest, DefaultOnToggleTest, IgnoredHelperBoneTest)
 
 - **AFK stuck on.** An Action layer with one AFK set per AFK type, each in its own sub-machine under the
   same state names, was moved into the locomotion layer keyed by state name, so every type fell onto the
@@ -687,12 +687,18 @@ for the next build.
   value. A switch a lower layer already writes (MA's base layer) is now left alone. Release note:
   "Clothing toggles set to start on could stop switching." Open: her Hoodie group goes through
   `ToggleNativizer` instead and was default off in the output she sent, so it is unproven either way.
-- **Holes in the chest above the bikini (open, likely not ours).** The skin is MA's NaNimation for the
-  Hoodie toggle (scale constraint, weight NaN), hidden at load because the hoodie starts on; hiding the
-  hoodie object in the editor shows the holes, and a bigger breast blendshape exposes more of the band.
-  Ask the tester whether it shows in game with the hoodie switched off from the menu. Related risk, not
-  seen yet: the helper bone sits under `Breast.1_L/R`, whose MagicaCloth chain takes it in (MA marks it
-  ignored for physics, and that mark is not honoured); while the hoodie is on its scale is NaN.
+- **Holes in the chest while moving (FIXED; the first read, "likely not ours", is withdrawn).** Her
+  in-game videos showed slits across the breast tops that opened in motion. The skin there is weighted
+  to MA's NaNimation helper (`NaNimatedBuffer` > `NaNimatedBone`), parented at zero offset under the
+  breast bone and added by MA to that PhysBone's Ignore Transforms. Three gaps let MagicaCloth simulate
+  it: the stand-in cloth for the helper rig honoured no ignores; a chain whose only child was ignored
+  fell back to simulating everything; and the keep-out paint is matched by nearest position, so a
+  helper sitting exactly on its parent took the parent's mark. Now `ctx.PhysBoneIgnores` feeds the
+  stand-ins, the fallback keeps ignores out, and `MagicaClothKeepOut.Separate` steps such a bone 2 mm
+  off with the mesh bind poses corrected (skin unchanged). Measured on her output in Play mode
+  (`Dev/Probes/SlideTearProbe.cs`, slid 0.35 m each way at up to 2.7 m/s): helper drift 3.9 mm to 0,
+  slits gone. Release note: "Skin that Modular Avatar can hide could tear open under physics while
+  moving." Still untested in game.
 
 ### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
 

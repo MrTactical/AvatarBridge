@@ -217,6 +217,7 @@ namespace AvatarBridge
                 Immobile = from.Immobile,
                 LimitTypeName = "None",
                 StandIn = true,
+                Ignores = ctx.PhysBoneIgnores.Where(t => t != null && t != bone && t.IsChildOf(bone)).ToList(),
             };
 #if AVATARBRIDGE_MAGICA
             if (ctx.Settings.physicsTarget == PhysicsTarget.MagicaCloth2)

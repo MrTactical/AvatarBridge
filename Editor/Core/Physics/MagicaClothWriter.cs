@@ -193,7 +193,20 @@ namespace AvatarBridge
             }
             // Once the tips exist, so they are listed as moving.
             if (keptOut || data.NestedExclusions.Count > 0)
-                MagicaClothKeepOut.KeepOut(cloth, (keptOut ? data.Ignores : new List<Transform>()).Concat(data.NestedExclusions));
+            {
+                var keep = (keptOut ? data.Ignores : new List<Transform>()).Concat(data.NestedExclusions).ToList();
+                // Author ignores only: a nested chain's root and a humanoid bone are real bones that
+                // animations place, and would take the step back off.
+                int stepped = keptOut
+                    ? MagicaClothKeepOut.Separate(ctx, data.Ignores.Except(data.HumanoidExclusions).Except(data.ToeExclusions))
+                    : 0;
+                if (stepped > 0)
+                    ctx.Report.Approximated(Category, data.Label,
+                        $"{BridgeElements.Count(stepped, "kept-out bone sat", "kept-out bones sat")} exactly on a moving bone, so " +
+                        $"{(stepped == 1 ? "it was" : "they were")} moved 2 mm off and the meshes rebound to match: the cloth tells bones apart " +
+                        "by position alone. The skin does not move.");
+                MagicaClothKeepOut.KeepOut(cloth, keep);
+            }
 
             if (data.Colliders.Count > 0)
             {
@@ -319,7 +332,8 @@ namespace AvatarBridge
                 SourceGameObject = rigRoot.gameObject,
                 Root = rigRoot,
                 InitiallyActive = rigRoot.gameObject.activeInHierarchy,
-                Synthesized = true
+                Synthesized = true,
+                Ignores = ctx.PhysBoneIgnores.Where(t => t != null && t != rigRoot && t.IsChildOf(rigRoot)).ToList()
             };
             return Write(ctx, data, new Dictionary<VRCPhysBoneCollider, ColliderComponent>());
         }
@@ -500,8 +514,10 @@ namespace AvatarBridge
             }
 
             // Rooting around the ignores would lose too much, so root where VRChat does and keep
-            // ignored bones out by attribute. Not under Multi Child Type Ignore.
-            if (wholeChain > 0 && !ignoreBranching)
+            // ignored bones out by attribute. Not under Multi Child Type Ignore. With nothing else to
+            // move too: VRChat leaves that chain still, and simulating the ignored bone tore the skin
+            // weighted to it away from its neighbours (Modular Avatar's hidden-skin bones).
+            if (!ignoreBranching && (wholeChain > 0 || data.HumanoidExclusions.Count == 0))
             {
                 sdata.rootBones.Clear();
                 foreach (var root in data.AllRoots)
@@ -511,7 +527,8 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, data.Label,
                     $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} kept out of the simulation as in VRChat: " +
                     $"the cloth starts at \"{data.Root.name}\" and they ride their bones" +
-                    (unhonouredBranches.Count > 0 ? $", {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}{(unhonouredBranches.Count > 4 ? ", …" : "")} moving with the rest." : "."));
+                    (unhonouredBranches.Count > 0 ? $", {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}{(unhonouredBranches.Count > 4 ? ", …" : "")} moving with the rest." : ".") +
+                    (wholeChain == 0 && data.EndpointPosition.sqrMagnitude <= 1e-8f ? " Nothing else is left to move, so the chain stays still, as in VRChat." : ""));
                 return true;
             }
 
