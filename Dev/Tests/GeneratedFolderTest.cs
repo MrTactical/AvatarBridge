@@ -21,6 +21,35 @@ namespace AvatarBridge.Regression
             Check(!AnimatorMerger.IsDoomedGeneratedPath("Packages/com.vrcfury.vrcfury/Runtime/x.mat"), "not the installed VRCFury package");
             Check(!AnimatorMerger.IsDoomedGeneratedPath("Assets/Avatar/Textures/Body__Generated.png"), "not a file that merely has the name");
             Check(!AnimatorMerger.IsDoomedGeneratedPath("Assets/AvatarBridgeOutput/A/RehomedAssets/Body.asset"), "not the output folder");
+
+            // End to end: a plugin's baked material and texture end up as copies in the output folder,
+            // so the plugin replacing its own files on the next build leaves the avatar alone.
+            const string Plugin = "Assets/ZZ_Test__Generated", Out = "Assets/ZZ_GeneratedFolderTestOut";
+            var avatar = new GameObject("GeneratedFolderAvatar");
+            try
+            {
+                AssetDatabase.CreateFolder("Assets", Plugin.Substring(7));
+                AssetDatabase.CreateFolder("Assets", Out.Substring(7));
+                var tex = new Texture2D(4, 4);
+                System.IO.File.WriteAllBytes(Plugin + "/Baked.png", tex.EncodeToPNG());
+                AssetDatabase.ImportAsset(Plugin + "/Baked.png");
+                var mat = new Material(Shader.Find("Standard")) { mainTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(Plugin + "/Baked.png") };
+                AssetDatabase.CreateAsset(mat, Plugin + "/Baked.mat");
+                var r = GameObject.CreatePrimitive(PrimitiveType.Cube).GetComponent<MeshRenderer>();
+                r.transform.SetParent(avatar.transform, false);
+                r.sharedMaterial = AssetDatabase.LoadAssetAtPath<Material>(Plugin + "/Baked.mat");
+                SceneAssetRehomer.Run(new BridgeContext { Target = avatar, Report = new BridgeReport(), Settings = new BridgeSettings(), OutputDir = Out });
+                string matPath = AssetDatabase.GetAssetPath(r.sharedMaterial);
+                string texPath = AssetDatabase.GetAssetPath(r.sharedMaterial.mainTexture);
+                Check(matPath.StartsWith(Out + "/"), $"the material is copied into the output ({matPath})");
+                Check(texPath.StartsWith(Out + "/"), $"and so is its texture ({texPath})");
+            }
+            finally
+            {
+                Object.DestroyImmediate(avatar);
+                AssetDatabase.DeleteAsset(Plugin);
+                AssetDatabase.DeleteAsset(Out);
+            }
             Debug.Log(failures == 0 ? "[GeneratedFolderTest] PASS" : $"[GeneratedFolderTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);
         }
