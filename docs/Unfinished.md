@@ -666,7 +666,7 @@ stripped at upload), but it reads as a failed remove. Decided (Joe): the window'
 with Undo, and says Ctrl+Z brings it back. The component's own "Remove the squash" keeps unbuilding only, settings kept
 for the next build.
 
-### 58. Two tester crashes, fixed on dev. Joe, 2026-11-21: ship with the next release, no hotfix. FIXED 242a5d8d and da5e6737, tester build `paramtypes` sent, waits on the tester's run
+### 58. Two tester crashes, fixed on dev. Joe, 2026-11-21: ship with the next release, no hotfix. FIXED 242a5d8d and da5e6737; the tester's 2026-11-22 run converted without a crash
 
 - A PhysBone listing a collider that was deleted from the scene stopped the conversion
   (MissingReferenceException). Dead entries are now skipped. Release note: "Conversion could stop on a
@@ -674,6 +674,25 @@ for the next build.
 - A parameter declared Bool in one controller and Float in another kept the Bool, so a VRCFury blend tree
   reading it failed ("is not float type"). Float now wins over Bool and Int. Release note: "Avatars with
   VRCFury systems could fail to build when two controllers disagreed on a parameter's type."
+
+### 59. The same tester's three nitpicks, 2026-11-22. Two FIXED on dev (tests ActionAfkTypesTest, DefaultOnToggleTest), one open
+
+- **AFK stuck on.** An Action layer with one AFK set per AFK type, each in its own sub-machine under the
+  same state names, was moved into the locomotion layer keyed by state name, so every type fell onto the
+  first type's copies; leaving AFK from any other type looped back into it, and those types played the
+  first type's clips. `TransplantActionFeature` now keys by state. Release note: "AFK poses beyond the
+  first type could stay on after AFK ended."
+- **Default-on Modular Avatar toggles did nothing.** Balancing a menu tree filled its empty side from the
+  scene, where MA leaves a default-on toggle's object in its switched look, so both sides wrote the same
+  value. A switch a lower layer already writes (MA's base layer) is now left alone. Release note:
+  "Clothing toggles set to start on could stop switching." Open: her Hoodie group goes through
+  `ToggleNativizer` instead and was default off in the output she sent, so it is unproven either way.
+- **Holes in the chest above the bikini (open, likely not ours).** The skin is MA's NaNimation for the
+  Hoodie toggle (scale constraint, weight NaN), hidden at load because the hoodie starts on; hiding the
+  hoodie object in the editor shows the holes, and a bigger breast blendshape exposes more of the band.
+  Ask the tester whether it shows in game with the hoodie switched off from the menu. Related risk, not
+  seen yet: the helper bone sits under `Breast.1_L/R`, whose MagicaCloth chain takes it in (MA marks it
+  ignored for physics, and that mark is not honoured); while the hoodie is on its scale is NaN.
 
 ### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
 
