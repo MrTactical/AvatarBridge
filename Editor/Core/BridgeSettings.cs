@@ -171,9 +171,9 @@ namespace AvatarBridge
         // If the descriptor set no blink blendshape, detect blink
         // shapes on the face mesh and wire CVR's Eye Blink Settings.
         public bool wireBlinkBlendshapes = true;
-        // "Height" slider, 0.25x to 4x geometric around the measured eye height. Also
-        // enables ConstraintScaleRelay so props scale with the avatar.
-        public bool addAvatarScaler = true;
+        // "Height" slider, 0.25x to 4x geometric around the measured eye height. Off by default:
+        // ChilloutVR scales every avatar itself now, and the two sliders take turns.
+        public bool addAvatarScaler = false;
         // Native sets up CVRFaceTracking, DragonSkyRunner injects that package's rig, None
         // leaves it alone. Both set-up modes strip any existing FT rig.
         public FaceTrackingMode faceTrackingMode = FaceTrackingMode.Native;

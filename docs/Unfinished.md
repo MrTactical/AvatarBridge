@@ -286,8 +286,8 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
   client measures height from the rest pose now); hair swing and a cloth toggled off and on (the
   client's MagicaCloth2 lacks `disableMode`); a material-swap toggle on a jellied part; Player.log has
   no `[ClipMaterialCrawler] ... disabled` line; the first-load hitch, re-measured.
-- When GS2 reaches stable: item 33 (the bundled scaler's default) and the first-load re-measure of
-  item 42 both wait on it.
+- Item 33 (the bundled scaler's default) done for 5.0.1. The first-load re-measure of item 42 still
+  waits on GS2 stable.
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24. SHIPPED in 5.0.0, Joe to check in game
 **Check:** in a void on a current build there are no dots in the corner, and the spot is clean with no socket avatar in view.
@@ -711,7 +711,7 @@ for the next build.
   2026-11-22. Not covered: a permanent material pointing at a
   temporary texture (the rehomer only copies a texture with its material); none seen yet.
 
-### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
+### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. DONE on dev 2026-11-23 for 5.0.1 (GS2 reaches stable that day); S28.3 still owed in game
 
 ChilloutVR's Game Server 2 nightly (2026.3.0-nightly, build 26554805) adds universal avatar scaling,
 20 cm to 5 m, for every avatar. Decompiled the same day (`PlayerSetup.ApplyAvatarScale`): the client
@@ -725,11 +725,13 @@ What that means for the bundled scaler (`addAvatarScaler`, on by default, `Bridg
   two never break each other, but a converted avatar has two height controls that silently take
   turns, and ours covers less (0.25x to 4x).
 
-To do when GS2 reaches stable, not before (stable has no universal scaling yet):
-- Default `addAvatarScaler` to false; keep it as an option for avatars that want an avatar-side slider.
-- README: the options table default, the scaler's section, and a line on the hand-over between the
-  two sliders. The window tooltip and the settings comment say the same.
-- Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
+Done 2026-11-23:
+- `addAvatarScaler` defaults to false and stays an option for an avatar that wants its own slider.
+  README options table, window tooltip and settings comment say so, with the hand-over.
+- The parent-constraint relays (`ConstraintScaleRelay`) no longer wait on the scaler: universal
+  scaling resizes every avatar, so a hat would have drifted on every default conversion.
+- Left: S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) was not run on the nightly first.
+  Joe to check universal scaling on a converted avatar, and a held prop at 20 cm and 5 m.
 
 ## Major Ideas
 

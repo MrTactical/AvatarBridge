@@ -615,8 +615,8 @@ Two more things:
 - **Size for the largest a slider makes the body** still applies: chain radii and converted
   colliders grow by the same mesh measurement. Inside-bound "cage" colliders are left alone.
 - **Gravity is written to `m_Force`, never `m_Gravity`.** In ChilloutVR `m_Gravity` goes wrong on
-  any avatar not at scale exactly 1, and below 1 it lifts hair and tails upward. A converted avatar
-  carries a height scaler, so it is rarely at scale 1. `m_Force` behaves the same at any size. The
+  any avatar not at scale exactly 1, and below 1 it lifts hair and tails upward. ChilloutVR resizes
+  every avatar, so it is rarely at scale 1. `m_Force` behaves the same at any size. The
   cost is `gravityFalloff`, which cannot come along; the report names each chain that had one.
 
 </details>
@@ -1939,7 +1939,7 @@ rebuild: Ctrl+Z on the card, then **Create Controller**, then the card again.
 
 The **Set up any avatar** tab. It prepares any avatar for ChilloutVR, VRChat or not: a Booth model,
 an original, anything with no VRChat data to convert. It adds the `CVRAvatar` with viewpoint and
-voice position, visemes and blink, face tracking and the height slider. A Humanoid rig works best:
+voice position, visemes and blink, face tracking and, if ticked, the height slider. A Humanoid rig works best:
 without one the viewpoint is guessed and eye tracking cannot be wired.
 
 1. **Pick your avatar.**
@@ -2088,7 +2088,7 @@ converts fine.
 | setting | default | what it does |
 |---|---|---|
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own layer and works at once. *CVR Native Targets* leaves object toggles to the CCK: you must press **Create Controller** on the avatar yourself |
-| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of the avatar's measured height, centred on its original size. Its entry goes first in the menu. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has a parameter or menu entry called "Height": rename that one to get the slider |
+| **Add height scaler  ("Height" slider)** | off | A quick-menu slider from 0.25× to 4× of the avatar's measured height, centred on its original size. Its entry goes first in the menu. ChilloutVR scales every avatar itself, so this is only for an avatar that wants its own slider. The two take turns: moving this one turns ChilloutVR's scaling off until you touch that slider again. Not added, with a warning, when the avatar already has a parameter or menu entry called "Height": rename that one to get the slider |
 | **Extra strip keywords** | *(empty)* | Comma separated, for other VRChat-only systems to remove. Each is matched, ignoring case, as the start of a parameter name and anywhere in a layer name. A keyword under two characters is ignored |
 | **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar, its assets and the report go, in a folder named after the avatar. Must be inside `Assets`, or it falls back to the default with a warning. A different avatar with the same name gets `<avatar> 2` beside it |
 | **Keep the converted avatar a prefab** | off | The converted avatar is always saved as a prefab in its output folder. On, the copy in the scene stays linked to it, so later edits can be applied with *Overrides ▸ Apply All*. Converting again overwrites that prefab, and any linked copy changes too |
@@ -2665,9 +2665,8 @@ small avatar is slow, and raising the **Height** slider speeds you back up.
 
 #### A hat or held item drifts off when I resize myself
 
-**Convert again on the current release**, with **Add height scaler  ("Height" slider)** and
-**Convert VRC constraints** on. A parent constraint's offset is in metres and never scales, so the
-conversion hands each offset to a small empty under the source bone. Nothing moves at default size.
+**Convert again on the current release**, with **Convert VRC constraints** on. A parent constraint's
+offset is in metres and never scales, so the conversion hands each offset to a small empty under the source bone. Nothing moves at default size.
 
 <details><summary>Five cases are left alone, and the report names each</summary>
 
@@ -2706,7 +2705,7 @@ and leave Gravity at `(0, 0, 0)`. Every chain AvatarBridge writes is already set
 <details><summary>Why</summary>
 
 In ChilloutVR, DynamicBone gravity only behaves on an avatar at scale exactly 1. Below that it lifts
-the chain instead of dropping it. A converted avatar carries a height scaler and is almost never at
+the chain instead of dropping it. ChilloutVR resizes every avatar, so it is almost never at
 scale 1. Force does not have this problem at any size.
 
 </details>
