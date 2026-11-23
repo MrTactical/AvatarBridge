@@ -656,62 +656,10 @@ recorded as sent.
 
 ## 5.0.1
 
-What is planned for the next release: the window's Remove squash, the code rot review, what the 5.0.0 review
-left, the scaler's default once GS2 is on stable, then the small fixes and the speed leftovers.
+Published 2026-11-23. Items 53, 58 and 59 shipped in it and moved to `archive/Closed-2026-11.md`. Item
+33 shipped too and stays here until S28.3 is checked in game.
 
-### 53. "Remove squash" in the YAPS window left the YAPS Squash component. Joe, 2026-11-18. FIXED 2026-11-18, shipped in the 5.0.0 refresh (a9ff085a), Joe checked the window
-The window's button strips the build and points every layer and toggle back at its own material, but leaves the
-component (parts and painted regions) on the avatar, and its message does not say so. Harmless in game (setup data,
-stripped at upload), but it reads as a failed remove. Decided (Joe): the window's button also deletes the component,
-with Undo, and says Ctrl+Z brings it back. The component's own "Remove the squash" keeps unbuilding only, settings kept
-for the next build.
-
-### 58. Two tester crashes, fixed on dev. Joe, 2026-11-21: ship with the next release, no hotfix. FIXED 242a5d8d and da5e6737; the tester's 2026-11-22 run converted without a crash
-
-- A PhysBone listing a collider that was deleted from the scene stopped the conversion
-  (MissingReferenceException). Dead entries are now skipped. Release note: "Conversion could stop on a
-  PhysBone whose collider had been deleted."
-- A parameter declared Bool in one controller and Float in another kept the Bool, so a VRCFury blend tree
-  reading it failed ("is not float type"). Float now wins over Bool and Int. Release note: "Avatars with
-  VRCFury systems could fail to build when two controllers disagreed on a parameter's type."
-
-### 59. The same tester's three nitpicks, 2026-11-22. All three FIXED on dev (tests ActionAfkTypesTest, DefaultOnToggleTest, IgnoredHelperBoneTest)
-
-- **AFK stuck on.** An Action layer with one AFK set per AFK type, each in its own sub-machine under the
-  same state names, was moved into the locomotion layer keyed by state name, so every type fell onto the
-  first type's copies; leaving AFK from any other type looped back into it, and those types played the
-  first type's clips. `TransplantActionFeature` now keys by state. Release note: "AFK poses beyond the
-  first type could stay on after AFK ended."
-- **Default-on Modular Avatar toggles did nothing.** Balancing a menu tree filled its empty side from the
-  scene, where MA leaves a default-on toggle's object in its switched look, so both sides wrote the same
-  value. A switch a lower layer already writes (MA's base layer) is now left alone. Release note:
-  "Clothing toggles set to start on could stop switching." Open: her Hoodie group goes through
-  `ToggleNativizer` instead and was default off in the output she sent, so it is unproven either way.
-- **Holes in the chest while moving (FIXED; the first read, "likely not ours", is withdrawn).** Her
-  in-game videos showed slits across the breast tops that opened in motion. The skin there is weighted
-  to MA's NaNimation helper (`NaNimatedBuffer` > `NaNimatedBone`), parented at zero offset under the
-  breast bone and added by MA to that PhysBone's Ignore Transforms. Three gaps let MagicaCloth simulate
-  it: the stand-in cloth for the helper rig honoured no ignores; a chain whose only child was ignored
-  fell back to simulating everything; and the keep-out paint is matched by nearest position, so a
-  helper sitting exactly on its parent took the parent's mark. Now `ctx.PhysBoneIgnores` feeds the
-  stand-ins, the fallback keeps ignores out, and `MagicaClothKeepOut.Separate` steps such a bone 2 mm
-  off with the mesh bind poses corrected (skin unchanged). Measured on her output in Play mode
-  (`Dev/Probes/SlideTearProbe.cs`, slid 0.35 m each way at up to 2.7 m/s): helper drift 3.9 mm to 0,
-  slits gone. Release note: "Skin that Modular Avatar can hide could tear open under physics while
-  moving." The tester confirmed it fixed in game on build skintear2, 2026-11-22. The corpus run after it (501skin) caught one regression, fixed the
-  same day: a stand-in with an ignored branch rooted at its other branches, dropping the very bone the
-  slide rig moved (`open me`, the Booba stand-ins). Stand-ins now always root at their own bone and keep
-  ignores out by mark.
-- **Nails, stockings and dress white after leaving Play mode (FIXED).** An NDMF light-controller
-  plugin bakes lilToon textures into `Assets/<Name>__Generated/.../BakedTextures` and replaces them on
-  every build. The rehomed materials still pointed at them; only `Packages/nadena.dev.ndmf/__Generated`
-  and VRCFury's temp folder counted as temporary. `IsDoomedGeneratedPath` now treats any folder named
-  `*__Generated` as temporary (test GeneratedFolderTest). Release note: "Textures baked by some build
-  tools could turn white after pressing Play." The tester confirmed it fixed on build skintear2,
-  2026-11-22. Not covered: a permanent material pointing at a
-  temporary texture (the rehomer only copies a texture with its material); none seen yet.
-
-### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. DONE on dev 2026-11-23 for 5.0.1 (GS2 reaches stable that day); S28.3 still owed in game
+### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. SHIPPED in 5.0.1, 2026-11-23 (GS2 reached stable that day); S28.3 still owed in game
 
 ChilloutVR's Game Server 2 nightly (2026.3.0-nightly, build 26554805) adds universal avatar scaling,
 20 cm to 5 m, for every avatar. Decompiled the same day (`PlayerSetup.ApplyAvatarScale`): the client
