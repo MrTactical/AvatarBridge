@@ -313,11 +313,12 @@ namespace AvatarBridge
         static void TaperRadius(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
         {
             if (data.StandIn || !PhysBoneChainData.HasCurve(data.RadiusCurve)) return;
-            float peak = 0f;
-            for (int i = 0; i < 16; i++) peak = Mathf.Max(peak, PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, i / 15f));
+            // Sampled through the same 0..1 clamp as every other curve read: copying the keys let a
+            // curve above 1 grow particles past the radius cap and past what the report says.
+            var samples = Enumerable.Range(0, 16).Select(i => PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, i / 15f)).ToArray();
+            float peak = samples.Max();
             if (peak <= 0.0001f) return;
-            var shape = new AnimationCurve(data.RadiusCurve.keys.Select(k =>
-                new Keyframe(k.time, k.value / peak, k.inTangent / peak, k.outTangent / peak, k.inWeight, k.outWeight) { weightedMode = k.weightedMode }).ToArray());
+            var shape = new AnimationCurve(samples.Select((v, i) => new Keyframe(i / 15f, v / peak)).ToArray());
             float root = sdata.radius.value;
             sdata.radius.SetValue(root * peak, shape);
             ctx.Report.Converted(Category, data.Label,
