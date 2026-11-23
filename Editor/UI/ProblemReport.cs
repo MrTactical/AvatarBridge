@@ -26,6 +26,9 @@ namespace AvatarBridge
         static readonly List<string> Timed = new List<string>();
         static bool _pending;
         static string _tool = "AvatarBridge";
+        // Every console warning and error since the conversion started, its own or anyone's.
+        static int _warnings, _errors;
+        static long _startMemory;
 
         string _what = "";
         string _zip;
@@ -49,7 +52,10 @@ namespace AvatarBridge
             bool ours = condition.StartsWith("[AvatarBridge]") || condition.StartsWith("[YAPS]")
                         || stack != null && stack.Contains("AvatarBridge.") && !stack.Contains("AvatarBridge.Regression");
             bool bad = type == LogType.Error || type == LogType.Exception || type == LogType.Assert;
-            // Each step's time, for Diagnostics.md: where a slow conversion spent it.
+            if (bad) System.Threading.Interlocked.Increment(ref _errors);
+            else if (type == LogType.Warning) System.Threading.Interlocked.Increment(ref _warnings);
+            // Each step's time, for Diagnostics.md: where a slow conversion spent it. The step logs
+            // that end in " (ms): " stay for this; a reworded one drops out of Diagnostics.md.
             if (ours && condition.Contains(" (ms): "))
                 lock (Timed)
                 {
@@ -257,6 +263,44 @@ namespace AvatarBridge
             string root = m.Success ? m.Groups[1].Value : "";
             return root.StartsWith("Assets") ? root : "Assets/AvatarBridgeOutput";
         }
+
+        internal static void StartRun()
+        {
+            _warnings = 0;
+            _errors = 0;
+            _startMemory = EditorMemory().now;
+        }
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct ProcessMemory
+        {
+            public uint Size, PageFaults;
+            public UIntPtr PeakWorkingSet, WorkingSet, PeakPagedPool, PagedPool, PeakNonPagedPool, NonPagedPool,
+                PageFile, PeakPageFile;
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern IntPtr GetCurrentProcess();
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        static extern bool K32GetProcessMemoryInfo(IntPtr process, ref ProcessMemory counters, uint size);
+
+        // The editor's working set and its peak. Process.WorkingSet64 reads 0 under Unity's Mono.
+        internal static (long now, long peak) EditorMemory()
+        {
+            try
+            {
+                var m = new ProcessMemory { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<ProcessMemory>() };
+                return K32GetProcessMemoryInfo(GetCurrentProcess(), ref m, m.Size)
+                    ? ((long)m.WorkingSet.ToUInt64(), (long)m.PeakWorkingSet.ToUInt64()) : (0, 0);
+            }
+            catch
+            {
+                return (0, 0);
+            }
+        }
+
+        internal static (int warnings, int errors, long startMemory) RunCounts() => (_warnings, _errors, _startMemory);
 
         // The step times logged since the last call.
         internal static List<string> TakeTimings()

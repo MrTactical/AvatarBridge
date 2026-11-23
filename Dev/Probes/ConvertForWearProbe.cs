@@ -92,6 +92,8 @@ namespace AvatarBridge.Regression
             var s = new BridgeSettings();
             foreach (var f in typeof(BridgeSettings).GetFields().Where(f => !f.IsLiteral && !f.IsStatic && f.FieldType == typeof(bool)))
                 f.SetValue(s, true);
+            // Slimming resizes the SOURCE textures, which spoils every later corpus run.
+            s.slimTexturesOnConvert = false;
             foreach (var f in typeof(BridgeSettings).GetFields().Where(f => !f.IsLiteral && !f.IsStatic).OrderBy(f => f.Name))
                 Debug.Log($"[ConvertForWear] setting {f.Name}={f.GetValue(s)}");
             return s;

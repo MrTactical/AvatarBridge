@@ -84,7 +84,7 @@ namespace AvatarBridge.Regression
                 return;
             }
 
-            var report = BridgeConverter.Convert(source, new BridgeSettings());
+            var report = BridgeConverter.Convert(source, new BridgeSettings { slimTexturesOnConvert = false });
             int stuck = report.ConvertedRoot != null ? Sweep(report.ConvertedRoot) : -1;
             if (Application.isBatchMode) EditorApplication.Exit(stuck > 0 ? 1 : 0);
         }

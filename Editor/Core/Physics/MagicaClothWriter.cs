@@ -153,16 +153,14 @@ namespace AvatarBridge
                     "if they are deliberate.");
             }
 
-            // ponytail: reported, not rooted around. Rooting below a nested chain pins the bones
-            // this chain moves beside it; measure that against two cloths on one bone before choosing.
+            // Kept out by attribute, as an ignored bone is, so its own cloth alone moves it: rooting
+            // below it would pin the bones this chain moves beside it.
             if (data.NestedExclusions.Count > 0)
             {
-                ctx.Report.Approximated(Category, data.Label,
-                    $"Also moves {BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")}: " +
-                    $"{string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
-                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below. VRChat leaves those to their own PhysBone " +
-                    "(Ignore Other PhysBones), but MagicaCloth2 leaves a bone out only by rooting below it, which would " +
-                    "pin bones this chain moves.");
+                ctx.Report.Converted(Category, data.Label,
+                    $"Leaves {BridgeElements.Count(data.NestedExclusions.Count, "other PhysBone's chain", "other PhysBones' chains")} " +
+                    $"to their own cloth, as VRChat does: {string.Join(", ", data.NestedExclusions.Take(4).Select(t => t.name))}" +
+                    $"{(data.NestedExclusions.Count > 4 ? ", …" : "")} and below.");
             }
 
             bool keptOut = false;
@@ -194,7 +192,21 @@ namespace AvatarBridge
                 }
             }
             // Once the tips exist, so they are listed as moving.
-            if (keptOut) MagicaClothKeepOut.KeepOut(cloth, data.Ignores);
+            if (keptOut || data.NestedExclusions.Count > 0)
+            {
+                var keep = (keptOut ? data.Ignores : new List<Transform>()).Concat(data.NestedExclusions).ToList();
+                // Author ignores only: a nested chain's root and a humanoid bone are real bones that
+                // animations place, and would take the step back off.
+                int stepped = keptOut
+                    ? MagicaClothKeepOut.Separate(ctx, data.Ignores.Except(data.HumanoidExclusions).Except(data.ToeExclusions))
+                    : 0;
+                if (stepped > 0)
+                    ctx.Report.Approximated(Category, data.Label,
+                        $"{BridgeElements.Count(stepped, "kept-out bone sat", "kept-out bones sat")} exactly on a moving bone, so " +
+                        $"{(stepped == 1 ? "it was" : "they were")} moved 2 mm off and the meshes rebound to match: the cloth tells bones apart " +
+                        "by position alone. The skin does not move.");
+                MagicaClothKeepOut.KeepOut(cloth, keep);
+            }
 
             if (data.Colliders.Count > 0)
             {
@@ -291,9 +303,27 @@ namespace AvatarBridge
                 ApplyMotionLeash(ctx, data, sdata);
             }
 
-
+            TaperRadius(ctx, data, sdata);
             ReportSourceSettings(ctx, data, preset, chainClass, customPreset);
             return cloth;
+        }
+
+        // A PhysBone's radius curve, carried over as VRChat applies it: radius x curve along the
+        // chain, on top of whatever sized the particles above. DynamicBone already took it.
+        static void TaperRadius(BridgeContext ctx, PhysBoneChainData data, ClothSerializeData sdata)
+        {
+            if (data.StandIn || !PhysBoneChainData.HasCurve(data.RadiusCurve)) return;
+            // Sampled through the same 0..1 clamp as every other curve read: copying the keys let a
+            // curve above 1 grow particles past the radius cap and past what the report says.
+            var samples = Enumerable.Range(0, 16).Select(i => PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, i / 15f)).ToArray();
+            float peak = samples.Max();
+            if (peak <= 0.0001f) return;
+            var shape = new AnimationCurve(samples.Select((v, i) => new Keyframe(i / 15f, v / peak)).ToArray());
+            float root = sdata.radius.value;
+            sdata.radius.SetValue(root * peak, shape);
+            ctx.Report.Converted(Category, data.Label,
+                $"Particle radius follows the PhysBone's radius curve: {root * PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, 0f):0.###} " +
+                $"at the root to {root * PhysBoneSolverMap.SafeEvaluate(data.RadiusCurve, 1f):0.###} at the tip.");
         }
 
         public static MagicaCloth WriteSynthesized(BridgeContext ctx, Transform rigRoot)
@@ -303,7 +333,8 @@ namespace AvatarBridge
                 SourceGameObject = rigRoot.gameObject,
                 Root = rigRoot,
                 InitiallyActive = rigRoot.gameObject.activeInHierarchy,
-                Synthesized = true
+                Synthesized = true,
+                Ignores = ctx.PhysBoneIgnores.Where(t => t != null && t != rigRoot && t.IsChildOf(rigRoot)).ToList()
             };
             return Write(ctx, data, new Dictionary<VRCPhysBoneCollider, ColliderComponent>());
         }
@@ -462,7 +493,9 @@ namespace AvatarBridge
             bool costsTooMuch = wholeChain > 0 && kept * 2 < wholeChain
                                 && data.HumanoidExclusions.Count == 0;
 
-            if (sdata.rootBones.Count > deadRoots.Count && !costsTooMuch && unhonouredBranches.Count == 0)
+            // A stand-in exists to move its own root bone, so it never roots below it.
+            bool ownRoot = data.StandIn || data.Synthesized;
+            if (!ownRoot && sdata.rootBones.Count > deadRoots.Count && !costsTooMuch && unhonouredBranches.Count == 0)
             {
                 // At least one branch still moves: keep those, drop the statues.
                 foreach (var dead in deadRoots)
@@ -484,8 +517,10 @@ namespace AvatarBridge
             }
 
             // Rooting around the ignores would lose too much, so root where VRChat does and keep
-            // ignored bones out by attribute. Not under Multi Child Type Ignore.
-            if (wholeChain > 0 && !ignoreBranching)
+            // ignored bones out by attribute. Not under Multi Child Type Ignore. With nothing else to
+            // move too: VRChat leaves that chain still, and simulating the ignored bone tore the skin
+            // weighted to it away from its neighbours (Modular Avatar's hidden-skin bones).
+            if (!ignoreBranching && (wholeChain > 0 || data.HumanoidExclusions.Count == 0))
             {
                 sdata.rootBones.Clear();
                 foreach (var root in data.AllRoots)
@@ -495,7 +530,8 @@ namespace AvatarBridge
                 ctx.Report.Converted(Category, data.Label,
                     $"{BridgeElements.Count(data.Ignores.Count, "Ignore Transform", "Ignore Transforms")} kept out of the simulation as in VRChat: " +
                     $"the cloth starts at \"{data.Root.name}\" and they ride their bones" +
-                    (unhonouredBranches.Count > 0 ? $", {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}{(unhonouredBranches.Count > 4 ? ", …" : "")} moving with the rest." : "."));
+                    (unhonouredBranches.Count > 0 ? $", {string.Join(", ", unhonouredBranches.Select(b => b.name).Take(4))}{(unhonouredBranches.Count > 4 ? ", …" : "")} moving with the rest." : ".") +
+                    (wholeChain == 0 && data.EndpointPosition.sqrMagnitude <= 1e-8f ? " Nothing else is left to move, so the chain stays still, as in VRChat." : ""));
                 return true;
             }
 
@@ -1894,22 +1930,6 @@ namespace AvatarBridge
             {
                 return false;
             }
-        }
-
-        static bool TrySetCurveValue(object target, string fieldName, float value,
-            float curveStart, float curveEnd)
-        {
-            if (target == null)
-            {
-                return false;
-            }
-            var field = target.GetType().GetField(fieldName, BindingFlags.Public | BindingFlags.Instance);
-            if (field == null || !(field.GetValue(target) is CurveSerializeData curveData))
-            {
-                return false;
-            }
-            curveData.SetValue(value, curveStart, curveEnd);
-            return true;
         }
 
         static bool TrySetCurve(object target, string fieldName, float value, AnimationCurve curve)

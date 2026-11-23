@@ -86,6 +86,7 @@ namespace AvatarBridge
             var saved = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (saved != null)
             {
+                split.name = saved.name;
                 EditorUtility.CopySerialized(split, saved);
                 Object.DestroyImmediate(split);
                 EditorUtility.SetDirty(saved);

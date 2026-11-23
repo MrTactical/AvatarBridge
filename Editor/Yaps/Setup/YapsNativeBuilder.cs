@@ -1908,6 +1908,8 @@ namespace AvatarBridge
         static void EnsureFolder(string path)
         {
             if (AssetDatabase.IsValidFolder(path)) return;
+            // On disk but not imported: CreateFolder would make "<name> 1" beside it.
+            if (Directory.Exists(path)) { AssetDatabase.ImportAsset(path); if (AssetDatabase.IsValidFolder(path)) return; }
             string parent = Path.GetDirectoryName(path).Replace('\\', '/');
             string leaf = Path.GetFileName(path);
             if (!AssetDatabase.IsValidFolder(parent)) EnsureFolder(parent);

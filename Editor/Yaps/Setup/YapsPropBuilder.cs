@@ -132,7 +132,7 @@ namespace AvatarBridge
             Undo.RegisterFullObjectHierarchyUndo(root, "YAPS channel");
             RemoveChannel(root);
             o.Ok = true;
-            o.Message = $"\"{root.name}\" lost its contact channel; it finds sockets by their marker lights now, " +
+            o.Message = $"\"{root.name}\" lost its contact channel; it finds sockets through the screen atlas and marker lights now, " +
                         "which every client works out for itself, so nobody takes it off anyone.";
             return o;
         }

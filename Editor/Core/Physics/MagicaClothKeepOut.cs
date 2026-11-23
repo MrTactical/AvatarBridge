@@ -73,6 +73,51 @@ namespace AvatarBridge
             return clothes;
         }
 
+        // MagicaCloth2 reads the selection by nearest position, so a kept-out bone sitting exactly on a
+        // moving parent took the parent's mark and moved (Modular Avatar's hidden-skin bones sit at zero
+        // offset). Each such bone steps 2 mm off, and every mesh skinned to it or below takes the same
+        // step out of its bind pose, so the skin stays where it was. Meshes outside the output folder are
+        // copied there first. Returns how many bones moved.
+        public static int Separate(BridgeContext ctx, IEnumerable<Transform> keep)
+        {
+            var off = new HashSet<Transform>(keep.Where(t => t != null));
+            var moved = off.Where(t => t.parent != null && !off.Any(o => o != t && t.IsChildOf(o))
+                                       && (t.position - t.parent.position).sqrMagnitude < 1e-6f).ToList();
+            if (moved.Count == 0) return 0;
+            var skinned = ctx.Target.GetComponentsInChildren<SkinnedMeshRenderer>(true)
+                .Where(r => r.sharedMesh != null && r.bones.Any(b => b != null && moved.Any(m => b.IsChildOf(m)))).ToList();
+            var before = skinned.SelectMany(r => r.bones).Where(b => b != null).Distinct().ToDictionary(b => b, b => b.localToWorldMatrix);
+            foreach (var m in moved) m.position += m.parent.up * 0.002f;
+            var copies = new Dictionary<Mesh, Mesh>();
+            foreach (var r in skinned)
+            {
+                var mesh = r.sharedMesh;
+                if (!copies.TryGetValue(mesh, out var own))
+                {
+                    own = mesh;
+                    string path = AssetDatabase.GetAssetPath(mesh);
+                    if (string.IsNullOrEmpty(path) || !path.StartsWith(ctx.OutputDir.TrimEnd('/') + "/"))
+                    {
+                        own = Object.Instantiate(mesh);
+                        own.name = mesh.name;
+                        string dir = ctx.OutputDir.TrimEnd('/') + "/Physics";
+                        OutputAssetPaths.EnsureFolder(dir);
+                        AssetDatabase.CreateAsset(own, OutputAssetPaths.Claim($"{dir}/{OutputAssetPaths.SafeFileName(mesh.name)}.asset"));
+                    }
+                    copies[mesh] = own;
+                    var binds = own.bindposes;
+                    var bones = r.bones;
+                    for (int i = 0; i < bones.Length && i < binds.Length; i++)
+                        if (bones[i] != null && moved.Any(m => bones[i].IsChildOf(m)))
+                            binds[i] = bones[i].worldToLocalMatrix * before[bones[i]] * binds[i];
+                    own.bindposes = binds;
+                    EditorUtility.SetDirty(own);
+                }
+                r.sharedMesh = own;
+            }
+            return moved.Count;
+        }
+
         // Within a millimetre: the positions are the same bones', read in the same space.
         static VertexAttribute? Had(SelectionData old, Vector3 at)
         {

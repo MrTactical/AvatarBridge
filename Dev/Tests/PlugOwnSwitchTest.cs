@@ -21,6 +21,7 @@ namespace AvatarBridge.Regression
             failures = 0;
             GameObject plugA = null, plugB = null, body = null;
             Material matA = null, matB = null;
+            var generated = GeneratedFiles.Snapshot();
             try
             {
                 plugA = YapsNativeBuilder.BuildTestPlug(select: false, name: "Switch Test A");
@@ -73,12 +74,7 @@ namespace AvatarBridge.Regression
                 if (plugB != null) Object.DestroyImmediate(plugB);
                 if (matA != null) Object.DestroyImmediate(matA);
                 if (matB != null) Object.DestroyImmediate(matB);
-                AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/" + Name);
-                foreach (var n in new[] { "Switch Test A", "Switch Test B" })
-                {
-                    AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/" + n);
-                    AssetDatabase.DeleteAsset(YapsNativeBuilder.OutputRoot + "/Test Plug/" + n + " Mesh.asset");
-                }
+                GeneratedFiles.DeleteNew(generated);
             }
             Debug.Log(failures == 0 ? "[PlugOwnSwitchTest] PASS" : $"[PlugOwnSwitchTest] FAIL: {failures}");
             if (Application.isBatchMode) EditorApplication.Exit(failures == 0 ? 0 : 1);

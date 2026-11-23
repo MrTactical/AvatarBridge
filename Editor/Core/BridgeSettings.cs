@@ -107,13 +107,13 @@ namespace AvatarBridge
         // rigged props are rigid on purpose. The Toolkit leaves it off, it cannot see hand-placed cloth.
         public bool addPhysicsToRiggedStyles = false;
 
-        [Header("VRChat-only system stripping")]
         // Read-only: texture memory per surface, contacts against the instance budget,
         // triangles, cloth, locked shader copies.
         public bool weighAvatar = true;
         // Read-only: unreachable features, overridden toggles, states that never play,
         // what lost its driver in the conversion.
         public bool surveyAvatar = true;
+        [Header("VRChat-only system stripping")]
         // CVR provides locomotion and emotes natively. GoGo's layers
         // fight them while burning sync budget.
         public bool stripGogoLoco = true;
@@ -171,9 +171,9 @@ namespace AvatarBridge
         // If the descriptor set no blink blendshape, detect blink
         // shapes on the face mesh and wire CVR's Eye Blink Settings.
         public bool wireBlinkBlendshapes = true;
-        // "Height" slider, 0.25x to 4x geometric around the measured eye height. Also
-        // enables ConstraintScaleRelay so props scale with the avatar.
-        public bool addAvatarScaler = true;
+        // "Height" slider, 0.25x to 4x geometric around the measured eye height. Off by default:
+        // ChilloutVR scales every avatar itself now, and the two sliders take turns.
+        public bool addAvatarScaler = false;
         // Native sets up CVRFaceTracking, DragonSkyRunner injects that package's rig, None
         // leaves it alone. Both set-up modes strip any existing FT rig.
         public FaceTrackingMode faceTrackingMode = FaceTrackingMode.Native;

@@ -58,6 +58,9 @@ namespace AvatarBridge
             return ClaimedThisRun.Add(path.Replace('\\', '/'));
         }
 
+        // The clip that fills an empty motion slot, and the object it animates; found again by name.
+        internal const string EmptySlotClip = "AvatarBridge_EmptySlot";
+
         // Directory plus a full Refresh, as both callers always did. CreateFolder would skip the
         // Refresh, and with it the import of anything earlier passes wrote straight to disk.
         internal static void EnsureFolder(string dir)

@@ -180,7 +180,7 @@ namespace AvatarBridge.Probes
                     var source = UnityEngine.Object.FindObjectsOfType<VRCAvatarDescriptor>(true)
                         .FirstOrDefault();
                     if (source == null) continue;
-                    var result = BridgeConverter.Convert(source, new BridgeSettings());
+                    var result = BridgeConverter.Convert(source, new BridgeSettings { slimTexturesOnConvert = false });
                     converted++;
                     var cvr = result.ConvertedRoot != null
                         ? result.ConvertedRoot.GetComponentInChildren<CVRAvatar>(true) : null;
@@ -225,7 +225,7 @@ namespace AvatarBridge.Probes
                     EditorSceneManager.OpenScene(scene.Trim(), OpenSceneMode.Single);
                     var source = UnityEngine.Object.FindObjectsOfType<VRCAvatarDescriptor>(true).FirstOrDefault();
                     if (source == null) { report.Add(scene + "    no descriptor"); continue; }
-                    var result = BridgeConverter.Convert(source, new BridgeSettings());
+                    var result = BridgeConverter.Convert(source, new BridgeSettings { slimTexturesOnConvert = false });
                     var cvr = result.ConvertedRoot != null
                         ? result.ConvertedRoot.GetComponentInChildren<CVRAvatar>(true) : null;
                     if (cvr == null) { report.Add(scene + "    no CVRAvatar"); continue; }

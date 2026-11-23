@@ -25,8 +25,9 @@ namespace AvatarBridge
             return made.transform;
         }
 
-        // Compared by name, not Transform.Find: a '/' in a parameter or bone
-        // name reads to Find as a path, so a clash went unseen.
+        // Two zones or holders under one bone would share an animation path, and every curve
+        // reaches only the first. Compared by name, not Transform.Find: a '/' in a parameter or
+        // bone name reads to Find as a path, so a clash went unseen.
         internal static string UniqueChildName(Transform parent, string name)
         {
             var taken = new HashSet<string>(System.StringComparer.Ordinal);
@@ -291,6 +292,8 @@ namespace AvatarBridge
             }
 
             ReportGrabbableChains(ctx, physBones);
+            foreach (var pb in physBones)
+                if (pb.ignoreTransforms != null) ctx.PhysBoneIgnores.UnionWith(pb.ignoreTransforms.Where(t => t != null));
 
             // The branches below that return convert nothing, so nothing is switched off either:
             // the Toolkit's card would leave the user's own variants disabled.

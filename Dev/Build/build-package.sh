@@ -245,8 +245,9 @@ EOF
     count=$((count+1))
   done
 
-  for src in "$REPO"/Dev/Corpus/*.cs "$REPO"/Dev/Tests/*.cs "$REPO"/Dev/Probes/*.cs "$REPO"/Dev/Scenes/*.cs; do
-    [ -e "$src" ] || continue
+  # The harness folders deploy.sh refreshes, subfolders included, flat into DevTools. Shaders the
+  # capture probes load are not packed: those probes need a deploy.
+  while IFS= read -r src; do
     base="$(basename "$src")"
     dest="Editor/DevTools/$base"
     g="$(devguid "$dest")"
@@ -268,7 +269,7 @@ EOF
     cp "$src" "$STAGE/$g/asset"
     count=$((count+1))
     echo "  + dev: $dest"
-  done
+  done < <(find "$REPO"/Dev/{Corpus,Tests,Probes,Scenes,Tester} -name '*.cs' 2>/dev/null | sort)
 fi
 
 # --force-local: a drive-letter path otherwise reads as a remote host to tar.

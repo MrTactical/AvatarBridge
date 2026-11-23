@@ -421,6 +421,28 @@ namespace AvatarBridge
             Debug.Log("[AvatarBridge] " + said);
         }
 
+        // A patch names its source shader only in a hidden property, so Export Package's
+        // dependencies leave the source out and a rebuild in the other project patches another.
+        [MenuItem("Tools/Avatar Bridge/YAPS/Select the shaders a package must carry")]
+        static void SelectSources()
+        {
+            var picked = Selection.objects;
+            var sources = Selection.gameObjects
+                .SelectMany(g => g.GetComponentsInChildren<Renderer>(true))
+                .SelectMany(r => r.sharedMaterials)
+                .Where(m => m != null)
+                .Select(YapsShaderPatcher.OriginalShaderOf)
+                .Where(sh => sh != null && AssetDatabase.Contains(sh))
+                .Distinct().ToList();
+            string said = sources.Count == 0
+                ? "Nothing YAPS patched is in the selection, so no extra shader is needed."
+                : $"Added {BridgeElements.Count(sources.Count, "shader", "shaders")} the YAPS patches were made from to the selection: " +
+                  string.Join(", ", sources.Select(sh => sh.name)) + ". Export them with the avatar, so a rebuild in the other project patches the same ones.";
+            if (sources.Count > 0) Selection.objects = picked.Concat(sources).ToArray();
+            EditorUtility.DisplayDialog("YAPS", said, "OK");
+            Debug.Log("[AvatarBridge] " + said);
+        }
+
         // The sets earlier versions left in the shared folder, which nothing uses any more.
         [MenuItem("Tools/Avatar Bridge/YAPS/Remove unused patched shaders")]
         static void PruneShaders()
@@ -638,8 +660,7 @@ namespace AvatarBridge
                         if (captured.Root == null) { RescanLater(); return; }
                         Selection.activeTransform = captured.Root;
                         EditorGUIUtility.PingObject(captured.Root);
-                        // Front the Inspector, opening one if there is none.
-                        EditorApplication.ExecuteMenuItem("Window/General/Inspector");
+                        YapsSquash.FrontInspector();
                     }, "Selects it and opens its Inspector."));
                     // Remove: out entire, after a dialog saying what goes.
                     actions.Add(BridgeElements.Btn("Remove", () =>

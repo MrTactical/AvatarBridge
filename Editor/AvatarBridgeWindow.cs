@@ -811,7 +811,7 @@ namespace AvatarBridge
                     "Blame this if contacts get unreliable in a busy instance."));
             }
             optIns.Add(BridgeElements.Bind("Keep OGB haptics synced (OSCGoesBrrr, Lovense)",
-                "On, OSCGoesBrrr finds them automatically, at 32 sync bits each. Off, link them by hand; " +
+                "On, OSCGoesBrrr finds them automatically, at 32 sync bits per parameter (about 290 per plug or socket). Off, link them by hand; " +
                 "the report lists the names.",
                 settings.syncHapticsForOsc, v => { settings.syncHapticsForOsc = v; ScheduleRebuild(); }));
             if (settings.syncHapticsForOsc)
@@ -1036,7 +1036,7 @@ namespace AvatarBridge
         void AddHeightScaler(VisualElement parent)
         {
             parent.Add(BridgeElements.Bind("Add height scaler  (\"Height\" slider)",
-                "A menu slider from 0.25x to 4x the avatar's height, centred on its own size. Held props scale with you.",
+                "A menu slider from 0.25x to 4x the avatar's height, centred on its own size. ChilloutVR scales every avatar itself, so this is only for an avatar that wants its own slider. Moving it turns ChilloutVR's scaling off until you touch that slider again.",
                 settings.addAvatarScaler, v => settings.addAvatarScaler = v));
         }
 

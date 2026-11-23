@@ -313,6 +313,7 @@ namespace AvatarBridge
         {
             if (have != null)
             {
+                mesh.name = have.name;
                 EditorUtility.CopySerialized(mesh, have);
                 Object.DestroyImmediate(mesh);
                 EditorUtility.SetDirty(have);

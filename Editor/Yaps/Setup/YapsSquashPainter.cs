@@ -16,7 +16,7 @@ namespace AvatarBridge
 {
     public class YapsSquashPainter : EditorWindow
     {
-        // The old window's menu entry, now the component, where the painting lives.
+        // The menu entry the converter window's tooltip names: the component is where the painting lives.
         [MenuItem("Tools/Avatar Bridge/YAPS/Squash regions")]
         static void OpenFromMenu()
         {

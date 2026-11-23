@@ -22,10 +22,8 @@ namespace AvatarBridge
 
         public static void Run(BridgeContext ctx)
         {
-            // Only when this tool is the thing changing the scale. An avatar that never resizes has
-            // nothing to gain here, and every constraint left untouched is one that cannot break.
-            if (ctx == null || ctx.Target == null || ctx.Settings == null
-                || !ctx.Settings.addAvatarScaler || !ctx.Settings.convertConstraints)
+            // Not tied to the height slider: ChilloutVR resizes every avatar itself.
+            if (ctx == null || ctx.Target == null || ctx.Settings == null || !ctx.Settings.convertConstraints)
             {
                 return;
             }
@@ -138,7 +136,7 @@ namespace AvatarBridge
 
             string note =
                 "A parent constraint holds its target a fixed number of METRES from its source, and " +
-                "Unity never scales that gap, so with the height slider the body moved and the props " +
+                "Unity never scales that gap, so a resized body moved and the props " +
                 "didn't. Each offset is now carried by a small empty parented to the source bone " +
                 $"(\"{RelayPrefix}_…\"), which inherits the avatar's scale, so the gap grows and shrinks " +
                 "with you. Nothing moves at the default size: the relays are placed exactly where the " +
@@ -183,7 +181,7 @@ namespace AvatarBridge
             if (constraintsFixed > 0)
             {
                 ctx.Report.Converted(Category,
-                    $"{BridgeElements.Count(constraintsFixed, "constraint", "constraints")} re-anchored so props follow the size slider " +
+                    $"{BridgeElements.Count(constraintsFixed, "constraint", "constraints")} re-anchored so props follow your size " +
                     $"({BridgeElements.Count(relaysMade, "relay object", "relay objects")})", note);
             }
             else

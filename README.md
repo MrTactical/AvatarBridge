@@ -568,6 +568,7 @@ applies these facts about the source:
   one, becomes the swing bound.
 - **Speed limits are raised** from the preset's (1 m/s on the springs) to MagicaCloth2's defaults.
   A limit is kept so a teleport cannot fling the chain. Each raise is reported.
+- **A radius curve** tapers the particles along the chain as it tapered the PhysBone's radius.
 
 **`Is Animated` sets Animation Pose Ratio to 1**, with that option on or off. Without it a slider
 that scales a chain's own bones stops working. The report names each chain.
@@ -590,8 +591,8 @@ a large avatar.
   it is by default.
 - **Left-out transforms** are usually kept out by starting the cloth below them. Where that leaves
   too little chain, the cloth starts at the chain's root and marks those bones to be left alone.
-- **A PhysBone nested inside another's chain** is moved by both cloths on MagicaCloth2, and the
-  report names it. DynamicBone excludes it exactly.
+- **A PhysBone nested inside another's chain** is left to its own cloth, as VRChat does: the outer
+  cloth marks those bones to be left alone. DynamicBone excludes it exactly.
 - **An *inside bounds* collider** has no equivalent. The report names it.
 
 </details>
@@ -614,8 +615,8 @@ Two more things:
 - **Size for the largest a slider makes the body** still applies: chain radii and converted
   colliders grow by the same mesh measurement. Inside-bound "cage" colliders are left alone.
 - **Gravity is written to `m_Force`, never `m_Gravity`.** In ChilloutVR `m_Gravity` goes wrong on
-  any avatar not at scale exactly 1, and below 1 it lifts hair and tails upward. A converted avatar
-  carries a height scaler, so it is rarely at scale 1. `m_Force` behaves the same at any size. The
+  any avatar not at scale exactly 1, and below 1 it lifts hair and tails upward. ChilloutVR resizes
+  every avatar, so it is rarely at scale 1. `m_Force` behaves the same at any size. The
   cost is `gravityFalloff`, which cannot come along; the report names each chain that had one.
 
 </details>
@@ -1334,8 +1335,8 @@ bra, a shirt, piercings) moves with it. It costs no synced parameters and uses n
 > squash on asks you to press **I accept** first, once per machine. Test it in ChilloutVR before you
 > rely on it, and [report](#reporting-a-bug) anything that stretches, jumps or flickers. Squash and
 > live tissue run on every viewer's graphics card, so too many parts, or many squashed avatars close
-> together, cost frames in game. It is confirmed in game on breasts; other parts, the non-breast presets, clones and the
-> behaviour at speed are not yet confirmed in game.
+> together, cost frames in game. It is confirmed in game on breasts; other parts, the non-breast presets and the
+> behaviour at speed are not yet confirmed in game. A clone of the avatar (Mini Me) does not squash or jiggle.
 
 On a humanoid avatar the parts become **live tissue**. That is the path nearly every avatar takes,
 so it comes first here.
@@ -1430,7 +1431,7 @@ Knobs write straight to the materials as you move them. No rebuild.
 
 **Build the squash** builds it, **Rebuild the squash** rebuilds, **Remove the squash** puts every
 layer back on its own material, toggles included, and keeps the component's settings for the next
-build. **Remove squash** on the Setup card does the same and also removes the component, with its
+build. **Remove squash** on the Squash card in the YAPS window does the same and also removes the component, with its
 parts and painted regions (Ctrl+Z brings it back). The step says whether the build is up to date
 and, if not, why. Rebuild after changing the parts, **Materials left alone**, the body, an outfit,
 or after updating YAPS.
@@ -1439,7 +1440,7 @@ or after updating YAPS.
 - Only a layer that lies over a soft part gets a copy. A baked plug never does.
 - Toggles that swap a material into a squashed slot are pointed at a squashed copy, so they keep
   working. A clip that lives in a package is not edited, and the report names it.
-- Deleted the component by hand? **Remove squash** on the Setup card, or **Clean up leftovers**,
+- Deleted the component by hand? **Remove squash** on the Squash card, or **Clean up leftovers**,
   still puts the materials back.
 
 **Live tissue options**
@@ -1449,6 +1450,7 @@ Under *Tune how it feels ▸ Live tissue*:
 | Option | Default | What it does | Rebuild after changing? |
 |---|---|---|---|
 | **Twitch** | Off | Adds a **Jelly twitch** menu toggle. Each flip kicks the jiggle once | Yes |
+| **Twitch Size** | 0.02 | How far a twitch kicks, in metres | Yes |
 | **Grip Slides** | Off | A fist stroking along the skin takes its grip with it | No, it is live |
 | **Other Colliders** | Off | Other players' MagicaCloth colliders press the skin too. Needs MagicaCloth installed. Costs every viewer about 0.1 s more each time the avatar loads. Only viewers whose Dynamic Bone interaction settings take in other players' colliders see it press. Hands press without it | Yes |
 | **Probe Markers** | Off | With Other Colliders on, adds a **Jelly probes (debug)** menu toggle: a marker on each probe, white at rest, red where the tissue felt a collider | Yes |
@@ -1501,8 +1503,7 @@ follow:
   without the squash. Nothing breaks.
 - A viewer with **Shader Filtering** on (ChilloutVR's *Settings ▸ Experimental*) sees hands and
   plugs mostly stop pressing.
-- A clone of the avatar (Mini Me) is expected to stay at its rest shape. Not yet confirmed in
-  game.
+- A clone of the avatar (Mini Me) stays at its rest shape: it does not squash or jiggle.
 - The first upload after building compiles the body shader once. On a non-humanoid avatar using
   the squash this can take several minutes.
 - Clothing follows the skin under it within 3 cm, and within 5 cm where a hand presses it.
@@ -1853,7 +1854,7 @@ controller*. After a run it shows the count of errors and warnings instead. A bu
 | **What this avatar costs** | **Weigh it**, **Fix it**, **Put the textures back** | **Weigh it** reads only: texture memory, contacts, triangles, cloth and more. **Fix it** shrinks textures and removes meshes nothing can show. Detail below |
 | **Free wins** | **Tidy it** | Removes empty layers and parameters nothing uses, in a copy of the controller. Detail below |
 | **Stereo shaders** | **Patch shaders for VR stereo** | Patches [one-eye shaders](#shaders-that-only-draw-into-one-eye) into copies and points the object's materials at them. Materials an animation swaps in are not followed here; the converter follows them |
-| **Face: visemes and blink** | **Wire face** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set is kept unless the visemes are on another one |
+| **Face: visemes and blink** | **Wire face** | Finds the face mesh and wires the standard viseme and blink blendshapes onto the CVRAvatar. A face mesh already set is kept unless the visemes are on another one. Native blink stays off when the avatar's own animator already blinks |
 | **Audio limits** | **Clamp audio sources** | Sets every audio source to values ChilloutVR handles: doppler off, distance floors and caps, fully 3D |
 | **Mesh bounds** | **Fix mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
 | **PhysBones to cloth** | **Convert PhysBones** | Converts PhysBones still on a ChilloutVR avatar, in place. Shown only with the VRChat SDK installed. Detail below |
@@ -1871,7 +1872,9 @@ on it. The **Also in this package** card links to the tester, the converter and 
 **Weigh it** measures:
 
 - Texture memory against the surface each map covers, so a 2K texture on a fingernail is named and
-  given the size it should be.
+  given the size it should be. This is what the textures take on the graphics card, not the
+  download: the CCK compresses the bundle, so the download is usually much smaller, and the CCK
+  shows it at upload.
 - Contacts against the 512 overlapping pairs ChilloutVR gives the whole instance.
 - Triangles, cloth (how many transforms each simulates, mesh cloth counted apart), blendshapes
   nothing animates, materials each carrying their own locked shader copy, pointers by family, and
@@ -1936,7 +1939,7 @@ rebuild: Ctrl+Z on the card, then **Create Controller**, then the card again.
 
 The **Set up any avatar** tab. It prepares any avatar for ChilloutVR, VRChat or not: a Booth model,
 an original, anything with no VRChat data to convert. It adds the `CVRAvatar` with viewpoint and
-voice position, visemes and blink, face tracking and the height slider. A Humanoid rig works best:
+voice position, visemes and blink, face tracking and, if ticked, the height slider. A Humanoid rig works best:
 without one the viewpoint is guessed and eye tracking cannot be wired.
 
 1. **Pick your avatar.**
@@ -2085,7 +2088,7 @@ converts fine.
 | setting | default | what it does |
 |---|---|---|
 | **Toggle style** | Animator Layers | *Animator Layers* gives each toggle its own layer and works at once. *CVR Native Targets* leaves object toggles to the CCK: you must press **Create Controller** on the avatar yourself |
-| **Add height scaler  ("Height" slider)** | on | A quick-menu slider from 0.25× to 4× of the avatar's measured height, centred on its original size. Its entry goes first in the menu. Parent-constrained props are re-anchored so they scale with you. Not added, with a warning, when the avatar already has a parameter or menu entry called "Height": rename that one to get the slider |
+| **Add height scaler  ("Height" slider)** | off | A quick-menu slider from 0.25× to 4× of the avatar's measured height, centred on its original size. Its entry goes first in the menu. ChilloutVR scales every avatar itself, so this is only for an avatar that wants its own slider. The two take turns: moving this one turns ChilloutVR's scaling off until you touch that slider again. Not added, with a warning, when the avatar already has a parameter or menu entry called "Height": rename that one to get the slider |
 | **Extra strip keywords** | *(empty)* | Comma separated, for other VRChat-only systems to remove. Each is matched, ignoring case, as the start of a parameter name and anywhere in a layer name. A keyword under two characters is ignored |
 | **Output folder** | `Assets/AvatarBridgeOutput` | Where the converted avatar, its assets and the report go, in a folder named after the avatar. Must be inside `Assets`, or it falls back to the default with a warning. A different avatar with the same name gets `<avatar> 2` beside it |
 | **Keep the converted avatar a prefab** | off | The converted avatar is always saved as a prefab in its output folder. On, the copy in the scene stays linked to it, so later edits can be applied with *Overrides ▸ Apply All*. Converting again overwrites that prefab, and any linked copy changes too |
@@ -2112,7 +2115,7 @@ Folded, because Analyse sets these from the avatar. Open it to override one on p
 |---|---|---|
 | **Remove GoGo Loco (recommended)** | on | Strips GoGo Loco; ChilloutVR has its own locomotion. Keeping it is experimental: tick Base, Additive and Action or there is no locomotion at all. Its poses do not lock movement, floor poses keep a standing viewpoint, and the quick-menu emotes stop. See [GoGo Loco](#gogo-loco) |
 | **Put GoGo poses in the emote wheel** | on | Offered while GoGo is removed. Up to eight: the avatar's own GoGo emotes first, then GoGo's sit and lie poses. They replace ChilloutVR's stock emotes on this avatar, hold until you move, and cost no sync |
-| **Penetration** | Convert to YAPS (recommended) | Shown only with the YAPS add-on installed. Without it the window says penetration is removed and links to the add-on. *Convert to YAPS (recommended)* rebuilds DPS, TPS and SPS for ChilloutVR. *Remove* takes out every plug and socket; the plug mesh stays, straight. *Leave as VRChat built it* touches nothing. The OGB, PCS and Wholesome haptics contacts go with the first two unless kept under *Opt-ins ▸ OSC toys*. See [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
+| **Penetration** | Convert to YAPS (recommended) | Shown only with the YAPS add-on installed. Without it the window says penetration is removed and links to the add-on. *Convert to YAPS (recommended)* rebuilds DPS, TPS and SPS for ChilloutVR. *Remove* takes out every plug and socket; the plug mesh stays, straight. *Leave as VRChat built it* touches nothing. The OGB, PCS and Wholesome haptics contacts go with both; under *Convert to YAPS (recommended)* they can be kept under *Opt-ins ▸ OSC toys*. See [YAPS](#yaps-penetration-that-works-in-chilloutvr) |
 | **Remove animation that can't do anything (recommended)** | on | Drops curves that write material properties the shader does not have. The source is untouched |
 
 **Animator layers to convert**
@@ -2662,9 +2665,8 @@ small avatar is slow, and raising the **Height** slider speeds you back up.
 
 #### A hat or held item drifts off when I resize myself
 
-**Convert again on the current release**, with **Add height scaler  ("Height" slider)** and
-**Convert VRC constraints** on. A parent constraint's offset is in metres and never scales, so the
-conversion hands each offset to a small empty under the source bone. Nothing moves at default size.
+**Convert again on the current release**, with **Convert VRC constraints** on. A parent constraint's
+offset is in metres and never scales, so the conversion hands each offset to a small empty under the source bone. Nothing moves at default size.
 
 <details><summary>Five cases are left alone, and the report names each</summary>
 
@@ -2703,7 +2705,7 @@ and leave Gravity at `(0, 0, 0)`. Every chain AvatarBridge writes is already set
 <details><summary>Why</summary>
 
 In ChilloutVR, DynamicBone gravity only behaves on an avatar at scale exactly 1. Below that it lifts
-the chain instead of dropping it. A converted avatar carries a height scaler and is almost never at
+the chain instead of dropping it. ChilloutVR resizes every avatar, so it is almost never at
 scale 1. Force does not have this problem at any size.
 
 </details>
@@ -3216,6 +3218,16 @@ Two things that are intended (not yet confirmed in game):
 - **A hand dents the part but does not shove it.** The avatar's physics move the part; the tissue
   only dents it.
 
+#### YAPS: a YAPS avatar moved to another project names a missing shader
+
+Each YAPS patch remembers the shader it was made from, but Unity's *Export Package* does not count
+that shader as a dependency, so the package leaves it out. Without it a rebuild in the new project
+would patch a different shader, so the squash step names the missing one instead.
+
+**Fix:** import that shader into the new project before rebuilding. When exporting, select the
+avatar, run *Tools ▸ Avatar Bridge ▸ YAPS ▸ Select the shaders a package must carry*, and export
+with that selection.
+
 #### OSC toys (OSCGoesBrrr, Lovense): the avatar converts, the toy stays silent
 
 1. **Tick *Keep the OGB / PCS haptics contacts*** (*Manual options ▸ Opt-ins ▸ OSC toys*, YAPS
@@ -3296,8 +3308,10 @@ link). Anything reproducible is better as a GitHub issue.
 
 `Diagnostics.md` holds the measurements behind the report: package versions, every setting used, the
 rig's shape, where the head and eye bones sit against the viewpoint, a count of constraints, asset
-references that point at nothing, your PC's processor, memory and graphics card, and how long each
-step took. It is facts with no advice, so two conversions can be compared line by line.
+references that point at nothing, your PC's processor, memory, graphics card, free memory and free
+disk, how long each step took with the three slowest passes first, the editor's memory at the start
+and end of the run, and how many console warnings and errors the run logged. It is facts with no
+advice, so two conversions can be compared line by line.
 
 The YAPS Setup window writes no report file. Its **Report an issue** link adds the last Build's
 counts, and its **Copy diagnostics** copies those with what Build and the squash said, line by line.

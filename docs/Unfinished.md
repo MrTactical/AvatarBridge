@@ -23,6 +23,43 @@ Shortest first; the **Check** line under each heading is the thing to do. Steps 
 `Dev/Release/ingame-checklist-5.0.0.md` (local). Owed by Joe right now: items 20, 41, 42, 46 (his
 call), 47, 50 and 51; tester fluffybat has rc23 for item 51.
 
+### 56. In-game checks left by the items closed on 2026-11-18. Joe to check in game
+**Check:** each line below once in ChilloutVR (or VRChat where it says so); a failure becomes a new item.
+
+The code side of each item is done or decided and archived in `archive/Closed-2026-11.md` under
+its number; only the look in game is left here.
+
+- **(15) PlayAudio on a slash-named object, in VRChat.** Does VRChat play a source whose object
+  name has a slash? If not, the converted avatar plays a sound the original did not (checklist S6.9).
+- **(45) Editor, 2022.3.58f1:** press Squash and a row's Customise in the YAPS setup window; the
+  Console stays free of the `SerializedObjectBindingToBaseField` NullReferenceException.
+- **(32.12) Nested PhysBone chains on MagicaCloth 2:** an avatar with a PhysBone inside another's
+  chain (a hair strand on a hair chain, a tail tip with its own bone): the inner chain swings by
+  its own settings and the outer chain does not drag it stiffly.
+- **(32.6) A user's own shader below target 4.5 on YAPS Standard:** the squash still moves with
+  the cloth.
+- **(32.1) Editor Play mode:** the Avatar Tester's remote copy starts from rest (`TwinRestTest` passes
+  in batch; never looked at by hand).
+- **(30.1) The wearer's own hand pressing once, not twice:** press your own live tissue with your
+  own hand; the dent is one hand deep, not doubled.
+- **(30.4) The press's lighting on a smooth-shaded avatar:** no ring round a dent with the slope
+  on (only toon ramps have been looked at).
+- **(31.6) Hands that carry only a MagicaCloth collider,** with Other Colliders on and a second player
+  who shares colliders: turn on **Jelly probes (debug)**; a marker moved and red is a pass, moved and
+  white means the step never read it, unmoved means the client gave the probes no collider.
+- **(31.8) A top-and-bottom squeeze with the breast cloths' full-size balls,** seen by a viewer who shares
+  colliders: the part does not ring on ("one touch answered twice").
+- **(48) Shader Filtering on, a live tissue avatar:** the region draws at rest, not torn, when the
+  filter cuts the lattice corners' rolled loop short.
+- **(48) Point lights on an older Poiyomi avatar** (`VERTEXLIGHT_ON` now per pixel): they look as
+  before.
+- **(31.5) A converted chain whose PhysBone has a radius curve** (MagicaCloth 2): it collides like the
+  original in VRChat, thinner toward the tip, not as a full-size ball along its length.
+- **(40) Smaller Arms and Thickness on the plush, in game:** does either deform show, for you and for
+  others? If neither does, try one upload without YAPS to tell the add-on from the avatar.
+- **(49) Walking and running with live tissue:** a part nobody touches does not stretch; a hand, your
+  own hand, a grip or the pair pressing wakes it; nothing at landing after fast flight.
+
 ### 35. A big part's lattice by its volume. Joe, 2026-11-10. SHIPPED in 5.0.0, Joe to judge in game
 **Check:** a big part on the finer lattice feels and settles as tuned, not softer or slower.
 
@@ -122,27 +159,6 @@ shipped in 5.0.0; the record is in `archive/Closed-2026-11.md`. Only the game ca
 Known ceilings, not work: a new toggle's clip file is not checked against an avatar that is only in
 a prefab, off the scene (risk 29); the tester's DynamicBone grab fix (bug 6) has no automated test,
 only `check-defines.sh`.
-
-### 46. A Mini Me clone never squashes or jiggles. Joe in game, 2026-11-16. OPEN, waits for Joe's call (a feature, not a repair)
-**Check:** Joe's call: see a Mini Me clone stay at rest in game, then say whether the clone deform gets built.
-
-The clone (ChilloutVR's ContentCloneManager, as used by Mini Me) draws the host's skinned buffer with
-the host's materials under its own `unity_ObjectToWorld`, somewhere else and smaller. The dent
-(`yaps_dent.cginc` 807, 1397) and the jelly (`yaps_jelly.cginc` 402, 429) take a vertex to world
-through that matrix and measure it against host-world data (the follow matrices, the skin buffer,
-the lattice and anchors), so every clone vertex reads out of reach and keeps its rest shape. Not
-proven in game; read from the code by the plush build session. Partly by design: 98d8aaaf and
-96188335 leave another copy's skin alone on purpose, because the clone's chest and hips were
-dragged across to the wearer as long bars. A fix makes the clone deform, a feature, not a repair.
-
-Possible fix: deform in the host's frame when the draw is a displaced clone (its translation more
-than about a centimetre off the host's), mapping back with the host's inverse so the clone's own
-matrix then places and scales it. Needs the host's render matrix per material copy (the follow
-array is full, so one more data provider per renderer) and the exact matrix Unity draws a skinned
-renderer with. The host, mirrors and the first-person copy keep today's path.
-
-Also seen on the same avatars: a jelly whose skin mesh shipped empty crashed the clone outright
-("vertex buffer #0 is null") and broke the host. FilledMesh (089b0d74) writes the skin full at once.
 
 ### 50. Face tracking failing in every mode on a VRCFaceTracking add-on avatar. A user (Kneesox), 2026-11-17, with their own fixer script and a 4.7.2 Keep-mode output. SHIPPED in 5.0.0, not checked in game
 **Check:** a VRCFaceTracking avatar converted on Native tracks face, tongue and eyes in game.
@@ -270,8 +286,8 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
   client measures height from the rest pose now); hair swing and a cloth toggled off and on (the
   client's MagicaCloth2 lacks `disableMode`); a material-swap toggle on a jellied part; Player.log has
   no `[ClipMaterialCrawler] ... disabled` line; the first-load hitch, re-measured.
-- When GS2 reaches stable: item 33 (the bundled scaler's default) and the first-load re-measure of
-  item 42 both wait on it.
+- Item 33 (the bundled scaler's default) done for 5.0.1. The first-load re-measure of item 42 still
+  waits on GS2 stable.
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24. SHIPPED in 5.0.0, Joe to check in game
 **Check:** in a void on a current build there are no dots in the corner, and the spot is clean with no socket avatar in view.
@@ -588,61 +604,6 @@ matter only where a pair stays on the squash alone):
 Real work left, most urgent first: what somebody hits while wearing an avatar, then what waits on a
 tester, then the unmeasured leftovers.
 
-### 49. Live tissue stretching while moving: what is left. Joe and a tester on rc19, 2026-11-17. SHIPPED in 5.0.0, not seen in game; two questions OPEN
-
-Shipped in 5.0.0 and recorded in `archive/Closed-2026-11.md`: past 7 m/s the tissue hangs rigid
-(8b2fb4bb), it no longer leads the body on one pass (db9574e8), and an untouched part eases onto
-its bones over `_Hold` 0.4 s and holds there until touched (caf63e98 to ce9e95b5; Joe: "let magica
-handle all physics ... squash and jelly only handle mesh deforms"). Harness only (`-jellyStab`).
-- **In game, not yet:** walking and running, a part nobody touches does not stretch (harness: walk
-  1.82x to 1.05x, run 2.10x to 1.08x, 25 fps 1.59x to 1.00x); a hand, the wearer's own hand, a grip
-  or the pair pressing wakes it; nothing at landing after fast flight worse than before (118 mm in
-  the harness, was 209).
-- **Open: why two whole passes (under 72 fps) lag a frame.** The lead fix is on for one pass only.
-  Under 72 fps the same fix left the front a frame behind (60 fps 22 mm, 25 fps 65 mm against
-  15 mm), so there it keeps this frame's anchor, which happens to cancel that lag. Each pass moves
-  the particles exactly the anchor's half step; the shape holds compressed (back layers ahead,
-  front behind), and `_Solid` amplifies it (0.44 to 0.73 cells at 60 fps). Tried and reverted:
-  taking the first pass's homes half a step back made it worse (60 fps 1.01, 25 fps 2.48 cells; the
-  60 fps hitch tore 5.6x).
-- **Open, probably the tester's "stretch": the cloth under the tissue.** Cloth on, a steady 4 m/s
-  run turns the breast bone about 60 degrees outward and 10 cm sideways (the masses 34 to 44 cm
-  apart) and the skin goes with it; 73 mm and 2.1x stretch at the back face, unchanged by `_Solid`,
-  `_Motion`, `_MassHz`, `_Pair`, `_Smooth` and `_Landing`. Physics A/B on Kar (`-abSpeed 4`), swing
-  peak in degrees, original PhysBones against the MagicaCloth copy: 1.4 m/s walk 47 against 23-26,
-  4 m/s run 71 against 61. The conversion swings less than VRChat, so the swing at a run is the
-  avatar's own physics (pull 0.18, spring 0.8, limit 50 degrees), not a loose conversion. Whether
-  the tissue riding it looks worse than VRChat's skin on the same bone is open; waits for the
-  tester's answer on which stretch they meant.
-- Harness flags: `-jellyStabClothOff`, `-jellyStabSet name=v`, `-jellyStabDump f,f`,
-  `-jellyStabSide`, `-jellyStabFilm`.
-
-### 40. A plush avatar in game: what is left of the reports. 2026-11-14, from the plush build session, OPEN
-
-The fixed points (dropdown names, a renamed parameter's default, the squash's Build pressed twice,
-the readout slot, the world probes) shipped in 5.0.0; the record is in `archive/Closed-2026-11.md`.
-Legend as before: [G] seen in game, [R] read from code, [M] measured.
-- **Smaller Arms does nothing in game, though it does in the editor [G, open].** Both deforms add a
-  move to the incoming skinned position, and the arms carry no part, so the shader cannot hide a
-  blendshape. Waiting on: whether Thickness works in game, whether others see it, and a non-YAPS
-  upload.
-- **Asked, not built: `_Damp` and a gravity share under Feel**, since a rebuild overwrites hand
-  edits (the session zeroes `_Damp`, `_Gravity` and `_Lift` after each build as a stopgap). Give,
-  Swing and Spring back have since left the Feel UI (item 51), so decide this with item 52's
-  clean-up of the tissue's settings. Joe's call.
-- **Upside down the tissue "busted" [G Joe]: not reproduced** on a breast pair or a belly (1 mm off
-  rest either way; 0.9 mm after item 41's guards). The session's reading (`_Lift` along the
-  anchor's up adding to gravity when inverted, about 11 cm on a belly; lying flat the pull goes
-  diagonal) and its proposal (lift along world up, as Cored does, or fade to it as the anchor turns
-  over) are not built. Reopen with a film from the game.
-- **Trailing with speed:** closed for an untouched part by items 41 and 49 (it holds on its bones,
-  rigid past 7 m/s). The belly's worse stop is in item 41.
-- **Ideas from the same round [Minor].** A report line when a toggle's off clip, baked from the
-  scene, equals its on clip (a toggle switched on before converting can never switch off). A way to
-  leave parts out of the squash and jelly regions by blendshape, material or vertex group (the
-  jelly crumpled a cloth tag). The squash's "built by an older YAPS" status naming which version
-  built it and which would rebuild it.
-
 ### 16. Tester reports on the rc builds, 2026-10-22. SHIPPED in 5.0.0; one report waits on the tester
 
 Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.md`.
@@ -664,41 +625,29 @@ Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.m
   partner pass's hand loop as `[loop]` was identical but saved a quarter of a second at best and was
   not applied. Not done: a tester's own upload timed before and after.
 
-### 5. Cloth on a plug's own bones, unmeasured. OPEN
+### 57. Five avatars' reports from a tester (fluffybat), 2026-11-18. PART FIXED on dev, the rest waits on the tester
 
-A cloth chain that moves bones inside a plug would break the per-vertex frame in play. Ruled out
-as the cause of the 4.6.4 tear (`archive/Closed-2026-10.md`, "Blendshapes a plug renderer holds came
-undone"), never measured in game or in Play mode. No report behind it.
+Fixed on dev 2026-11-18, not yet in a release:
+- The weight card called graphics-card texture size the download and warned against the 100 MB
+  limit (107-147 MB reported, about 50 MB real). The download line now defers to the CCK.
+- The survey listed the scaler's own constants (`#AvatarScaler/One`, `StepSize`) as features
+  nothing can switch on, and a float read only as a blend weight or animation time with a non-zero
+  default (a 1 multiplying a Direct tree, a motion-time 1) the same way. Both are now "fixed weight"
+  or skipped, never a warning. A frozen parameter that only write-nothing layers read says it is
+  harmless.
+- Diagnostics.md gains the three slowest passes, free memory and disk, editor memory at the start
+  and end of the run and its session peak, and the run's console warning and error counts.
 
-### 6. Conversions got slower between corpus 418 and 419: the squash's compile. SHIPPED in 5.0.0, one check open
-
-The slowdown is fixed and confirmed (squash pass 261 min in run 419, 14.2 min in run 427); the record
-is in `archive/Closed-2026-11.md`. The live tissue's own compile cost is items 36 and 48 and
-"Conversion speed: what is left".
-
-Left, small: the squash's copy rule from 2026-10-24 (`YapsSquash.MinShare`: a layer is copied only
-with a stored share of 4/255 on some vertex of the slot, and a material carrying a plug bake never
-takes a copy).
-- The plug half is seen in corpus output (2026-11-13 soft subset: Kar's soft parts made copies for
-  bra, body, panties, piercings, shirt, shorts and tail, none for the baked plug).
-- The faint-layer half is not checked against share textures: the layers the cutoff should drop read
-  1 to 3 (a plug on three variants of one avatar, a hood, a belt, a socket mesh), a stocking at 4
-  keeps its copy.
-- Neither rule has been seen in ChilloutVR.
-- The full corpus runs with soft parts off since 1d515e4, so this needs a `--soft` subset, on Joe's word.
-
-### 7. What the shader sweep left open. SHIPPED in 5.0.0, one corpus read open
-
-The three fixes (the false "may not render correctly in VR" on YAPS Standard, the render queue
-across a shader swap, the two patcher gaps) are in 5.0.0; records in `archive/Closed-2026-11.md`.
-
-Left: **run 427's three metallic-map avatars** should build on YAPS Standard since 8c5bcf5a
-(2026-10-24). No full run has been read for them. The 2026-11-13 run named YAPS Standard copies on
-4 corpus avatars (the false VR warning), so copies are being built [R: not matched to those three].
-Next: read those three in the next full run's digests.
-
-Known ceiling of the stereo fix: a pass the planner cannot read, in a shader that also includes
-Unity's Standard core or shadow include, is trusted.
+Open:
+- **A scale layer hides the controller layer it shares bindings with, on three avatars.** Asked the
+  tester whether that part moves in VRChat. If it does not, it is the avatar's own layer order and
+  the report is right; if it does, the converter changed something and this becomes a bug.
+- **Editor memory grew several GB across conversions.** The new Diagnostics lines answer whether a
+  step leaks; read them from the tester's next runs before guessing.
+- **The soft body step is slow on a 287k-triangle avatar:** 65.6 s warm, 129 s cold, against
+  19-23 s on the others (11-16 and 11-17 runs). Cold is shader compiles (13 files imported, Slots
+  37 s). Warm, Prewrite alone is 19 s for 48 copies against 1.3 s for 18, so it grows far faster
+  than the copy count: find the repeated work. The tester also asked for a progress bar on Add.
 
 ### Joe's own
 
@@ -707,97 +656,62 @@ recorded as sent.
 
 ## 5.0.1
 
-What is planned for the next release: the window's Remove squash, the code rot review, the Update button, what the 5.0.0 review
+What is planned for the next release: the window's Remove squash, the code rot review, what the 5.0.0 review
 left, the scaler's default once GS2 is on stable, then the small fixes and the speed leftovers.
 
-### 53. "Remove squash" in the YAPS window left the YAPS Squash component. Joe, 2026-11-18. FIXED ON DEV 2026-11-18, compile and window check owed
+### 53. "Remove squash" in the YAPS window left the YAPS Squash component. Joe, 2026-11-18. FIXED 2026-11-18, shipped in the 5.0.0 refresh (a9ff085a), Joe checked the window
 The window's button strips the build and points every layer and toggle back at its own material, but leaves the
 component (parts and painted regions) on the avatar, and its message does not say so. Harmless in game (setup data,
 stripped at upload), but it reads as a failed remove. Decided (Joe): the window's button also deletes the component,
 with Undo, and says Ctrl+Z brings it back. The component's own "Remove the squash" keeps unbuilding only, settings kept
 for the next build.
 
-### 54. Remove squash, then Rebuild in one editor session, gave a tissue that tore under the tester's Squeeze. Joe, 2026-11-18. OPEN, not reproduced
-On the plush in Joe's project: the window's Remove squash, regions repainted, then the component's Rebuild, all in
-one GUI session (Editor.log 06:46 to 07:04). In Play mode the Avatar Tester's Squeeze tore the body skin and the
-clothes into spikes as soon as it moved, nothing in the Console. The batch build of the same avatar (q1) does not
-tear at Squeeze 0, 0.05 or 0.3 (shots in Play mode, tissue on and off), and q1 uploaded feels right in game.
-Suspect: generated assets remade at the same paths in one session leave stale references. Next: reproduce in a copy
-of that project's state, then make a rebuild after a remove start from fresh assets.
+### 58. Two tester crashes, fixed on dev. Joe, 2026-11-21: ship with the next release, no hotfix. FIXED 242a5d8d and da5e6737; the tester's 2026-11-22 run converted without a crash
 
-### 55. A plug baked in the editor came out 0.5% longer than the batch bake. 2026-11-18, from the plush build session. OPEN, low
-0.6018086 against 0.5987598 for the same FBX and scene, ratio 1.005092; the same ratio showed in the hand rebuilt
-squash's bindposes. Something in the GUI session left the avatar scaled by about 0.5% when the bake read it (the
-Avatar Tester or the Height slider are the suspects). The bake should measure the avatar at its own size whatever the
-scene is doing. 3 mm on 0.6 m, no visible effect in game.
+- A PhysBone listing a collider that was deleted from the scene stopped the conversion
+  (MissingReferenceException). Dead entries are now skipped. Release note: "Conversion could stop on a
+  PhysBone whose collider had been deleted."
+- A parameter declared Bool in one controller and Float in another kept the Bool, so a VRCFury blend tree
+  reading it failed ("is not float type"). Float now wins over Bool and Int. Release note: "Avatars with
+  VRCFury systems could fail to build when two controllers disagreed on a parameter's type."
 
-### 52. Code rot review. Joe, 2026-11-18: "a code rot review, or tech-debt review, we been writing a lot". OPEN, unblocked: 5.0.0 is published
-A whole-repo pass for what the 5.0.0 run left behind: dead code and settings nothing reads (the tissue's Give, Swing and
-Spring back are out of the UI but still in the shader and presets), migration paths for marks only test builds wrote,
-duplicated helpers between the converter and the toolkit, comments that describe removed behaviour, probes whose
-flags no longer exist, and files past a size anyone can hold in their head (`YapsJelly.cs`). Report first, ranked,
-then fix in small commits with the tests and corpus around them.
+### 59. The same tester's three nitpicks, 2026-11-22. All three FIXED on dev (tests ActionAfkTypesTest, DefaultOnToggleTest, IgnoredHelperBoneTest)
 
-### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", then "write it". PLAN, decided, NOT BUILT
+- **AFK stuck on.** An Action layer with one AFK set per AFK type, each in its own sub-machine under the
+  same state names, was moved into the locomotion layer keyed by state name, so every type fell onto the
+  first type's copies; leaving AFK from any other type looped back into it, and those types played the
+  first type's clips. `TransplantActionFeature` now keys by state. Release note: "AFK poses beyond the
+  first type could stay on after AFK ended."
+- **Default-on Modular Avatar toggles did nothing.** Balancing a menu tree filled its empty side from the
+  scene, where MA leaves a default-on toggle's object in its switched look, so both sides wrote the same
+  value. A switch a lower layer already writes (MA's base layer) is now left alone. Release note:
+  "Clothing toggles set to start on could stop switching." Open: her Hoodie group goes through
+  `ToggleNativizer` instead and was default off in the output she sent, so it is unproven either way.
+- **Holes in the chest while moving (FIXED; the first read, "likely not ours", is withdrawn).** Her
+  in-game videos showed slits across the breast tops that opened in motion. The skin there is weighted
+  to MA's NaNimation helper (`NaNimatedBuffer` > `NaNimatedBone`), parented at zero offset under the
+  breast bone and added by MA to that PhysBone's Ignore Transforms. Three gaps let MagicaCloth simulate
+  it: the stand-in cloth for the helper rig honoured no ignores; a chain whose only child was ignored
+  fell back to simulating everything; and the keep-out paint is matched by nearest position, so a
+  helper sitting exactly on its parent took the parent's mark. Now `ctx.PhysBoneIgnores` feeds the
+  stand-ins, the fallback keeps ignores out, and `MagicaClothKeepOut.Separate` steps such a bone 2 mm
+  off with the mesh bind poses corrected (skin unchanged). Measured on her output in Play mode
+  (`Dev/Probes/SlideTearProbe.cs`, slid 0.35 m each way at up to 2.7 m/s): helper drift 3.9 mm to 0,
+  slits gone. Release note: "Skin that Modular Avatar can hide could tear open under physics while
+  moving." The tester confirmed it fixed in game on build skintear2, 2026-11-22. The corpus run after it (501skin) caught one regression, fixed the
+  same day: a stand-in with an ignored branch rooted at its other branches, dropping the very bone the
+  slide rig moved (`open me`, the Booba stand-ins). Stand-ins now always root at their own bone and keep
+  ignores out by mark.
+- **Nails, stockings and dress white after leaving Play mode (FIXED).** An NDMF light-controller
+  plugin bakes lilToon textures into `Assets/<Name>__Generated/.../BakedTextures` and replaces them on
+  every build. The rehomed materials still pointed at them; only `Packages/nadena.dev.ndmf/__Generated`
+  and VRCFury's temp folder counted as temporary. `IsDoomedGeneratedPath` now treats any folder named
+  `*__Generated` as temporary (test GeneratedFolderTest). Release note: "Textures baked by some build
+  tools could turn white after pressing Play." The tester confirmed it fixed on build skintear2,
+  2026-11-22. Not covered: a permanent material pointing at a
+  temporary texture (the rehomer only copies a texture with its material); none seen yet.
 
-Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
-**Update**, so a reconvert keeps the changes made by hand that do not conflict. Today every Convert
-rebuilds the output from the source and writes over it; only the window's settings and the
-*Since the last conversion* comparison carry over.
-
-- **Proposed (not built): Unity's prefab Variant of the OUTPUT.** Convert writes a base prefab and
-  makes a Variant beside it once; the user edits the Variant. Update rewrites the base; the Variant's
-  overrides (added objects, moved bones, changed components) ride over it, and a value both set is
-  the user's, shown as an override. No merge logic of ours.
-- **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
-- **Differs from the parked Variant-of-the-ORIGINAL idea** under Minor Ideas: the base here is our
-  own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
-- **Decided (Joe, 2026-11-16: "write it"):**
-  - **The slot.** A Variant AvatarBridge made: Update rewrites its base. An older output with no
-    Variant: the button reads **Update and keep a backup**, rebuilds, keeps the old prefab beside it,
-    and makes the Variant from then on (hand edits on that copy cannot be told apart). Anything else
-    (a VRChat avatar, another tool's output) is refused with a one-line reason.
-  - **Edits on objects the new base dropped.** Unity keeps them on the Variant as unused overrides,
-    so nothing is lost silently; the report lists them under *Edits that no longer apply* with each
-    path, and the user decides whether to remove them. An object added under a parent that is gone
-    is moved to the avatar root and listed, not dropped.
-  - **The upload id** lives on the Variant, so every Update re-uploads to the same ChilloutVR avatar.
-  - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
-    button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
-    (UiOffscreenProbe) before building.
-
-### 32. The 5.0.0 review of 2026-11-06: what it left. OPEN
-
-Seven reviewers over every shipped file of main..dev; 29 findings held. Points 1 to 11 are fixed
-or answered and shipped in 5.0.0 (record, and the three withdrawn findings, in
-`archive/Closed-2026-11.md`). The numbers below are the review's own.
-
-- Remainders of the fixed points. **6:** a user's own shader below target 4.5
-   still reads the squash from the matrix slots; the patcher leaves its target alone. Whether the
-   skinned slots now move the squash with the cloth on YAPS Standard: in game. **1:** the tester's
-   copy as others see it now starts from rest (`TwinRestTest`); untested by hand in editor Play mode.
-12. **Nested PhysBone chains on MagicaCloth 2** still move both chains, and the report names them.
-    `MagicaClothKeepOut` now keeps ignored bones still; it could do the same for the nested chain.
-13. **The live tissue dents a sparse part only broadly.** A deep poke moves the facing skin 2-4 cm on
-    every part, but over the whole area under the hand. Where the mesh has no vertex within a
-    fingertip's reach (measured: none within 3 cm of the poke and 2-12 within 10 cm, against 25-80 on
-    a denser part), there is nothing to draw a finger-sized dent with, so it reads as no dent. Not the
-    preset: the denser part's values pressed only 10-20% further. A finer dent needs either more
-    vertices there or a dent drawn in the fragment stage.
-14. **The live tissue's first compile: what the 2026-11-07 fix left.** The record, and two claims
-    this item made withdrawn, is in `archive/Closed-2026-11.md`: a tissue shader's first compile
-    is now two and a half to four times faster, and the check compiles a copy before reading its
-    errors, so a shader that fails keeps that material on the squash alone, with a warning. Left:
-    - A real timeout was never forced (a bloated include compiled 292 s without one). That the new
-      check catches one rests on the corpus run, where a check after the wear's compile saw it.
-    - In the editor window, Unity may compile a shader in the background where batch mode waits;
-      the check now compiles it in place either way. Timed in batch only (first time 27-49 s a
-      Poiyomi Pro material, again 0.7-1.1 s); in the window, untimed.
-    - Each state read now takes four texture reads where one ran. Unmeasured in game.
-    - The first-conversion times start to finish (notes, add-on card and film) are the corpus
-      run's on the old code; a fresh one needs a corpus run.
-
-### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. WAITS for GS2 on stable (planned 2026-11-23); `addAvatarScaler` still defaults to true in 5.0.0
+### 33. The avatar scaler once ChilloutVR scales every avatar itself. Joe, 2026-11-10. DONE on dev 2026-11-23 for 5.0.1 (GS2 reaches stable that day); S28.3 still owed in game
 
 ChilloutVR's Game Server 2 nightly (2026.3.0-nightly, build 26554805) adds universal avatar scaling,
 20 cm to 5 m, for every avatar. Decompiled the same day (`PlayerSetup.ApplyAvatarScale`): the client
@@ -811,242 +725,26 @@ What that means for the bundled scaler (`addAvatarScaler`, on by default, `Bridg
   two never break each other, but a converted avatar has two height controls that silently take
   turns, and ours covers less (0.25x to 4x).
 
-To do when GS2 reaches stable, not before (stable has no universal scaling yet):
-- Default `addAvatarScaler` to false; keep it as an option for avatars that want an avatar-side slider.
-- README: the options table default, the scaler's section, and a line on the hand-over between the
-  two sliders. The window tooltip and the settings comment say the same.
-- Check S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) passed on the nightly first.
-
-### 45. Two squash setup notes from moving a squashed avatar between projects. 2026-11-16, from the plush build session. OPEN, low
-
-Status naming a missing source shader first shipped in 5.0.0 (5b2a5541; record in
-`archive/Closed-2026-11.md`). Left:
-- **An export helper or a setup-window warning that lists the patch sources a package must
-  carry.** A squash material's patch names its source shader only in a hidden property, so
-  `GetDependencies` misses it and a package export leaves it out.
-- **Low:** pressing Squash in the setup window logs a Unity-internal NullReferenceException in
-  `SerializedObjectBindingToBaseField.OnFieldAttached` on 2022.3.58f1. It comes from
-  `YapsSquash.Show` calling `ExecuteMenuItem("Window/General/Inspector")` (`YapsSquash.cs:180`);
-  the setup window's own call (`YapsSetupWindow.cs:646`) does the same. Try focusing an existing
-  Inspector instead of opening one through the menu, then check the console on 58f1.
-
-### 15. Moved out of 5.0.0 (Joe, 2026-10-22): one avatar's texture estimate grew. OPEN, low
-
-The PlayAudio slash question that sat here is answered by item 37's fix (record in
-`archive/Closed-2026-11.md`; the VRChat test was never run).
-- **Watch: PlayAudio on a slash-named object.** The conversion now finds the source by animation
-  path. If VRChat never played such a source, the converted avatar plays a sound the original did
-  not. One VRChat test settles it (checklist S6.9).
-- **One avatar's texture estimate grew [M]** (from item 14, archived). "About 268.0 MB of texture to
-  download" in every run from 410 to 422 (276.2 once, in 416), 274.0 in 425 and 427, with "1 set
-  of materials shares a shader" becoming "2 sets": four materials on one locked YAPS copy and two
-  on another. 424 cannot say (a probe had resized this avatar's textures that morning, reverted at
-  14:40 from its `TextureSizes.undo`). Candidates: the per-role patches (65a4466), which put
-  materials on shared copies by role, or the revert not restoring every importer exactly. Only the
-  report's estimate moved; meshes, clips and the `[physics]` block are unchanged.
-
-### 30. Pointers for the live tissue from a VRChat skin-touch module: what is left. Approved by Joe 2026-11-06. PART BUILT and SHIPPED in 5.0.0; the rest OPEN
-
-DocMe Skin Touch 1.1.0 (free, Booth), read for ideas only: its licence bars its code, or a rewrite
-of it, in ours. Built and shipped: the wearer's own hand skipped in the arrays, overlapping presses
-joined, the press lit, heads pressing, the Firm preset (record in `archive/Closed-2026-11.md`, with
-its withdrawals). The numbers are the item's own.
-
-1. **The wearer's own hand pressing twice: built, check in game.** The step skips a player whose
-   both hands sit within 5 cm of the own hand capsules' starts (`Wearer`). Batch cannot show it: no
-   probe puts the wearer in the arrays.
-2. Built. Left: the probe's own copy of the press for its test prop still sums, so a probe reading
-   of the prop's draw is the old rule.
-3. **A press pushing the far side of a thin part: measured 2026-11-06, NOT BUILT.** The far side
-   never moves; skin facing away is pushed only just past the flank by a palm deep in (8 cm limb:
-   0.8 mm at 2 cm in, 2.3 at 3, 4.4 at 4; 12 cm: under 1 mm to 6 cm in), and `Held` stops a hand at
-   about 2.7 cm on 8 cm, so about 2 mm at most. Build the facing ease only if a limb's flank is
-   seen to bulge in game.
-4. Built. Refilmed on the jelly, no ring with the slope on or off; on a toon ramp the difference
-   is all but nothing. **Open:** a smooth-shaded avatar to see it on. The plug's press still lights
-   as flat skin.
-5. **A soft shadow as a hand nears: not built, large.** A darkening per vertex from the hand slots
-   and own capsules the draw already reads, multiplied into the host's colour; needs a colour hook
-   per shader family in `YapsShaderPatcher`, which patches the vertex stage only today.
-6. Heads built. **Feet not built:** the client hands every player's feet, hips and chest
-   (`_CVR_PlayerLeftFootPositions`, `_CVR_PlayerRightFootPositions`, `_CVR_PlayerHipPositions`), but
-   not the foot's direction, so only an ankle ball would press. (~~"Feet do not port: the client
-   hands a root, not feet"~~ withdrawn 2026-11-06.)
-7. **The Avatar Tester's hand put on the skin by a click** in the Scene view (bake the body, ray,
-   back off along the normal by the palm), and its controls in a Scene view panel. Not built.
-8. Firm built, a first guess, untuned. **Left:** presets named by feel, not by part (maybe Thin;
-   the enum serialises by index, so add after Firm), and saving a part's feel to a small file to
-   share.
-9. Smaller, none built: every problem at the top of the component with its fix; a line saying what
-   the build adds; a cost measured on the user's own card; a pile-up ring round a deep press,
-   draw-only; a dent whose rim grows with the press.
-
-### 31. The breasts less fluid than the Oct 31 films: what is left. Joe, 2026-11-06. SHIPPED in 5.0.0; the feel question CLOSED by decision 2026-11-17; the collider points OPEN
-
-The record is in `archive/Closed-2026-11.md`. "Fluid" is settled by Joe's rule of 2026-11-17 (items
-49 and 51): the cloth moves the bones, the tissue only dents the mesh, a hand never moves the whole.
-So the stretch is not being won back, `PairShrink` (the cloth's balls cut to 1 mm) is undone, and
-the night2k comparison is dropped. Left, the item's own numbers:
-- **(6) Hands that carry only a MagicaCloth collider: in game unproven.** In the editor they dent.
-  In game, by default no other player's collider reaches the wearer's cloth at all (the three
-  Dynamic Bone Interaction relations default to None; placement hands); players' hands dent through
-  the arrays regardless. The cloth probes are **Other Colliders** now, off by default (item 42),
-  with the **Jelly probes (debug)** menu toggle as the pass or fail line: a marker moved and red,
-  the whole chain works; moved and white, the tip moved but the step never read it; unmoved, the
-  client gave the probes no collider. Next: Joe and a second player who shares colliders.
-- **(7) A thin collider in a gap between probes is felt but placed outside the skin.** Matrix
-  `colliders3`: all 11 felt; a finger or the 15 mm sphere in a gap reads -9 to -19 mm. A probe on
-  the skin slides round a thin collider's side, so how deep it went is not there to read; an
-  offline model agreed (fingers at 7 to 13 mm for 30 even with 96 probes). Options: probes that
-  cannot slide (a bone's tip held to its line), a second layer under the skin, or a thin collider
-  pressing at least its radius. Unmeasured: the cost of 128 probes a pair against 48 on a heavy
-  scene; the seat and thighs rows were never rerun on the spread probes.
-- **(8) To watch in game since the balls are back to full size:** with the film's hand colliders
-  on the breast cloths, the bone was shoved 56 mm down and rang 63 times in a top-and-bottom
-  squeeze ("one touch answered twice"); item 51 accepted that on purpose and its harness run with a
-  hand collider held (lattice 14.27 of 14 spacings). Only a viewer who shares colliders can see it.
-- **(5) Unanswered:** whether a converted cloth's radius should taper to the tip, as a PhysBone
-  radius curve might (every particle of the breast cloth is a ball of the PhysBone's radius,
-  0.19 m on Kar).
-- Seen in the state trace before item 51, never filmed, probably gone with the give at 0: during a
-  held press the whole mass slid 5 cm down off the hand in 11 frames, and while pushed its steps
-  alternated about 6 and 2 mm frame to frame. Check once on the current harness before believing it.
-
-### 48. Optimisation pass: what is queued, and what nobody has seen in game. Joe, 2026-11-17. SHIPPED in 5.0.0; the rest OPEN
-
-Everything done and measured shipped in 5.0.0 (main 4077a2e4, 03962bd8) and is recorded in
-`archive/Closed-2026-11.md`. Baselines to measure against: cold first
-upload of the plush 140.4 s to 124.0 s (ShaderCache cleared, one run each); its vertex bytecode a
-viewer builds 535 KB to 456 KB; a tester's third convert 54 s against 133 s on the 11-16 build.
-The lesson to keep: the driver keeps built shaders across restarts (NVIDIA: the same bytes built in
-49-76 ms in a fresh process against 2,790 ms for new bytes), so the first-view freeze is paid once
-per machine per exact bytecode, and byte stability across avatars and versions is worth more than
-kilobytes.
-- **Not run in game:**
-  - The tissue's lattice corners in a rolled loop under Shader Filtering (6691fdbf, 696a6c94): cut
-    short, the region should draw at rest, not torn.
-  - `VERTEXLIGHT_ON` per pixel (7d6f71f3): point lights on an older Poiyomi avatar look the same.
-  - rc19 went to a tester with the in-game checks; no answer recorded. Their upload time was not
-    recorded in the files either.
-- **Queued, larger:**
-  - One tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, about 100-145 ms of
-    first view; risk: several steps writing one pair).
-  - Lighting keywords the host's vertex never reads still multiply the YAPS vertex variants.
-    `LIGHTPROBE_SH` and the ForwardAdd axes come from Unity's built-in sets, which cannot be split
-    by stage without redeclaring them: not done.
-- **Queued, smaller:** the empty asset refreshes per avatar (attribute first); the orphan clips
-  left in a merged controller; batching the rehomer's texture writes (texture clones must stay
-  immediate: a batched material must not name a texture written in the same batch, see
-  "Conversion speed: what is left").
-
-### 10. Squash, stereo, contacts and the lock: what is left of the speed work. OPEN, after 5.0.0
-
-The work of 2026-10-16 to 10-21 shipped in 5.0.0; the record, with every measurement, is in
-`archive/Closed-2026-11.md`. Baselines: full run 418, squash 27,468 s to 13,402 s and all passes
-34,587 s to 17,181 s; one heavy avatar 474.9 s to 88.9 s. Later passes are item 48 and "Conversion
-speed: what is left" under Minor Ideas; read that first, it is newer. Left here:
-- **Squash, `YapsSquash.Add`:** on the heaviest of subset `ab5` (47.7 s) Add took 42.2 s: Shares
-  16.9, Prewrite 11.2, Slots 5.5, SaveAssets 5.3, Flush 1.8; FollowSwaps 5.1 outside it. Shares and
-  Prewrite were the targets (Shares 1.8 to 3.8 s on small avatars). Measured 2026-10-17: re-time
-  before working on it, since the 2026-11-16 pass skips the spread on skin far from every part and
-  remembers shader copies, and a tester's squash went 104 to 42.7 s.
-- **The first material on a fresh patch pays the compile** (P0): `new Material(shader)` 89.9 s in
-  the trigger probe, the squash's first copy 445 s, the second 71 s, the rest about 200 ms; the GUI
-  editor waits the same (20.1 s against 22.8 s in batch). Not the patcher (about 8 s) and not Thry
-  (5.6 s). **Open:** whether anything avoids it short of fewer patches (one shader shared by more
-  materials).
-- **Probes P1 to P5, never run** (copy project): P1 whether `new Material` /
-  `CopyPropertiesFromMaterial` / `CopySerialized` carry override tags; P2 lock the same stand-ins in
-  two calls and other company, diff the text; P3 how many compiles a line-1-blind `NameHash` would
-  save over the 21 probe avatars (build it only if at least one per avatar); P4 Thry Unlock on a
-  copy sharing a patch, tag kept against cleared; P5 a forced Thry exception, does the
-  StartAssetEditing block stay open.
-- **The shared patch folder (`Assets/YAPS/Generated/Shaders`):** *Remove unused patched shaders*
-  does not cover Generated/Locked. Deleting the folder turns every YAPS avatar in the project
-  magenta until each is converted again (README Troubleshooting says so); a `.meta` GUID derived
-  from each copy's hash would let one reconvert relink the rest, left out until somebody hits it.
-  The stereo patcher's copies could share a folder the same way, but their verify depends on the
-  folder, so not without a probe.
-- **Stereo planning, point (4) not done:** the report check reads each unit a second time where it
-  could reuse what Prejudge read (about 4 ms a shader, read and SHA-256 twice per path). Also:
-  Stage plans again a shader whose verdict an earlier avatar cached.
-- **Animator merge:** the texture clones in `RehomeVolatileAssets` (`SceneAssetRehomer`, each
-  `CreateAsset` 0.7 s outside any batch). Batching them means a rescued material naming a texture
-  created in the same batch; that path broke before (particles drawn as white squares). Timings
-  [M], fix [R]. The material copies were batched on 2026-11-17 (936bfcc8).
-- **Contacts:** what is left of zone growth is the samples themselves, 3.3 s scan and 7.0 s
-  attribution on the 212-contact avatar (was 282.8 s).
-- **Not to be retried** (measured, in the archive): compiling a material's passes together or in
-  parallel (146 s against 147 s; the vertex-only verify 387 s); a home for the patches per output
-  folder.
-- Timers left in the log on purpose: `YapsSquash.Add`'s steps, `ContactsConverter.Run`,
-  `Texture sizes steps`, the merge's own.
-
-### 13. What the speed work missed, read from run 425 against 417. 2026-10-21. OPEN, nothing done; re-read against a current run first
-
-Per avatar, all passes plus save and report, the 83 avatars in both runs. The commit that queued
-this names the avatars.
-
-- **One heavy avatar sped up 1.2×** (third slowest public before, 4 min 33 s to 3 min 44 s). Its
-  *Animator merge* did not move (104 s to 107 s), so it is not the toggle-heavy shape the merge work
-  targeted, and its report step got slower (31 s to 51 s). Next: what its controllers look like, and
-  where the report's 20 s went.
-- **A light avatar got slower,** 36 s to 43 s: *Animator merge* 22 s to 34 s.
-- **Two small passes grew** across the 83: *Point material swaps at the baked material* 1 s to 15 s,
-  *Name grafted emote clips* 59 s to 68 s.
-- **No cold number for the stereo step.** Run 425 found the stereo copies earlier runs made and
-  skipped them: *Shader SPI patch* fell about 95% on every avatar, unique shaders included. So the
-  published overall figures (3.6× average, 10.9× heaviest) are converting-again figures. Putting the
-  old step time back brackets a first conversion at 2.5× to 2.8× average and 5.7× to 6.8× heaviest.
-  Measuring it takes the stereo copies and `Library/AvatarBridge` cleared, then one run, which needs
-  Joe's order.
+Done 2026-11-23:
+- `addAvatarScaler` defaults to false and stays an option for an avatar that wants its own slider.
+  README options table, window tooltip and settings comment say so, with the hand-over.
+- The parent-constraint relays (`ConstraintScaleRelay`) no longer wait on the scaler: universal
+  scaling resizes every avatar, so a hat would have drifted on every default conversion.
+- Left: S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) was not run on the nightly first.
+  Joe to check universal scaling on a converted avatar, and a held prop at 20 cm and 5 m.
 
 ## Major Ideas
 
 The work Joe means to take on now that 5.0.0 is out (published 2026-11-18). None of it is started
 unless its heading says so.
 
-### AvatarBridge Chambers: a home world with a test wing. Joe's idea 2026-10-20. THE MAIN FOCUS NOW THAT 5.0.0 IS OUT (2026-11-18), NOT STARTED
+### AvatarBridge Chambers: a home world with a test wing. Joe's idea 2026-10-20. STARTED 2026-11-18 in its own private repository
 
-Joe, 2026-10-20: a ChilloutVR world under the AvatarBridge name. One side is a home world, fully
-built, to hang out and relax in. The other side is a run of test chambers with a clinical
-test-facility mood, entirely original in look, story and names. Walk in wearing any avatar and test
-anything: whatever the CCK does, whatever the converter changed, whatever YAPS adds. Its own project
-apart from the converter, and the main focus once 5.0.0 ships.
-
-**Why a world.** Physics, shaders and sync are only falsifiable in ChilloutVR. Today that proof is a
-checklist and a friend with time. A chamber that sets each check up makes it repeatable, for anyone.
-
-**What a chamber can set up that the editor cannot.** A first pass, from the in-game checklist:
-- Physics: a drop shaft and jump pads (landing, overshoot, the landing spin), a walkway with stop
-  lines (sway and settle), a turntable (body turns), a bed (lying down), a teleport pair and a
-  respawn point (cloth after a jump in position), wind if a world can push avatar cloth.
-- Mirrors and light: mirrors at several distances, a bay that cycles baked, realtime, point lights
-  and none (toon fallbacks, outlines, both eyes in VR), a floor grid with height marks (floating or
-  sinking).
-- Interaction: seats and beds (GoGo poses, emotes), world pointers aimed at an avatar's triggers,
-  props to grab, a viewer's mark for the tests that need a second player.
-- YAPS: socket and plug fixtures with marker lights, a portal pair, the glass wall from
-  "Squash against the world".  Where these live is decision 2.
-- Readouts: what a world can show about the avatar in it (parameters, contact hits) needs world
-  scripting, which is not in stable. Until then a chamber sets up the situation and the player reads
-  the result.
-
-**Known constraints.**
-- ChilloutVR declined scripting access (2026-08-19) and asked for no AI analysis of their scripting
-  implementation. World scripting gets used through its public documentation only, once it ships.
-- The clean-room rules carry over unchanged.
-- Original look and names. No borrowed franchise, in the world or in anything written about it.
-
-**Decisions for Joe.**
-1. Where it lives: a new repository under the AvatarBridge name (recommended), or a GitHub fork of
-   this one. A world shares no code with the converter, and a fork of a public repository carries
-   its whole history and stays public.
-2. The YAPS chambers: a separate adult world (recommended, it matches the package split), an adult
-   wing behind a gate in the same world, or none.
-
-**First step (5.0.0 shipped 2026-11-18, so this is next):** a spike. One lounge room and one chamber in a fresh CCK world project,
-uploaded privately, to learn the world CCK's limits before designing the rest.
+A ChilloutVR world: a chill surface to hang out in, with labs underneath that test what an avatar
+does in game (physics, mirrors and light, seats, contacts, sync, the converter's and YAPS's output).
+Chosen 2026-11-18 as the next big work. It shares no code with the converter, so it lives in its
+own private repository with its own plan, decisions and work queue; this entry is only the pointer.
+Converter work it turns up (a check that fails in a lab) comes back here as a normal item.
 
 ### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06: next after the jelly's final approval. NOT STARTED
 
@@ -1252,6 +950,34 @@ would reach further. Thinking so far, nothing built:
 - Cost: the joint spike measured about 15 us a chain per avatar past the first, at 90 Hz.
 - Next step: a read-only look at gates 1 to 3 in the client. Gate 4 goes away with point 1 of
   "Squash anywhere" (no hard cap on parts).
+
+### 44. Update a converted avatar in place, keeping hand edits. Joe, 2026-11-16: "queue it", then "write it". PLAN ONLY, for 5.1
+
+Joe: put an already converted avatar in a second slot under the VRChat one, and the button becomes
+**Update**, so a reconvert keeps the changes made by hand that do not conflict. Today every Convert
+rebuilds the output from the source and writes over it; only the window's settings and the
+*Since the last conversion* comparison carry over.
+
+- **Proposed (not built): Unity's prefab Variant of the OUTPUT.** Convert writes a base prefab and
+  makes a Variant beside it once; the user edits the Variant. Update rewrites the base; the Variant's
+  overrides (added objects, moved bones, changed components) ride over it, and a value both set is
+  the user's, shown as an override. No merge logic of ours.
+- **Not kept:** hand edits inside generated assets (controller, menu, materials), rebuilt each time.
+- **Differs from the parked Variant-of-the-ORIGINAL idea** under Minor Ideas: the base here is our
+  own output, so VRCFury and Modular Avatar bakes and the passes that reparent bones do not block it.
+- **Decided (Joe, 2026-11-16: "write it"):**
+  - **The slot.** A Variant AvatarBridge made: Update rewrites its base. An older output with no
+    Variant: the button reads **Update and keep a backup**, rebuilds, keeps the old prefab beside it,
+    and makes the Variant from then on (hand edits on that copy cannot be told apart). Anything else
+    (a VRChat avatar, another tool's output) is refused with a one-line reason.
+  - **Edits on objects the new base dropped.** Unity keeps them on the Variant as unused overrides,
+    so nothing is lost silently; the report lists them under *Edits that no longer apply* with each
+    path, and the user decides whether to remove them. An object added under a parent that is gone
+    is moved to the avatar root and listed, not dropped.
+  - **The upload id** lives on the Variant, so every Update re-uploads to the same ChilloutVR avatar.
+  - **The window.** One slot under the VRChat avatar, "Converted avatar (optional)"; filled, the
+    button reads **Update**, with one line on what is replaced and what is kept. Rendered for Joe
+    (UiOffscreenProbe) before building.
 
 ### 23. Squash swaps: repoint at upload. Joe, 2026-10-25. PLAN ONLY, for 5.1
 The record is in `archive/Closed-2026-10.md`, "Squash turned swapped-in materials pink".
@@ -2063,6 +1789,51 @@ are the nearest measured thing; see items 25 and 29 in the archive.
 
 Small features and leftovers, after 5.0.0.
 
+### Live tissue ideas from a VRChat skin-touch module (item 30's unbuilt points). Approved as ideas 2026-11-06, NOT STARTED
+Read for ideas only (DocMe Skin Touch 1.1.0: its licence bars its code, or a rewrite of it, in ours).
+Numbers are item 30's own; its record is in `archive/Closed-2026-11.md`.
+- (3) A press pushing the far side of a thin part: the far side never moves (8 cm limb, 2.3 mm at
+  3 cm in). Build the facing ease only if a limb's flank is seen to bulge in game.
+- (5) A soft shadow as a hand nears: a darkening per vertex from the hand slots, multiplied into the
+  host's colour. Needs a colour hook per shader family in `YapsShaderPatcher` (vertex stage only
+  today). Large.
+- (6) Feet pressing: the client hands feet, hips and chest positions but no foot direction, so only
+  an ankle ball would press.
+- (7) The Avatar Tester's hand put on the skin by a click in the Scene view, its controls in a Scene
+  view panel.
+- (8) Presets named by feel, not part (maybe Thin; the enum saves by index, so add after Firm), and a
+  part's feel saved to a small file to share.
+- (9) Every problem at the top of the component with its fix; a line saying what the build adds; a
+  cost measured on the user's own card; a pile-up ring round a deep press; a dent whose rim grows
+  with the press.
+
+### Thin colliders between the tissue's probes (item 31 point 7). Measured 2026-11-06, NOT STARTED
+A finger or a 15 mm sphere that slips between two cloth probes is felt but placed 9 to 19 mm outside the skin:
+a probe on the skin slides round a thin collider, so its depth is not there to read (matrix `colliders3`, all
+11 felt). Options: probes that cannot slide (a bone's tip held to its line), a second layer under the skin, or a
+thin collider pressing at least its radius. Unmeasured: 128 probes a pair against 48 on a heavy scene. Only
+matters for MagicaCloth colliders with Other Colliders on; players' hands dent through the arrays regardless.
+
+### Three ideas from the plush avatar's reports (item 40). 2026-11-14, NOT STARTED
+- A report line when a toggle's off clip, baked from the scene, equals its on clip: a toggle switched
+  on before converting can never switch off.
+- A way to leave parts out of the squash and jelly regions by blendshape, material or vertex group
+  (the jelly crumpled a cloth tag).
+- The squash's "built by an older YAPS" status naming which version built it and which would rebuild.
+
+### Fold into the next intentional YAPS shader change. From the code rot review (item 52), 2026-11-18
+Each changes the patched shader text, so on its own it would make every YAPS avatar read "Needs a rebuild"
+for nothing a user can see. Ride along with the next change that needs a rebuild anyway:
+- Drop `_YAPS_SocketUp`, `_YAPS_SocketFront`, `_YAPS_ChannelOrigin`, `_YAPS_ChannelForward`,
+  `_YAPS_ChannelUp`, `_YAPS_ChannelExtents` from `YapsShaderPatcher`'s property block and
+  `YapsDebugOverlay.shader`: no HLSL reads them, no C# writes them.
+- `_YAPS_SquashPulse`: a probe's diagnostic (`SquashTestBuilder`) shipped in every squash material's
+  vertex stage. Move it into the probe.
+- `yaps_resolve.cginc`: the `plugUp` parameter nothing reads.
+- The live tissue's hand, grip and own-hand loops run every frame adding zeros on a cloth-carried
+  part (`_Give` 0): guard them with `[branch] if (_Give > 0)`, or remove the free-mass mode once
+  the probes stop using `-jellyMass`.
+
 ### A per-plug menu choice for its own sockets. IDEA, not started
 
 - A per-plug menu choice. `_YAPS_SelfSockets` is a plain float, so a dropdown could animate it
@@ -2200,3 +1971,51 @@ in `Diagnostics.md`. Still open, largest first:
   compiler at once measured nothing; the import is the cost (archive).
 - **A repatch's compile check uses the original's default keywords**, not the material's, so the
   variant a scene draws compiles again later.
+- **Item 10's leftovers (the 2026-10-16 to 10-21 speed work), moved here 2026-11-18:**
+  - **Squash, `YapsSquash.Add`:** on the heaviest of subset `ab5` (47.7 s) Add took 42.2 s: Shares
+    16.9, Prewrite 11.2, Slots 5.5, SaveAssets 5.3, Flush 1.8; FollowSwaps 5.1 outside it. Shares and
+    Prewrite were the targets (Shares 1.8 to 3.8 s on small avatars). Measured 2026-10-17: re-time
+    before working on it, since the 2026-11-16 pass skips the spread on skin far from every part and
+    remembers shader copies, and a tester's squash went 104 to 42.7 s.
+  - **The first material on a fresh patch pays the compile** (P0): `new Material(shader)` 89.9 s in
+    the trigger probe, the squash's first copy 445 s, the second 71 s, the rest about 200 ms; the GUI
+    editor waits the same (20.1 s against 22.8 s in batch). Not the patcher (about 8 s) and not Thry
+    (5.6 s). **Open:** whether anything avoids it short of fewer patches (one shader shared by more
+    materials).
+  - **Probes P1 to P5, never run** (copy project): P1 whether `new Material` /
+    `CopyPropertiesFromMaterial` / `CopySerialized` carry override tags; P2 lock the same stand-ins in
+    two calls and other company, diff the text; P3 how many compiles a line-1-blind `NameHash` would
+    save over the 21 probe avatars (build it only if at least one per avatar); P4 Thry Unlock on a
+    copy sharing a patch, tag kept against cleared; P5 a forced Thry exception, does the
+    StartAssetEditing block stay open.
+  - **The shared patch folder (`Assets/YAPS/Generated/Shaders`):** *Remove unused patched shaders*
+    does not cover Generated/Locked. Deleting the folder turns every YAPS avatar in the project
+    magenta until each is converted again (README Troubleshooting says so); a `.meta` GUID derived
+    from each copy's hash would let one reconvert relink the rest, left out until somebody hits it.
+    The stereo patcher's copies could share a folder the same way, but their verify depends on the
+    folder, so not without a probe.
+  - **Stereo planning, point (4) not done:** the report check reads each unit a second time where it
+    could reuse what Prejudge read (about 4 ms a shader, read and SHA-256 twice per path). Also:
+    Stage plans again a shader whose verdict an earlier avatar cached.
+  - **Animator merge:** the texture clones in `RehomeVolatileAssets` (`SceneAssetRehomer`, each
+    `CreateAsset` 0.7 s outside any batch). Batching them means a rescued material naming a texture
+    created in the same batch; that path broke before (particles drawn as white squares). Timings
+    [M], fix [R]. The material copies were batched on 2026-11-17 (936bfcc8).
+  - **Contacts:** what is left of zone growth is the samples themselves, 3.3 s scan and 7.0 s
+    attribution on the 212-contact avatar (was 282.8 s).
+  - **Not to be retried** (measured, in the archive): compiling a material's passes together or in
+    parallel (146 s against 147 s; the vertex-only verify 387 s); a home for the patches per output
+    folder.
+  - Timers left in the log on purpose: `YapsSquash.Add`'s steps, `ContactsConverter.Run`,
+    `Texture sizes steps`, the merge's own.
+- **Item 48's queued parts (the 2026-11-17 optimisation pass), moved here 2026-11-18:**
+  - **Queued, larger:**
+    - One tissue state texture for all slots (fxc: -11 KB a body pass at 3 slots, about 100-145 ms of
+      first view; risk: several steps writing one pair).
+    - Lighting keywords the host's vertex never reads still multiply the YAPS vertex variants.
+      `LIGHTPROBE_SH` and the ForwardAdd axes come from Unity's built-in sets, which cannot be split
+      by stage without redeclaring them: not done.
+  - **Queued, smaller:** the empty asset refreshes per avatar (attribute first); the orphan clips
+    left in a merged controller; batching the rehomer's texture writes (texture clones must stay
+    immediate: a batched material must not name a texture written in the same batch, see
+    "Conversion speed: what is left").

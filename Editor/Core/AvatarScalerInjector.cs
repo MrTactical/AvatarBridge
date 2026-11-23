@@ -22,7 +22,7 @@ namespace AvatarBridge
         internal const string TemplateParam = "Input";
         // The template's names (Output, One, StepSize...) are generic enough to
         // collide with an avatar's own system, so they are renamed.
-        const string Prefix = "#AvatarScaler/";
+        internal const string Prefix = "#AvatarScaler/";
         const string OutputParam = Prefix + "Output";
         const string SizeLayer = "Size";
         const float FallbackHeight = 1.3f;

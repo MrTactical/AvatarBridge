@@ -18,7 +18,6 @@ namespace AvatarBridge
 
         // Log only: how often the walk dirtied the controller, and how many planned copies were
         // not byte copies (a CopyAsset refused inside the batch lands there too).
-        static int repoints, materialized;
 
         public static void Run(BridgeContext ctx)
         {
@@ -45,9 +44,7 @@ namespace AvatarBridge
             int copiedMasks = 0;
 
             var layers = controller.layers;
-            int made = CopyAll(layers, controller, controllerPath, ctx.OutputDir, dir, map, maskMap,
-                copiedClips, ref copiedMasks, out int stale);
-            repoints = 0;
+            CopyAll(layers, controller, controllerPath, ctx.OutputDir, dir, map, maskMap, copiedClips, ref copiedMasks);
             bool layersChanged = false;
             for (int i = 0; i < layers.Length; i++)
             {
@@ -63,8 +60,6 @@ namespace AvatarBridge
             {
                 controller.layers = layers;
             }
-            Debug.Log($"[AvatarBridge] Self-contain: {made} copies made in one batch ({materialized} materialized), " +
-                      $"{stale} old files listed for one delete, {repoints} repoints");
 
             if (copiedClips.Count > 0 || copiedMasks > 0)
             {
@@ -87,14 +82,13 @@ namespace AvatarBridge
         // Every copy is made in one batch before anything is repointed; one at a time cost two
         // refreshes and a controller save each. Planned in walk order so Claim gives the same
         // names. A copy cannot load inside the batch, so loading waits for the Stop.
-        static int CopyAll(AnimatorControllerLayer[] layers, AnimatorController controller, string controllerPath,
+        static void CopyAll(AnimatorControllerLayer[] layers, AnimatorController controller, string controllerPath,
             string outputDir, string dir, Dictionary<Motion, Motion> map, Dictionary<AvatarMask, AvatarMask> maskMap,
-            List<string> copied, ref int copiedMasks, out int staleCount)
+            List<string> copied, ref int copiedMasks)
         {
             var jobs = new List<(UnityEngine.Object source, string src, string dst)>();
             var stale = new List<string>();
             var seen = new HashSet<UnityEngine.Object>();
-            materialized = 0;
             foreach (var layer in layers)
             {
                 var mask = layer.avatarMask;
@@ -105,10 +99,9 @@ namespace AvatarBridge
                 }
                 PlanMachine(layer.stateMachine, controllerPath, outputDir, dir, seen, jobs, stale);
             }
-            staleCount = stale.Count;
             if (jobs.Count == 0)
             {
-                return 0;
+                return;
             }
             // Outside the batch: CopyAsset refuses a destination that is still occupied.
             if (stale.Count > 0)
@@ -131,7 +124,6 @@ namespace AvatarBridge
                           && Copy(src, dst)))
                     {
                         made[i] = Materialize(source, dst);
-                        materialized++;
                     }
                 }
             }
@@ -165,7 +157,6 @@ namespace AvatarBridge
             {
                 CarryAdditivePose(clip, controller, controllerPath, outputDir, dir, map, copied);
             }
-            return jobs.Count;
         }
 
         static UnityEngine.Object Materialize(UnityEngine.Object source, string dst)
@@ -256,7 +247,6 @@ namespace AvatarBridge
                 {
                     state.motion = fixedMotion;
                     EditorUtility.SetDirty(state);
-                    repoints++;
                 }
             }
             foreach (var child in sm.stateMachines)
@@ -354,7 +344,6 @@ namespace AvatarBridge
                     }
                     tree.children = children;
                     EditorUtility.SetDirty(tree);
-                    repoints++;
                 }
                 return tree;
             }

@@ -171,6 +171,15 @@ namespace AvatarBridge
             if (s == null) return;
             Selection.activeGameObject = s.gameObject;
             EditorGUIUtility.PingObject(s);
+            FrontInspector();
+        }
+
+        // An open Inspector is focused rather than reopened: the menu route logged a Unity-internal
+        // NullReferenceException on 2022.3.58f1.
+        public static void FrontInspector()
+        {
+            foreach (var w in Resources.FindObjectsOfTypeAll<EditorWindow>())
+                if (w.GetType().Name == "InspectorWindow") { w.Focus(); return; }
             EditorApplication.ExecuteMenuItem("Window/General/Inspector");
         }
 
@@ -929,7 +938,7 @@ namespace AvatarBridge
             return most == 0 ? null : skins.Where(s => Carries(s) == most).OrderByDescending(Spread).First();
         }
 
-        // What the name search would give one renderer, for the region tool to start from.
+        // What the name search would give one renderer, as two channels. The probes' reading.
         public static Vector4[] NamedShares(Transform root, SkinnedMeshRenderer body, out List<string> names, out string none)
         {
             var all = NamedChannels(root, body, out names, out none);
@@ -1903,6 +1912,8 @@ namespace AvatarBridge
             string path = folder + "/" + file;
             if (Reuse != null && Reuse.Remove(path) && AssetDatabase.LoadAssetAtPath<T>(path) is T old)
             {
+                // CopySerialized carries the name too; keep the file's, or every rebuild reimports it.
+                asset.name = old.name;
                 EditorUtility.CopySerialized(asset, old);
                 EditorUtility.SetDirty(old);
                 return old;

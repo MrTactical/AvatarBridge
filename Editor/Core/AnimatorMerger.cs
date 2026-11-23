@@ -548,7 +548,7 @@ namespace AvatarBridge
             {
                 if (filler == null)
                 {
-                    filler = new AnimationClip { name = "AvatarBridge_EmptySlot" };
+                    filler = new AnimationClip { name = OutputAssetPaths.EmptySlotClip };
                     string anchor = EmptySlotAnchorPath(ctx);
                     if (anchor != null)
                     {
@@ -715,7 +715,7 @@ namespace AvatarBridge
             {
                 return null;
             }
-            const string anchorName = "AvatarBridge_EmptySlot";
+            const string anchorName = OutputAssetPaths.EmptySlotClip;
             var anchor = ctx.Target.transform.Find(anchorName);
             if (anchor == null)
             {
@@ -952,8 +952,21 @@ namespace AvatarBridge
                 else if (existing.type != param.type &&
                          !GestureMap.GestureParameters.Contains(param.name))
                 {
-                    ctx.Report.Warning(Category, $"Parameter \"{param.name}\"",
-                        $"Type conflict between controllers ({existing.type} vs {param.type}); keeping {existing.type}.");
+                    // Float wins over Bool and Int: a blend tree reads only floats, the client writes
+                    // core values into any type, and ReconcileConditionModes rewrites the conditions.
+                    if (param.type == AnimatorControllerParameterType.Float
+                        && (existing.type == AnimatorControllerParameterType.Bool || existing.type == AnimatorControllerParameterType.Int))
+                    {
+                        ctx.Report.Approximated(Category, $"Parameter \"{param.name}\"",
+                            $"Declared {existing.type} in one controller and Float in another; kept as Float, so a blend tree can read it.");
+                        existing.defaultFloat = existing.type == AnimatorControllerParameterType.Bool ? (existing.defaultBool ? 1f : 0f) : existing.defaultInt;
+                        existing.type = AnimatorControllerParameterType.Float;
+                    }
+                    else
+                    {
+                        ctx.Report.Warning(Category, $"Parameter \"{param.name}\"",
+                            $"Type conflict between controllers ({existing.type} vs {param.type}); keeping {existing.type}.");
+                    }
                 }
             }
             master.parameters = masterParams.ToArray();
@@ -4090,15 +4103,9 @@ namespace AvatarBridge
             return raised;
         }
 
-        static HashSet<string> LayerOffStates(AnimatorControllerLayer source)
-            => LayerWeightStates(source, on: false);
-
-        static HashSet<string> LayerOnStates(AnimatorControllerLayer source)
-            => LayerWeightStates(source, on: true);
-
-        static HashSet<string> LayerWeightStates(AnimatorControllerLayer source, bool on)
+        static HashSet<AnimatorState> LayerWeightStates(AnimatorControllerLayer source, bool on)
         {
-            var found = new HashSet<string>();
+            var found = new HashSet<AnimatorState>();
             if (source == null || source.stateMachine == null)
             {
                 return found;
@@ -4126,7 +4133,7 @@ namespace AvatarBridge
                                 && (on ? animator.goalWeight >= 0.999f : animator.goalWeight <= 0.001f));
                         if (matches)
                         {
-                            found.Add(state.name);
+                            found.Add(state);
                         }
                     }
                 }
@@ -4147,54 +4154,55 @@ namespace AvatarBridge
                     return 0;
                 }
 
-                var on = LayerWeightStates(source, on: true);
-                var off = LayerWeightStates(source, on: false);
+                // Keyed by state, never by name: sub-machines reuse names (one AFK_Intro/AFK/AFK_Outro per
+                // AFK type), and keyed by name every type collapsed onto the first one's copies, whose
+                // outro then looped back into AFK for the others. The clone matches the source state for
+                // state in walk order.
+                var srcStates = FlatStates(source.stateMachine);
+                var cloneStates = FlatStates(clone.stateMachine);
+                if (srcStates.Count != cloneStates.Count
+                    || srcStates.Where((x, i) => x.state.name != cloneStates[i].state.name).Any())
+                {
+                    return 0;
+                }
+                var toClone = new Dictionary<AnimatorState, AnimatorState>();
+                for (int i = 0; i < srcStates.Count; i++)
+                {
+                    toClone[srcStates[i].state] = cloneStates[i].state;
+                }
+                var on = new HashSet<AnimatorState>(LayerWeightStates(source, on: true).Select(st => toClone[st]));
+                var off = new HashSet<AnimatorState>(LayerWeightStates(source, on: false).Select(st => toClone[st]));
                 if (on.Count == 0)
                 {
                     return 0;
                 }
 
-                // The clone's states, flat. Names are unique within a VRChat layer in practice;
-                // a duplicate would only shadow a state of the same name, not corrupt anything.
-                var byName = new Dictionary<string, AnimatorState>();
-                WalkMachines(clone.stateMachine, m =>
-                {
-                    foreach (var child in m.states)
-                    {
-                        if (child.state != null && !byName.ContainsKey(child.state.name))
-                        {
-                            byName[child.state.name] = child.state;
-                        }
-                    }
-                });
-
-                var live = new HashSet<string>(on.Where(byName.ContainsKey));
-                if (live.Count == 0)
-                {
-                    return 0;
-                }
-                var queue = new Queue<string>(live);
+                var inClone = new HashSet<AnimatorState>(toClone.Values);
+                var live = new HashSet<AnimatorState>(on);
+                var queue = new Queue<AnimatorState>(live);
                 while (queue.Count > 0)
                 {
-                    var state = byName[queue.Dequeue()];
+                    var state = queue.Dequeue();
                     foreach (var transition in state.transitions)
                     {
                         var next = transition != null ? transition.destinationState : null;
-                        if (next != null && !off.Contains(next.name) && byName.ContainsKey(next.name)
-                            && live.Add(next.name))
+                        if (next != null && !off.Contains(next) && inClone.Contains(next) && live.Add(next))
                         {
-                            queue.Enqueue(next.name);
+                            queue.Enqueue(next);
                         }
                     }
                 }
 
-                // Rebuild the window inside the locomotion machine.
+                // Rebuild the window inside the locomotion machine. A name used twice in the window
+                // takes its sub-machine's name too, so the copies can be told apart.
                 var locoMachine = locomotion.stateMachine;
-                var copies = new Dictionary<string, AnimatorState>();
-                foreach (var name in live)
+                var machineOf = cloneStates.ToDictionary(x => x.state, x => x.machine);
+                var shared = new HashSet<string>(live.GroupBy(st => st.name).Where(g => g.Count() > 1).Select(g => g.Key));
+                var copies = new Dictionary<AnimatorState, AnimatorState>();
+                foreach (var src in live)
                 {
-                    var src = byName[name];
-                    var copy = locoMachine.AddState($"[AB] {name}");
+                    string label = shared.Contains(src.name) ? $"{machineOf[src].name} {src.name}" : src.name;
+                    var copy = locoMachine.AddState($"[AB] {label}");
                     // No baked travel: it would move the camera with no input. Root motion that
                     // returns home stays; vertical is height, not travel. Rotation dropped: the capsule stays upright.
                     copy.motion = src.motion is AnimationClip poseClip
@@ -4203,7 +4211,7 @@ namespace AvatarBridge
                         : src.motion;
                     copy.speed = src.speed;
                     copy.writeDefaultValues = src.writeDefaultValues;
-                    copies[name] = copy;
+                    copies[src] = copy;
                 }
 
                 // These copies leave the clone before GesturePass, which never sees
@@ -4226,9 +4234,8 @@ namespace AvatarBridge
                     }
                 }
 
-                foreach (var name in live)
+                foreach (var src in live)
                 {
-                    var src = byName[name];
                     foreach (var transition in src.transitions)
                     {
                         if (transition == null)
@@ -4236,17 +4243,17 @@ namespace AvatarBridge
                             continue;
                         }
                         var dst = transition.destinationState;
-                        bool inner = dst != null && copies.ContainsKey(dst.name);
+                        bool inner = dst != null && copies.ContainsKey(dst);
                         foreach (var branch in Branches(transition.conditions))
                         {
                             if (inner)
                             {
-                                CopyTransition(transition, copies[name].AddTransition(copies[dst.name]), branch);
+                                CopyTransition(transition, copies[src].AddTransition(copies[dst]), branch);
                                 continue;
                             }
                             // Leaving the window (the fade state, or anywhere else): hand the
                             // body back to locomotion, blending rather than snapping.
-                            var exit = copies[name].AddTransition(locoDefault);
+                            var exit = copies[src].AddTransition(locoDefault);
                             CopyTransition(transition, exit, branch);
                             exit.hasFixedDuration = true;
                             exit.duration = 0.25f;
@@ -4263,7 +4270,7 @@ namespace AvatarBridge
                 void Arm(AnimatorStateTransition transition)
                 {
                     var dst = transition != null ? transition.destinationState : null;
-                    if (dst == null || !on.Contains(dst.name) || !copies.TryGetValue(dst.name, out var target))
+                    if (dst == null || !on.Contains(dst) || !copies.TryGetValue(dst, out var target))
                     {
                         return;
                     }
@@ -4275,7 +4282,7 @@ namespace AvatarBridge
                         }
                         // From the resting state, never AnyState, which re-fires inside the window
                         // and loops visibly. Nothing re-fires until hand-back plus a fresh rise.
-                        string signature = dst.name + "|" + string.Join(",",
+                        string signature = target.name + "|" + string.Join(",",
                             conditions.Select(c => $"{c.parameter}{(int)c.mode}{c.threshold}"));
                         if (!armedSignatures.Add(signature))
                         {
@@ -4297,7 +4304,7 @@ namespace AvatarBridge
                 {
                     foreach (var child in m.states)
                     {
-                        if (child.state == null || live.Contains(child.state.name))
+                        if (child.state == null || live.Contains(child.state))
                         {
                             continue;
                         }
@@ -5674,6 +5681,13 @@ namespace AvatarBridge
             return list.ToArray();
         }
 
+        internal static void BalanceMenuTreeActivesForTest(AnimatorController master, BridgeContext ctx)
+            => BalanceMenuTreeActives(master, ctx);
+
+        internal static int TransplantActionFeatureForTest(AnimatorController master, List<AnimatorControllerLayer> masterLayers,
+            AnimatorControllerLayer clone, AnimatorControllerLayer source, BridgeContext ctx)
+            => TransplantActionFeature(master, masterLayers, clone, source, ctx);
+
         internal static void FeedGameParametersForTest(AnimatorController master, BridgeContext ctx)
         {
             CreateParameterStreams(master, ctx);
@@ -5951,10 +5965,7 @@ namespace AvatarBridge
             }
 
             string dir = ctx.OutputDir.TrimEnd('/') + "/RehomedAssets";
-            if (!AssetDatabase.IsValidFolder(dir))
-            {
-                AssetDatabase.CreateFolder(ctx.OutputDir.TrimEnd('/'), "RehomedAssets");
-            }
+            EnsureAssetFolder(dir);
             UnityEngine.Object copy = value;
             if (AssetDatabase.IsMainAsset(value))
             {
@@ -7550,7 +7561,7 @@ namespace AvatarBridge
             {
                 if (!AssetDatabase.Contains(clip))
                 {
-                    Debug.Log($"[AvatarBridge] Restore clip {path} did not persist from its batch");
+                    Debug.LogWarning($"[AvatarBridge] Restore clip {path} did not persist from its batch");
                 }
             }
             pending.Clear();
@@ -7810,9 +7821,12 @@ namespace AvatarBridge
             path = path.Replace('\\', '/');
             // Only the temp roots. A broad "com.vrcfury" prefix also
             // matches the installed package, whose GUIDs are stable.
-            // The wiped folders are exactly these two:
-            return path.StartsWith("Packages/com.vrcfury.temp", StringComparison.OrdinalIgnoreCase)
-                || path.StartsWith("Packages/nadena.dev.ndmf/__Generated", StringComparison.OrdinalIgnoreCase);
+            if (path.StartsWith("Packages/com.vrcfury.temp", StringComparison.OrdinalIgnoreCase)) return true;
+            // NDMF's "__Generated", and NDMF plugins that bake into a "<Name>__Generated" folder of their
+            // own (a light-controller plugin's baked textures went white after the next Play mode).
+            int file = path.LastIndexOf('/');
+            return file > 0 && path.Substring(0, file).Split('/')
+                .Any(folder => folder.EndsWith("__Generated", StringComparison.OrdinalIgnoreCase));
         }
 
         static void AuditSizeBlendshapes(AnimatorController master, BridgeContext ctx)
@@ -8409,6 +8423,11 @@ namespace AvatarBridge
             int added = 0;
             var balanced = new SortedSet<string>(StableSampleOrder.Instance);
             var seen = new HashSet<BlendTree>();
+            // A lower layer that writes the switch already holds its rest (Modular Avatar's base layer).
+            // The scene is no rest to copy then: with a toggle that defaults on, Modular Avatar leaves the
+            // object in its switched look, so the empty side wrote the same value as the other and the
+            // toggle did nothing.
+            BuildRestoreOwnership(master.layers, out _, out _, out _, out var anyOwner);
 
             void CollectActives(Motion motion, HashSet<EditorCurveBinding> into)
             {
@@ -8474,7 +8493,7 @@ namespace AvatarBridge
                 }
             }
 
-            void Walk(Motion motion, string layerName)
+            void Walk(Motion motion, string layerName, int here)
             {
                 if (!(motion is BlendTree tree) || !seen.Add(tree))
                 {
@@ -8482,7 +8501,7 @@ namespace AvatarBridge
                 }
                 foreach (var child in tree.children)
                 {
-                    Walk(child.motion, layerName);
+                    Walk(child.motion, layerName, here);
                 }
                 if (tree.blendType != BlendTreeType.Simple1D
                     || !menuParameters.Contains(tree.blendParameter))
@@ -8508,7 +8527,8 @@ namespace AvatarBridge
                     var missing = new List<(EditorCurveBinding, float)>();
                     foreach (var binding in union)
                     {
-                        if (has.Contains(binding))
+                        if (has.Contains(binding)
+                            || (anyOwner.TryGetValue(binding, out int lowest) && lowest < here))
                         {
                             continue;
                         }
@@ -8526,15 +8546,18 @@ namespace AvatarBridge
                 }
             }
 
-            foreach (var layer in master.layers)
+            var layers = master.layers;
+            for (int index = 0; index < layers.Length; index++)
             {
+                var layer = layers[index];
+                int here = index;
                 WalkMachines(layer.stateMachine, machine =>
                 {
                     foreach (var child in machine.states)
                     {
                         if (child.state != null)
                         {
-                            Walk(child.state.motion, layer.name);
+                            Walk(child.state.motion, layer.name, here);
                         }
                     }
                 });
@@ -9847,6 +9870,13 @@ namespace AvatarBridge
 
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit)
             => WalkMachines(machine, visit, new HashSet<AnimatorStateMachine>());
+
+        static List<(AnimatorState state, AnimatorStateMachine machine)> FlatStates(AnimatorStateMachine root)
+        {
+            var all = new List<(AnimatorState state, AnimatorStateMachine machine)>();
+            WalkMachines(root, m => all.AddRange(m.states.Where(c => c.state != null).Select(c => (c.state, m))));
+            return all;
+        }
 
         // Cycle guard as in LocomotionGrafter.AllStates: script-made or corrupt controllers can loop.
         static void WalkMachines(AnimatorStateMachine machine, Action<AnimatorStateMachine> visit,

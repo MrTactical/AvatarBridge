@@ -91,7 +91,7 @@ namespace AvatarBridge
             // The mesh the bake measured, which every record on the renderer
             // keeps: the plug that built the last readout can be deleted, and
             // the mesh has to come back all the same.
-            var measured = MeshOf(record.readoutRenderer);
+            var measured = AvatarWeight.MeshOf(record.readoutRenderer);
             if (measured != null && !measured.name.EndsWith(MeshSuffix, StringComparison.Ordinal))
             {
                 record.readoutReplaced = measured;
@@ -151,7 +151,7 @@ namespace AvatarBridge
                     "is unaffected.");
                 return;
             }
-            var source = MeshOf(renderer);
+            var source = AvatarWeight.MeshOf(renderer);
             if (source == null)
             {
                 report?.Warning(Category, renderer.name,
@@ -202,6 +202,7 @@ namespace AvatarBridge
             var saved = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath);
             if (saved != null)
             {
+                mesh.name = saved.name;
                 EditorUtility.CopySerialized(mesh, saved);
                 UnityEngine.Object.DestroyImmediate(mesh);
                 EditorUtility.SetDirty(saved);
@@ -267,7 +268,7 @@ namespace AvatarBridge
                 return;
             }
             var records = Records(renderer);
-            var current = MeshOf(renderer);
+            var current = AvatarWeight.MeshOf(renderer);
             // Never a readout mesh itself: one built before readouts were
             // built together could have replaced another's.
             var original = records.Select(p => p.readoutReplaced)
@@ -528,16 +529,6 @@ namespace AvatarBridge
                 to[source.Length + i] = source[from[i]];
             }
             return to;
-        }
-
-        static Mesh MeshOf(Renderer renderer)
-        {
-            if (renderer is SkinnedMeshRenderer skin)
-            {
-                return skin.sharedMesh;
-            }
-            var filter = renderer != null ? renderer.GetComponent<MeshFilter>() : null;
-            return filter != null ? filter.sharedMesh : null;
         }
 
         static void SetMesh(Renderer renderer, Mesh mesh)

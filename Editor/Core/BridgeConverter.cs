@@ -35,6 +35,7 @@ namespace AvatarBridge
                 SourceDescriptor = descriptor
             };
 
+            ProblemReport.StartRun();
             AnimatorMerger.ResetMaskCache();
             // Per conversion: names stay stable across runs so reconverting replaces the output,
             // but still collide within a run, where two controllers can each bring an "Angry".

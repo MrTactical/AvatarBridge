@@ -43,6 +43,11 @@ namespace AvatarBridge
         public System.Collections.Generic.List<HelperRigChain> HelperRigChains =
             new System.Collections.Generic.List<HelperRigChain>();
 
+        // Every source PhysBone's Ignore Transforms. A stand-in cloth has no PhysBone of its own, and
+        // Modular Avatar's hidden-skin bones are only marked here.
+        public System.Collections.Generic.HashSet<Transform> PhysBoneIgnores =
+            new System.Collections.Generic.HashSet<Transform>();
+
 #if VRC_SDK_VRCSDK3
         public VRCAvatarDescriptor SourceDescriptor;
 

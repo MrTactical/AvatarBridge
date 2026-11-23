@@ -153,7 +153,8 @@ namespace AvatarBridge
             {
                 foreach (var collider in pb.colliders)
                 {
-                    if (collider is VRCPhysBoneCollider pbCollider)
+                    // Unity's null check, not just the type: a deleted collider leaves a dead entry here.
+                    if (collider is VRCPhysBoneCollider pbCollider && pbCollider != null)
                     {
                         data.Colliders.Add(pbCollider);
                     }

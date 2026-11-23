@@ -50,6 +50,34 @@ namespace AvatarBridge
 
         // ------------------------------------------------------------------- blink ----
 
+        // A clip that blinks a shape itself, so native blink would fight it. Loose on purpose: a
+        // false positive costs the client blink, a false negative is two systems fighting. Held at
+        // zero is a reset, not blinking (the merge agrees).
+        public static bool DrivenBlink(IEnumerable<AnimationClip> clips, out string drivenShape, out string drivenBy)
+        {
+            drivenShape = null;
+            drivenBy = null;
+            foreach (var clip in clips)
+            {
+                if (clip == null) continue;
+                foreach (var binding in UnityEditor.AnimationUtility.GetCurveBindings(clip))
+                {
+                    const string prefix = "blendShape.";
+                    if (!binding.propertyName.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                    string shape = binding.propertyName.Substring(prefix.Length);
+                    if (shape.IndexOf("blink", StringComparison.OrdinalIgnoreCase) >= 0
+                        && UnityEditor.AnimationUtility.GetEditorCurve(clip, binding) is AnimationCurve curve
+                        && curve.keys.Any(k => Mathf.Abs(k.value) > 0.001f))
+                    {
+                        drivenShape = shape;
+                        drivenBy = $"\"{clip.name}\" drives \"{shape}\"";
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         public static void DetectBlinkShapes(Mesh mesh, out string left, out string right, out string combined)
         {
             left = right = combined = null;
