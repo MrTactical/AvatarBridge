@@ -74,8 +74,7 @@ echo "\"$(cygpath -w "$foreign")\"" | tee -a "$sources" >> "$public"
 # Project scripts using this tool's types are dev spikes; without the add-on
 # they fail and csc writes no assembly for the read-back.
 spikes="$WORK/spikes.txt"
-grep '^"Assets/' "$RSP" | tr -d '"
-' | grep -v '^Assets/AvatarBridge/' | while read -r f; do
+grep '^"Assets/' "$RSP" | tr -d '"\r' | grep -v '^Assets/AvatarBridge/' | while read -r f; do
   case "$f" in *.cs) grep -qs "AvatarBridge" "$PROJ/$f" && echo "$f" ;; esac
 done > "$spikes"
 
@@ -92,8 +91,7 @@ for yaps in 1 0; do
     echo "-out:\"$out\"" >> "$WORK/args.rsp"
     [ "$yaps" = 1 ] && echo "-define:AVATARBRIDGE_YAPS" >> "$WORK/args.rsp"
     if [ "$yaps" = 0 ]; then
-      awk 'FILENAME == ARGV[1] { skip[$0]; next } { k = $0; gsub(/["
-]/, "", k) } !(k in skip)'         "$spikes" "$WORK/args.rsp" > "$WORK/args-public.rsp" && mv "$WORK/args-public.rsp" "$WORK/args.rsp"
+      awk 'FILENAME == ARGV[1] { skip[$0]; next } { k = $0; gsub(/["\r]/, "", k) } !(k in skip)'         "$spikes" "$WORK/args.rsp" > "$WORK/args-public.rsp" && mv "$WORK/args-public.rsp" "$WORK/args.rsp"
     fi
     [ "$magica" = 1 ] && echo "-define:AVATARBRIDGE_MAGICA" >> "$WORK/args.rsp"
     [ "$dynbone" = 1 ] && echo "-define:AVATARBRIDGE_DYNBONE" >> "$WORK/args.rsp"
