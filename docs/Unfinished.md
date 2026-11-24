@@ -261,8 +261,8 @@ In game, each still to be seen:
    plugs need converting again. The editor never filters an imported shader, so in game it can only
    be worse than measured. Left: the bend tester for Joe's eye on the new walk, then in game.
 
-### 43. ChilloutVR's Unity 6 + GS2 nightly (build 26689032, Unity 6000.3.26f1). Joe, 2026-11-16: "RED ALERT". Stable planned 2026-11-23. OPEN, Joe to test on the nightly
-**Check:** on the nightly with a second player: no magenta, plug, tissue and squash work in a world and a mirror, toggles keep, a late joiner gets the state.
+### 43. ChilloutVR's Unity 6 + GS2 nightly (build 26689032, Unity 6000.3.26f1). Joe, 2026-11-16: "RED ALERT". Stable as 2026.3.0 on 2026-11-23. OPEN, Joe to test on stable
+**Check:** on stable with a second player: no magenta, plug, tissue and squash work in a world and a mirror, toggles keep, a late joiner gets the state.
 
 Uploads stay on Unity 2022.3 until a Unity 6 CCK ships; the risk is 2022-built avatars in the Unity 6
 client. Decompiled and diffed against the scripting beta (2026-10-29) and GS2 nightly 26554805: nothing
@@ -286,8 +286,21 @@ we ship breaks in the client code. Most changes came with GS2, not Unity 6.
   client measures height from the rest pose now); hair swing and a cloth toggled off and on (the
   client's MagicaCloth2 lacks `disableMode`); a material-swap toggle on a jellied part; Player.log has
   no `[ClipMaterialCrawler] ... disabled` line; the first-load hitch, re-measured.
-- Item 33 (the bundled scaler's default) done for 5.0.1. The first-load re-measure of item 42 still
-  waits on GS2 stable.
+- Item 33 (the bundled scaler's default) done for 5.0.1. The first-load re-measure of item 42 can run
+  now that GS2 is stable.
+- **2026.3.0 release notes** (<https://chilloutvr.net/blog/2026_3_0_release>), read 2026-11-24. Uploads
+  still use CCK 4 on Unity 2022.3.58f1; no Unity 6 CCK yet. New against these notes, none of it
+  measured:
+  - Gravity direction for secondary dynamics is networked and the client's Dynamic Bone gravity
+    setting is gone. We write gravity to `m_Force`, not `m_Gravity`: in a world that turns gravity,
+    a converted chain may keep falling world-down. Check hair in a sideways-gravity world.
+  - Network IK culling drops face tracking, then fingers, then rate-limits the pose for players the
+    client deems unimportant. Check a remote hand on the tissue and on cloth from a distance and
+    in a crowd.
+  - AFK and Swimming now arrive as movement flags, not guessed, so remote copies should read the
+    core `AFK` and `Swimming` parameters right. Nothing to change.
+  - Quick Menu developer tools gain a Force Multi-Pass toggle (VR): a way to test the YAPS shaders
+    in the fake multi-pass that non-SPI worlds use.
 
 ### 20. The atlas paints dots on viewers' screens. Joe, 2026-10-24. SHIPPED in 5.0.0, Joe to check in game
 **Check:** in a void on a current build there are no dots in the corner, and the spot is clean with no socket avatar in view.
