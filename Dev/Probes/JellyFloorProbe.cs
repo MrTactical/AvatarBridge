@@ -6,7 +6,10 @@
 // Logs per frame how far the deepest particle lies past the plane and the longest edge against
 // the spacing. The menu and animator are left alone, so the prefab's controllers are not written.
 //
-// -executeMethod AvatarBridge.Regression.JellyFloorProbe.Run [-jfScene <scene>] -jfPrefab <prefab> -jfOut <tsv>
+// -jfFilm <folder> also shoots the first run flat from the side, flat from above cut below the
+// head, and three-quarter front, one jpg per frame and view, the plane a see-through plate.
+//
+// -executeMethod AvatarBridge.Regression.JellyFloorProbe.Run [-jfScene <scene>] -jfPrefab <prefab> -jfOut <tsv> [-jfFilm <folder>]
 // Batch, never -nographics. No -quit: it exits itself, 0 on pass.
 
 #if AVATARBRIDGE_YAPS && AVATARBRIDGE_MAGICA
@@ -39,6 +42,9 @@ namespace AvatarBridge.Regression
         static float spacing, startAt, topAt, restStretch, below1, below2, stretch1, back1;
         static int regions;
         static Vector3[] rest;
+        static Camera[] cams;
+        static RenderTexture shot;
+        static Transform plate;
         static readonly List<string> rows = new List<string> { "frame\tphase\tplaneAt\tdeepestPast\tlongestEdge" };
 
         static JellyFloorProbe()
@@ -49,6 +55,7 @@ namespace AvatarBridge.Regression
         public static void Run()
         {
             SessionState.SetString(K + "out", Arg("-jfOut"));
+            SessionState.SetString(K + "film", Arg("-jfFilm"));
             if (Arg("-jfScene") == "") EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
             else EditorSceneManager.OpenScene(Arg("-jfScene"), OpenSceneMode.Single);
             foreach (var other in UnityEngine.Object.FindObjectsOfType<Animator>()) other.gameObject.SetActive(false);
@@ -129,7 +136,10 @@ namespace AvatarBridge.Regression
                 topAt = startAt + 0.03f + (at.Max(Depth) - at.Min(Depth)) / 3f;
                 restStretch = Longest(at);
                 if (control) ZeroColliders();
+                else if (SessionState.GetString(K + "film", "") != "") Frame(at);
             }
+            // Before the plane moves: drawn where the step that made this state saw it.
+            if (!control && cams != null) Shoot(f);
             if (f < Settle - 10) Put(Mathf.Min(Depth(floor.position), at.Min(Depth) - 0.5f));
             else if (f < Settle) Put(startAt);
             else if (f < Settle + Raise) Put(Mathf.Lerp(startAt, topAt, (f - Settle) / (float) Raise));
@@ -219,6 +229,59 @@ namespace AvatarBridge.Regression
                             }
                         }
             Debug.Log($"[JellyFloor] {(control ? "control " : "")}longest {where}");
+        }
+
+        static void Frame(Vector3[] at)
+        {
+            var root = floor.GetComponentInParent<CVRAvatar>().transform;
+            var c = at.Aggregate(Vector3.zero, (a, b) => a + b) / at.Length;
+            float reach = at.Max(p => Vector3.Distance(p, c));
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            UnityEngine.Object.DestroyImmediate(cube.GetComponent<Collider>());
+            plate = cube.transform;
+            plate.SetParent(floor, false);
+            var local = floor.InverseTransformPoint(c);
+            plate.localPosition = new Vector3(local.x, -0.002f, local.z);
+            plate.localScale = new Vector3(2.5f * reach, 0.004f, 2.5f * reach);
+            cube.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Sprites/Default")) { color = new Color(0.1f, 0.4f, 1f, 0.18f) };
+            shot = new RenderTexture(720, 720, 24) { antiAliasing = 4 };
+            // Flat side and top: the plate edge on, a line the skin flattens against. The top view's
+            // near plane sits just above the lattice, so the head and chin are cut away.
+            float far = 2f;
+            var views = new[] { (root.right, root.up, true, 0.01f), (root.up, root.forward, true, far - 0.6f * reach), ((root.forward + 0.8f * root.right + 0.3f * root.up).normalized, root.up, false, 0.01f) };
+            cams = views.Select(v =>
+            {
+                var cam = new GameObject("Jelly floor probe camera").AddComponent<Camera>();
+                cam.enabled = false;
+                cam.orthographic = v.Item3;
+                cam.orthographicSize = 0.8f * reach;
+                cam.fieldOfView = 30f;
+                cam.nearClipPlane = v.Item4;
+                cam.farClipPlane = 10f;
+                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.backgroundColor = new Color(0.78f, 0.8f, 0.84f);
+                cam.transform.position = c + v.Item1 * (v.Item3 ? far : reach * 1.3f / Mathf.Tan(15f * Mathf.Deg2Rad));
+                cam.transform.LookAt(c, v.Item2);
+                return cam;
+            }).ToArray();
+        }
+
+        static void Shoot(int f)
+        {
+            var dir = SessionState.GetString(K + "film", "");
+            Directory.CreateDirectory(dir);
+            var read = new Texture2D(shot.width, shot.height, TextureFormat.RGB24, false);
+            for (int i = 0; i < cams.Length; i++)
+            {
+                cams[i].targetTexture = shot;
+                cams[i].Render();
+                var prev = RenderTexture.active;
+                RenderTexture.active = shot;
+                read.ReadPixels(new Rect(0, 0, shot.width, shot.height), 0, 0);
+                RenderTexture.active = prev;
+                File.WriteAllBytes(Path.Combine(dir, $"{i}_{f:0000}.jpg"), read.EncodeToJPG(90));
+            }
+            UnityEngine.Object.DestroyImmediate(read);
         }
 
         // The longest edge between neighbours along any axis, in spacings.
