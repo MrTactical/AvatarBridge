@@ -1765,7 +1765,14 @@ A hanging part at a big size (a sack sized by a menu slider) rests on the floor 
 seated. Today nothing presses it there: plane colliders are skipped as pressers (`YapsJelly.cs` 1465),
 and the step shader's `_Floor` is a fixed plane in the trunk bone's frame (`YapsJelly.Shaders.cs`
 1638-1642) that only the dev prop builder sets. Idea: a plane in the avatar root's frame at foot height,
-fed per frame (a provider slot, so it follows the root, not the hips). Also asked: the part on a mesh
+fed per frame (a provider slot, so it follows the root, not the hips). Cheapest route, Joe 2026-11-25
+("can't we just say react to magica/dynamic bone colliders"): the tissue already takes up to 8 of the
+part's own sphere and capsule colliders as pressers (`Capsule`, `YapsJelly.cs` 1462), so a
+MagicaPlaneCollider or DynamicBonePlaneCollider could go in as a very large sphere whose top is the
+plane, with no shader change. Keep the plane in the cloth's list too, so the bones still stop at it
+(pressers are taken out of the lists today). Untested: the 8 cm reach check against a huge radius, and
+whether a 10 m sphere reads flat enough. The plane is wherever the avatar parents it, never the world's
+floor: no world geometry reaches a shader. Also asked: the part on a mesh
 other than the body. Every part is measured on one body renderer picked on the first two
 (`YapsSquash.cs` 1028-1043), so a part on its own mesh is refused.
 
