@@ -617,6 +617,16 @@ matter only where a pair stays on the squash alone):
 Real work left, most urgent first: what somebody hits while wearing an avatar, then what waits on a
 tester, then the unmeasured leftovers.
 
+### 60. `#Jelly/<part>/Squeeze` likely reads 0 on every avatar part. Found reading the code, 2026-11-25. OPEN, unmeasured
+**Check:** in the Avatar Tester's Play mode, press a part with the test hand and watch the Squeeze bar; then in game.
+
+A part its cloth carries gets `give = CarriedGive = 0` (`YapsJelly.cs` 58 and 504), so `_Give` is 0.
+Every term of the step's `load` (other players' hands, grips, own hands) is scaled by
+`min(_Give, 0.95)` (`YapsJelly.Shaders.cs` 1382-1418), and Squeeze is `load / (load + 0.1 zc scale)`
+(1423). Every avatar part is cloth-carried, so Squeeze should never leave 0, while the README
+promises it for blend shapes and sounds. Grab and Slap do not read the load. Fix idea: compute the
+load from the dent depth, not from what moves the whole. Measure first.
+
 ### 16. Tester reports on the rc builds, 2026-10-22. SHIPPED in 5.0.0; one report waits on the tester
 
 Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.md`.
