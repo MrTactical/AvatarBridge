@@ -617,8 +617,17 @@ matter only where a pair stays on the squash alone):
 Real work left, most urgent first: what somebody hits while wearing an avatar, then what waits on a
 tester, then the unmeasured leftovers.
 
-### 60. `#Jelly/<part>/Squeeze` likely reads 0 on every avatar part. Found reading the code, 2026-11-25. OPEN, unmeasured
+### 60. `#Jelly/<part>/Squeeze` reads 0 on every avatar part. Found reading the code, 2026-11-25. CONFIRMED in the editor, OPEN
 **Check:** in the Avatar Tester's Play mode, press a part with the test hand and watch the Squeeze bar; then in game.
+
+Measured 2026-11-25, `Dev/Probes/JellyTellProbe.cs -jtBuild` on a fresh build of Kar's prefab (breasts
+and butt, built by 5.0.1 code), the tester's test hand in the breasts' front for 180 frames: Squeeze
+0.0000 as built (`_Give` 0), 0.846 with the same hand on copies at the old `_Give` 0.525. The probe
+reads the points strip where the client's parser does.
+
+Seen on the way: Zombunny 2's tissue, built by an rc on 2026-11-16, loads its four step materials on
+Unity's error shader in the dev project now, so it never steps. Whether a 5.0.0 build keeps its step
+shader after a 5.0.1 update is unchecked.
 
 A part its cloth carries gets `give = CarriedGive = 0` (`YapsJelly.cs` 58 and 504), so `_Give` is 0.
 Every term of the step's `load` (other players' hands, grips, own hands) is scaled by
