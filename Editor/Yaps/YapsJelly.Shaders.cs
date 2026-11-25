@@ -666,8 +666,29 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 a = _JellyAnchor[s]._m03_m13_m23;
                 b = _JellyAnchor[s + 1]._m03_m13_m23;
                 r = (c < 4 ? _JellyOwn0[c & 3] : c < 8 ? _JellyOwn1[c & 3] : c < 12 ? _JellyCol0[c & 3] : _JellyCol1[c & 3]) * scale;
+                // A plane collider, radius -1, its ends a point on it and one out along its normal: a
+                // sphere of 50 m radius with its top on the plane under the region's anchor, so every
+                // capsule test takes it. 30 cm off that point its surface sags 0.9 mm below the plane.
+                [branch] if (r < 0)
+                {
+                    float3 n = normalize(b - a), o = _JellyAnchor[min(Region, 3)]._m03_m13_m23;
+                    r = 50;
+                    a = b = o - n * (dot(o - a, n) + r);
+                }
                 // The limb a region rides lies through it and moves with it, so it presses only the other.
                 if (c + 1 == (uint) round(Region == 0 ? _JellyCarrier.x : _JellyCarrier.y)) r = 0;
+            }
+
+            bool Flat(uint c) { return c >= 8 && (c < 12 ? _JellyCol0[c & 3] : _JellyCol1[c & 3]) < 0; }
+
+            // A plane collider into the skin's box, from 41's bits. It lets go as a hand does: held,
+            // a floor dented the draw alone and the particles sank through it. Never in the box at
+            // rest, as one touching the skin as built is not taken.
+            bool Floored(uint into)
+            {
+                [unroll] for (uint c = 8; c < 16; c++)
+                    if (((into >> c) & 1u) != 0 && Flat(c)) return true;
+                return false;
             }
 
             // How much of the pair's plane holds, from the turn between the two frames, the partner's
@@ -1621,7 +1642,15 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             Own(c, scale, a, b, r);
                             float hold;
                             if (c == 2 || c == 6) Held(a, b, r, r, false, a, b, m, scale, hold);
+                            float3 free = next;
                             next = Out(next, a, b, r, centre);
+                            // A plane grips what it presses where it lay across it. Frictionless, a face
+                            // pressed a third in slid apart along it, edges 2.9 spacings and spreading.
+                            [branch] if (Flat(c) && any(next != free))
+                            {
+                                float3 n = normalize(next - a), now = predicted ? _MainTex.Load(Texel(p, 1)).xyz : s.xyz;
+                                next = now + n * dot(next - now, n);
+                            }
                         }
                     }
                 }
@@ -2136,7 +2165,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                     // the wearer's own hand into the box, a probe, a grip or the pair pressing together
                     // last step lets it go at once. An arm or thigh lies in the box at rest, so those
                     // dent the skin through the draw alone while it holds.
-                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || ((uint) _MainTex.Load(int3(41, side, 0)).y & 0x44u) != 0 || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
+                    uint into = (uint) _MainTex.Load(int3(41, side, 0)).y;
+                    bool touched = _MainTex.Load(int3(1, side, 0)).w > 0.5 || Pushed(side) || (into & 0x44u) != 0 || Floored(into) || _MainTex.Load(int3(92, side, 0)).x > 0.5 || Meeting(m, scale, side);
                     // Touched while held, it lets go over Waking, eased at both ends, the share still
                     // held home kept negative: let go at once, an arm already inside threw the skin
                     // 80 mm in a frame, and a linear let go left a 26 mm step where it ended.

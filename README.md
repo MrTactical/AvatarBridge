@@ -1348,6 +1348,9 @@ so it comes first here.
 - **Slaps.** A slap ripples out from where it lands.
 - **Pairs press.** Left and right press against each other.
 - **Your own limbs press it too**, and so do the avatar's own cloth colliders.
+- **A floor.** A plane collider in the part's own cloth (MagicaCloth or Dynamic Bone) flattens
+  the skin pressed past it, and the skin holds where it touched. The cloth still stops the bones
+  at it. Not yet confirmed in game.
 
 Neither avatar needs anything set up for another player's hands to work.
 
@@ -1355,7 +1358,7 @@ Neither avatar needs anything set up for another player's hands to work.
 
 - **It does not move the part.** The avatar's physics do the moving and the tissue only the
   touching. Another player's hand pushes the bones through the cloth, as on the source avatar.
-- Walls, tables and dropped props do not press it.
+- Walls, tables, the world's floor and dropped props do not press it. Only a plane on the avatar does.
 - Past 4 m from a viewer, or well behind where the viewer looks, it holds its shape.
 - At flight speed it eases to rest from 5 m/s and holds its shape past 7 m/s.
 - Left alone, it settles onto its bones and holds, so walking and running never stretch it. It

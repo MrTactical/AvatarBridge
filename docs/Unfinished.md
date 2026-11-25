@@ -1794,21 +1794,22 @@ are the nearest measured thing; see items 25 and 29 in the archive.
 
 Small features and leftovers, after 5.0.0.
 
-### 61. A floor for avatar tissue: a part resting on the ground flattens and bulges. Asked for 2026-11-25, NOT STARTED, Joe's call
-A hanging part at a big size (a sack sized by a menu slider) rests on the floor standing, crouched or
-seated. Today nothing presses it there: plane colliders are skipped as pressers (`YapsJelly.cs` 1465),
-and the step shader's `_Floor` is a fixed plane in the trunk bone's frame (`YapsJelly.Shaders.cs`
-1638-1642) that only the dev prop builder sets. Idea: a plane in the avatar root's frame at foot height,
-fed per frame (a provider slot, so it follows the root, not the hips). Cheapest route, Joe 2026-11-25
-("can't we just say react to magica/dynamic bone colliders"): the tissue already takes up to 8 of the
-part's own sphere and capsule colliders as pressers (`Capsule`, `YapsJelly.cs` 1462), so a
-MagicaPlaneCollider or DynamicBonePlaneCollider could go in as a very large sphere whose top is the
-plane, with no shader change. Keep the plane in the cloth's list too, so the bones still stop at it
-(pressers are taken out of the lists today). Untested: the 8 cm reach check against a huge radius, and
-whether a 10 m sphere reads flat enough. The plane is wherever the avatar parents it, never the world's
-floor: no world geometry reaches a shader. Also asked: the part on a mesh
-other than the body. Every part is measured on one body renderer picked on the first two
-(`YapsSquash.cs` 1028-1043), so a part on its own mesh is refused.
+### 61. A floor for avatar tissue: a part resting on the ground flattens and bulges. Plane presser BUILT on dev 2026-11-25, in game owed; own mesh NOT STARTED
+Asked for 2026-11-25: a hanging part at a big size (a sack sized by a menu slider) rests on the floor
+standing, crouched or seated. Built by Joe's cheap route ("can't we just say react to magica/dynamic
+bone colliders"): a MagicaPlaneCollider or DynamicBonePlaneCollider in the part's cloth is taken as a
+presser (`PlaneOf`, `YapsJelly.cs`), radius -1, and stays in the cloth's lists so the bones still stop
+at it. The step shader makes it a 50 m sphere under the region's anchor (`Own`), counts it as a touch
+so the held tissue lets go (`Floored`), and grips what it presses: a pressed particle keeps where it lay
+across the plane. The plane is wherever the avatar parents it, never the world's floor.
+- Measured (`Dev/Probes/JellyFloorProbe.cs`, Kar's breasts, plane pressed a third in from the front):
+  1.2 mm past the plane at most (bar 3), control with no collider 136.5 mm, back within 0.1 mm (bar 5),
+  longest edge 1.68 spacings (bar raised to 2.0 by Joe 2026-11-25). Frictionless it was 2.90 and
+  still spreading through the hold; with the grip it builds only while the plane moves in.
+- Owed: in game. DynamicBone's plane is untested (only MagicaCloth ran); its Inside bound is read as
+  the flipped normal. A plane counts toward the eight pressers.
+- NOT STARTED: the part on a mesh other than the body. Every part is measured on one body renderer
+  picked on the first two (`YapsSquash.cs` 1028-1043), so a part on its own mesh is refused.
 
 ### Live tissue ideas from a VRChat skin-touch module (item 30's unbuilt points). Approved as ideas 2026-11-06, NOT STARTED
 Read for ideas only (DocMe Skin Touch 1.1.0: its licence bars its code, or a rewrite of it, in ours).

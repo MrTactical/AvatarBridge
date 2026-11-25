@@ -197,12 +197,13 @@ namespace AvatarBridge
                 var carrier = worn != null ? worn.GetComponentsInChildren<CVRMaterialDataProvider>(true).FirstOrDefault(q => q.transforms != null && q.transforms.Length > 0)?.transforms[0] : null;
                 var part = carrier != null && !carrier.IsChildOf(worn) ? PartFrom(carrier, skeleton) : null;
                 // Each collider back into the cloth it came out of, as its ends' marks list; a build
-                // from before the marks lists none, and it goes into every cloth of its kind.
+                // from before the marks lists none, and it goes into every cloth of its kind. A plane
+                // never left its lists.
                 foreach (var held in pair.GroupBy(t => t.parent))
                 {
                     var listed = held.SelectMany(t => t.GetComponentsInChildren<Transform>(true)).Where(t => t.name.StartsWith(ListedMark))
                         .Select(t => ClothAt(avatar, t.name.Substring(ListedMark.Length))).Where(b => b != null).ToList();
-                    PairCollide(avatar, part ?? (pair.Key != null ? PartOf(pair.Key) : Breast), held.Key.GetComponents<Component>().Where(IsCollider),
+                    PairCollide(avatar, part ?? (pair.Key != null ? PartOf(pair.Key) : Breast), held.Key.GetComponents<Component>().Where(c => IsCollider(c) && !PlaneOf(c, out _, out _)),
                         with: true, only: listed.Count > 0 ? listed : null);
                 }
             }
@@ -809,12 +810,18 @@ namespace AvatarBridge
             var touching = new List<string>();
             foreach (var c in PairColliders(root, part).OrderBy(c => (c.transform.position - chest.position).sqrMagnitude))
             {
-                if (!Capsule(c, out var ca, out var cb, out float cr)) continue;
-                if (pairSkin.Any(p => Seg(p, ca, cb) < cr + spacing)) touching.Add(c.name);
+                bool flat = PlaneOf(c, out var ca, out var normal);
+                // A plane's ends are a point on it and one 10 cm out along its normal, its radius -1.
+                var cb = ca + 0.1f * normal;
+                float cr = -1f;
+                if (!flat && !Capsule(c, out ca, out cb, out cr)) continue;
+                if (pairSkin.Any(p => flat ? Vector3.Dot(p - ca, normal) < spacing : Seg(p, ca, cb) < cr + spacing)) touching.Add(c.name);
                 // ponytail: eight, the nearest the chest first; more need anchors past the 32 handed.
                 else if (pressing.Count < (twitching ? 7 : 8)) pressing.Add((c, ca, cb, cr));
             }
-            var unlisted = PairCollide(root, part, pressing.Select(p => p.c), with: false);
+            // A plane stays in the cloth too: the floor stops the bones and the tissue flattens what
+            // still reaches past it. Out of the lists, the whole part would sink through.
+            var unlisted = PairCollide(root, part, pressing.Where(p => p.r > 0f).Select(p => p.c), with: false);
             Lap("Collide");
             var colRadii = new float[8];
             var colEnds = new List<Transform>();
@@ -840,7 +847,7 @@ namespace AvatarBridge
                 }
                 colRadii[i] = pressing[i].r;
             }
-            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.c.name))})" : "none of its colliders pressing") +
+            string collided = (pressing.Count > 0 ? $"{pressing.Count} of its colliders pressing instead of moving the bones ({string.Join(", ", pressing.Select(p => p.r > 0f ? p.c.name : p.c.name + ", a plane, still in the cloth"))})" : "none of its colliders pressing") +
                               (touching.Count > 0 ? $", {touching.Count} left in the cloth as touching the breasts at rest ({string.Join(", ", touching)})" : "");
             var anchors = made.GetComponentsInChildren<CVRMaterialDataProvider>(true).First(q => q.transforms != null && q.transforms.Length > 0);
             Undo.RecordObject(anchors, "Put the breasts on the jelly");
@@ -1388,7 +1395,8 @@ namespace AvatarBridge
             return roots;
         }
 
-        static bool IsCollider(Component c) => c != null && (c.GetType().Name == "MagicaCapsuleCollider" || c.GetType().Name == "MagicaSphereCollider" || c.GetType().Name == "DynamicBoneCollider");
+        static bool IsCollider(Component c) => c != null && (c.GetType().Name == "MagicaCapsuleCollider" || c.GetType().Name == "MagicaSphereCollider" || c.GetType().Name == "DynamicBoneCollider"
+                                                            || c.GetType().Name == "MagicaPlaneCollider" || c.GetType().Name == "DynamicBonePlaneCollider");
 
         // The colliders the pair's cloth and dynamic bones collide with, read off their lists.
         static List<Component> PairColliders(Transform root, Regex part)
@@ -1461,8 +1469,34 @@ namespace AvatarBridge
             so.ApplyModifiedProperties();
         }
 
+        // A plane collider as a point on it and the way out of it, as each solver reads it: MagicaCloth's
+        // up, turned over by a negative y scale; DynamicBone's axis, an inside bound keeping to the other side.
+        static bool PlaneOf(Component c, out Vector3 at, out Vector3 normal)
+        {
+            at = normal = Vector3.zero;
+#if AVATARBRIDGE_MAGICA
+            if (c is MagicaCloth2.MagicaPlaneCollider plane)
+            {
+                at = plane.transform.TransformPoint(plane.center);
+                normal = plane.transform.up * Mathf.Sign(plane.transform.lossyScale.y);
+                return true;
+            }
+#endif
+#if AVATARBRIDGE_DYNBONE
+            if (c is DynamicBonePlaneCollider db)
+            {
+                var t = db.transform;
+                normal = db.m_Direction == DynamicBoneColliderBase.Direction.X ? t.right : db.m_Direction == DynamicBoneColliderBase.Direction.Y ? t.up : t.forward;
+                if (db.m_Bound == DynamicBoneColliderBase.Bound.Inside) normal = -normal;
+                at = t.TransformPoint(db.m_Center);
+                return true;
+            }
+#endif
+            return false;
+        }
+
         // A collider as a capsule in the world, its ends and radius: MagicaCloth's spheres and
-        // capsules, DynamicBone's outside ones. Planes and inside bounds are not a shape to press with.
+        // capsules, DynamicBone's outside ones. Inside bounds keep in, which is no press.
         static bool Capsule(Component c, out Vector3 a, out Vector3 b, out float r)
         {
             a = b = Vector3.zero;
