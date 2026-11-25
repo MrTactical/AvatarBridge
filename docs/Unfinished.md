@@ -631,6 +631,20 @@ The probe's old-give phase first read 0.91 with no hand: its step material copie
 data providers' lists, so the anchors froze and the wearer's own hands read as in reach. The probe
 now moves the providers onto the copies.
 
+### 62. The upload preflight asks for Streaming Mipmaps on particle textures, which the CCK refuses. Found 2026-11-25, OPEN
+**Check:** an avatar with a particle system: the preflight names none of its textures, and the CCK's own validation passes.
+
+`UploadPreflight.cs` 40 refuses every texture with mipmaps and no Streaming Mipmaps. The CCK's
+`Validation/Steps/TextureValidationStep.cs` (the CCK in the dev project) asks for streaming only
+on textures a `MeshRenderer` or `SkinnedMeshRenderer` uses (57, 95-113); one used by anything else,
+a particle or trail renderer, that streams goes into `_requireNonStreaming` (114-127). So the
+preflight warned on eight particle textures of an avatar the CCK passes, and following its advice
+would fail the upload. Reported by another session building a tissue avatar with 5.0.1. Fix: walk
+the renderers as the step does, streaming for mesh textures, not streaming for the rest. The file's
+header says it mirrors `CCK_BuildManagerWindow.ContentValidation`, which this CCK has replaced with
+the validation steps, so check its other rules against them in the same pass: the step also wants
+streaming priority 0 and non-readable textures on avatars (`Validator.cs` 36, 60 against 82).
+
 Measured 2026-11-25, `Dev/Probes/JellyTellProbe.cs -jtBuild` on a fresh build of Kar's prefab (breasts
 and butt, built by 5.0.1 code), the tester's test hand in the breasts' front for 180 frames: Squeeze
 0.0000 as built (`_Give` 0), 0.846 with the same hand on copies at the old `_Give` 0.525. The probe
