@@ -1383,7 +1383,9 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         Hand(a, b, pb, fa, fb, rf);
                         float3 leaned = Lean(rest, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(rest, fa, fb, rf, radius, c * rf / a.w) : 0);
                         pushed += leaned;
-                        load += length(leaned);
+                        // The load as if all of the press moved it: a part its cloth carries takes a give
+                        // of 0, and its Squeeze read 0 under any hand.
+                        load += length(Lean(rest, a.xyz, pb, a.w, radius, 1) + (rf > 0 ? Lean(rest, fa, fb, rf, radius, rf / a.w) : 0));
                     }
                     // Each grip pulls the whole by the share of a press it takes, the skin it holds
                     // following the hand the rest of the way.
@@ -1392,8 +1394,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float3 gat;
                         float graw;
                         float4 d = Pulled(gi, m, side, gat, graw);
-                        float3 pull = mul((float3x3) m, d.xyz) * (d.w * min(_Give, 0.95));
-                        pushed += pull;
+                        float3 pull = mul((float3x3) m, d.xyz) * d.w;
+                        pushed += pull * min(_Give, 0.95);
                         load += length(pull);
                     }
                 }
@@ -1413,8 +1415,8 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float hold;
                             Held(a, b, r, r, false, a, b, m, scale, hold);
                             Unheld(a, b, r, false, hold, m, scale);
-                            float3 leaned = Lean(rest, a, b, r, radius, c);
-                            pushed += leaned;
+                            float3 leaned = Lean(rest, a, b, r, radius, 1);
+                            pushed += leaned * c;
                             load += length(leaned);
                         }
                     }
