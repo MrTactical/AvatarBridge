@@ -631,7 +631,10 @@ The probe's old-give phase first read 0.91 with no hand: its step material copie
 data providers' lists, so the anchors froze and the wearer's own hands read as in reach. The probe
 now moves the providers onto the copies.
 
-### 62. The upload preflight asks for Streaming Mipmaps on particle textures, which the CCK refuses. Found 2026-11-25, OPEN
+### 62. The upload preflight asks for Streaming Mipmaps on particle textures, which the CCK refuses. Found 2026-11-25, FIXED on dev
+
+Fixed 2026-11-25: `UploadPreflight` now runs CCK 4.0.1's avatar error rules the way its validation steps gather them. Streaming is asked only of textures a mesh renderer draws, size is the texture's real size, only the shader's own texture slots count, and built-in, package and font textures are skipped. New rules: priority 0, Read/Write off, sounds over 1 s not Decompress On Load, legacy blend shape normals, prewarm over 100 s, the error shader. Sounds and materials now come from every component's references, not a hand list. `Dev/Probes/PreflightCckProbe.cs` on Kar's prefab plus two particle systems and a cube: both refuse the cube's non-streaming texture, neither names the particles', and every other rule agrees (both pass). PASS. Untested: the other new rules seen refusing, since Kar trips none of them.
+
 **Check:** an avatar with a particle system: the preflight names none of its textures, and the CCK's own validation passes.
 
 `UploadPreflight.cs` 40 refuses every texture with mipmaps and no Streaming Mipmaps. The CCK's
