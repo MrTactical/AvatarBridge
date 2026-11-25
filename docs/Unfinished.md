@@ -1760,6 +1760,15 @@ are the nearest measured thing; see items 25 and 29 in the archive.
 
 Small features and leftovers, after 5.0.0.
 
+### 61. A floor for avatar tissue: a part resting on the ground flattens and bulges. Asked for 2026-11-25, NOT STARTED, Joe's call
+A hanging part at a big size (a sack sized by a menu slider) rests on the floor standing, crouched or
+seated. Today nothing presses it there: plane colliders are skipped as pressers (`YapsJelly.cs` 1465),
+and the step shader's `_Floor` is a fixed plane in the trunk bone's frame (`YapsJelly.Shaders.cs`
+1638-1642) that only the dev prop builder sets. Idea: a plane in the avatar root's frame at foot height,
+fed per frame (a provider slot, so it follows the root, not the hips). Also asked: the part on a mesh
+other than the body. Every part is measured on one body renderer picked on the first two
+(`YapsSquash.cs` 1028-1043), so a part on its own mesh is refused.
+
 ### Live tissue ideas from a VRChat skin-touch module (item 30's unbuilt points). Approved as ideas 2026-11-06, NOT STARTED
 Read for ideas only (DocMe Skin Touch 1.1.0: its licence bars its code, or a rewrite of it, in ours).
 Numbers are item 30's own; its record is in `archive/Closed-2026-11.md`.
