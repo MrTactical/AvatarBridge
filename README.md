@@ -2946,20 +2946,29 @@ Expected, and not caused by converting. See
 
 #### The CCK shows no Upload button, or the uploaded avatar is missing something
 
-The CCK hides its Upload button while any of five rules fails. The report's **Upload** entries and
-the Toolkit's **Check before upload** card run the same rules first. Each refused rule starts with
-*The CCK will not upload this:*, so search the report for that. A clean result reads *Nothing the
-CCK's upload check refuses*.
+The CCK hides its Upload button while any of its error rules fails. The report's **Upload** entries
+and the Toolkit's **Check before upload** card run the same rules first, against CCK 4. Each refused
+rule starts with *The CCK will not upload this:*, so search the report for that. A clean result reads
+*Nothing the CCK's upload check refuses*.
 
 | The report says | Fix |
 |---|---|
 | an object has a **missing script** | Install the package it came from, or use the panel's Remove Missing Scripts once you know what it did |
 | **no Animator** on the avatar's root | Add one with the avatar's rig |
-| a texture is set to a max size **above 8192** | Max Size 8192 or lower in its import settings |
-| a texture has **mipmaps without Streaming Mipmaps** | Tick Streaming Mipmaps in its import settings |
+| a material draws **with Unity's error shader** | Install its shader, or pick another |
+| a texture is **larger than 8192** | Max Size 8192 or lower in its import settings |
+| a texture on a mesh does **not stream mipmaps** | Tick Streaming Mipmaps in its import settings |
+| a texture streams **at a priority other than 0** | Streaming Priority 0 in its import settings |
+| a texture is **readable from scripts** | Untick Read/Write in its import settings |
 | a sound does **not load in the background** | Tick Load In Background in its import settings |
+| a sound longer than a second **decompresses on load** | Load Type Compressed In Memory in its import settings |
+| a model calculates **blend shape normals** without the legacy option | Tick Legacy Blend Shape Normals in the model's import settings |
+| a particle system **prewarms** a lifetime over 100 seconds | Untick Prewarm, or Start Lifetime 100 or less |
 
-The panel shows a **Fix Import Settings** button beside each of the last three.
+The panel shows an **Auto Fix** button beside every one except the Animator and the error shader;
+for a missing script it removes the script. Particle and trail
+textures are the other way round from a mesh's: the CCK asks them not to stream, as a warning, so
+the check never asks you to tick it on them.
 
 Two more entries cover things the panel never mentions. The upload saves the avatar as a prefab, and
 a prefab keeps only saved assets and parts of the avatar:
