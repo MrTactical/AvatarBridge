@@ -617,8 +617,19 @@ matter only where a pair stays on the squash alone):
 Real work left, most urgent first: what somebody hits while wearing an avatar, then what waits on a
 tester, then the unmeasured leftovers.
 
-### 60. `#Jelly/<part>/Squeeze` reads 0 on every avatar part. Found reading the code, 2026-11-25. CONFIRMED in the editor, OPEN
+### 60. `#Jelly/<part>/Squeeze` reads 0 on every avatar part. Found reading the code, 2026-11-25. FIXED on dev, in game owed
 **Check:** in the Avatar Tester's Play mode, press a part with the test hand and watch the Squeeze bar; then in game.
+
+**Fixed 2026-11-25.** The step's `load` now takes each press, grip and own hand at a give of 1,
+while what moves the whole keeps `min(_Give, 0.95)`, so a carried part still never moves as a whole.
+Existing tissue keeps the old step until rebuilt. Measured with the same probe on a fresh build,
+bars set before the run: at rest 0 on both parts (bar 0.01); the test hand in the breasts 0.854
+(bar 0.3), the butt 0 (bar 0.05); let go, 0 within 7 frames (bar 0.05). At the old give 0.525 the
+same hand reads 0.855, so the reading no longer depends on the give.
+
+The probe's old-give phase first read 0.91 with no hand: its step material copies were not in the
+data providers' lists, so the anchors froze and the wearer's own hands read as in reach. The probe
+now moves the providers onto the copies.
 
 Measured 2026-11-25, `Dev/Probes/JellyTellProbe.cs -jtBuild` on a fresh build of Kar's prefab (breasts
 and butt, built by 5.0.1 code), the tester's test hand in the breasts' front for 180 frames: Squeeze

@@ -30,9 +30,9 @@ namespace AvatarBridge.Regression
         const int PressA = 120, ReleaseA = 300, OldGive = 360, PressB = 420, ReleaseB = 600, End = 660;
         static int frame = -1;
         static double startedAt;
-        static List<(string part, RenderTexture strip)> parts;
+        static List<(string part, RenderTexture strip, RenderTexture state)> parts;
         static Transform hold;
-        static readonly List<string> rows = new List<string> { "frame\tphase\tpart\tsqueeze\tgrab\tslap\tgive" };
+        static readonly List<string> rows = new List<string> { "frame\tphase\tpart\tsqueeze\tgrab\tslap\tgive\tsides" };
 
         static JellyTellProbe()
         {
@@ -76,7 +76,8 @@ namespace AvatarBridge.Regression
                 if (s == null) { Quit("no active YapsSquashSettings in the scene", 2); return; }
                 var root = YapsSquash.RootOf(s);
                 parts = root.GetComponentsInChildren<Transform>(true).Where(t => t.name.StartsWith(YapsJelly.Worn + " "))
-                    .Select(t => (t.name.Substring(YapsJelly.Worn.Length + 1), t.GetComponentInChildren<CVRTexturePropertyParser>(true)?.texture as RenderTexture))
+                    .Select(t => (t.name.Substring(YapsJelly.Worn.Length + 1), t.GetComponentInChildren<CVRTexturePropertyParser>(true)?.texture as RenderTexture,
+                        t.GetComponentsInChildren<CVRBlitter>(true).Select(b => b.originTexture as RenderTexture).FirstOrDefault(r => r != null && r.name == "Jelly_State")))
                     .Where(p => p.Item2 != null).ToList();
                 if (parts.Count == 0) { Quit("no live tissue with a points strip on " + root.name, 2); return; }
                 YapsSquashPreview.Start(s);
@@ -87,7 +88,7 @@ namespace AvatarBridge.Regression
                     Debug.Log($"[JellyTell] blitter {b.name}: enabled {b.enabled}, active {b.gameObject.activeInHierarchy}, material {(b.blitMaterial != null ? b.blitMaterial.name + " " + b.blitMaterial.shader.name + (b.blitMaterial.shader.isSupported ? "" : " UNSUPPORTED") : "none")}, origin {(b.originTexture != null ? b.originTexture.name : "none")}");
                 foreach (var c in root.GetComponentsInChildren<CVRRenderController>(true))
                     Debug.Log($"[JellyTell] controller {c.name}: enabled {c.enabled}, active {c.gameObject.activeInHierarchy}, components {c.cvrRenderComponents.Count}");
-                foreach (var (part, strip) in parts) Debug.Log($"[JellyTell] strip {part}: {strip.name} {strip.width}x{strip.height} {strip.format} created {strip.IsCreated()}");
+                foreach (var (part, strip, _) in parts) Debug.Log($"[JellyTell] strip {part}: {strip.name} {strip.width}x{strip.height} {strip.format} created {strip.IsCreated()}");
                 frame = 0;
             }
             if (EditorApplication.timeSinceStartup - startedAt > 300) { Quit("timed out", 3); return; }
@@ -99,7 +100,7 @@ namespace AvatarBridge.Regression
             if (frame == OldGive) SetGive(0.525f);
 
             string phase = frame < PressA ? "rest" : frame < ReleaseA ? "pressBuilt" : frame < PressB ? "release" : frame < ReleaseB ? "pressOldGive" : "release";
-            foreach (var (part, strip) in parts)
+            foreach (var (part, strip, state) in parts)
             {
                 var prev = RenderTexture.active;
                 RenderTexture.active = strip;
@@ -108,9 +109,32 @@ namespace AvatarBridge.Regression
                 RenderTexture.active = prev;
                 var px = read.GetPixels();
                 UnityEngine.Object.DestroyImmediate(read);
-                rows.Add($"{frame}\t{phase}\t{part}\t{px[3].r:0.####}\t{px[4].r:0.####}\t{px[5].r:0.####}\t{Give():0.###}");
+                rows.Add($"{frame}\t{phase}\t{part}\t{px[3].r:0.####}\t{px[4].r:0.####}\t{px[5].r:0.####}\t{Give():0.###}\t{Sides(state)}");
             }
             if (++frame >= End) Quit(null, 0);
+        }
+
+        // Each region's row that ran: 86's strain and load, the own-capsule bits in 41, whether the
+        // hand slots are live (1.w) and any grip held (112 to 119).
+        static string Sides(RenderTexture state)
+        {
+            if (state == null) return "no state";
+            var prev = RenderTexture.active;
+            RenderTexture.active = state;
+            var read = new Texture2D(state.width, state.height, TextureFormat.RGBAFloat, false);
+            read.ReadPixels(new Rect(0, 0, state.width, state.height), 0, 0);
+            RenderTexture.active = prev;
+            var px = read.GetPixels();
+            UnityEngine.Object.DestroyImmediate(read);
+            var said = new List<string>();
+            for (int y = 0; y < state.height; y++)
+            {
+                Color At(int x) => px[y * state.width + x];
+                if (!(At(86).a > 0)) continue;
+                bool grip = Enumerable.Range(112, 8).Any(x => At(x).a > 0);
+                said.Add($"{y}:{At(86).r:0.###}/{At(86).g:0.####} own{(int) At(41).r} h{At(1).a:0.#} g{(grip ? 1 : 0)}");
+            }
+            return string.Join(" ", said);
         }
 
         static float Give() => UnityEngine.Object.FindObjectsOfType<CVRBlitter>(true).Select(b => b.blitMaterial)
@@ -132,15 +156,29 @@ namespace AvatarBridge.Regression
 
         static void SetGive(float give)
         {
-            int n = 0;
+            var copies = new Dictionary<Material, Material>();
             foreach (var b in UnityEngine.Object.FindObjectsOfType<CVRBlitter>(true))
             {
                 if (b.blitMaterial == null || !b.blitMaterial.HasProperty("_Give")) continue;
-                b.blitMaterial = new Material(b.blitMaterial) { hideFlags = HideFlags.DontSave };
-                b.blitMaterial.SetFloat("_Give", give);
-                n++;
+                if (!copies.TryGetValue(b.blitMaterial, out var copy))
+                {
+                    copy = copies[b.blitMaterial] = new Material(b.blitMaterial) { hideFlags = HideFlags.DontSave };
+                    copy.SetFloat("_Give", give);
+                }
+                b.blitMaterial = copy;
             }
-            Debug.Log($"[JellyTell] _Give {give} on {n} step material copies");
+            // The providers feed the anchors and capsules into the materials they list: left on the
+            // originals, a copy froze them, and the wearer's own hands read as pressing.
+            int fed = 0;
+            foreach (var p in UnityEngine.Object.FindObjectsOfType<CVRMaterialDataProvider>(true))
+            {
+                int was = fed;
+                for (int i = 0; p.materials != null && i < p.materials.Length; i++)
+                    if (p.materials[i] != null && copies.TryGetValue(p.materials[i], out var copy)) { p.materials[i] = copy; fed++; }
+                // Off and on, in case it took its list once when enabled.
+                if (fed > was && p.enabled) { p.enabled = false; p.enabled = true; }
+            }
+            Debug.Log($"[JellyTell] _Give {give} on {copies.Count} step material copies, {fed} provider slots moved onto them");
         }
 
         static void Quit(string why, int code)
