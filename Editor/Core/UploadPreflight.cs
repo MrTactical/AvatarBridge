@@ -1,10 +1,11 @@
-// What the CCK upload panel will refuse. It hides Upload while any of five rules fails, three
-// of them import settings no conversion touches. Each rule gathers what
-// CCK_BuildManagerWindow.ContentValidation gathers. Plus one the panel never checks: the
-// upload saves a prefab, so references to unsaved non-avatar objects arrive as nothing.
+// What the CCK upload panel will refuse. CCK 4 hides Upload while any of its error-level
+// validation rules fails; these are its avatar rules, each gathering what its pipeline gathers.
+// Plus one the panel never checks: the upload saves a prefab, so references to unsaved
+// non-avatar objects arrive as nothing.
 #if CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using ABI.CCK.Components;
 using UnityEditor;
 using UnityEngine;
@@ -14,7 +15,7 @@ namespace AvatarBridge
     public static class UploadPreflight
     {
         const string Category = "Upload";
-        const string FixInPanel = "The CCK's Control Panel shows a Fix Import Settings button beside it.";
+        const string FixInPanel = "The CCK's Control Panel shows an Auto Fix button beside it.";
 
         public static void Run(BridgeReport report, CVRAvatar avatar)
         {
@@ -23,29 +24,76 @@ namespace AvatarBridge
             int before = report.Entries.Count;
 
             var missing = root.GetComponentsInChildren<Transform>(true)
-                .Where(t => GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject) > 0)
+                .Where(t => Counted(t) && GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject) > 0)
                 .Select(t => t.name).ToList();
             if (missing.Count > 0)
                 report.Warning(Category, $"The CCK will not upload this: {BridgeElements.Count(missing.Count, "object has", "objects have")} a missing script",
                     $"{AvatarSurvey.Few(missing)}. A package the avatar uses is not installed. Install it, or remove the " +
-                    "scripts with the Control Panel's Remove Missing Scripts once you know what they did.");
+                    "scripts once you know what they did: the CCK's Control Panel shows an Auto Fix button beside it that removes them.");
 
             if (root.GetComponent<Animator>() == null)
                 report.Warning(Category, "The CCK will not upload this: no Animator on the avatar's root", "Add one and give it the avatar's rig.");
 
-            var textures = Importers<TextureImporter>(Textures(root)).ToList();
-            Refuse(report, textures.Where(t => t.importer.maxTextureSize > 8192).Select(t => t.name),
-                "texture is", "textures are", "set to a max size above 8192",
+            // Asked by name: CCKs before 4 have neither check.
+            var common = typeof(CVRAvatar).Assembly.GetType("ABI.CCK.Scripts.CVRCommon");
+            if (common?.GetMethod("IsUnityVersionSupported")?.Invoke(null, null) is false)
+                report.Warning(Category, $"The CCK will not upload this: it does not support Unity {Application.unityVersion}",
+                    $"It needs Unity {common.GetField("MinimumUnityVersion")?.GetValue(null)} to {common.GetField("MaximumUnityVersion")?.GetValue(null)}. Open the project in one of those.");
+            if (common?.GetMethod("IsSupportedBuildTarget")?.Invoke(null, null) is false)
+                report.Warning(Category, $"The CCK will not upload this: it does not build for {EditorUserBuildSettings.activeBuildTarget}",
+                    $"Switch the build target to {string.Join(" or ", (common.GetField("SupportedBuildTargets")?.GetValue(null) as System.Collections.IEnumerable)?.Cast<object>() ?? new object[0])} in Build Settings. " + FixInPanel);
+
+            var refs = References(root).ToList();
+            var reached = refs.Select(r => (r.on, r.value)).Concat(Keys(root)).ToList();
+            var uses = reached.Where(r => r.value is Material).Select(r => (r.on, material: (Material) r.value))
+                .Where(u => u.material.shader != null).Distinct().ToList();
+
+            Refuse(report, uses.Where(u => u.material.shader.name == "Hidden/InternalErrorShader").Select(u => u.material.name),
+                "material draws", "materials draw", "with Unity's error shader",
+                "Its shader is missing or failed to compile. Install the shader, or pick another.");
+
+            // The CCK walks each material once, from the first component that reaches it, and asks
+            // for streaming only when that is a mesh renderer: a particle or trail renderer's
+            // textures may not stream. Counted as a mesh's if any mesh reaches it, stricter than the
+            // CCK for a material a mesh shares with a particle effect, where the advice costs a warning.
+            var textures = uses.Where(u => Editable(AssetDatabase.GetAssetPath(u.material)))
+                .SelectMany(u => ShaderTextures(u.material).Select(t => (t, mesh: u.on is MeshRenderer || u.on is SkinnedMeshRenderer)))
+                .Where(x => Editable(AssetDatabase.GetAssetPath(x.t)))
+                .GroupBy(x => x.t).Select(g => (texture: g.Key, mesh: g.Any(x => x.mesh))).ToList();
+            Refuse(report, textures.Where(x => x.texture.width > 8192 || x.texture.height > 8192).Select(x => x.texture.name),
+                "texture is", "textures are", "larger than 8192",
                 "ChilloutVR loads 8192 at most. Set Max Size to 8192 or lower in the import settings. " + FixInPanel);
-            Refuse(report, textures.Where(t => t.importer.mipmapEnabled && !t.importer.streamingMipmaps).Select(t => t.name),
-                "texture has", "textures have", "mipmaps without Streaming Mipmaps",
-                "ChilloutVR streams mipmaps, so the CCK asks for it on every texture that has them. Tick Streaming " +
-                "Mipmaps in the import settings. " + FixInPanel);
-            Refuse(report, Importers<AudioImporter>(AudioClips(root)).Where(a => !a.importer.loadInBackground).Select(a => a.name),
+            Refuse(report, textures.Where(x => x.mesh && !x.texture.streamingMipmaps).Select(x => x.texture.name),
+                "texture on a mesh does", "textures on a mesh do", "not stream mipmaps",
+                "ChilloutVR streams the mipmaps of what a mesh draws. Tick Streaming Mipmaps in the import settings. " +
+                "Particle and trail textures are the other way round: the CCK asks them not to stream. " + FixInPanel);
+            // Asked of every mesh texture, streaming or not, as the CCK asks it.
+            Refuse(report, textures.Where(x => x.mesh && x.texture.streamingMipmapsPriority != 0).Select(x => x.texture.name),
+                "texture on a mesh has", "textures on a mesh have", "a streaming priority other than 0",
+                "Set the streaming Priority to 0 in the import settings. " + FixInPanel);
+            Refuse(report, textures.Where(x => x.texture.isReadable).Select(x => x.texture.name),
+                "texture is", "textures are", "readable from scripts",
+                "Untick Read/Write in the import settings. " + FixInPanel);
+
+            var clips = reached.Select(r => r.value).OfType<AudioClip>().Distinct().ToList();
+            Refuse(report, clips.Where(c => !c.loadInBackground).Select(c => c.name),
                 "sound does", "sounds do", "not load in the background",
                 "Tick Load In Background in the import settings. " + FixInPanel);
+            Refuse(report, clips.Where(c => c.length > 1f && AssetImporter.GetAtPath(AssetDatabase.GetAssetPath(c)) is AudioImporter a
+                    && a.defaultSampleSettings.loadType == AudioClipLoadType.DecompressOnLoad).Select(c => c.name),
+                "sound longer than a second decompresses", "sounds longer than a second decompress", "on load",
+                "Set Load Type to Compressed In Memory in the import settings. " + FixInPanel);
 
-            Unsaved(report, root);
+            Refuse(report, reached.Select(r => r.value).OfType<Mesh>().Select(m => AssetDatabase.GetAssetPath(m)).Where(CalculatesBlendShapeNormals)
+                    .Select(p => System.IO.Path.GetFileNameWithoutExtension(p)),
+                "model calculates", "models calculate", "blend shape normals without the legacy option",
+                "Tick Legacy Blend Shape Normals in the model's import settings, or set Blend Shape Normals to None. " + FixInPanel);
+
+            Refuse(report, root.GetComponentsInChildren<ParticleSystem>(true).Where(p => Counted(p) && LongPrewarm(p)).Select(p => p.name),
+                "particle system prewarms", "particle systems prewarm", "a lifetime over 100 seconds",
+                "Untick Prewarm, or set Start Lifetime to 100 or less. " + FixInPanel);
+
+            Unsaved(report, root, refs);
 #if AVATARBRIDGE_YAPS
             YapsNativeBuilder.ReportLostShaders(report, root);
             // Read back now as well as at the build: a depth map was overwritten with garbage
@@ -58,8 +106,8 @@ namespace AvatarBridge
 
             if (report.Entries.Count == before)
                 report.Converted(Category, "Nothing the CCK's upload check refuses",
-                    "No missing scripts, an Animator on the root, textures and sounds imported the way it asks, and " +
-                    "nothing the upload would drop.");
+                    "No missing scripts or broken shaders, an Animator on the root, textures, sounds, models and " +
+                    "particles set up the way it asks, and nothing the upload would drop.");
         }
 
         static void Refuse(BridgeReport report, IEnumerable<string> names, string one, string many, string what, string fix)
@@ -70,29 +118,98 @@ namespace AvatarBridge
                     $"{AvatarSurvey.Few(list)}. {fix}");
         }
 
+        // Every object reference on every component, once: the CCK's walk and the unsaved check both read it.
+        static IEnumerable<(Component on, string name, Object value)> References(GameObject root)
+        {
+            foreach (var component in root.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null || !Counted(component)) continue;
+                var it = new SerializedObject(component).GetIterator();
+                while (it.Next(true))
+                    if (it.propertyType == SerializedPropertyType.ObjectReference && it.objectReferenceValue != null)
+                        yield return (component, it.name, it.objectReferenceValue);
+            }
+        }
+
+        // The CCK skips a component on an object tagged EditorOnly, and its own editor-only ones,
+        // asked by name as CCKs before 4 have no such interface.
+        static bool Counted(Component c) => !c.gameObject.CompareTag("EditorOnly") && c.GetType().GetInterface("ICCKEditorOnly") == null;
+
+        // What an animation swaps in, found as the CCK finds it: a material on the component the
+        // binding names, anything else on the animator. The overrides' replaced clips count too.
+        static IEnumerable<(Component on, Object value)> Keys(GameObject root)
+        {
+            var avatar = root.GetComponent<CVRAvatar>();
+            foreach (var animator in root.GetComponentsInChildren<Animator>(true).Where(Counted))
+            {
+                var clips = animator.runtimeAnimatorController != null ? animator.runtimeAnimatorController.animationClips.ToList() : new List<AnimationClip>();
+                if (animator.gameObject == root && avatar.overrides != null)
+                {
+                    var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
+                    avatar.overrides.GetOverrides(pairs);
+                    clips.AddRange(avatar.overrides.animationClips.Concat(pairs.SelectMany(p => new[] { p.Key, p.Value })));
+                }
+                foreach (var clip in clips.Where(c => c != null).Distinct())
+                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    {
+                        var on = binding.type == null ? null : animator.transform.Find(binding.path)?.GetComponent(binding.type);
+                        foreach (var key in AnimationUtility.GetObjectReferenceCurve(clip, binding))
+                            if (key.value is Material ? on != null : key.value != null) yield return (key.value is Material ? on : animator, key.value);
+                    }
+            }
+        }
+
+        // The shader's texture properties only: a slot left from an earlier shader is not checked.
+        static IEnumerable<Texture2D> ShaderTextures(Material m)
+        {
+            for (int i = 0; i < ShaderUtil.GetPropertyCount(m.shader); i++)
+            {
+                if (ShaderUtil.GetPropertyType(m.shader, i) != ShaderUtil.ShaderPropertyType.TexEnv) continue;
+                string name = ShaderUtil.GetPropertyName(m.shader, i);
+                if (m.HasProperty(name) && m.GetTexture(name) is Texture2D t) yield return t;
+            }
+        }
+
+        // The CCK leaves alone what nobody can change: built-in and package assets, and font atlases.
+        static bool Editable(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !path.StartsWith("Assets/")) return false;
+            var type = AssetDatabase.GetMainAssetTypeAtPath(path);
+            return type != typeof(Font) && (type == null || !type.Name.EndsWith("FontAsset"));
+        }
+
+        static readonly PropertyInfo LegacyBlendShapeNormals = typeof(ModelImporter).GetProperty(
+            "legacyComputeAllNormalsFromSmoothingGroupsWhenMeshHasBlendShapes", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public);
+
+        static bool CalculatesBlendShapeNormals(string path) =>
+            !string.IsNullOrEmpty(path) && AssetImporter.GetAtPath(path) is ModelImporter importer
+            && importer.importBlendShapeNormals == ModelImporterNormals.Calculate
+            && LegacyBlendShapeNormals?.GetValue(importer) is false;
+
+        static bool LongPrewarm(ParticleSystem ps)
+        {
+            var main = ps.main;
+            if (!main.prewarm) return false;
+            var life = main.startLifetime;
+            return (life.mode == ParticleSystemCurveMode.TwoConstants ? life.constantMax : life.constant) > 100f;
+        }
+
         // A reference to something that is neither a saved asset nor part of
         // the avatar. The prefab the upload saves keeps none of them.
-        static void Unsaved(BridgeReport report, GameObject root)
+        static void Unsaved(BridgeReport report, GameObject root, List<(Component on, string name, Object value)> refs)
         {
             var lost = new List<string>();
             var outside = new List<string>();
-            foreach (var component in root.GetComponentsInChildren<Component>(true))
+            foreach (var (component, name, value) in refs)
             {
-                if (component == null) continue;
-                var it = new SerializedObject(component).GetIterator();
-                while (it.Next(true))
-                {
-                    if (it.propertyType != SerializedPropertyType.ObjectReference) continue;
-                    // A prefab instance's own bookkeeping points at a scene object that is no asset.
-                    if (it.name == "m_PrefabInstance" || it.name == "m_PrefabAsset" || it.name == "m_CorrespondingSourceObject") continue;
-                    // So is the root's parent: the upload saves the avatar alone, and nothing reads it.
-                    if (it.name == "m_Father" && component.transform == root.transform) continue;
-                    var value = it.objectReferenceValue;
-                    if (value == null || EditorUtility.IsPersistent(value)) continue;
-                    var go = value as GameObject ?? (value as Component)?.gameObject;
-                    if (go == null) lost.Add($"{value.name} ({value.GetType().Name}) on {component.name}");
-                    else if (!go.transform.IsChildOf(root.transform)) outside.Add($"{go.name}, from {component.name}");
-                }
+                // A prefab instance's own bookkeeping points at a scene object that is no asset.
+                if (name == "m_PrefabInstance" || name == "m_PrefabAsset" || name == "m_CorrespondingSourceObject") continue;
+                // So is the root's parent: the upload saves the avatar alone, and nothing reads it.
+                if (name == "m_Father" && component.transform == root.transform) continue;
+                if (EditorUtility.IsPersistent(value)) continue;
+                var go = value as GameObject ?? (value as Component)?.gameObject;
+                if (go == null) lost.Add($"{value.name} ({value.GetType().Name}) on {component.name}");
+                else if (!go.transform.IsChildOf(root.transform)) outside.Add($"{go.name}, from {component.name}");
             }
             foreach (var controller in Controllers(root))
                 lost.AddRange(controller.animationClips.Where(c => c != null && !EditorUtility.IsPersistent(c))
@@ -108,63 +225,12 @@ namespace AvatarBridge
                     "object under the avatar, or point the reference at one that is.");
         }
 
-        static IEnumerable<(string name, T importer)> Importers<T>(IEnumerable<Object> assets) where T : AssetImporter
-        {
-            foreach (var asset in assets.Where(a => a != null).Distinct())
-            {
-                string path = AssetDatabase.GetAssetPath(asset);
-                if (string.IsNullOrWhiteSpace(path)) continue;
-                if (AssetImporter.GetAtPath(path) is T importer) yield return (asset.name, importer);
-            }
-        }
-
-        // The CCK's own gathering: renderer materials, and the materials an
-        // animation swaps in on any renderer.
-        static IEnumerable<Object> Textures(GameObject root)
-        {
-            var materials = root.GetComponentsInChildren<Renderer>(true).SelectMany(r => r.sharedMaterials).ToList();
-            foreach (var controller in Controllers(root))
-                foreach (var clip in controller.animationClips.Where(c => c != null))
-                    foreach (var binding in AnimationUtility.GetObjectReferenceCurveBindings(clip))
-                        if (binding.type != null && binding.type.IsSubclassOf(typeof(Renderer)) && binding.propertyName.StartsWith("m_Material"))
-                            materials.AddRange(AnimationUtility.GetObjectReferenceCurve(clip, binding).Select(k => k.value as Material));
-            return materials.Where(m => m != null).Distinct()
-                .SelectMany(m => m.GetTexturePropertyNames().Select(m.GetTexture));
-        }
-
         static IEnumerable<RuntimeAnimatorController> Controllers(GameObject root)
         {
             var found = root.GetComponentsInChildren<Animator>(true).Select(a => a.runtimeAnimatorController).ToList();
             var avatar = root.GetComponent<CVRAvatar>();
             if (avatar != null && avatar.overrides != null) found.Add(avatar.overrides.runtimeAnimatorController);
             return found.Where(c => c != null).Distinct();
-        }
-
-        static IEnumerable<AudioClip> Each(IEnumerable<AudioClip> clips) => clips ?? Enumerable.Empty<AudioClip>();
-
-        static IEnumerable<Object> AudioClips(GameObject root)
-        {
-            foreach (var component in root.GetComponentsInChildren<Component>(true))
-            {
-                switch (component)
-                {
-                    case AudioSource source:
-                        yield return source.clip;
-                        break;
-                    case CVRAudioDriver driver:
-                        if (driver.audioSource != null) yield return driver.audioSource.clip;
-                        foreach (var clip in Each(driver.audioClips)) yield return clip;
-                        break;
-                    case CVRParticleSound particles:
-                        // The CCK reads the die reference twice and never the spawn one.
-                        if (particles.dieAudioSourceReference != null) yield return particles.dieAudioSourceReference.clip;
-                        foreach (var clip in Each(particles.spawnSound).Concat(Each(particles.dieSound))) yield return clip;
-                        break;
-                    case GunController gun:
-                        foreach (var clip in Each(gun.reloadSounds).Concat(Each(gun.shootSounds)).Concat(Each(gun.emptyShootSounds))) yield return clip;
-                        break;
-                }
-            }
         }
     }
 }
