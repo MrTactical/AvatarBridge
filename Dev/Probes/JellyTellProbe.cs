@@ -114,7 +114,7 @@ namespace AvatarBridge.Regression
             if (++frame >= End) Quit(null, 0);
         }
 
-        // Each region's row that ran: 86's strain and load, the own-capsule bits in 41, whether the
+        // Each region's row that ran: 86's strain, load and press, the own-capsule bits in 41, whether the
         // hand slots are live (1.w) and any grip held (112 to 119).
         static string Sides(RenderTexture state)
         {
@@ -132,7 +132,7 @@ namespace AvatarBridge.Regression
                 Color At(int x) => px[y * state.width + x];
                 if (!(At(86).a > 0)) continue;
                 bool grip = Enumerable.Range(112, 8).Any(x => At(x).a > 0);
-                said.Add($"{y}:{At(86).r:0.###}/{At(86).g:0.####} own{(int) At(41).r} h{At(1).a:0.#} g{(grip ? 1 : 0)}");
+                said.Add($"{y}:{At(86).r:0.###}/{At(86).g:0.####}/{At(86).b:0.###} own{(int) At(41).r} h{At(1).a:0.#} g{(grip ? 1 : 0)}");
             }
             return string.Join(" ", said);
         }

@@ -1495,9 +1495,9 @@ presses in Play mode, and the editor is a stand-in: judge the feel in ChilloutVR
 The tissue writes three floats per part, 0 to 1, never synced, for blend shapes or sounds to
 follow:
 
-- `#Jelly/<part>/Squeeze`
-- `#Jelly/<part>/Grab`
-- `#Jelly/<part>/Slap`
+- `#Jelly/<part>/Squeeze`: how hard it is pressed, by another player's hands, a grip or your own hands
+- `#Jelly/<part>/Grab`: 1 while a fist grips it
+- `#Jelly/<part>/Slap`: the last slap's depth, fading out
 
 **What other people see**
 
@@ -2956,22 +2956,33 @@ rule starts with *The CCK will not upload this:*, so search the report for that.
 
 | The report says | Fix |
 |---|---|
-| an object has a **missing script** | Install the package it came from, or use the panel's Remove Missing Scripts once you know what it did |
+| an object has a **missing script** | Install the package it came from, or remove the script once you know what it did |
 | **no Animator** on the avatar's root | Add one with the avatar's rig |
+| it does not support **this Unity version** | Open the project in a version inside the range the entry names |
+| it does not build for **this build target** | Switch to Windows or Android in Build Settings |
 | a material draws **with Unity's error shader** | Install its shader, or pick another |
 | a texture is **larger than 8192** | Max Size 8192 or lower in its import settings |
 | a texture on a mesh does **not stream mipmaps** | Tick Streaming Mipmaps in its import settings |
-| a texture streams **at a priority other than 0** | Streaming Priority 0 in its import settings |
+| a texture on a mesh has a **streaming priority** other than 0 | Streaming Priority 0 in its import settings |
 | a texture is **readable from scripts** | Untick Read/Write in its import settings |
 | a sound does **not load in the background** | Tick Load In Background in its import settings |
 | a sound longer than a second **decompresses on load** | Load Type Compressed In Memory in its import settings |
 | a model calculates **blend shape normals** without the legacy option | Tick Legacy Blend Shape Normals in the model's import settings |
 | a particle system **prewarms** a lifetime over 100 seconds | Untick Prewarm, or Start Lifetime 100 or less |
 
-The panel shows an **Auto Fix** button beside every one except the Animator and the error shader;
-for a missing script it removes the script. Particle and trail
+The panel shows an **Auto Fix** button beside every one except the Animator, the Unity version and
+the error shader; for a missing script it removes the script. Particle and trail
 textures are the other way round from a mesh's: the CCK asks them not to stream, as a warning, so
 the check never asks you to tick it on them.
+
+The check reads what the CCK reads: every component on the avatar, except those on objects tagged
+EditorOnly, and every material, sound and model its animations swap in. It differs in two places, so
+the panel has the last word:
+
+- A material that a mesh and a particle effect share counts as the mesh's here. The CCK goes by
+  whichever it reaches first, so it may only warn where this check asks for streaming.
+- The CCK also looks inside prefabs and data assets that the avatar's components point at. This
+  check does not.
 
 Two more entries cover things the panel never mentions. The upload saves the avatar as a prefab, and
 a prefab keeps only saved assets and parts of the avatar:

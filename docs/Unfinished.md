@@ -617,7 +617,7 @@ matter only where a pair stays on the squash alone):
 Real work left, most urgent first: what somebody hits while wearing an avatar, then what waits on a
 tester, then the unmeasured leftovers.
 
-### 60. `#Jelly/<part>/Squeeze` reads 0 on every avatar part. Found reading the code, 2026-11-25. FIXED on dev, in game owed
+### 60. `#Jelly/<part>/Squeeze` read 0 on every avatar part. Found reading the code, 2026-11-25. SHIPPED in 5.0.2, Joe to check in game
 **Check:** in the Avatar Tester's Play mode, press a part with the test hand and watch the Squeeze bar; then in game.
 
 **Fixed 2026-11-25.** The step's `load` now takes each press, grip and own hand at a give of 1,
@@ -631,38 +631,31 @@ The probe's old-give phase first read 0.91 with no hand: its step material copie
 data providers' lists, so the anchors froze and the wearer's own hands read as in reach. The probe
 now moves the providers onto the copies.
 
-### 62. The upload preflight asks for Streaming Mipmaps on particle textures, which the CCK refuses. Found 2026-11-25, FIXED on dev
+**Corrected 2026-11-28, before it shipped.** The fix above also changed the physics: the step's
+`load` feeds texel 86's strain, which the swing's taut (spring, damping, lift) and the slap depth
+read, so under a press a cloth-carried part went from strain 0 to 0.855, swung stiffer and rang
+about half as deep. Shipped instead (5f48776d): the load is the 5.0.1 give-scaled sum line for line,
+and a second sum, the press at a give of 1, goes into 86's z, which only the Squeeze tell reads.
+JellyTellProbe on a fresh build of Kar: as built strain 0, press 0.855, Squeeze 0.8545; at the old
+give 0.525 strain 0.757, press 0.855, Squeeze 0.8555; 0 after letting go. The gap in 86 at rest
+(frames 69-126) shows only on the first run after a shader change, never on a warm one: compile
+hitches past the 0.1 s stale limit reset the mass.
 
-Fixed 2026-11-25: `UploadPreflight` now runs CCK 4.0.1's avatar error rules the way its validation steps gather them. Streaming is asked only of textures a mesh renderer draws, size is the texture's real size, only the shader's own texture slots count, and built-in, package and font textures are skipped. New rules: priority 0, Read/Write off, sounds over 1 s not Decompress On Load, legacy blend shape normals, prewarm over 100 s, the error shader. Sounds and materials now come from every component's references, not a hand list. `Dev/Probes/PreflightCckProbe.cs` on Kar's prefab plus two particle systems and a cube: both refuse the cube's non-streaming texture, neither names the particles', and every other rule agrees (both pass). PASS. Untested: the other new rules seen refusing, since Kar trips none of them.
+### 63. The upload check and the CCK still differ in two places. Found in the 5.0.2 review, 2026-11-28. NOT STARTED, low priority
 
-**Check:** an avatar with a particle system: the preflight names none of its textures, and the CCK's own validation passes.
+Both are stated in the README's upload entry, so the CCK's panel has the last word.
+- The CCK reads each material once, from the first component its queue reaches
+  (`ValidationPipeline.ExecuteAsync`, `VisitedAssets`), and asks for streaming only when that is a
+  mesh renderer. The check counts a material any mesh reaches as a mesh's: stricter, and the advice
+  then costs a CCK warning at most.
+- The CCK also crawls a ScriptableObject's references, and every component of a prefab that any
+  component points at. The check reads each component's direct references, plus animation keys and
+  both clip sets of the overrides. A material or sound reached the CCK's other ways can be refused
+  there and passed here.
 
-`UploadPreflight.cs` 40 refuses every texture with mipmaps and no Streaming Mipmaps. The CCK's
-`Validation/Steps/TextureValidationStep.cs` (the CCK in the dev project) asks for streaming only
-on textures a `MeshRenderer` or `SkinnedMeshRenderer` uses (57, 95-113); one used by anything else,
-a particle or trail renderer, that streams goes into `_requireNonStreaming` (114-127). So the
-preflight warned on eight particle textures of an avatar the CCK passes, and following its advice
-would fail the upload. Reported by another session building a tissue avatar with 5.0.1. Fix: walk
-the renderers as the step does, streaming for mesh textures, not streaming for the rest. The file's
-header says it mirrors `CCK_BuildManagerWindow.ContentValidation`, which this CCK has replaced with
-the validation steps, so check its other rules against them in the same pass: the step also wants
-streaming priority 0 and non-readable textures on avatars (`Validator.cs` 36, 60 against 82).
-
-Measured 2026-11-25, `Dev/Probes/JellyTellProbe.cs -jtBuild` on a fresh build of Kar's prefab (breasts
-and butt, built by 5.0.1 code), the tester's test hand in the breasts' front for 180 frames: Squeeze
-0.0000 as built (`_Give` 0), 0.846 with the same hand on copies at the old `_Give` 0.525. The probe
-reads the points strip where the client's parser does.
-
-Seen on the way: Zombunny 2's tissue, built by an rc on 2026-11-16, loads its four step materials on
-Unity's error shader in the dev project now, so it never steps. Whether a 5.0.0 build keeps its step
-shader after a 5.0.1 update is unchecked.
-
-A part its cloth carries gets `give = CarriedGive = 0` (`YapsJelly.cs` 58 and 504), so `_Give` is 0.
-Every term of the step's `load` (other players' hands, grips, own hands) is scaled by
-`min(_Give, 0.95)` (`YapsJelly.Shaders.cs` 1382-1418), and Squeeze is `load / (load + 0.1 zc scale)`
-(1423). Every avatar part is cloth-carried, so Squeeze should never leave 0, while the README
-promises it for blend shapes and sounds. Grab and Slap do not read the load. Fix idea: compute the
-load from the dent depth, not from what moves the whole. Measure first.
+Fix idea: with CCK 4 present, run the CCK's own `Validator.Validate` (PreflightCckProbe does, async
+across editor updates) and keep this check for older CCKs and for the rules the panel never shows.
+Measure its time on a big avatar first.
 
 ### 16. Tester reports on the rc builds, 2026-10-22. SHIPPED in 5.0.0; one report waits on the tester
 
@@ -685,9 +678,9 @@ Four of the six are fixed and closed; the record is in `archive/Closed-2026-11.m
   partner pass's hand loop as `[loop]` was identical but saved a quarter of a second at best and was
   not applied. Not done: a tester's own upload timed before and after.
 
-### 57. Five avatars' reports from a tester (fluffybat), 2026-11-18. PART FIXED on dev, the rest waits on the tester
+### 57. Five avatars' reports from a tester (fluffybat), 2026-11-18. PART FIXED, shipped in 5.0.1; the rest waits on the tester
 
-Fixed on dev 2026-11-18, not yet in a release:
+Fixed 2026-11-18, shipped in 5.0.1:
 - The weight card called graphics-card texture size the download and warned against the 100 MB
   limit (107-147 MB reported, about 50 MB real). The download line now defers to the CCK.
 - The survey listed the scaler's own constants (`#AvatarScaler/One`, `StepSize`) as features

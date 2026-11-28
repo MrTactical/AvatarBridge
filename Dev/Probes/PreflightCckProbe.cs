@@ -1,8 +1,10 @@
 // Runs the upload preflight and the CCK's own validation on one avatar and checks they refuse the
 // same things. On a copy of the prefab, never saved, it adds two particle systems, one drawing a
-// texture that streams and one a texture that does not, and a cube drawing another that does not,
-// each from a material in Assets/__Preflight (cleared from outside after). The cube's texture must
-// be refused by both, the particles' by neither.
+// texture that streams and one a texture that does not, a cube drawing another that does not, a
+// cube tagged EditorOnly drawing a fourth that does not, and a cube drawing a texture made here at
+// streaming priority 5, not streaming, each from a material in Assets/__Preflight (cleared from
+// outside after). The cube's texture must be refused by both, the particles' and the EditorOnly
+// cube's by neither, and the made texture's priority by both.
 //
 // -executeMethod AvatarBridge.Regression.PreflightCckProbe.Run -pfPrefab <prefab>
 // Batch. No -quit: it exits itself, 0 when the two agree.
@@ -32,11 +34,12 @@ namespace AvatarBridge.Regression
             ("REQUIRES_STREAMING_MIPMAPS", "not stream mipmaps"), ("REQUIRES_ZERO_PRIORITY_STREAMING_MIPMAPS", "priority other than 0"),
             ("REQUIRES_NON_READABLE", "readable from scripts"), ("AUDIO_LOAD_IN_BACKGROUND", "load in the background"),
             ("AUDIO_DECOMPRESS_ON_LOAD_TOO_LONG", "on load"), ("NONE_LEGACY_BLENDSHAPES", "blend shape normals"),
-            ("PARTICLE_PREWARM_LONG_LIFETIME", "prewarm"),
+            ("PARTICLE_PREWARM_LONG_LIFETIME", "prewarm"), ("UNSUPPORTED_UNITY_VERSION_ERROR", "does not support Unity"),
+            ("UNSUPPORTED_BUILD_TARGET_ERROR", "does not build for"),
         };
         static Task<ValidationPipelineResult> pending;
         static BridgeReport report;
-        static string streams, still, onMesh;
+        static string streams, still, onMesh, hidden, ranked;
 
         public static void Run()
         {
@@ -54,8 +57,8 @@ namespace AvatarBridge.Regression
                 .Where(x => x.importer != null && x.importer.mipmapEnabled && !x.importer.isReadable && x.importer.maxTextureSize <= 8192
                             && x.importer.textureShape == TextureImporterShape.Texture2D && x.importer.streamingMipmapsPriority == 0).ToList();
             var on = spare.Where(x => x.importer.streamingMipmaps).Select(x => x.path).FirstOrDefault();
-            var off = spare.Where(x => !x.importer.streamingMipmaps).Select(x => x.path).Take(2).ToList();
-            if (on == null || off.Count < 2) { Debug.Log("[PreflightCck] FAIL: no spare textures to test with"); EditorApplication.Exit(2); return; }
+            var off = spare.Where(x => !x.importer.streamingMipmaps).Select(x => x.path).Take(3).ToList();
+            if (on == null || off.Count < 3) { Debug.Log("[PreflightCck] FAIL: no spare textures to test with"); EditorApplication.Exit(2); return; }
 
             if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "__Preflight");
             Material Mat(string path, string name)
@@ -77,10 +80,34 @@ namespace AvatarBridge.Regression
             UnityEngine.Object.DestroyImmediate(cube.GetComponent<Collider>());
             cube.transform.SetParent(avatar.transform, false);
             cube.GetComponent<Renderer>().sharedMaterial = Mat(off[1], "Preflight cube not streaming");
+            GameObject Cube(string name)
+            {
+                var c = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                c.name = name;
+                UnityEngine.Object.DestroyImmediate(c.GetComponent<Collider>());
+                c.transform.SetParent(avatar.transform, false);
+                return c;
+            }
+            var editorOnly = Cube("Preflight cube EditorOnly");
+            editorOnly.tag = "EditorOnly";
+            editorOnly.GetComponent<Renderer>().sharedMaterial = Mat(off[2], "Preflight cube EditorOnly");
+            // Made here, so no import setting of the project's own is touched.
+            var rankedTex = new Texture2D(4, 4, TextureFormat.RGBA32, true) { name = "Preflight priority 5" };
+            AssetDatabase.CreateAsset(rankedTex, $"{Folder}/Preflight priority 5.asset");
+            var so = new SerializedObject(rankedTex);
+            so.FindProperty("m_StreamingMipmapsPriority").intValue = 5;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            AssetDatabase.SaveAssets();
+            Cube("Preflight cube priority 5").GetComponent<Renderer>().sharedMaterial = Mat($"{Folder}/Preflight priority 5.asset", "Preflight cube priority 5");
             streams = AssetDatabase.LoadAssetAtPath<Texture2D>(on).name;
             still = AssetDatabase.LoadAssetAtPath<Texture2D>(off[0]).name;
             onMesh = AssetDatabase.LoadAssetAtPath<Texture2D>(off[1]).name;
-            Debug.Log($"[PreflightCck] particles draw {streams} (streams) and {still} (does not); the cube draws {onMesh} (does not)");
+            hidden = AssetDatabase.LoadAssetAtPath<Texture2D>(off[2]).name;
+            ranked = rankedTex.name;
+            Debug.Log($"[PreflightCck] particles draw {streams} (streams) and {still} (does not); the cube draws {onMesh} (does not), " +
+                      $"the EditorOnly cube {hidden} (does not), the priority cube {ranked} (priority {rankedTex.streamingMipmapsPriority}, streams {rankedTex.streamingMipmaps})");
+            // The version checks are asked of the CCK by name: proven to resolve here.
+            Debug.Log($"[PreflightCck] {(typeof(CVRAvatar).Assembly.GetType("ABI.CCK.Scripts.CVRCommon") == typeof(ABI.CCK.Scripts.CVRCommon) ? "ok   " : "WRONG")} the CCK's version checks resolve by name");
 
             report = new BridgeReport();
             UploadPreflight.Run(report, avatar);
@@ -119,6 +146,12 @@ namespace AvatarBridge.Regression
             Check(ourStreaming != null && ourStreaming.Detail.Contains(onMesh), $"the preflight asks the cube's {onMesh} to stream");
             Check(streaming == null || streaming.RootObjects.All(o => o.name != streams && o.name != still), "the CCK asks no particle texture to stream");
             Check(ourStreaming == null || (!ourStreaming.Detail.Contains(streams) && !ourStreaming.Detail.Contains(still)), "the preflight names no particle texture");
+            Check(streaming == null || streaming.RootObjects.All(o => o.name != hidden), $"the CCK skips the EditorOnly cube's {hidden}");
+            Check(ourStreaming == null || !ourStreaming.Detail.Contains(hidden), $"the preflight skips the EditorOnly cube's {hidden}");
+            var priority = errors.FirstOrDefault(r => r.Message.StartsWith(Message("REQUIRES_ZERO_PRIORITY_STREAMING_MIPMAPS"))) as DetailedValidationResult;
+            var ourPriority = said.FirstOrDefault(e => e.Subject.Contains("priority other than 0"));
+            Check(priority != null && priority.RootObjects.Any(o => o.name == ranked), $"the CCK asks {ranked}, not streaming, for priority 0");
+            Check(ourPriority != null && ourPriority.Detail.Contains(ranked), $"the preflight asks {ranked}, not streaming, for priority 0");
             Debug.Log(failures == 0 ? "[PreflightCck] PASS" : $"[PreflightCck] FAIL: {failures} checks");
             EditorApplication.Exit(failures == 0 ? 0 : 1);
         }
