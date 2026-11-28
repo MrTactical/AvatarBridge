@@ -747,9 +747,25 @@ Chosen 2026-11-18 as the next big work. It shares no code with the converter, so
 own private repository with its own plan, decisions and work queue; this entry is only the pointer.
 Converter work it turns up (a check that fails in a lab) comes back here as a normal item.
 
-### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06. SPIKE DONE 2026-11-28, plan awaiting Joe's approval
+### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06. Step 1 BUILT on dev 2026-11-28; steps 2-3 approved the same night
 
-*Nothing built. File and line cites are from 2026-10-24 and have drifted; the names still exist
+**Step 1, built 2026-11-28 (Joe: "Go, MVP first").** The Toolkit's **VRChat accessories** card
+(`Editor/Core/AccessoryAttach.cs`, hooked in like the PhysBones card). `Dev/Tests/AccessoryAttachTest`
+drops two accessories on the converted Ampwave and passes 22 checks: no VRChat, VRCFury or MA
+component left, three new cloths, 68 carried objects at their dropped world poses, the avatar's own
+objects unchanged, an avatar-side constraint aimed into the glasses following the copy, no new scene
+roots, no reference to a destroyed object or a file VRCFury or NDMF deletes, the copy's prefab,
+controllers and reports deleted, and Ctrl+Z restoring the drop. A review (three readers and a
+skeptic, 14 findings, 10 upheld) found and the rewrite fixed: a converter crash left its working copy
+in the scene; references from the avatar into a replaced object were not rewired; matching by
+slash-joined path broke on names with a slash and same-named siblings (now keyed by name and place
+among same-named siblings); an accessory the bake moved or removed was deleted anyway; an object
+saved in the avatar's prefab could not be deleted; PhysBones the "Delete PhysBones after converting"
+option kept read as accessories (now a PhysBone counts only when no converted chain moves its bones
+and it came in a prefab of its own, else the report points at the PhysBones card); Modular Avatar
+warnings were dropped. Not yet seen: Modular Avatar accessories, and anything in game.
+
+*File and line cites below are from 2026-10-24 and have drifted; the names still exist
 (`BridgeConverter.ContentPasses`, `Editor/Toolkit/AnimatorMergeTool.cs`, checked 2026-11-18).
 Related: item 44 (update a converted avatar in place, keeping hand edits).*
 

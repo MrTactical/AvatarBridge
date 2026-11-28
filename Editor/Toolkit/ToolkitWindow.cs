@@ -63,6 +63,8 @@ namespace AvatarBridge
         // The converter's physics pass, handed in from there: the add-on's package carries this
         // panel without it, and without the VRChat SDK a PhysBone is a missing script anyway.
         internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> ConvertPhysBones;
+        // Its accessory pass, handed in the same way.
+        internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> AttachAccessories;
 
         GameObject _target;
         AnimatorController _mergeTarget;
@@ -111,6 +113,7 @@ namespace AvatarBridge
             _pages.Add(Audio());
             _pages.Add(Bounds());
             if (ConvertPhysBones != null) _pages.Add(PhysBones());
+            if (AttachAccessories != null) _pages.Add(Accessories());
             _pages.Add(Height());
             _pages.Add(Description());
             _pages.Add(MergeAnimators());
@@ -494,6 +497,14 @@ namespace AvatarBridge
                 "Convert PhysBones", () => ConvertPhysBones(_target, SavedSettings(), WriteFolder),
                 "No PhysBones on it.");
         }
+
+        BridgeElements.Card Accessories() => Tool("VRChat accessories", Changes,
+            BridgeElements.Hint("Converts VRChat accessories dropped onto this avatar, in place, with the Convert tab's options except Resize oversized textures.",
+                "Drop them where you would on a VRChat avatar: on the root, or on a bone for one with no Armature Link. " +
+                "Each converts on a copy of the avatar, and only what the conversion made for it comes back: its objects, " +
+                "its cloth, its links to the avatar's bones. Its menu entries and toggles are not carried yet. Ctrl+Z undoes it."),
+            "Convert accessories", () => AttachAccessories(_target, SavedSettings(), WriteFolder),
+            "No VRChat accessories on it.", needsAvatar: true);
 
         BridgeElements.Card Height() => Tool("Height slider", Changes,
             BridgeElements.Hint("Adds a Height slider, 0.25x to 4x, to the menu. Edits the avatar's controller asset."),
