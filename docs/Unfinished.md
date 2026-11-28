@@ -769,13 +769,24 @@ same prefabs and converts them again. `AccessoryAttachTest` passes 36 checks, in
 toggle hiding and showing them through the animator, Detach, Re-attach and Ctrl+Z on each.
 
 **Wide probe.** `Dev/Probes/AccessoryWideProbe` harvests prefab accessories (VRCFury, MA, PhysBones)
-from the corpus scenes and drops each on another avatar. On the step 1 build it passed 22 of 30.
-The failure classes, all fixed since: a prefab nested inside an accessory was taken alone (now the
-highest replaceable prefab around it, never one holding the avatar's Hips); the avatar's own
-diagnostics errors read as the accessory's; an accessory whose VRCFury or MA bake failed came back
-stripped (now nothing changes); an accessory with nothing to render (a menu or locomotion prefab) was
-left behind (now it goes and leaves its toggles); and two probe bugs (a target already wearing the
-same accessory, and a nested find counted as missing).
+from the corpus scenes and drops each on another avatar of three (Ampwave, Angela_PC, BHFBunny). On
+the step 1 build it passed 22 of 30. The classes fixed since: a prefab nested inside an accessory was
+taken alone (now the highest replaceable prefab around it, never one holding the avatar's Hips); the
+avatar's own diagnostics errors read as the accessory's; an accessory whose VRCFury or MA bake failed
+came back stripped (now nothing changes); VRCFury Armature Link moves a whole accessory to
+`<bone>/[VF123] name/Original Object`, which read as removed and stayed unconverted (now followed
+there, with the avatar's references into it); an accessory with nothing to render was left behind,
+then for one night deleted with nothing carried (now it goes only when the press carried a layer or
+menu entry, else it stays with a warning); plus probe bugs (a target already wearing it, a nested
+find, collider-only prefabs, and the file check from before step 2 kept a controller copy).
+2026-11-28 03:14, 37 drops: 31 PASS, 2 REFUSED with nothing changed (VRCFury's own errors: GogoLoco
+Beyond onto an avatar that already has it, and a prefab whose menu uses a parameter it lacks), 4 KEPT
+with a warning: a PhysBones-only prefab made for another avatar's bones, and three face tracking
+installers whose layers drive another avatar's face. Ceilings left: one press's toggles vouch for every
+logic-only accessory in it; a logic-only prefab's PhysBones aimed at the avatar's own bones never
+come back (cloth for them is not tied to it); an accessory parameter typed Float where the avatar has
+Bool (`IsLocal`, three plugs) keeps the avatar's type and only warns; whether its Float conditions
+still fire on the Bool is unchecked.
 
 **Step 1, built 2026-11-28 (Joe: "Go, MVP first").** The Toolkit's **VRChat accessories** card
 (`Editor/Core/AccessoryAttach.cs`, hooked in like the PhysBones card). `Dev/Tests/AccessoryAttachTest`

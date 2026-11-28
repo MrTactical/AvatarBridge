@@ -1,6 +1,7 @@
 #if VRC_SDK_VRCSDK3 && CVR_CCK_EXISTS
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ABI.CCK.Components;
 using ABI.CCK.Scripts;
 using UnityEditor;
@@ -224,13 +225,25 @@ namespace AvatarBridge
             var intoKey = intoAt.ToDictionary(p => p.Value, p => p.Key);
             var fromKey = fromAt.ToDictionary(p => p.Value, p => p.Key);
 
-            // What the conversion made of each accessory, where it was dropped. One it moved or
-            // removed stays as it was: replacing it would lose it.
+            // Where Armature Link or a bone proxy moved a whole accessory: new on the copy, hung on
+            // something both share. VRCFury wraps it as "[VF123] name/Original Object".
+            var newTops = from.GetComponentsInChildren<Transform>(true).Where(t => t != from && !intoAt.ContainsKey(fromKey[t])
+                && (t.parent == from || intoAt.ContainsKey(fromKey[t.parent]))).ToList();
+            Transform MovedTo(GameObject a)
+            {
+                var wrapped = new Regex(@"^\[VF\d+\] " + Regex.Escape(a.name) + "$");
+                var hits = newTops.Where(t => wrapped.IsMatch(t.name) && t.Find("Original Object") != null).ToList();
+                if (hits.Count == 0) hits = newTops.Where(t => t.name == a.name).ToList();
+                return hits.Count == 1 ? hits[0] : null;
+            }
+
+            // What the conversion made of each accessory. One it removed stays as it was:
+            // replacing it would lose it.
             var made = new Dictionary<GameObject, Transform>();
             var consumed = new List<GameObject>();
             foreach (var a in accessories)
-                if (fromAt.TryGetValue(intoKey[a.transform], out var m)) made[a] = m;
-                // Logic alone, a menu or a controller: the bake used it up, and its toggles still come.
+                if (fromAt.TryGetValue(intoKey[a.transform], out var m) || (m = MovedTo(a)) != null) made[a] = m;
+                // Logic alone, a menu or a controller: the bake used it up, and it goes if its toggles come.
                 else if (a.GetComponentsInChildren<Renderer>(true).Length == 0) consumed.Add(a);
                 else report.Warning(Category, $"\"{a.name}\" was not converted",
                     "The conversion moved or removed it, so it stays on the avatar as it was.");
@@ -265,7 +278,7 @@ namespace AvatarBridge
                 }
             }
 
-            var names = made.Keys.Concat(consumed).Select(a => a.name).ToList();
+            var names = new List<string>();
             Undo.IncrementCurrentGroup();
             int undoGroup = Undo.GetCurrentGroup();
             Undo.SetCurrentGroupName(UndoName);
@@ -322,12 +335,42 @@ namespace AvatarBridge
                         so.ApplyModifiedPropertiesWithoutUndo();
                     }
 
+                var carriedPaths = new HashSet<string>(copyOf.Values.Select(t => AnimationUtility.CalculateTransformPath(t, into)));
+                written = CarryLogic(report, target.GetComponent<CVRAvatar>(), output, dir, carriedPaths, Remap, ref lost,
+                    out var wiredSwaps, out var addedEntries);
+                // Nothing else shows a logic-only accessory converted. ponytail: one press's toggles
+                // vouch for every such accessory in it; trace each layer to its source controller if
+                // mixed presses lose one.
+                if (wiredSwaps == null && addedEntries.Count == 0)
+                {
+                    foreach (var a in consumed)
+                        report.Warning(Category, $"\"{a.name}\" was not converted",
+                            "Nothing the conversion made for it could be carried, so it stays on the avatar as it was.");
+                    consumed.Clear();
+                }
+                if (made.Count == 0 && consumed.Count == 0)
+                {
+                    KeepUsed(dir, new Transform[0], new string[0]);
+                    return;
+                }
+                names = made.Keys.Concat(consumed).Select(a => a.name).ToList();
+
                 // The avatar's own references into what is replaced, onto the copies: a mesh skinned
                 // to an accessory's bones, a constraint aimed at one. Recorded, so Ctrl+Z restores them.
                 var replaced = new HashSet<Transform>(made.Keys.Concat(consumed).SelectMany(a => a.GetComponentsInChildren<Transform>(true)));
+                // A moved accessory's parts, found under its new place by their place inside it.
+                var movedAt = made.Where(p => !fromAt.ContainsKey(intoKey[p.Key.transform]))
+                    .ToDictionary(p => p.Key.transform, p => Index(p.Value.Find("Original Object") ?? p.Value));
+                Transform OutputOf(Transform o)
+                {
+                    if (fromAt.TryGetValue(intoKey[o], out var m)) return m;
+                    foreach (var p in movedAt)
+                        if (o.IsChildOf(p.Key) && p.Value.TryGetValue(KeyOf(p.Key, o), out m)) return m;
+                    return null;
+                }
                 var swap = new Dictionary<Transform, Transform>();
                 foreach (var o in replaced)
-                    if (fromAt.TryGetValue(intoKey[o], out var m) && copyOf.TryGetValue(m, out var cp)) swap[o] = cp;
+                    if (OutputOf(o) is Transform m && copyOf.TryGetValue(m, out var cp)) swap[o] = cp;
                 var copies = new HashSet<Transform>(copyOf.Values);
                 foreach (var c in into.GetComponentsInChildren<Component>(true))
                 {
@@ -351,9 +394,6 @@ namespace AvatarBridge
                 // Read before the originals go: the record re-attaches them from their prefabs.
                 var dropped = made.Keys.Concat(consumed).Select(a => AccessoryRecord.Capture(a, target)).ToList();
                 foreach (var a in made.Keys.Concat(consumed).ToList()) Undo.DestroyObjectImmediate(a);
-                var carriedPaths = new HashSet<string>(copyOf.Values.Select(t => AnimationUtility.CalculateTransformPath(t, into)));
-                written = CarryLogic(report, target.GetComponent<CVRAvatar>(), output, dir, carriedPaths, Remap, ref lost,
-                    out var wiredSwaps, out var addedEntries);
                 written.Add(AccessoryRecord.Save(dir, target, dropped, tops, wiredSwaps, addedEntries));
                 if (lost > 0)
                     report.Warning(Category, $"{BridgeElements.Count(lost, "reference", "references")} had no match on the avatar",

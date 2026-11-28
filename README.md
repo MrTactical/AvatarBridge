@@ -1959,13 +1959,14 @@ For a ChilloutVR avatar you want to dress in clothing or props made for VRChat.
   wired in its place. Its own controller is never edited, since other avatars may share it. A
   parameter that has another type on the avatar is named, and so is a sync budget pushed past 3200
   bits.
-- An accessory the conversion moved or removed is left as it was, and the report says so. One with
-  nothing to show, only a menu or a controller (a locomotion prefab, say), goes and leaves its
-  toggles. A failed VRCFury or Modular Avatar bake changes nothing.
+- One that Armature Link or a bone proxy moves under a bone comes back there. One the conversion
+  removed is left as it was, and the report says so. One with nothing to show, only a menu or a
+  controller (a locomotion prefab, say), goes when its toggles come, and stays when none do. A
+  failed VRCFury or Modular Avatar bake changes nothing.
 - Each press is remembered in its folder. **Re-attach** drops the same prefabs where they were and
-  converts them again, for example after the avatar is reconverted. **Detach** removes what that
-  press added: the objects, the menu entries and the controller copy, with the avatar's own
-  controller wired back in. An accessory that was not a prefab has to be dropped again by hand.
+  converts them again, for example after the avatar is reconverted. **Detach** takes off what that
+  press added, the objects and the menu entries, and wires the avatar's own controller back in
+  place of the copy. The press's files stay in its folder. An accessory that was not a prefab has to be dropped again by hand.
 - Refused on an avatar that still has its VRChat descriptor: convert that in the Convert tab, with
   the accessories on it.
 - Ctrl+Z undoes the whole run. The folder stays.

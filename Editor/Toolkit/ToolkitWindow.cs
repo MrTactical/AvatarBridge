@@ -537,7 +537,7 @@ namespace AvatarBridge
             }
             card.Body.Add(BridgeElements.Hint("The last accessories converted here are remembered.",
                 "Re-attach drops the same prefabs where they were and converts them again, for example after the avatar is reconverted. " +
-                "Detach removes what that press added: the objects, the menu entries, and the copy of the controller, with the avatar's own wired back in. Ctrl+Z undoes either."));
+                "Detach takes off what that press added, the objects and the menu entries, and wires the avatar's own controller back in place of the copy. Ctrl+Z undoes either."));
             card.Body.Add(BridgeElements.ButtonRow(
                 Act("Re-attach", ButtonKind.Strong, () => ReattachAccessories(_target, SavedSettings(), WriteFolder, AvatarFolder())),
                 Act("Detach", ButtonKind.Secondary, () => DetachAccessories(_target, AvatarFolder()))));

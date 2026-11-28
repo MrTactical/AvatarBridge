@@ -13,6 +13,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
+using ABI.CCK.Components;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -67,7 +69,7 @@ namespace AvatarBridge.Regression
             var accessories = Harvest(scenes, max, scanMax);
             Debug.Log(Tag + $"harvested {accessories.Count} accessories");
 
-            int pass = 0, fail = 0;
+            var verdicts = new List<string>();
             using (var tsv = new StreamWriter(outPath, false) { AutoFlush = true })
             {
                 tsv.WriteLine(string.Join("\t", "index", "prefab", "bone", "target", "seconds", "exception", "errors", "warnings",
@@ -79,11 +81,10 @@ namespace AvatarBridge.Regression
                     var pick = Enumerable.Range(0, targets.Length).Select(k => targets[(i + k) % targets.Length])
                         .FirstOrDefault(t => !AssetDatabase.LoadAssetAtPath<GameObject>(t).GetComponentsInChildren<Transform>(true).Any(x => x.name == wearing))
                         ?? targets[i % targets.Length];
-                    if (Attach(i, accessories[i], pick, tsv)) pass++;
-                    else fail++;
+                    verdicts.Add(Attach(i, accessories[i], pick, tsv));
                 }
             }
-            Debug.Log(Tag + $"done: {pass} PASS, {fail} FAIL");
+            Debug.Log(Tag + "done: " + string.Join(", ", verdicts.GroupBy(v => v).OrderBy(g => g.Key).Select(g => $"{g.Count()} {g.Key}")));
             EditorApplication.Exit(0);
         }
 
@@ -166,7 +167,8 @@ namespace AvatarBridge.Regression
             if (c == null) return false;
             var type = c.GetType();
             string ns = type.Namespace ?? "";
-            return ns.StartsWith("VF.") || ns.StartsWith("nadena.dev.modular_avatar") || type.Name.Contains("PhysBone");
+            // Colliders alone are no accessory to the card either.
+            return ns.StartsWith("VF.") || ns.StartsWith("nadena.dev.modular_avatar") || type.Name.Contains("PhysBone") && !type.Name.Contains("Collider");
         }
 
         // A prefab that is itself an avatar is no accessory.
@@ -207,7 +209,8 @@ namespace AvatarBridge.Regression
 
         // ---------------------------------------------------------------- attach
 
-        static bool Attach(int index, Accessory a, string targetPath, StreamWriter tsv)
+        // PASS, or REFUSED / KEPT when the card said why it changed nothing and nothing changed, else FAIL.
+        static string Attach(int index, Accessory a, string targetPath, StreamWriter tsv)
         {
             var fails = new List<string>();
             void Expect(string what, bool ok) { if (!ok) fails.Add(what); }
@@ -217,7 +220,8 @@ namespace AvatarBridge.Regression
                 catch (Exception e) { fails.Add($"{what} threw {FirstLine(e)}"); }
             }
             string seconds = "", exception = "", errors = "", warnings = "", objectsBack = "", findAfter = "", newMissing = "",
-                ownChanged = "", newRoots = "", assetsLeft = "", undoDiffers = "", findAfterUndo = "", mapped = "root";
+                ownChanged = "", newRoots = "", assetsLeft = "", undoDiffers = "", findAfterUndo = "", mapped = "root", why = "";
+            bool refused = false, kept = false;
             try
             {
                 Undo.ClearAll();
@@ -230,6 +234,8 @@ namespace AvatarBridge.Regression
                 var own = Snapshot(target);
                 var acc = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(a.Prefab));
                 acc.transform.SetParent(parent, false);
+                string accName = acc.name;
+                bool shows = acc.GetComponentsInChildren<Renderer>(true).Length > 0;
                 string accPath = AnimationUtility.CalculateTransformPath(acc.transform, target.transform);
                 var dropped = Snapshot(target);
                 int missingBefore = Missing(target);
@@ -253,13 +259,21 @@ namespace AvatarBridge.Regression
                     errors = Counted(err);
                     warnings = Counted(warn);
                     Expect("no errors", err.Count == 0);
+                    refused = err.Contains("The accessories did not convert");
+                    kept = warn.Contains($"\"{accName}\" was not converted");
+                    why = refused ? report.Entries.First(e => e.Status == ReportStatus.Error).Subject : kept ? warn.First(w => w.Contains(accName)) : "";
                     var converted = report.Entries.FirstOrDefault(e => e.Status == ReportStatus.Converted && e.Category == "Accessories");
                     Debug.Log(Tag + $"  #{index} converted: {converted?.Detail ?? "(no Converted entry)"}");
                 }
 
                 Guard("objects back", () =>
                 {
-                    bool back = target.transform.Find(accPath) != null;
+                    // Where it was dropped, or where Armature Link or a bone proxy moved it; one with
+                    // nothing to show is back when its toggles are.
+                    var wrapped = new Regex(@"^\[VF\d+\] " + Regex.Escape(accName) + "$");
+                    bool back = target.transform.Find(accPath) != null
+                        || target.GetComponentsInChildren<Transform>(true).Any(t => t.name == accName || wrapped.IsMatch(t.name))
+                        || !shows && report != null && report.Entries.Any(e => e.Subject.StartsWith("Carried their toggles"));
                     objectsBack = back ? "yes" : "no";
                     Expect("objects back", back);
                 });
@@ -292,9 +306,13 @@ namespace AvatarBridge.Regression
                 {
                     var left = AssetDatabase.FindAssets("", new[] { Dir }).Select(AssetDatabase.GUIDToAssetPath).Distinct().ToList();
                     assetsLeft = Counted(left);
-                    // Same bar as the single-case test: the copy's prefab, controllers and reports must go.
-                    Expect("no stand-in assets left", !left.Any(p => p.EndsWith(".prefab") || p.EndsWith("Controller") || p.EndsWith(".controller")
-                        || p.Contains("ConversionReport") || p.EndsWith("Diagnostics.md")));
+                    // Same bar as the single-case test: the copy's prefab and reports go, and every
+                    // controller left is the one now wired in, or what that uses.
+                    var cvr = target.GetComponent<CVRAvatar>();
+                    var reach = new HashSet<string>(new UnityEngine.Object[] { cvr != null ? cvr.overrides : null, target.GetComponent<Animator>()?.runtimeAnimatorController }
+                        .Where(o => o != null).SelectMany(o => AssetDatabase.GetDependencies(AssetDatabase.GetAssetPath(o), true)));
+                    Expect("no stand-in assets left", !left.Any(p => p.EndsWith(".prefab") || p.Contains("ConversionReport") || p.EndsWith("Diagnostics.md")
+                        || (p.EndsWith(".controller") || p.EndsWith(".overrideController")) && !reach.Contains(p)));
                 });
 
                 Guard("undo", () =>
@@ -323,13 +341,15 @@ namespace AvatarBridge.Regression
                 AssetDatabase.DeleteAsset(Dir);
             }
 
-            string verdict = fails.Count == 0 ? "PASS" : "FAIL " + fails[0];
+            // A refusal or a kept accessory is right when it is said and nothing else moved.
+            if (refused || kept) fails.RemoveAll(f => f == "no errors" || f == "find after is 0" || f == "objects back");
+            string verdict = fails.Count > 0 ? "FAIL " + fails[0] : refused ? "REFUSED" : kept ? "KEPT" : "PASS";
             string bone = mapped == a.Bone ? a.Bone : $"{a.Bone}->{mapped}";
             tsv.WriteLine(string.Join("\t", new[] { index.ToString(Inv), a.Prefab, bone, targetPath, seconds, exception, errors, warnings,
                 objectsBack, findAfter, newMissing, ownChanged, newRoots, assetsLeft, undoDiffers, findAfterUndo, verdict }.Select(Cell)));
-            Debug.Log(Tag + $"{(fails.Count == 0 ? "PASS" : "FAIL")} #{index} {a.Prefab} at {bone} on {Path.GetFileNameWithoutExtension(targetPath)}" +
-                $" in {seconds} s{(fails.Count == 0 ? "" : ": " + string.Join("; ", fails))}");
-            return fails.Count == 0;
+            Debug.Log(Tag + $"{verdict.Split(' ')[0]} #{index} {a.Prefab} at {bone} on {Path.GetFileNameWithoutExtension(targetPath)}" +
+                $" in {seconds} s{(fails.Count == 0 ? (why != "" ? ": " + why : "") : ": " + string.Join("; ", fails))}");
+            return verdict.Split(' ')[0];
         }
 
         // The target's bone for the one the accessory sat under, else the nearest humanoid parent that exists.
