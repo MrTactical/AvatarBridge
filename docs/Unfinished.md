@@ -754,7 +754,7 @@ Chosen 2026-11-18 as the next big work. It shares no code with the converter, so
 own private repository with its own plan, decisions and work queue; this entry is only the pointer.
 Converter work it turns up (a check that fails in a lab) comes back here as a normal item.
 
-### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06: next after the jelly's final approval. NOT STARTED
+### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06. SPIKE DONE 2026-11-28, plan awaiting Joe's approval
 
 *Nothing built. File and line cites are from 2026-10-24 and have drifted; the names still exist
 (`BridgeConverter.ContentPasses`, `Editor/Toolkit/AnimatorMergeTool.cs`, checked 2026-11-18).
@@ -825,11 +825,55 @@ audit findings were one-path-only), and Armature Link resolves against the targe
 Unknowns: what the pipeline does with the target's own ChilloutVR components on the copy, and
 telling new from touched on the way back.
 
+**Spike, 2026-11-28: the stand-in route works.** `Dev/Probes/AccessoryStandInProbe.cs` unpacks the
+converted Ampwave prefab into a new scene, adds a VRChat descriptor and the accessories, converts into
+`Assets/__AccessoryProbe` and diffs the result against the prefab. Three runs, 12-13 s per conversion:
+- A script-added descriptor has null layer arrays until the SDK's inspector draws it, and VRCFury's
+  `GetAllControllers` and the converter's Animator merge both threw. Filled as the SDK fills them
+  (five base, three special, all default), the bake ran with no errors. A default FX is the SDK's
+  face layer (Eyes, FaceMood, VRCEmote, VRCFaceBlendH/V), no accessory's: the stand-in gets an empty one.
+- Armature Link merged an AmpJacket's Hip, Spine, Chest and shoulders into the avatar's own bones
+  (`[VF557] Chest from Jacket Armature` under its Chest). Its zip PhysBone became a MagicaCloth beside
+  the avatar's six. Its toggle's clips write `Body.blendShape.Shoulder Hide` and two more on the
+  avatar's own mesh, by root-relative paths, which resolve on the target as they are. Ampwave already
+  wears that jacket from its own conversion, so this run proves the mechanics, not a new accessory.
+- Two accessories at once, neither on Ampwave: Glasses - Academic (two VRCFury toggles, a PhysBone,
+  no Armature Link, put on the Head) and Nightmare Wings AV3 (no VRCFury, two PhysBones, nine
+  ParentConstraints, put on the Chest). No errors. Out: 82 objects under the Head, under the Chest
+  and in MagicaCloth Phys (three new cloths); layers `[FX] [VF5] Defaults`, `Toggle Glasses Toggle`,
+  `Toggle Glasses Arms`; parameters GlassesToggle and GlassesArms; two menu toggles.
+- The copy's own 230 objects came out with the same components, and none went. Not new: the
+  converter re-run adds `NaNimation HeadChop Holder` and `FPRExclusion_RootBoneSubstitute` at the root
+  and reports the inherited cloth. The output controller holds only this conversion (7 to 9 layers,
+  against the target's 44), so the logic goes back by merging into the target's controller.
+- Outside its own folder the run writes only `Packages/com.vrcfury.temp/Builds/<stand-in>` and
+  `Packages/nadena.dev.ndmf/__Generated/<stand-in>(Clone)`, both cleared after.
+
+Prior art, checked 2026-11-28: CVRFury reads VRCFury for ChilloutVR, alpha, last push 2026-06-07; it
+lists Armature Link and Full Controller, but Toggle as not yet, BlendShapeLink under review, SetIcon
+never. NDMF Merge (MIT) and Modular Avatar CVR (no licence) are their own component sets, with no
+VRCFury reading. None takes a VRCFury accessory with toggles onto a ChilloutVR avatar.
+
+**Open, from the spike.**
+- Same-named layers: VRCFury's `[FX] Internal Parameter Math (VRCFury)` is in both; the merge's
+  rename keeps both. Check that they agree.
+- Two Defaults layers can write the same body blend shape; the later one wins.
+- Every run warns of two empty "off" states with no restore animation. Find whose they are before
+  toggles ship: ChilloutVR restores nothing on Write Defaults.
+- An accessory with no Armature Link needs a bone: picked by the user, the nearest bone offered.
+- It needs a project with the VRChat SDK and the CCK, as converting does. With the avatar's VRChat
+  original in the project, say that reconverting is the better route.
+
 **Cut.**
-1. MVP: convert and attach, no logic. The report names every toggle not carried.
-2. Then the logic: layers, parameters, AAS entries, the 3200-bit check, name clashes with the
-   avatar's own parameters.
-3. A record on the attached accessory, so it re-attaches in one press after the avatar changes.
+1. MVP: a Toolkit card. Pick the avatar, add any number of accessories, each with a bone where it has
+   no Armature Link. Attach builds the stand-in, converts into a scratch folder, carries back the
+   accessories' objects and cloth into the avatar and its output folder, in one Undo. The report names
+   every toggle not carried.
+2. Then the logic: layers and parameters merged into the avatar's controller (the Toolkit's
+   `AnimatorMergeTool`), menu entries into its AAS, name clashes and the 3200-bit budget checked
+   before anything is written.
+3. A record on each attached accessory, so it re-attaches in one press after the avatar changes, and
+   detaches exactly what it added.
 
 **Gates only ChilloutVR can settle:** the physics and toggles of the attached accessory, as for any
 conversion.
