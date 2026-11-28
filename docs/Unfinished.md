@@ -785,8 +785,13 @@ with a warning: a PhysBones-only prefab made for another avatar's bones, and thr
 installers whose layers drive another avatar's face. Ceilings left: one press's toggles vouch for every
 logic-only accessory in it; a logic-only prefab's PhysBones aimed at the avatar's own bones never
 come back (cloth for them is not tied to it); an accessory parameter typed Float where the avatar has
-Bool (`IsLocal`, three plugs) keeps the avatar's type and only warns; whether its Float conditions
-still fire on the Bool is unchecked.
+Bool (`IsLocal`, three plugs) keeps the avatar's type and only warns, and those conditions are DEAD:
+`Dev/Probes/BoolFloatConditionProbe` (2026-11-28 03:45) shows Greater/Less never fire on a Bool,
+set true or false, while If/IfNot do, and Unity logs "uses parameter 'IsLocal' which is not
+compatible with condition type". NEXT FIX: on a clash, retype the carried layers' conditions to the
+avatar's type with `ParameterTypeInference.RewriteConditions` (it already maps Float conditions onto
+Bool/Int, vetoes quantities read by blend trees, and drops unreachable ones), scoped to the cloned
+layers, and warn only where a blend tree reads the parameter.
 
 **Review, 2026-11-28 03:20** (two readers, the carry and the record/card). Fixed the same night: after
 a press the avatar's controllers sit in the Accessories subfolder, so the Toolkit's folder lookup
