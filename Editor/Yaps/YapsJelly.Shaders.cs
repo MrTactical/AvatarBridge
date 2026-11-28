@@ -985,7 +985,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
 
 #ifdef JELLY_POINTS
             // What the avatar's animator is told, 3 to 5, through the parser and an animator driver:
-            // the most loaded region's strain, 1 while any fist grips, and the last slap's depth
+            // the most pressed region's strain, 1 while any fist grips, and the last slap's depth
             // against the deepest, fading over its life. 0 while the step is off.
             float4 Feedback(uint x)
             {
@@ -997,7 +997,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 {
                     uint side = r * (rows + 1) + rows;
                     if (!(abs(_Time.y - _MainTex.Load(int3(25, side, 0)).z) < 0.1)) continue;
-                    if (x == 3) felt = max(felt, _MainTex.Load(int3(86, side, 0)).x);
+                    if (x == 3) felt = max(felt, _MainTex.Load(int3(86, side, 0)).z);
                     else if (x == 4) { [unroll] for (uint e = 0; e < 8; e++) if (_MainTex.Load(int3(112 + e, side, 0)).w > 0) felt = 1; }
                     else [unroll] for (uint k = 0; k < 2; k++)
                     {
@@ -1356,7 +1356,7 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                 float spring = 6.2831853 * _MassHz * dt;
                 // How hard it is loaded: each push and pull on it by its size, so a squeeze from both
                 // sides, which leaves the whole where it was, loads it twice over.
-                float load = 0;
+                float load = 0, press = 0;
                 // The hands move where the spring holds it, a force, not the mass itself: pushed out
                 // a share of the way each frame, it left any hand within a few frames and the
                 // particles nothing to dent. Each takes give of its overlap with the mass at rest,
@@ -1383,9 +1383,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         Hand(a, b, pb, fa, fb, rf);
                         float3 leaned = Lean(rest, a.xyz, pb, a.w, radius, c) + (rf > 0 ? Lean(rest, fa, fb, rf, radius, c * rf / a.w) : 0);
                         pushed += leaned;
-                        // The load as if all of the press moved it: a part its cloth carries takes a give
-                        // of 0, and its Squeeze read 0 under any hand.
-                        load += length(Lean(rest, a.xyz, pb, a.w, radius, 1) + (rf > 0 ? Lean(rest, fa, fb, rf, radius, rf / a.w) : 0));
+                        load += length(leaned);
+                        // The press as if all of it moved the whole, for Squeeze alone: a part its cloth
+                        // carries takes a give of 0, so its load read 0 under any hand.
+                        press += length(Lean(rest, a.xyz, pb, a.w, radius, 1) + (rf > 0 ? Lean(rest, fa, fb, rf, radius, rf / a.w) : 0));
                     }
                     // Each grip pulls the whole by the share of a press it takes, the skin it holds
                     // following the hand the rest of the way.
@@ -1394,9 +1395,10 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                         float3 gat;
                         float graw;
                         float4 d = Pulled(gi, m, side, gat, graw);
-                        float3 pull = mul((float3x3) m, d.xyz) * d.w;
-                        pushed += pull * min(_Give, 0.95);
+                        float3 pull = mul((float3x3) m, d.xyz) * (d.w * min(_Give, 0.95));
+                        pushed += pull;
                         load += length(pull);
+                        press += length(mul((float3x3) m, d.xyz) * d.w);
                     }
                 }
                 // The wearer's own hands too; their arms and thighs only dent it, or an arm resting
@@ -1415,14 +1417,16 @@ Shader ""Hidden/AvatarBridge/JellyStep""
                             float hold;
                             Held(a, b, r, r, false, a, b, m, scale, hold);
                             Unheld(a, b, r, false, hold, m, scale);
-                            float3 leaned = Lean(rest, a, b, r, radius, 1);
-                            pushed += leaned * c;
+                            float3 leaned = Lean(rest, a, b, r, radius, c);
+                            pushed += leaned;
                             load += length(leaned);
+                            press += length(Lean(rest, a, b, r, radius, 1));
                         }
                     }
                 }
-                // Strained half way at a load a tenth of its length, wholly well past it.
-                if (x == 86) return float4(load / (load + 0.1 * zc * scale), load, 0, _Time.y);
+                // Strained half way at a load a tenth of its length, wholly well past it. The swing's
+                // taut and the slap read the load (x); Squeeze reads the press (z).
+                if (x == 86) return float4(load / (load + 0.1 * zc * scale), load, press / (press + 0.1 * zc * scale), _Time.y);
                 // A twitch kicks it as a hand would, never loading it.
                 pushed += Twitch();
                 spring *= 1 + taut;

@@ -1492,9 +1492,9 @@ presses in Play mode, and the editor is a stand-in: judge the feel in ChilloutVR
 The tissue writes three floats per part, 0 to 1, never synced, for blend shapes or sounds to
 follow:
 
-- `#Jelly/<part>/Squeeze`
-- `#Jelly/<part>/Grab`
-- `#Jelly/<part>/Slap`
+- `#Jelly/<part>/Squeeze`: how hard it is pressed, by another player's hands, a grip or your own hands
+- `#Jelly/<part>/Grab`: 1 while a fist grips it
+- `#Jelly/<part>/Slap`: the last slap's depth, fading out
 
 **What other people see**
 
