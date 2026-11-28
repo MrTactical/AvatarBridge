@@ -1964,10 +1964,11 @@ For a ChilloutVR avatar you want to dress in clothing or props made for VRChat.
   controller (a locomotion prefab, say), goes when its toggles come, and stays when none do. A
   failed VRCFury or Modular Avatar bake changes nothing.
 - Each press is remembered in its folder. **Re-attach** drops the same prefabs where they were and
-  converts them again, for example after the avatar is reconverted. **Detach** takes off what that
-  press added, the objects and the menu entries, and wires the avatar's own controller back in
-  place of the copy. The press's files stay in its folder. An accessory that was not a prefab has
-  to be dropped again by hand.
+  converts them again, for example after the avatar is reconverted; any still there unconverted,
+  after Ctrl+Z say, convert where they are. **Detach** takes off the newest press still on, its
+  objects and menu entries, and wires the controller from before it back in place of the copy;
+  press it again for the press before. The press's files stay in its folder. An accessory that was
+  not a prefab has to be dropped again by hand.
 - Refused on an avatar that still has its VRChat descriptor: convert that in the Convert tab, with
   the accessories on it.
 - Ctrl+Z undoes the whole run. The folder stays.

@@ -26,8 +26,8 @@ namespace AvatarBridge
         static AccessoryAttach()
         {
             ToolkitPanel.AttachAccessories = Run;
-            ToolkitPanel.HasAccessoryRecord = folder => AccessoryRecord.FindIn(folder).Count > 0;
-            ToolkitPanel.DetachAccessories = (target, folder) => AccessoryRecord.Detach(target, AccessoryRecord.FindIn(folder).FirstOrDefault());
+            // Detach takes the newest press still on; Re-attach the newest press, on or off.
+            ToolkitPanel.DetachAccessories = (target, folder) => AccessoryRecord.Detach(target, AccessoryRecord.FindIn(folder).FirstOrDefault(r => !r.detached));
             ToolkitPanel.ReattachAccessories = (target, settings, write, folder) =>
                 AccessoryRecord.Reattach(target, AccessoryRecord.FindIn(folder).FirstOrDefault(), settings, write);
         }
@@ -231,8 +231,9 @@ namespace AvatarBridge
                 && (t.parent == from || intoAt.ContainsKey(fromKey[t.parent]))).ToList();
             Transform MovedTo(GameObject a)
             {
-                var wrapped = new Regex(@"^\[VF\d+\] " + Regex.Escape(a.name) + "$");
-                var hits = newTops.Where(t => wrapped.IsMatch(t.name) && t.Find("Original Object") != null).ToList();
+                // "from <root>" when its root is a bone of a mesh; animated parents add "Toggle From" holders.
+                var wrapped = new Regex(@"^\[VF\d+\] " + Regex.Escape(a.name) + "( from .+)?$");
+                var hits = newTops.Where(t => wrapped.IsMatch(t.name) && Original(t) != null).ToList();
                 if (hits.Count == 0) hits = newTops.Where(t => t.name == a.name).ToList();
                 return hits.Count == 1 ? hits[0] : null;
             }
@@ -360,7 +361,7 @@ namespace AvatarBridge
                 var replaced = new HashSet<Transform>(made.Keys.Concat(consumed).SelectMany(a => a.GetComponentsInChildren<Transform>(true)));
                 // A moved accessory's parts, found under its new place by their place inside it.
                 var movedAt = made.Where(p => !fromAt.ContainsKey(intoKey[p.Key.transform]))
-                    .ToDictionary(p => p.Key.transform, p => Index(p.Value.Find("Original Object") ?? p.Value));
+                    .ToDictionary(p => p.Key.transform, p => Index(Original(p.Value) ?? p.Value));
                 Transform OutputOf(Transform o)
                 {
                     if (fromAt.TryGetValue(intoKey[o], out var m)) return m;
@@ -467,6 +468,9 @@ namespace AvatarBridge
                 if (overCopy == null || PhysBonesInPlace.Live(overCopy) != PhysBonesInPlace.Live(over))
                 {
                     report.Warning(Category, "Their toggles stayed behind", "The avatar's override controller swaps clips that a copy of its controller would lose.");
+                    // Unwired, so nothing should keep them.
+                    foreach (var w in written) AssetDatabase.DeleteAsset(w);
+                    written.Clear();
                     return written;
                 }
                 swaps[over] = overCopy;
@@ -590,6 +594,10 @@ namespace AvatarBridge
                 }
             }
         }
+
+        // VRCFury's moved object under its Armature Link wrapper, below any "Toggle From" holders.
+        static Transform Original(Transform wrapper) =>
+            wrapper.GetComponentsInChildren<Transform>(true).FirstOrDefault(c => c.name == "Original Object");
 
         // Every object by a key that survives slashes in names and same-named siblings: each name
         // with its place among the siblings that share it.

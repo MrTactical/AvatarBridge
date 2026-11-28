@@ -66,7 +66,6 @@ namespace AvatarBridge
         // Its accessory pass, handed in the same way.
         internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> AttachAccessories;
         // The accessory record's two presses, handed in the same way.
-        internal static System.Func<string, bool> HasAccessoryRecord;
         internal static System.Func<GameObject, string, BridgeReport> DetachAccessories;
         internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, string, BridgeReport> ReattachAccessories;
 
@@ -210,12 +209,17 @@ namespace AvatarBridge
                     int cut = path.LastIndexOf('/');
                     if (cut < 0) continue;
                     string dir = path.Substring(0, cut);
-                    // Untagged counts only under the default root: a chosen root like "Assets" has
-                    // shared folders, and the resize record would be shared too.
-                    bool underRoot = string.Equals(root, OutputRoot, System.StringComparison.OrdinalIgnoreCase)
-                                     && dir.StartsWith(root + "/", System.StringComparison.OrdinalIgnoreCase)
-                                     && dir.IndexOf('/', root.Length + 1) < 0;
-                    if (underRoot || CvrSetup.OwnerOf(dir) != null) return dir;
+                    // Its folder, or the one above: the accessories card wires copies kept in a
+                    // subfolder of the avatar's.
+                    for (int up = 0; up < 2 && dir.Length > 0; up++, dir = dir.Substring(0, System.Math.Max(0, dir.LastIndexOf('/'))))
+                    {
+                        // Untagged counts only under the default root: a chosen root like "Assets" has
+                        // shared folders, and the resize record would be shared too.
+                        bool underRoot = string.Equals(root, OutputRoot, System.StringComparison.OrdinalIgnoreCase)
+                                         && dir.StartsWith(root + "/", System.StringComparison.OrdinalIgnoreCase)
+                                         && dir.IndexOf('/', root.Length + 1) < 0;
+                        if (underRoot || CvrSetup.OwnerOf(dir) != null) return dir;
+                    }
                 }
             }
             return CvrSetup.FindOutputDir(NamedFolder(out var source), source);
@@ -536,8 +540,8 @@ namespace AvatarBridge
                 return b;
             }
             card.Body.Add(BridgeElements.Hint("The last accessories converted here are remembered.",
-                "Re-attach drops the same prefabs where they were and converts them again, for example after the avatar is reconverted. " +
-                "Detach takes off what that press added, the objects and the menu entries, and wires the avatar's own controller back in place of the copy. Ctrl+Z undoes either."));
+                "Re-attach drops the same prefabs where they were and converts them again, for example after the avatar is reconverted; any still there unconverted convert where they are. " +
+                "Detach takes off the newest press still on, its objects and menu entries, and wires the controller from before it back in place of the copy. Ctrl+Z undoes either."));
             card.Body.Add(BridgeElements.ButtonRow(
                 Act("Re-attach", ButtonKind.Strong, () => ReattachAccessories(_target, SavedSettings(), WriteFolder, AvatarFolder())),
                 Act("Detach", ButtonKind.Secondary, () => DetachAccessories(_target, AvatarFolder()))));

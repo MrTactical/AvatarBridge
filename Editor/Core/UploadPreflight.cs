@@ -62,13 +62,21 @@ namespace AvatarBridge
             var clock = System.Diagnostics.Stopwatch.StartNew();
             void Wait()
             {
-                if (!task.IsCompleted) return;
+                // A check that never ends would hold the row for the whole session.
+                bool late = clock.Elapsed.TotalSeconds > 120;
+                if (!task.IsCompleted && !late) return;
                 EditorApplication.update -= Wait;
                 var found = new BridgeReport { Quiet = report.Quiet };
-                if (!task.IsFaulted && !task.IsCanceled) Findings(found, task.GetType().GetProperty("Result")?.GetValue(task));
-                else
+                try
                 {
-                    Debug.LogWarning("[AvatarBridge] The CCK's validation failed, the Toolkit's own rules ran instead: " + task.Exception?.GetBaseException().Message);
+                    if (late || task.IsFaulted || task.IsCanceled)
+                        throw new System.Exception(late ? "it did not end in two minutes" : task.Exception?.GetBaseException().Message ?? "it was cancelled");
+                    Findings(found, task.GetType().GetProperty("Result")?.GetValue(task));
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning("[AvatarBridge] The CCK's validation failed, the Toolkit's own rules ran instead: " + e.Message);
+                    found = new BridgeReport { Quiet = report.Quiet };
                     if (avatar != null) Shared(found, avatar.gameObject, References(avatar.gameObject).ToList());
                 }
                 // In the log, never the report, as the conversion's step times are.

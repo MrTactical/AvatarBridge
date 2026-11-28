@@ -788,6 +788,25 @@ come back (cloth for them is not tied to it); an accessory parameter typed Float
 Bool (`IsLocal`, three plugs) keeps the avatar's type and only warns; whether its Float conditions
 still fire on the Bool is unchecked.
 
+**Review, 2026-11-28 03:20** (two readers, the carry and the record/card). Fixed the same night: after
+a press the avatar's controllers sit in the Accessories subfolder, so the Toolkit's folder lookup
+missed and fell to a new "X 2" folder (it now also tries the folder above); a record was never
+retired, so Detach could not step back past the newest press (now a `detached` flag, Undo-recorded);
+Detach removed menu entries by name even when the press's controller copy was no longer wired (an
+avatar reconverted with the same toggles lost its own); Re-attach after Ctrl+Z of a press dropped
+the prefabs again beside the restored ones, and Re-attach without live copies left the old copy
+wired, so VRCFury layers came twice; Armature Link names the wrapper "[VF123] name from <root>"
+when the root is a mesh bone, and animated parents put "Toggle From" holders above
+"Original Object"; an override mismatch left unwired controller copies in the folder; the CCK's
+check had no timeout and a reflection failure left its row waiting forever (now two minutes, then
+the shared rules). Ceilings kept: a renderer-less accessory that moved where `MovedTo` cannot see
+(a forced merge name) is still destroyed when another layer carried; a non-VRCFury layer named like
+one of the avatar's is skipped as the converter's own, and a menu entry whose machine name the
+avatar has is skipped while its layer still comes; same-named accessories shift each other's
+sibling key when one moves; the record's path fallback (unsaved scenes) takes the first same-named
+object and splits names on '/'; a PhysBones card press after an accessories press leaves Detach
+unable to unwire (the avatar then holds a copy of the copy).
+
 **Step 1, built 2026-11-28 (Joe: "Go, MVP first").** The Toolkit's **VRChat accessories** card
 (`Editor/Core/AccessoryAttach.cs`, hooked in like the PhysBones card). `Dev/Tests/AccessoryAttachTest`
 drops two accessories on the converted Ampwave and passes 22 checks: no VRChat, VRCFury or MA

@@ -145,6 +145,7 @@ namespace AvatarBridge.Regression
                 fail += Check("Detach removes the carried objects", head.Find("Glasses - Academic") == null && chest.Find("Nightmare Wings AV3") == null);
                 fail += Check($"Detach leaves only the avatar's own cloth ({Cloth(target) - clothBefore} extra)", Cloth(target) == clothBefore);
                 fail += Check("Detach puts the avatar's own controller and menu back", avatar.overrides == overBefore && avatar.avatarSettings.settings.Count == entriesBefore);
+                fail += Check("Detach retires the record", records[0].detached);
                 var again = AccessoryRecord.Reattach(target, records[0], new BridgeSettings(), r => Dir);
                 foreach (var e in again.Entries) Debug.Log($"[AccessoryAttachTest]   {e.Status} [{e.Category}] {e.Subject}: {e.Detail}");
                 fail += Check("Re-attach brings both back converted", head.Find("Glasses - Academic") != null && chest.Find("Nightmare Wings AV3") != null
@@ -156,6 +157,7 @@ namespace AvatarBridge.Regression
                 fail += Check("Ctrl+Z on Re-attach leaves it detached", head.Find("Glasses - Academic") == null && avatar.overrides == overBefore);
                 Undo.PerformUndo();
                 fail += Check("Ctrl+Z on Detach brings the converted objects back", head.Find("Glasses - Academic") != null);
+                fail += Check("Ctrl+Z on Detach puts the record back on", !records[0].detached);
 
                 Undo.PerformUndo();
                 var undone = Snapshot(target);
@@ -164,6 +166,13 @@ namespace AvatarBridge.Regression
                 fail += Check("Ctrl+Z finds both accessories again", AccessoryAttach.Find(target).Count == 2);
                 fail += Check("Ctrl+Z aims the avatar's reference at the original again", aim.GetSource(0).sourceTransform != null && aim.GetSource(0).sourceTransform != aimedAt);
                 fail += Check("Ctrl+Z puts the avatar's controller and menu back", avatar.overrides == overBefore && avatar.avatarSettings.settings.Count == entriesBefore);
+
+                // The record outlives Ctrl+Z: Re-attach converts the restored drop where it is, once.
+                var late = AccessoryRecord.Reattach(target, records[0], new BridgeSettings(), r => Dir);
+                foreach (var e in late.Entries) Debug.Log($"[AccessoryAttachTest]   {e.Status} [{e.Category}] {e.Subject}: {e.Detail}");
+                fail += Check("Re-attach after Ctrl+Z converts the drop once, not twice",
+                    head.Cast<Transform>().Count(t => t.name == "Glasses - Academic") == 1 && chest.Cast<Transform>().Count(t => t.name == "Nightmare Wings AV3") == 1
+                    && AccessoryAttach.Find(target).Count == 0 && avatar.avatarSettings.settings.Count(e => e.machineName == "GlassesToggle") == 1);
             }
             catch (Exception e)
             {

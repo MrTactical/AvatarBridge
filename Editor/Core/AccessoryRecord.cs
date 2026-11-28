@@ -38,6 +38,8 @@ namespace AvatarBridge
         public List<string> copies = new List<string>(), copyPaths = new List<string>();
         public List<string> swapFrom = new List<string>(), swapTo = new List<string>();
         public List<string> entries = new List<string>();
+        // Taken off by Detach or Re-attach. Recorded, so Ctrl+Z puts it back on.
+        public bool detached;
 
         internal static Dropped Capture(GameObject accessory, GameObject target)
         {
@@ -141,6 +143,9 @@ namespace AvatarBridge
 
         void Remove(GameObject target, BridgeReport report)
         {
+            Undo.RecordObject(this, "Detach accessories");
+            detached = true;
+            EditorUtility.SetDirty(this);
             var live = Live(target);
             var names = live.Select(g => g.name).ToList();
             foreach (var g in live) Undo.DestroyObjectImmediate(g);
@@ -157,7 +162,9 @@ namespace AvatarBridge
 
             int removed = 0;
             var avatar = target.GetComponent<CVRAvatar>();
-            if (avatar != null && avatar.avatarSettings?.settings != null && entries.Count > 0)
+            // Only with this press's controller copy still wired: after a reconvert the same names
+            // are the avatar's own.
+            if (rewired && avatar != null && avatar.avatarSettings?.settings != null && entries.Count > 0)
             {
                 Undo.RecordObject(avatar, "Detach accessories");
                 var drop = new HashSet<string>(entries);
@@ -197,8 +204,11 @@ namespace AvatarBridge
             Undo.SetCurrentGroupName("Re-attach accessories");
             try
             {
-                // Still on from the last press: off first, or they would come twice.
-                if (record.Live(target).Count > 0) record.Remove(target, report);
+                // Still on, or its controller still wired, from the last press: off first, or they
+                // would come twice. Quietly when only the wiring was left.
+                record.Remove(target, record.Live(target).Count > 0 ? report : new BridgeReport());
+                // Still there unconverted, after Ctrl+Z say: converted where it is, not dropped again.
+                var waiting = AccessoryAttach.Find(target);
                 int placed = 0;
                 foreach (var a in record.accessories)
                 {
@@ -212,6 +222,12 @@ namespace AvatarBridge
                         continue;
                     }
                     var parent = Walk(target.transform, a.parentPath);
+                    if (parent != null && waiting.Any(w => w.transform.parent == parent && w.name == a.name
+                        && AssetDatabase.AssetPathToGUID(PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(w)) == a.prefabGuid))
+                    {
+                        placed++;
+                        continue;
+                    }
                     if (parent == null)
                     {
                         report.Warning(Category, $"\"{a.name}\" had nowhere to go",
