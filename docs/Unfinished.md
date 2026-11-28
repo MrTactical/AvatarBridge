@@ -742,6 +742,15 @@ Done 2026-11-23:
 - Left: S28.3 (`Dev/Release/ingame-checklist-5.0.0.md`, local) was not run on the nightly first.
   Joe to check universal scaling on a converted avatar, and a held prop at 20 cm and 5 m.
 
+Found 2026-11-28 on Joe's own avatar, and reported by another user as
+ChilloutVR-Team/ChilloutVR-Issues#2179: a height slider value saved in an AAS profile does not come
+back on load. The animator applies it inside the client's 1 s hold-off after an avatar or profile
+load (`BlockScalingDetection`), where a changed root scale is absorbed without switching to legacy
+mode, so the avatar stays at its upload height until the animated scale next changes. The
+developers call the hold-off intentional. The bundled scaler eases its output toward Height, so
+whether a saved value lands inside or outside that second is NOT measured: check in game with a
+profile saved off-centre. Joe is asking ChilloutVR for a universal height saved per avatar.
+
 ## Major Ideas
 
 The work Joe means to take on now that 5.0.0 is out (published 2026-11-18). None of it is started
