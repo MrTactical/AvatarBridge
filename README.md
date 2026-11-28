@@ -1957,8 +1957,9 @@ For a ChilloutVR avatar you want to dress in clothing or props made for VRChat.
 - Their toggles come too: the animator layers the conversion made for them, with the parameters and
   menu entries those use, go into a copy of the avatar's controller (and of its override controller),
   wired in its place. Its own controller is never edited, since other avatars may share it. A
-  parameter that has another type on the avatar is named, and so is a sync budget pushed past 3200
-  bits.
+  parameter the accessories read as a Float and the avatar holds as a Bool or Int becomes a Float
+  in the copy, as a full conversion does, with the avatar's own conditions on it rewritten; any
+  other type clash is named, and so is a sync budget pushed past 3200 bits.
 - One that Armature Link or a bone proxy moves under a bone comes back there. One the conversion
   removed is left as it was, and the report says so. One with nothing to show, only a menu or a
   controller (a locomotion prefab, say), goes when its toggles come, and stays when none do. A

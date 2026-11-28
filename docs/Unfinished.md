@@ -788,10 +788,11 @@ come back (cloth for them is not tied to it); an accessory parameter typed Float
 Bool (`IsLocal`, three plugs) keeps the avatar's type and only warns, and those conditions are DEAD:
 `Dev/Probes/BoolFloatConditionProbe` (2026-11-28 03:45) shows Greater/Less never fire on a Bool,
 set true or false, while If/IfNot do, and Unity logs "uses parameter 'IsLocal' which is not
-compatible with condition type". NEXT FIX: on a clash, retype the carried layers' conditions to the
-avatar's type with `ParameterTypeInference.RewriteConditions` (it already maps Float conditions onto
-Bool/Int, vetoes quantities read by blend trees, and drops unreachable ones), scoped to the cloned
-layers, and warn only where a blend tree reads the parameter.
+compatible with condition type"; a 1D blend tree reads the Bool as 0 set either way. FIXED
+2026-11-28: Float wins in the copy, the converter's own merge rule (`AnimatorMerger`, "the client
+writes core values into any type"), then `AnimatorMerger.ReconcileConditionModes` on the copy. The
+wide probe now also counts conditions of the wrong type for their parameter: none. Whether
+ChilloutVR drives a Float `IsLocal` on these plugs is the in-game check owed.
 
 **Review, 2026-11-28 03:20** (two readers, the carry and the record/card). Fixed the same night: after
 a press the avatar's controllers sit in the Accessories subfolder, so the Toolkit's folder lookup

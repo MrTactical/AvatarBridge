@@ -478,12 +478,19 @@ namespace AvatarBridge
 
             var types = copy.parameters.GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First().type);
             var clashes = new List<string>();
+            // Float wins over Bool and Int, as in the converter's merge: a blend tree reads a Bool as
+            // 0 and a Float condition never fires on one (both measured), while the client writes
+            // core values into any type. The conditions are reconciled below.
+            var floated = new List<string>();
             int parameters = 0;
             foreach (var p in theirs.parameters.Where(p => used.Contains(p.name)))
             {
                 if (types.TryGetValue(p.name, out var type))
                 {
-                    if (type != p.type) clashes.Add($"{p.name} ({type} on the avatar, {p.type} on the accessories)");
+                    if (type != p.type && p.type == AnimatorControllerParameterType.Float
+                        && (type == AnimatorControllerParameterType.Bool || type == AnimatorControllerParameterType.Int))
+                        floated.Add(p.name);
+                    else if (type != p.type) clashes.Add($"{p.name} ({type} on the avatar, {p.type} on the accessories)");
                     continue;
                 }
                 copy.AddParameter(AnimatorDeepCopier.CloneParameter(p));
@@ -501,6 +508,17 @@ namespace AvatarBridge
                 all.Add(clone);
                 copy.layers = all.ToArray();
                 AnimatorAssetSaver.EmbedLayer(clone, copy);
+            }
+            if (floated.Count > 0)
+            {
+                var ps = copy.parameters;
+                foreach (var p in ps.Where(p => floated.Contains(p.name)))
+                {
+                    p.defaultFloat = p.type == AnimatorControllerParameterType.Bool ? (p.defaultBool ? 1f : 0f) : p.defaultInt;
+                    p.type = AnimatorControllerParameterType.Float;
+                }
+                copy.parameters = ps;
+                AnimatorMerger.ReconcileConditionModes(copy, new BridgeContext { Settings = new BridgeSettings(), Report = report });
             }
             EditorUtility.SetDirty(copy);
             AssetDatabase.SaveAssets();
@@ -536,6 +554,10 @@ namespace AvatarBridge
                 $"{BridgeElements.Count(parameters, "parameter", "parameters")} and {BridgeElements.Count(entries.Count, "menu entry", "menu entries")}",
                 (entries.Count > 0 ? AvatarSurvey.Few(entries.Select(e => e.name).ToList()) + ". " : "") +
                 $"Into a copy of the avatar's controller, \"{path}\", now wired in its place; its own controller is not edited.");
+            if (floated.Count > 0)
+                report.Converted(Category, $"{BridgeElements.Count(floated.Count, "parameter", "parameters")} made Float in the copy",
+                    $"{string.Join(", ", floated)}: the accessories read it as a Float, and a Bool or Int reads as nothing there. " +
+                    "A full conversion does the same, and the avatar's own conditions on it were rewritten to match.");
             if (clashes.Count > 0)
                 report.Warning(Category, $"{BridgeElements.Count(clashes.Count, "parameter has", "parameters have")} another type on the avatar",
                     string.Join(", ", clashes) + ". The avatar's type was kept, so the accessories' toggles that read it may misbehave.");

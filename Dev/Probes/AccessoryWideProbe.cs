@@ -16,6 +16,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using ABI.CCK.Components;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using VRC.SDK3.Avatars.Components;
@@ -239,6 +240,7 @@ namespace AvatarBridge.Regression
                 string accPath = AnimationUtility.CalculateTransformPath(acc.transform, target.transform);
                 var dropped = Snapshot(target);
                 int missingBefore = Missing(target);
+                int mismatchBefore = Mismatched(target);
                 // The CCK adds its own object to a scene when it opens, so compare, never count.
                 var roots = target.scene.GetRootGameObjects();
                 // The card takes the nearest prefab root, so a nested prefab carrying the components is found in its place.
@@ -282,6 +284,11 @@ namespace AvatarBridge.Regression
                     int n = AccessoryAttach.Find(target).Count;
                     findAfter = n.ToString(Inv);
                     Expect("find after is 0", n == 0);
+                });
+                Guard("mismatch", () =>
+                {
+                    int n = Mismatched(target) - mismatchBefore;
+                    Expect($"no new condition of the wrong type ({n})", n <= 0);
                 });
                 Guard("missing", () =>
                 {
@@ -374,6 +381,37 @@ namespace AvatarBridge.Regression
         static Dictionary<string, string> Snapshot(GameObject root) =>
             root.GetComponentsInChildren<Transform>(true).GroupBy(t => t == root.transform ? "" : AnimationUtility.CalculateTransformPath(t, root.transform))
                 .ToDictionary(g => g.Key, g => string.Join(" ", g.First().GetComponents<Component>().Select(c => c == null ? "missing" : c.GetType().Name)));
+
+        // Conditions that can never fire: Greater/Less/Equals on a Bool, If/IfNot on a number.
+        static int Mismatched(GameObject target)
+        {
+            var cvr = target.GetComponent<CVRAvatar>();
+            var over = cvr != null ? cvr.overrides as AnimatorOverrideController : null;
+            var c = (over != null ? over.runtimeAnimatorController : cvr != null ? cvr.overrides : null) as AnimatorController;
+            if (c == null) return 0;
+            var types = c.parameters.GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First().type);
+            int n = 0;
+            void Count(AnimatorTransitionBase[] ts)
+            {
+                foreach (var t in ts)
+                    foreach (var k in t.conditions)
+                    {
+                        if (!types.TryGetValue(k.parameter, out var type)) continue;
+                        bool boolMode = k.mode == AnimatorConditionMode.If || k.mode == AnimatorConditionMode.IfNot;
+                        if (boolMode != (type == AnimatorControllerParameterType.Bool)) n++;
+                    }
+            }
+            void Walk(AnimatorStateMachine m)
+            {
+                if (m == null) return;
+                Count(m.anyStateTransitions);
+                Count(m.entryTransitions);
+                foreach (var s in m.states) Count(s.state.transitions);
+                foreach (var s in m.stateMachines) Walk(s.stateMachine);
+            }
+            foreach (var l in c.layers) Walk(l.stateMachine);
+            return n;
+        }
 
         static int Missing(GameObject root)
         {

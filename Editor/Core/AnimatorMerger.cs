@@ -3017,7 +3017,7 @@ namespace AvatarBridge
             }
         }
 
-        static void ReconcileConditionModes(AnimatorController master, BridgeContext ctx)
+        internal static void ReconcileConditionModes(AnimatorController master, BridgeContext ctx)
         {
             var types = new Dictionary<string, AnimatorControllerParameterType>();
             foreach (var p in master.parameters)
