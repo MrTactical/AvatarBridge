@@ -749,7 +749,7 @@ load (`BlockScalingDetection`), where a changed root scale is absorbed without s
 mode, so the avatar stays at its upload height until the animated scale next changes. The
 developers call the hold-off intentional. The bundled scaler eases its output toward Height, so
 whether a saved value lands inside or outside that second is NOT measured: check in game with a
-profile saved off-centre. Joe is asking ChilloutVR for a universal height saved per avatar.
+profile saved off-centre. Joe asked ChilloutVR for a universal height saved per avatar: ChilloutVR-Team/ChilloutVR-Issues#2181, open.
 
 ## Major Ideas
 
