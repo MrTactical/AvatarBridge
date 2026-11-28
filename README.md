@@ -1852,7 +1852,7 @@ controller*. After a run it shows the count of errors and warnings instead. A bu
 
 | card | button | what it does |
 |---|---|---|
-| **Check before upload** | **Check** | Reads only. Names what the CCK's Upload button will refuse and anything the upload drops (see [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something)), components ChilloutVR deletes on load, materials that lost their YAPS shader (with the add-on), the 3200-bit sync budget, parameters used but never declared (and the reverse), menu entries whose type disagrees with the animator, shaders that draw into one eye, and bone cloth with no root bones. With no animator controller on the avatar, the animator checks are skipped and a row says so |
+| **Check before upload** | **Check** | Reads only. Names what the CCK's Upload button will refuse (with CCK 4, by running the CCK's own validation) and anything the upload drops (see [no Upload button](#the-cck-shows-no-upload-button-or-the-uploaded-avatar-is-missing-something)), components ChilloutVR deletes on load, materials that lost their YAPS shader (with the add-on), the 3200-bit sync budget, parameters used but never declared (and the reverse), menu entries whose type disagrees with the animator, shaders that draw into one eye, and bone cloth with no root bones. With no animator controller on the avatar, the animator checks are skipped and a row says so |
 | **What this avatar does** | **Survey it** | Reads only. Names features built and never wired, toggles a layer above always overrides, animator states nothing can reach, states with no motion (with Write Defaults off, one of those puts the body in the bicycle pose), menu controls nothing reads, parameters that lost their driver, and objects that could be ChilloutVR props |
 | **What this avatar costs** | **Weigh it**, **Fix it**, **Put the textures back** | **Weigh it** reads only: texture memory, contacts, triangles, cloth and more. **Fix it** shrinks textures and removes meshes nothing can show. Detail below |
 | **Free wins** | **Tidy it** | Removes empty layers and parameters nothing uses, in a copy of the controller. Detail below |
@@ -1861,7 +1861,7 @@ controller*. After a run it shows the count of errors and warnings instead. A bu
 | **Audio limits** | **Clamp audio sources** | Sets every audio source to values ChilloutVR handles: doppler off, distance floors and caps, fully 3D |
 | **Mesh bounds** | **Fix mesh bounds** | Resizes skinned mesh bounds to the avatar's own volume plus clearance, so meshes stop vanishing at the screen's edge |
 | **PhysBones to cloth** | **Convert PhysBones** | Converts PhysBones still on a ChilloutVR avatar, in place. Shown only with the VRChat SDK installed. Detail below |
-| **VRChat accessories** | **Convert accessories** | Converts VRChat accessories dropped onto a ChilloutVR avatar, in place. Shown only with the VRChat SDK installed. Their toggles are not carried yet. Detail below |
+| **VRChat accessories** | **Convert accessories**, **Re-attach**, **Detach** | Converts VRChat accessories dropped onto a ChilloutVR avatar, in place, with their toggles, and remembers them. Shown only with the VRChat SDK installed. Detail below |
 | **Height slider** | **Add height slider** | Adds the same slider as [**Add height scaler**](#manual-options-what-the-avatar-cant-tell-you) to an avatar already on ChilloutVR. Needs an animator controller on the avatar, and is refused on the CCK's stock controller. Pressing it twice adds nothing the second time. Ctrl+Z removes it |
 | **Store description** | **Write description** | Writes the [description](#store-description), types it into the upload page when that is open and its box is empty, and copies it to the clipboard |
 | **Merge animators** | **Merge** | Copies layers and parameters from any source controllers into a target. Written to a copy beside the target by default. Clips and masks are shared, same-named layers are renamed, a parameter with two types keeps the target's and is named. A synced layer is left out and named |
@@ -1951,11 +1951,21 @@ For a ChilloutVR avatar you want to dress in clothing or props made for VRChat.
   except **Resize oversized textures**. Only what that conversion made for the accessories comes
   back: their objects, their cloth and their links to the avatar's bones. The avatar's own objects
   are left as they are.
-- Files the conversion made for them stay in a new **Accessories** folder in the avatar's output
-  folder. The copy's own prefab, controllers and reports are deleted, and with nothing to keep, so
-  is the folder.
-- **Not carried yet:** menu entries, toggles and animations. The report names each menu entry left
-  behind, and each object stays on or off as the conversion left it.
+- Files the conversion made for them, and the controller copy below, stay in a new **Accessories**
+  folder in the avatar's output folder. The rest of that conversion is deleted, and with nothing to
+  keep, so is the folder.
+- Their toggles come too: the animator layers the conversion made for them, with the parameters and
+  menu entries those use, go into a copy of the avatar's controller (and of its override controller),
+  wired in its place. Its own controller is never edited, since other avatars may share it. A
+  parameter that has another type on the avatar is named, and so is a sync budget pushed past 3200
+  bits.
+- An accessory the conversion moved or removed is left as it was, and the report says so. One with
+  nothing to show, only a menu or a controller (a locomotion prefab, say), goes and leaves its
+  toggles. A failed VRCFury or Modular Avatar bake changes nothing.
+- Each press is remembered in its folder. **Re-attach** drops the same prefabs where they were and
+  converts them again, for example after the avatar is reconverted. **Detach** removes what that
+  press added: the objects, the menu entries and the controller copy, with the avatar's own
+  controller wired back in. An accessory that was not a prefab has to be dropped again by hand.
 - Refused on an avatar that still has its VRChat descriptor: convert that in the Convert tab, with
   the accessories on it.
 - Ctrl+Z undoes the whole run. The folder stays.
@@ -2334,7 +2344,7 @@ Bipeds are not affected by any of this.
   pose](#the-avatar-stands-in-a-bent-rest-pose-only-the-head-and-hands-follow-me).
 - **The Toolkit's PhysBones to cloth card** loses part of its rewiring to the CCK's **Create
   Controller**; see [the card's detail](#chilloutvr-toolkit).
-- **The Toolkit's VRChat accessories card** carries no menu entries, toggles or animations yet;
+- **The Toolkit's VRChat accessories card**: the toggles it carries are not yet confirmed in game;
   see [the card's detail](#chilloutvr-toolkit).
 
 <details>
@@ -2975,9 +2985,12 @@ Expected, and not caused by converting. See
 
 #### The CCK shows no Upload button, or the uploaded avatar is missing something
 
-The CCK hides its Upload button while any of its error rules fails. The report's **Upload** entries
-and the Toolkit's **Check before upload** card run the same rules first, against CCK 4. Each refused
-rule starts with *The CCK will not upload this:*, so search the report for that. A clean result reads
+The CCK hides its Upload button while any of its error rules fails. With CCK 4, the Toolkit's
+**Check before upload** card runs the CCK's own validation, the one its Control Panel runs, and lists
+its errors in the CCK's words; a row says *The CCK's own check is running* until it ends. Its
+warnings are counted, not listed: none of them stops the upload. The report's **Upload** entries,
+and the card with an older CCK, run the rules below instead. Each refused rule starts with
+*The CCK will not upload this:*, so search the report for that. A clean result reads
 *Nothing the CCK's upload check refuses*.
 
 | The report says | Fix |
@@ -3001,9 +3014,9 @@ the error shader; for a missing script it removes the script. Particle and trail
 textures are the other way round from a mesh's: the CCK asks them not to stream, as a warning, so
 the check never asks you to tick it on them.
 
-The check reads what the CCK reads: every component on the avatar, except those on objects tagged
-EditorOnly, and every material, sound and model its animations swap in. It differs in two places, so
-the panel has the last word:
+These rules read what the CCK reads: every component on the avatar, except those on objects tagged
+EditorOnly, and every material, sound and model its animations swap in. They differ in two places,
+which the card with CCK 4 does not, so the panel has the last word on the report:
 
 - A material that a mesh and a particle effect share counts as the mesh's here. The CCK goes by
   whichever it reaches first, so it may only warn where this check asks for streaming.

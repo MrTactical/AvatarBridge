@@ -1,11 +1,14 @@
 // What the CCK upload panel will refuse. CCK 4 hides Upload while any of its error-level
 // validation rules fails; these are its avatar rules, each gathering what its pipeline gathers.
 // Plus one the panel never checks: the upload saves a prefab, so references to unsaved
-// non-avatar objects arrive as nothing.
+// non-avatar objects arrive as nothing. With CCK 4 the Toolkit runs the CCK's own validation in
+// place of the shared rules, which still differ from it in what they reach.
 #if CVR_CCK_EXISTS
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using ABI.CCK.Components;
 using UnityEditor;
 using UnityEngine;
@@ -22,7 +25,101 @@ namespace AvatarBridge
             if (avatar == null) return;
             var root = avatar.gameObject;
             int before = report.Entries.Count;
+            var refs = References(root).ToList();
+            Shared(report, root, refs);
+            Own(report, root, refs);
+            if (report.Entries.Count == before)
+                report.Converted(Category, "Nothing the CCK's upload check refuses",
+                    "No missing scripts or broken shaders, an Animator on the root, textures, sounds, models and " +
+                    "particles set up the way it asks, and nothing the upload would drop.");
+        }
 
+        // CCK 4's validation, found by name: older CCKs have none.
+        static readonly MethodInfo Validate = System.AppDomain.CurrentDomain.GetAssemblies()
+            .Select(a => a.GetType("CVR.CCKEditor.Validations.Validator")).FirstOrDefault(t => t != null)
+            ?.GetMethod("Validate", BindingFlags.Public | BindingFlags.Static);
+
+        // With CCK 4, its own validation replaces the shared rules. It runs across editor
+        // frames, so its findings take the place of a waiting row and done is called then.
+        // Without it, or without an avatar CVRAssetInfo, this is Run, done is never called and it returns false.
+        public static bool RunWithCck(BridgeReport report, CVRAvatar avatar, System.Action done)
+        {
+            var info = avatar != null ? avatar.GetComponent<CVRAssetInfo>() : null;
+            Task task = null;
+            if (Validate != null && info != null && info.type == CVRAssetInfo.AssetType.Avatar)
+                try
+                {
+                    var args = new object[Validate.GetParameters().Length];
+                    args[0] = info;
+                    task = Validate.Invoke(null, args) as Task;
+                }
+                catch (System.Exception e) { Debug.LogWarning("[AvatarBridge] The CCK's validation did not start: " + (e.InnerException ?? e).Message); }
+            if (task == null) { Run(report, avatar); return false; }
+
+            Own(report, avatar.gameObject, References(avatar.gameObject).ToList());
+            report.Skipped(Category, "The CCK's own check is running", "Its findings appear here when it ends.");
+            var waiting = report.Entries[report.Entries.Count - 1];
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            void Wait()
+            {
+                if (!task.IsCompleted) return;
+                EditorApplication.update -= Wait;
+                var found = new BridgeReport { Quiet = report.Quiet };
+                if (!task.IsFaulted && !task.IsCanceled) Findings(found, task.GetType().GetProperty("Result")?.GetValue(task));
+                else
+                {
+                    Debug.LogWarning("[AvatarBridge] The CCK's validation failed, the Toolkit's own rules ran instead: " + task.Exception?.GetBaseException().Message);
+                    if (avatar != null) Shared(found, avatar.gameObject, References(avatar.gameObject).ToList());
+                }
+                // In the log, never the report, as the conversion's step times are.
+                Debug.Log($"[AvatarBridge] The CCK's validation took {clock.ElapsedMilliseconds} ms");
+                int at = report.Entries.IndexOf(waiting);
+                if (at >= 0) report.Entries.RemoveAt(at);
+                report.Entries.InsertRange(at >= 0 ? at : report.Entries.Count, found.Entries);
+                done?.Invoke();
+            }
+            EditorApplication.update += Wait;
+            return true;
+        }
+
+        // The CCK's errors in its own words, the panel's names beside them. Its warnings never
+        // stop the upload and the panel lists them, so they are only counted.
+        static void Findings(BridgeReport report, object result)
+        {
+            int warnings = 0;
+            bool refused = false;
+            foreach (var r in result?.GetType().GetProperty("StepResults")?.GetValue(result) as IEnumerable ?? new object[0])
+            {
+                var type = r.GetType();
+                string severity = type.GetProperty("Severity")?.GetValue(r)?.ToString();
+                if (severity == "Warning") warnings += type.GetProperty("IssueCount")?.GetValue(r) as int? ?? 1;
+                if (severity != "Error") continue;
+                refused = true;
+                string message = (type.GetProperty("Message")?.GetValue(r) as string ?? "").Trim();
+                int stop = message.IndexOf(". ");
+                string first = (stop < 0 ? message : message.Substring(0, stop)).TrimEnd('.');
+                string rest = stop < 0 ? "" : message.Substring(stop + 2);
+                var names = (type.GetProperty("RootObjects")?.GetValue(r) as IEnumerable)?.OfType<Object>()
+                    .Where(o => o != null).Select(o => o.name).Distinct().ToList() ?? new List<string>();
+                bool fixable = type.GetProperty("AutoFix")?.GetValue(r) != null;
+                var detail = new List<string>();
+                if (names.Count > 0) detail.Add(AvatarSurvey.Few(names) + ".");
+                if (rest.Length > 0) detail.Add(rest);
+                if (fixable) detail.Add(FixInPanel);
+                report.Warning(Category, "The CCK will not upload this" + (first.Length > 0 ? ": " + char.ToLower(first[0]) + first.Substring(1) : ""),
+                    string.Join(" ", detail));
+            }
+            if (!refused)
+                report.Converted(Category, "Nothing the CCK's upload check refuses",
+                    "Its own validation, the one its Control Panel runs before Upload, found no errors.");
+            if (warnings > 0)
+                report.Approximated(Category, $"The CCK warns about {BridgeElements.Count(warnings, "thing", "things")}",
+                    "None of them stops the upload. Its Control Panel lists them.");
+        }
+
+        // The rules the CCK runs too.
+        static void Shared(BridgeReport report, GameObject root, List<(Component on, string name, Object value)> refs)
+        {
             var missing = root.GetComponentsInChildren<Transform>(true)
                 .Where(t => Counted(t) && GameObjectUtility.GetMonoBehavioursWithMissingScriptCount(t.gameObject) > 0)
                 .Select(t => t.name).ToList();
@@ -43,7 +140,6 @@ namespace AvatarBridge
                 report.Warning(Category, $"The CCK will not upload this: it does not build for {EditorUserBuildSettings.activeBuildTarget}",
                     $"Switch the build target to {string.Join(" or ", (common.GetField("SupportedBuildTargets")?.GetValue(null) as System.Collections.IEnumerable)?.Cast<object>() ?? new object[0])} in Build Settings. " + FixInPanel);
 
-            var refs = References(root).ToList();
             var reached = refs.Select(r => (r.on, r.value)).Concat(Keys(root)).ToList();
             var uses = reached.Where(r => r.value is Material).Select(r => (r.on, material: (Material) r.value))
                 .Where(u => u.material.shader != null).Distinct().ToList();
@@ -92,7 +188,11 @@ namespace AvatarBridge
             Refuse(report, root.GetComponentsInChildren<ParticleSystem>(true).Where(p => Counted(p) && LongPrewarm(p)).Select(p => p.name),
                 "particle system prewarms", "particle systems prewarm", "a lifetime over 100 seconds",
                 "Untick Prewarm, or set Start Lifetime to 100 or less. " + FixInPanel);
+        }
 
+        // The rules the panel never shows.
+        static void Own(BridgeReport report, GameObject root, List<(Component on, string name, Object value)> refs)
+        {
             Unsaved(report, root, refs);
 #if AVATARBRIDGE_YAPS
             YapsNativeBuilder.ReportLostShaders(report, root);
@@ -103,11 +203,6 @@ namespace AvatarBridge
                     report.Warning(Category, $"The live tissue on {worn.name.Substring(YapsJelly.Worn.Length + 1)} is damaged on disk",
                         $"Read back, {lost}, so it would not work in game. Convert again, and send Diagnostics.md and the avatar's Jelly folder with a bug report if it comes back.");
 #endif
-
-            if (report.Entries.Count == before)
-                report.Converted(Category, "Nothing the CCK's upload check refuses",
-                    "No missing scripts or broken shaders, an Animator on the root, textures, sounds, models and " +
-                    "particles set up the way it asks, and nothing the upload would drop.");
         }
 
         static void Refuse(BridgeReport report, IEnumerable<string> names, string one, string many, string what, string fix)

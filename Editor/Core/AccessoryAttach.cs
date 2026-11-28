@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using ABI.CCK.Components;
+using ABI.CCK.Scripts;
 using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
@@ -21,7 +22,14 @@ namespace AvatarBridge
         const string Category = "Accessories";
         const string UndoName = "Convert accessories";
 
-        static AccessoryAttach() => ToolkitPanel.AttachAccessories = Run;
+        static AccessoryAttach()
+        {
+            ToolkitPanel.AttachAccessories = Run;
+            ToolkitPanel.HasAccessoryRecord = folder => AccessoryRecord.FindIn(folder).Count > 0;
+            ToolkitPanel.DetachAccessories = (target, folder) => AccessoryRecord.Detach(target, AccessoryRecord.FindIn(folder).FirstOrDefault());
+            ToolkitPanel.ReattachAccessories = (target, settings, write, folder) =>
+                AccessoryRecord.Reattach(target, AccessoryRecord.FindIn(folder).FirstOrDefault(), settings, write);
+        }
 
         // An object under the avatar carrying VRChat, VRCFury or Modular Avatar components, at the
         // root of the prefab it came in as. A converted avatar keeps none of these but the
@@ -36,6 +44,7 @@ namespace AvatarBridge
             ownPhysBones = 0;
             if (target == null) return found;
             HashSet<Transform> simulated = null;
+            var hips = target.GetComponent<Animator>() is Animator anim && anim.isHuman ? anim.GetBoneTransform(HumanBodyBones.Hips) : null;
             foreach (var c in target.GetComponentsInChildren<Component>(true))
             {
                 if (c == null || c.transform == target.transform) continue;
@@ -58,13 +67,24 @@ namespace AvatarBridge
                     own.Add(c.transform);
                     continue;
                 }
-                var at = loose ? c.gameObject : root;
+                var at = loose ? c.gameObject : Top(root, target, hips);
                 if (found.Any(f => at.transform.IsChildOf(f.transform))) continue;
                 found.RemoveAll(f => f.transform.IsChildOf(at.transform));
                 found.Add(at);
             }
             ownPhysBones = own.Count(t => !found.Any(f => t.IsChildOf(f.transform)));
             return found;
+        }
+
+        // The highest prefab dropped around this one, since a prefab nested inside an accessory
+        // cannot be replaced alone. Never one holding the avatar's own skeleton.
+        static GameObject Top(GameObject root, GameObject target, Transform hips)
+        {
+            var best = root;
+            for (var t = root.transform.parent; t != null && t != target.transform; t = t.parent)
+                if (PrefabUtility.IsAnyPrefabInstanceRoot(t.gameObject) && CanReplace(t.gameObject) && (hips == null || !hips.IsChildOf(t)))
+                    best = t.gameObject;
+            return best;
         }
 
         // Bones a converted cloth or DynamicBone already moves.
@@ -154,10 +174,16 @@ namespace AvatarBridge
                 s.deleteConvertedPhysBones = true;
                 var result = BridgeConverter.Convert(descriptor, s);
                 output = result.ConvertedRoot;
-                foreach (var e in result.Entries.Where(e => e.Status == ReportStatus.Error
-                    || e.Status == ReportStatus.Warning && (e.Category == "VRCFury" || e.Category == "Modular Avatar")))
+                // The avatar's own diagnostics are the Check before upload card's: here they would
+                // read as the accessories' fault.
+                bool Bake(ReportEntry e) => e.Category == "VRCFury" || e.Category == "Modular Avatar";
+                foreach (var e in result.Entries.Where(e => e.Status == ReportStatus.Error && e.Category != "Diagnostics"
+                    || e.Status == ReportStatus.Warning && Bake(e)))
                     report.Add(e.Status, e.Category, e.Subject, e.Detail);
-                if (output == null)
+                // Without its bake an accessory comes out stripped of its VRCFury or Modular Avatar
+                // features, and swapping that in would lose them.
+                bool unbaked = result.Entries.Any(e => Bake(e) && (e.Status == ReportStatus.Error || e.Subject.StartsWith("Converting WITHOUT")));
+                if (output == null || unbaked)
                 {
                     report.Error(Category, "The accessories did not convert", "Nothing on the avatar was changed. The errors above say why.");
                     return report;
@@ -201,13 +227,16 @@ namespace AvatarBridge
             // What the conversion made of each accessory, where it was dropped. One it moved or
             // removed stays as it was: replacing it would lose it.
             var made = new Dictionary<GameObject, Transform>();
+            var consumed = new List<GameObject>();
             foreach (var a in accessories)
                 if (fromAt.TryGetValue(intoKey[a.transform], out var m)) made[a] = m;
+                // Logic alone, a menu or a controller: the bake used it up, and its toggles still come.
+                else if (a.GetComponentsInChildren<Renderer>(true).Length == 0) consumed.Add(a);
                 else report.Warning(Category, $"\"{a.name}\" was not converted",
                     "The conversion moved or removed it, so it stays on the avatar as it was.");
-            if (made.Count == 0)
+            if (made.Count == 0 && consumed.Count == 0)
             {
-                KeepUsed(dir, new Transform[0]);
+                KeepUsed(dir, new Transform[0], new string[0]);
                 return;
             }
             var carried = new HashSet<Transform>();
@@ -236,11 +265,13 @@ namespace AvatarBridge
                 }
             }
 
-            var names = made.Keys.Select(a => a.name).ToList();
+            var names = made.Keys.Concat(consumed).Select(a => a.name).ToList();
             Undo.IncrementCurrentGroup();
             int undoGroup = Undo.GetCurrentGroup();
             Undo.SetCurrentGroupName(UndoName);
             var copyOf = new Dictionary<Transform, Transform>();
+            var tops = new List<GameObject>();
+            var written = new List<string>();
             int lost = 0;
             try
             {
@@ -258,9 +289,18 @@ namespace AvatarBridge
                     // Where the original sits, so the Hierarchy keeps its order.
                     if (intoAt.TryGetValue(fromKey[top], out var was) && was.parent == parent) copy.transform.SetSiblingIndex(was.GetSiblingIndex());
                     Undo.RegisterCreatedObjectUndo(copy, UndoName);
+                    tops.Add(copy);
                     var a = top.GetComponentsInChildren<Transform>(true);
                     var b = copy.GetComponentsInChildren<Transform>(true);
                     for (int i = 0; i < a.Length; i++) copyOf[a[i]] = b[i];
+                }
+                // Where something on the conversion lands on the avatar: its copy, else the avatar's
+                // object at the same place. Null when it has neither.
+                Object Remap(Object value)
+                {
+                    var at = TransformOf(value);
+                    var to = copyOf.TryGetValue(at, out var mine) ? mine : at == from ? into : intoAt.TryGetValue(fromKey[at], out var theirs) ? theirs : null;
+                    return to == null ? null : Same(value, at, to);
                 }
                 // Each copy's references out of its own piece: onto another piece's copy, else onto
                 // the avatar's object at the same place.
@@ -275,8 +315,7 @@ namespace AvatarBridge
                             if (it.propertyType != SerializedPropertyType.ObjectReference || it.objectReferenceValue == null) continue;
                             var at = TransformOf(it.objectReferenceValue);
                             if (at == null || !at.IsChildOf(from)) continue;
-                            var to = copyOf.TryGetValue(at, out var mine) ? mine : at == from ? into : intoAt.TryGetValue(fromKey[at], out var theirs) ? theirs : null;
-                            var value = to == null ? null : Same(it.objectReferenceValue, at, to);
+                            var value = Remap(it.objectReferenceValue);
                             if (value == null) lost++;
                             it.objectReferenceValue = value;
                         }
@@ -285,7 +324,7 @@ namespace AvatarBridge
 
                 // The avatar's own references into what is replaced, onto the copies: a mesh skinned
                 // to an accessory's bones, a constraint aimed at one. Recorded, so Ctrl+Z restores them.
-                var replaced = new HashSet<Transform>(made.Keys.SelectMany(a => a.GetComponentsInChildren<Transform>(true)));
+                var replaced = new HashSet<Transform>(made.Keys.Concat(consumed).SelectMany(a => a.GetComponentsInChildren<Transform>(true)));
                 var swap = new Dictionary<Transform, Transform>();
                 foreach (var o in replaced)
                     if (fromAt.TryGetValue(intoKey[o], out var m) && copyOf.TryGetValue(m, out var cp)) swap[o] = cp;
@@ -309,7 +348,13 @@ namespace AvatarBridge
                     if (changed) so.ApplyModifiedProperties();
                 }
 
-                foreach (var a in made.Keys) Undo.DestroyObjectImmediate(a);
+                // Read before the originals go: the record re-attaches them from their prefabs.
+                var dropped = made.Keys.Concat(consumed).Select(a => AccessoryRecord.Capture(a, target)).ToList();
+                foreach (var a in made.Keys.Concat(consumed).ToList()) Undo.DestroyObjectImmediate(a);
+                var carriedPaths = new HashSet<string>(copyOf.Values.Select(t => AnimationUtility.CalculateTransformPath(t, into)));
+                written = CarryLogic(report, target.GetComponent<CVRAvatar>(), output, dir, carriedPaths, Remap, ref lost,
+                    out var wiredSwaps, out var addedEntries);
+                written.Add(AccessoryRecord.Save(dir, target, dropped, tops, wiredSwaps, addedEntries));
                 if (lost > 0)
                     report.Warning(Category, $"{BridgeElements.Count(lost, "reference", "references")} had no match on the avatar",
                         "Each pointed at something the conversion made or removed that the avatar has no match for, and now points at nothing.");
@@ -319,22 +364,191 @@ namespace AvatarBridge
                 Undo.CollapseUndoOperations(undoGroup);
             }
 
-            // The logic comes next: until then, say exactly what stayed behind. Entries the avatar
-            // already has came from the converter's own options, not the accessories.
-            var had = new HashSet<string>(target.GetComponent<CVRAvatar>().avatarSettings?.settings?.Select(e => e.machineName) ?? new string[0]);
-            var menu = output.GetComponent<CVRAvatar>().avatarSettings?.settings?.Where(e => !had.Contains(e.machineName))
-                .Select(e => e.name).Where(n => !string.IsNullOrEmpty(n)).ToList() ?? new List<string>();
-
-            bool kept = KeepUsed(dir, copyOf.Values);
+            bool kept = KeepUsed(dir, copyOf.Values, written);
             var cloth = copyOf.Values.Count(t => t.GetComponents<Component>().Any(c => c != null && c.GetType().Name == "MagicaCloth"));
-            report.Converted(Category, $"Converted {BridgeElements.Count(made.Count, "accessory", "accessories")} in place",
+            report.Converted(Category, $"Converted {BridgeElements.Count(names.Count, "accessory", "accessories")} in place",
                 $"{AvatarSurvey.Few(names)}. {BridgeElements.Count(copyOf.Count, "object", "objects")} came back" +
                 (cloth > 0 ? $", {cloth} of them cloth" : "") + "." + (kept ? $" Files made for them are in \"{dir}\"." : "") + " Ctrl+Z undoes it.");
+        }
 
-            if (menu.Count > 0)
-                report.Warning(Category, $"{BridgeElements.Count(menu.Count, "menu entry", "menu entries")} not carried yet",
-                    $"{AvatarSurvey.Few(menu)}. Their toggles and animations are not on the avatar yet, so each object stays on or off " +
-                    "as the conversion left it.");
+        // The accessories' toggles: the layers the conversion made for them, the parameters and
+        // menu entries those use, into copies of the avatar's controllers in their folder. Never
+        // its own controller, which other avatars may share. Returns the files written.
+        static List<string> CarryLogic(BridgeReport report, CVRAvatar avatar, GameObject output, string dir,
+            HashSet<string> carriedPaths, System.Func<Object, Object> remap, ref int lost,
+            out Dictionary<Object, Object> wiredSwaps, out List<string> addedEntries)
+        {
+            wiredSwaps = null;
+            addedEntries = new List<string>();
+            var written = new List<string>();
+            var source = output.GetComponent<CVRAvatar>();
+            var theirs = Shipped(source, output.GetComponent<Animator>(), out _);
+            var ours = Shipped(avatar, avatar.GetComponent<Animator>(), out var over);
+            if (theirs == null) return written;
+            var have = new HashSet<string>(ours != null ? ours.layers.Select(l => l.name) : new string[0]);
+            // VRCFury's layers on the stand-in are all the accessories': the avatar's own were baked
+            // away when it converted. Any other layer counts when it animates what came back; one the
+            // avatar already has by name is the converter's own, made again.
+            var layers = theirs.layers.Where(l => l.syncedLayerIndex < 0 && l.stateMachine != null
+                && (Fury(l.name) || !have.Contains(l.name) && Touches(l.stateMachine, carriedPaths))).ToList();
+            var used = new HashSet<string>(layers.SelectMany(l => Parameters(l.stateMachine)));
+            var had = new HashSet<string>(avatar.avatarSettings?.settings?.Select(e => e.machineName) ?? new string[0]);
+            var entries = source.avatarSettings?.settings?.Where(e => !had.Contains(e.machineName)
+                && (used.Contains(e.machineName) || used.Contains(e.machineName + "-x"))).ToList() ?? new List<CVRAdvancedSettingsEntry>();
+            if (layers.Count == 0 && entries.Count == 0) return written;
+            if (ours == null)
+            {
+                report.Warning(Category, "Their toggles stayed behind", "The avatar has no animator controller to carry them into.");
+                return written;
+            }
+
+            string stem = dir + "/" + CvrSetup.SafeFolderName(avatar.name);
+            string path = AssetDatabase.GenerateUniqueAssetPath(stem + ".controller");
+            if (!AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(ours), path))
+            {
+                report.Warning(Category, "Their toggles stayed behind", $"\"{AssetDatabase.GetAssetPath(ours)}\" could not be copied.");
+                return written;
+            }
+            written.Add(path);
+            var copy = AssetDatabase.LoadAssetAtPath<AnimatorController>(path);
+            var swaps = new Dictionary<Object, Object> { [ours] = copy };
+            if (over != null)
+            {
+                string overPath = AssetDatabase.GenerateUniqueAssetPath(stem + ".overrideController");
+                var overCopy = AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(over), overPath)
+                    ? AssetDatabase.LoadAssetAtPath<AnimatorOverrideController>(overPath) : null;
+                if (overCopy != null) written.Add(overPath);
+                if (overCopy != null)
+                {
+                    overCopy.runtimeAnimatorController = copy;
+                    EditorUtility.SetDirty(overCopy);
+                }
+                // Measured, as the PhysBones card does: a swap keyed on a clip the copy replaced is gone.
+                if (overCopy == null || PhysBonesInPlace.Live(overCopy) != PhysBonesInPlace.Live(over))
+                {
+                    report.Warning(Category, "Their toggles stayed behind", "The avatar's override controller swaps clips that a copy of its controller would lose.");
+                    return written;
+                }
+                swaps[over] = overCopy;
+            }
+
+            var types = copy.parameters.GroupBy(p => p.name).ToDictionary(g => g.Key, g => g.First().type);
+            var clashes = new List<string>();
+            int parameters = 0;
+            foreach (var p in theirs.parameters.Where(p => used.Contains(p.name)))
+            {
+                if (types.TryGetValue(p.name, out var type))
+                {
+                    if (type != p.type) clashes.Add($"{p.name} ({type} on the avatar, {p.type} on the accessories)");
+                    continue;
+                }
+                copy.AddParameter(AnimatorDeepCopier.CloneParameter(p));
+                types[p.name] = p.type;
+                parameters++;
+            }
+            var copier = new AnimatorDeepCopier();
+            var all = copy.layers.ToList();
+            var names = new HashSet<string>(all.Select(l => l.name));
+            foreach (var layer in layers)
+            {
+                var clone = copier.CloneLayer(layer);
+                for (int n = 2; names.Contains(clone.name); n++) clone.name = layer.name + " (accessories" + (n > 2 ? " " + (n - 1) : "") + ")";
+                names.Add(clone.name);
+                all.Add(clone);
+                copy.layers = all.ToArray();
+                AnimatorAssetSaver.EmbedLayer(clone, copy);
+            }
+            EditorUtility.SetDirty(copy);
+            AssetDatabase.SaveAssets();
+            PhysBonesInPlace.Wire(avatar.gameObject, swaps);
+            wiredSwaps = swaps;
+
+            // The menu entries, with what they point at on the conversion moved onto the avatar.
+            Undo.RecordObject(avatar, UndoName);
+            if (avatar.avatarSettings == null)
+                avatar.avatarSettings = new CVRAdvancedAvatarSettings { settings = new List<CVRAdvancedSettingsEntry>(), initialized = true };
+            if (avatar.avatarSettings.settings == null) avatar.avatarSettings.settings = new List<CVRAdvancedSettingsEntry>();
+            avatar.avatarUsesAdvancedSettings = true;
+            avatar.avatarSettings.settings.AddRange(entries);
+            addedEntries = entries.Select(e => e.machineName).ToList();
+            var so = new SerializedObject(avatar);
+            so.Update();
+            var it = so.GetIterator();
+            var from = output.transform;
+            while (it.Next(true))
+            {
+                if (it.propertyType != SerializedPropertyType.ObjectReference || it.objectReferenceValue == null) continue;
+                var at = TransformOf(it.objectReferenceValue);
+                if (at == null || !at.IsChildOf(from)) continue;
+                var value = remap(it.objectReferenceValue);
+                if (value == null) lost++;
+                it.objectReferenceValue = value;
+            }
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(avatar);
+            PrefabUtility.RecordPrefabInstancePropertyModifications(avatar);
+
+            report.Converted(Category, $"Carried their toggles: {BridgeElements.Count(layers.Count, "layer", "layers")}, " +
+                $"{BridgeElements.Count(parameters, "parameter", "parameters")} and {BridgeElements.Count(entries.Count, "menu entry", "menu entries")}",
+                (entries.Count > 0 ? AvatarSurvey.Few(entries.Select(e => e.name).ToList()) + ". " : "") +
+                $"Into a copy of the avatar's controller, \"{path}\", now wired in its place; its own controller is not edited.");
+            if (clashes.Count > 0)
+                report.Warning(Category, $"{BridgeElements.Count(clashes.Count, "parameter has", "parameters have")} another type on the avatar",
+                    string.Join(", ", clashes) + ". The avatar's type was kept, so the accessories' toggles that read it may misbehave.");
+            int bits = avatar.GetParameterSyncUsage().Item2;
+            if (bits > 3200)
+                report.Warning(Category, $"{bits} of 3200 sync bits used, over the limit",
+                    "With the accessories' menu entries the avatar syncs more than ChilloutVR allows. Remove entries, or make some local.");
+            return written;
+        }
+
+        static bool Fury(string layer) => layer.Contains("[VF") || layer.Contains("VRCFury");
+
+        // The controller ChilloutVR ships: the override controller's base when there is one.
+        static AnimatorController Shipped(CVRAvatar avatar, Animator animator, out AnimatorOverrideController over)
+        {
+            over = avatar != null && avatar.overrides != null ? avatar.overrides
+                : animator != null ? animator.runtimeAnimatorController as AnimatorOverrideController : null;
+            return over != null ? over.runtimeAnimatorController as AnimatorController
+                : animator != null ? animator.runtimeAnimatorController as AnimatorController : null;
+        }
+
+        static IEnumerable<AnimatorState> States(AnimatorStateMachine m) =>
+            m.states.Select(s => s.state).Concat(m.stateMachines.SelectMany(c => States(c.stateMachine)));
+
+        static IEnumerable<AnimatorTransitionBase> Transitions(AnimatorStateMachine m) =>
+            m.anyStateTransitions.Cast<AnimatorTransitionBase>().Concat(m.entryTransitions)
+                .Concat(m.states.SelectMany(s => s.state.transitions))
+                .Concat(m.stateMachines.SelectMany(c => m.GetStateMachineTransitions(c.stateMachine).Concat(Transitions(c.stateMachine))));
+
+        static IEnumerable<Motion> Motions(Motion motion) =>
+            motion == null ? Enumerable.Empty<Motion>()
+            : motion is BlendTree tree ? new[] { motion }.Concat(tree.children.SelectMany(c => Motions(c.motion)))
+            : new[] { motion };
+
+        static bool Touches(AnimatorStateMachine machine, HashSet<string> paths) =>
+            States(machine).SelectMany(s => Motions(s.motion)).OfType<AnimationClip>().Distinct()
+                .Any(clip => AnimationUtility.GetCurveBindings(clip).Concat(AnimationUtility.GetObjectReferenceCurveBindings(clip))
+                    .Any(b => paths.Contains(b.path)));
+
+        static IEnumerable<string> Parameters(AnimatorStateMachine machine)
+        {
+            foreach (var t in Transitions(machine))
+                foreach (var c in t.conditions) yield return c.parameter;
+            foreach (var s in States(machine))
+            {
+                if (s.speedParameterActive) yield return s.speedParameter;
+                if (s.timeParameterActive) yield return s.timeParameter;
+                if (s.cycleOffsetParameterActive) yield return s.cycleOffsetParameter;
+                if (s.mirrorParameterActive) yield return s.mirrorParameter;
+                foreach (var tree in Motions(s.motion).OfType<BlendTree>())
+                {
+                    yield return tree.blendParameter;
+                    if (tree.blendType != BlendTreeType.Simple1D && tree.blendType != BlendTreeType.Direct) yield return tree.blendParameterY;
+                    if (tree.blendType == BlendTreeType.Direct)
+                        foreach (var c in tree.children) yield return c.directBlendParameter;
+                }
+            }
         }
 
         // Every object by a key that survives slashes in names and same-named siblings: each name
@@ -371,9 +585,9 @@ namespace AvatarBridge
 
         // The copy's own prefab, controllers and reports are of no use here: only the files the
         // carried objects use stay, with what those use in turn. False when none are left.
-        static bool KeepUsed(string dir, IEnumerable<Transform> copies)
+        static bool KeepUsed(string dir, IEnumerable<Transform> copies, IEnumerable<string> written)
         {
-            var used = new HashSet<string>();
+            var used = new HashSet<string>(written);
             foreach (var t in copies)
                 foreach (var c in t.GetComponents<Component>())
                 {

@@ -3,7 +3,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using ABI.CCK.Components;
 using UnityEditor;
+using UnityEditor.Animations;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
@@ -63,6 +65,10 @@ namespace AvatarBridge.Regression
 
                 // The CCK adds its own object to a scene when it opens, so compare, never count.
                 var roots = target.scene.GetRootGameObjects();
+                var avatar = target.GetComponent<CVRAvatar>();
+                var overBefore = avatar.overrides;
+                var ownController = (AnimatorController) overBefore.runtimeAnimatorController;
+                int ownLayers = ownController.layers.Length, entriesBefore = avatar.avatarSettings.settings.Count;
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var report = AccessoryAttach.Run(target, new BridgeSettings(), r => Dir);
                 Debug.Log($"[AccessoryAttachTest] ran in {clock.Elapsed.TotalSeconds:0} s");
@@ -86,13 +92,28 @@ namespace AvatarBridge.Regression
                 fail += Check($"the avatar's own objects are as they were ({string.Join(", ", changed.Take(5))})", changed.Count == 0);
                 var extra = target.scene.GetRootGameObjects().Except(roots).Select(r => r.name).ToList();
                 fail += Check($"the stand-in and its output are gone ({string.Join(", ", extra)})", extra.Count == 0);
-                fail += Check("the report names both glasses toggles as not carried",
-                    report.Entries.Any(e => e.Subject.Contains("not carried") && e.Detail.Contains("Glasses Toggle") && e.Detail.Contains("Glasses Arms")));
+                fail += Check("the report names both glasses toggles as carried",
+                    report.Entries.Any(e => e.Subject.StartsWith("Carried their toggles") && e.Detail.Contains("Glasses Toggle") && e.Detail.Contains("Glasses Arms")));
+                var wired = avatar.overrides != null ? avatar.overrides.runtimeAnimatorController as AnimatorController : null;
+                string wiredPath = wired == null ? "" : AssetDatabase.GetAssetPath(wired);
+                fail += Check($"the avatar ships a copy of its controller from the accessories' folder ({wiredPath})", wiredPath.StartsWith(Dir + "/"));
+                fail += Check("its own controller is not edited", ownController.layers.Length == ownLayers && avatar.overrides != overBefore);
+                var layerNames = wired == null ? new List<string>() : wired.layers.Select(l => l.name).ToList();
+                fail += Check($"the copy has both toggle layers ({string.Join(", ", layerNames.Skip(ownLayers))})",
+                    layerNames.Contains("Toggle Glasses Toggle") && layerNames.Contains("Toggle Glasses Arms"));
+                fail += Check("the copy has both toggle parameters", wired != null
+                    && wired.parameters.Any(x => x.name == "GlassesToggle") && wired.parameters.Any(x => x.name == "GlassesArms"));
+                var machine = avatar.avatarSettings.settings.Select(e => e.machineName).ToList();
+                fail += Check($"the menu gained both entries ({entriesBefore} to {machine.Count})", machine.Contains("GlassesToggle") && machine.Contains("GlassesArms"));
+                var doomedFiles = wiredPath == "" ? new List<string>() : AssetDatabase.GetDependencies(wiredPath, true).Where(AnimatorMerger.IsDoomedGeneratedPath).ToList();
+                fail += Check($"the copy uses no file VRCFury or NDMF deletes ({string.Join(", ", doomedFiles.Take(3))})", doomedFiles.Count == 0);
                 fail += Check("no errors", report.CountOf(ReportStatus.Error) == 0);
                 var left = AssetDatabase.FindAssets("", new[] { Dir }).Select(AssetDatabase.GUIDToAssetPath).ToList();
                 Debug.Log($"[AccessoryAttachTest] {left.Count} assets left: {string.Join(", ", left.Take(12))}");
-                fail += Check("the copy's own prefab, controllers and reports are gone",
-                    !left.Any(p => p.EndsWith(".prefab") || p.EndsWith("Controller") || p.EndsWith(".controller") || p.Contains("ConversionReport") || p.EndsWith("Diagnostics.md")));
+                var reach = new HashSet<string>(AssetDatabase.GetDependencies(AssetDatabase.GetAssetPath(avatar.overrides), true));
+                fail += Check("the copy's own prefab and reports are gone, and every controller left is wired in",
+                    !left.Any(p => p.EndsWith(".prefab") || p.Contains("ConversionReport") || p.EndsWith("Diagnostics.md")
+                        || (p.EndsWith(".controller") || p.EndsWith(".overrideController")) && !reach.Contains(p)));
                 var doomed = Doomed(target).Except(doomedBefore).ToList();
                 fail += Check($"nothing uses a file VRCFury or NDMF deletes ({string.Join(", ", doomed.Take(3))})", doomed.Count == 0);
                 foreach (var r in target.GetComponentsInChildren<Renderer>(true).Where(r => r.transform.IsChildOf(head.Find("Glasses - Academic") ?? head)))
@@ -100,12 +121,49 @@ namespace AvatarBridge.Regression
                         $"centre {(r.bounds.center - head.position) * 100:0.0} cm from the head, size {r.bounds.size * 100:0.0} cm");
                 if (shots != null) Save(before, Views(target, animator), shots);
 
+                // The toggle itself, run by the controller ChilloutVR ships. Last: it moves the avatar.
+                var copyRoot = head.Find("Glasses - Academic");
+                bool Shown() => copyRoot.GetComponentsInChildren<Renderer>(true).Any(r => r.gameObject.activeInHierarchy);
+                animator.runtimeAnimatorController = avatar.overrides;
+                animator.Rebind();
+                void Toggle(bool on)
+                {
+                    animator.SetBool("GlassesToggle", on);
+                    for (int i = 0; i < 20; i++) animator.Update(0.1f);
+                }
+                Toggle(true);
+                bool shownOn = Shown();
+                Toggle(false);
+                bool shownOff = Shown();
+                fail += Check($"GlassesToggle shows the glasses and hides them again (on {shownOn}, off {shownOff})", shownOn && !shownOff);
+
+                // The record: Detach removes what the press added, Re-attach brings it back.
+                var records = AccessoryRecord.FindIn(Dir);
+                fail += Check($"the press wrote a record ({records.Count})", records.Count == 1 && records[0].accessories.Count == 2 && records[0].copies.Count > 0);
+                var detached = AccessoryRecord.Detach(target, records[0]);
+                foreach (var e in detached.Entries) Debug.Log($"[AccessoryAttachTest]   {e.Status} [{e.Category}] {e.Subject}: {e.Detail}");
+                fail += Check("Detach removes the carried objects", head.Find("Glasses - Academic") == null && chest.Find("Nightmare Wings AV3") == null);
+                fail += Check($"Detach leaves only the avatar's own cloth ({Cloth(target) - clothBefore} extra)", Cloth(target) == clothBefore);
+                fail += Check("Detach puts the avatar's own controller and menu back", avatar.overrides == overBefore && avatar.avatarSettings.settings.Count == entriesBefore);
+                var again = AccessoryRecord.Reattach(target, records[0], new BridgeSettings(), r => Dir);
+                foreach (var e in again.Entries) Debug.Log($"[AccessoryAttachTest]   {e.Status} [{e.Category}] {e.Subject}: {e.Detail}");
+                fail += Check("Re-attach brings both back converted", head.Find("Glasses - Academic") != null && chest.Find("Nightmare Wings AV3") != null
+                    && AccessoryAttach.Find(target).Count == 0 && Cloth(target) - clothBefore == 3);
+                fail += Check("Re-attach carries the toggles again", avatar.overrides != overBefore
+                    && avatar.avatarSettings.settings.Any(e => e.machineName == "GlassesToggle") && again.CountOf(ReportStatus.Error) == 0);
+                fail += Check("Re-attach wrote a second record, newest first", AccessoryRecord.FindIn(Dir).Count == 2 && AccessoryRecord.FindIn(Dir)[0] != records[0]);
+                Undo.PerformUndo();
+                fail += Check("Ctrl+Z on Re-attach leaves it detached", head.Find("Glasses - Academic") == null && avatar.overrides == overBefore);
+                Undo.PerformUndo();
+                fail += Check("Ctrl+Z on Detach brings the converted objects back", head.Find("Glasses - Academic") != null);
+
                 Undo.PerformUndo();
                 var undone = Snapshot(target);
                 var differ = dropped.Keys.Union(undone.Keys).Where(p => !dropped.TryGetValue(p, out var a) || !undone.TryGetValue(p, out var b) || a != b).ToList();
                 fail += Check($"Ctrl+Z puts it back as dropped ({string.Join(", ", differ.Take(5))})", differ.Count == 0);
                 fail += Check("Ctrl+Z finds both accessories again", AccessoryAttach.Find(target).Count == 2);
                 fail += Check("Ctrl+Z aims the avatar's reference at the original again", aim.GetSource(0).sourceTransform != null && aim.GetSource(0).sourceTransform != aimedAt);
+                fail += Check("Ctrl+Z puts the avatar's controller and menu back", avatar.overrides == overBefore && avatar.avatarSettings.settings.Count == entriesBefore);
             }
             catch (Exception e)
             {

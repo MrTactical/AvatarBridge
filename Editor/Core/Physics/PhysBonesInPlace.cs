@@ -330,7 +330,7 @@ namespace AvatarBridge
             return AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(source), path) ? AssetDatabase.LoadAssetAtPath<T>(path) : null;
         }
 
-        static int Live(AnimatorOverrideController over)
+        internal static int Live(AnimatorOverrideController over)
         {
             var pairs = new List<KeyValuePair<AnimationClip, AnimationClip>>();
             over.GetOverrides(pairs);
@@ -389,7 +389,7 @@ namespace AvatarBridge
 
         // Every slot that held the original, onto copies only: retargeting the user's override
         // would reach every avatar sharing it. False when no slot held it.
-        static bool Wire(GameObject target, Dictionary<Object, Object> swaps)
+        internal static bool Wire(GameObject target, Dictionary<Object, Object> swaps)
         {
             bool hit = false;
             T Swap<T>(T held) where T : Object

@@ -65,6 +65,10 @@ namespace AvatarBridge
         internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> ConvertPhysBones;
         // Its accessory pass, handed in the same way.
         internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, BridgeReport> AttachAccessories;
+        // The accessory record's two presses, handed in the same way.
+        internal static System.Func<string, bool> HasAccessoryRecord;
+        internal static System.Func<GameObject, string, BridgeReport> DetachAccessories;
+        internal static System.Func<GameObject, BridgeSettings, System.Func<BridgeReport, string>, string, BridgeReport> ReattachAccessories;
 
         GameObject _target;
         AnimatorController _mergeTarget;
@@ -323,24 +327,37 @@ namespace AvatarBridge
                 rows.Add(BridgeElements.Hint(whenEmpty));
         }
 
-        BridgeElements.Card Check() => Tool("Check before upload", ReadsOnly,
-            BridgeElements.Hint("What the CCK will refuse to upload, then what ChilloutVR will break without saying.",
-                "Missing scripts, texture and sound import settings, anything the upload drops, stripped " +
-                "components, the sync budget, unwired parameters, one-eyed shaders and rootless cloth."),
-            "Check", () =>
-            {
-                var report = new BridgeReport();
-                var ctx = Context(report);
-                UploadPreflight.Run(report, ctx.CvrAvatar);
-                if (ctx.MergedController != null) BridgeDiagnostics.Run(ctx, ctx.MergedController);
-                else
+        BridgeElements.Card Check()
+        {
+            const string whenEmpty = "Nothing to report. That is the good outcome.";
+            BridgeElements.Card card = null;
+            int asked = 0;
+            card = Tool("Check before upload", ReadsOnly,
+                BridgeElements.Hint("What the CCK will refuse to upload, then what ChilloutVR will break without saying.",
+                    "Missing scripts, texture and sound import settings, anything the upload drops, stripped " +
+                    "components, the sync budget, unwired parameters, one-eyed shaders and rootless cloth."),
+                "Check", () =>
                 {
-                    BridgeDiagnostics.CheckComponentWhitelist(ctx);
-                    BridgeDiagnostics.CheckStereoShaders(ctx);
-                    report.Approximated("Diagnostics", "No animator controller on the root", "The animator checks were skipped.");
-                }
-                return report;
-            }, "Nothing to report. That is the good outcome.");
+                    var report = new BridgeReport();
+                    var ctx = Context(report);
+                    int mine = ++asked;
+                    // The CCK's own check ends frames later. The rows are the card's last child,
+                    // and a later press wins over an older run still going.
+                    UploadPreflight.RunWithCck(report, ctx.CvrAvatar, () =>
+                    {
+                        if (mine == asked) Show(card, card.Body.Children().Last(), report, whenEmpty);
+                    });
+                    if (ctx.MergedController != null) BridgeDiagnostics.Run(ctx, ctx.MergedController);
+                    else
+                    {
+                        BridgeDiagnostics.CheckComponentWhitelist(ctx);
+                        BridgeDiagnostics.CheckStereoShaders(ctx);
+                        report.Approximated("Diagnostics", "No animator controller on the root", "The animator checks were skipped.");
+                    }
+                    return report;
+                }, whenEmpty);
+            return card;
+        }
 
         BridgeElements.Card Survey() => Tool("What this avatar does", ReadsOnly,
             BridgeElements.Hint("Names features never wired up and toggles a layer above always overrides.",
@@ -498,13 +515,35 @@ namespace AvatarBridge
                 "No PhysBones on it.");
         }
 
-        BridgeElements.Card Accessories() => Tool("VRChat accessories", Changes,
-            BridgeElements.Hint("Converts VRChat accessories dropped onto this avatar, in place, with the Convert tab's options except Resize oversized textures.",
-                "Drop them where you would on a VRChat avatar: on the root, or on a bone for one with no Armature Link. " +
-                "Each converts on a copy of the avatar, and only what the conversion made for it comes back: its objects, " +
-                "its cloth, its links to the avatar's bones. Its menu entries and toggles are not carried yet. Ctrl+Z undoes it."),
-            "Convert accessories", () => AttachAccessories(_target, SavedSettings(), WriteFolder),
-            "No VRChat accessories on it.", needsAvatar: true);
+        BridgeElements.Card Accessories()
+        {
+            var card = Tool("VRChat accessories", Changes,
+                BridgeElements.Hint("Converts VRChat accessories dropped onto this avatar, in place, with the Convert tab's options except Resize oversized textures.",
+                    "Drop them where you would on a VRChat avatar: on the root, or on a bone for one with no Armature Link. " +
+                    "Each converts on a copy of the avatar, and only what the conversion made for it comes back: its objects, " +
+                    "its cloth, its links to the avatar's bones, and its toggles and menu entries, in a copy of the avatar's " +
+                    "controller wired in its place. Ctrl+Z undoes it."),
+                "Convert accessories", () => AttachAccessories(_target, SavedSettings(), WriteFolder),
+                "No VRChat accessories on it.", needsAvatar: true);
+            // Always there, so they work right after a first convert. AvatarFolder, not WriteFolder:
+            // looking must not make the folder.
+            if (DetachAccessories == null || ReattachAccessories == null) return card;
+            var rows = new VisualElement();
+            Button Act(string label, ButtonKind look, System.Func<BridgeReport> act)
+            {
+                var b = BridgeElements.Btn(label, () => { if (_target != null) Show(card, rows, act(), "No accessories were converted for this avatar yet."); }, kind: look);
+                _gated.Add((b, true));
+                return b;
+            }
+            card.Body.Add(BridgeElements.Hint("The last accessories converted here are remembered.",
+                "Re-attach drops the same prefabs where they were and converts them again, for example after the avatar is reconverted. " +
+                "Detach removes what that press added: the objects, the menu entries, and the copy of the controller, with the avatar's own wired back in. Ctrl+Z undoes either."));
+            card.Body.Add(BridgeElements.ButtonRow(
+                Act("Re-attach", ButtonKind.Strong, () => ReattachAccessories(_target, SavedSettings(), WriteFolder, AvatarFolder())),
+                Act("Detach", ButtonKind.Secondary, () => DetachAccessories(_target, AvatarFolder()))));
+            card.Body.Add(rows);
+            return card;
+        }
 
         BridgeElements.Card Height() => Tool("Height slider", Changes,
             BridgeElements.Hint("Adds a Height slider, 0.25x to 4x, to the menu. Edits the avatar's controller asset."),

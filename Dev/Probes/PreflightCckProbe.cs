@@ -4,7 +4,8 @@
 // cube tagged EditorOnly drawing a fourth that does not, and a cube drawing a texture made here at
 // streaming priority 5, not streaming, each from a material in Assets/__Preflight (cleared from
 // outside after). The cube's texture must be refused by both, the particles' and the EditorOnly
-// cube's by neither, and the made texture's priority by both.
+// cube's by neither, and the made texture's priority by both. Then the Toolkit's route on the same
+// avatar: each CCK error once, none of the shared rules, and the validation's time in the log.
 //
 // -executeMethod AvatarBridge.Regression.PreflightCckProbe.Run -pfPrefab <prefab>
 // Batch. No -quit: it exits itself, 0 when the two agree.
@@ -39,13 +40,14 @@ namespace AvatarBridge.Regression
         };
         static Task<ValidationPipelineResult> pending;
         static BridgeReport report;
+        static CVRAvatar target;
         static string streams, still, onMesh, hidden, ranked;
 
         public static void Run()
         {
             EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
             var made = (GameObject) PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(Arg("-pfPrefab")));
-            var avatar = made.GetComponentInChildren<CVRAvatar>(true);
+            var avatar = target = made.GetComponentInChildren<CVRAvatar>(true);
             var info = avatar.GetComponent<CVRAssetInfo>() ?? avatar.gameObject.AddComponent<CVRAssetInfo>();
             info.type = CVRAssetInfo.AssetType.Avatar;
 
@@ -152,8 +154,21 @@ namespace AvatarBridge.Regression
             var ourPriority = said.FirstOrDefault(e => e.Subject.Contains("priority other than 0"));
             Check(priority != null && priority.RootObjects.Any(o => o.name == ranked), $"the CCK asks {ranked}, not streaming, for priority 0");
             Check(ourPriority != null && ourPriority.Detail.Contains(ranked), $"the preflight asks {ranked}, not streaming, for priority 0");
-            Debug.Log(failures == 0 ? "[PreflightCck] PASS" : $"[PreflightCck] FAIL: {failures} checks");
-            EditorApplication.Exit(failures == 0 ? 0 : 1);
+            // Then the Toolkit's route: the CCK's errors in place of the shared rules, each once.
+            var second = new BridgeReport();
+            void Done()
+            {
+                var rows = second.Entries.Where(e => e.Category == "Upload").ToList();
+                foreach (var e in rows) Debug.Log($"[PreflightCck] with the CCK: {e.Subject} | {e.Detail}");
+                Check(rows.All(e => e.Subject != "The CCK's own check is running"), "the waiting row is gone");
+                int refusals = rows.Count(e => e.Subject.StartsWith("The CCK will not upload this"));
+                Check(refusals == errors.Count, $"{errors.Count} CCK errors, {refusals} refusals in the report");
+                Check(rows.Any(e => e.Detail.Contains(onMesh)), $"the report names the cube's {onMesh}");
+                Check(rows.Any(e => e.Detail.Contains(ranked)), $"the report names {ranked}");
+                Debug.Log(failures == 0 ? "[PreflightCck] PASS" : $"[PreflightCck] FAIL: {failures} checks");
+                EditorApplication.Exit(failures == 0 ? 0 : 1);
+            }
+            if (!UploadPreflight.RunWithCck(second, target, Done)) { Check(false, "the upload check found the CCK's validation"); Done(); }
         }
 
         static string Names(ValidationResult r) => r is DetailedValidationResult d ? string.Join(", ", d.RootObjects.Where(o => o != null).Select(o => o.name).Take(12)) : "";

@@ -641,7 +641,15 @@ give 0.525 strain 0.757, press 0.855, Squeeze 0.8555; 0 after letting go. The ga
 (frames 69-126) shows only on the first run after a shader change, never on a warm one: compile
 hitches past the 0.1 s stale limit reset the mass.
 
-### 63. The upload check and the CCK still differ in two places. Found in the 5.0.2 review, 2026-11-28. NOT STARTED, low priority
+### 63. The upload check and the CCK still differ in two places. Found in the 5.0.2 review, 2026-11-28. FIXED on dev the same night for the Toolkit card; the report's Upload entries still differ
+
+**Fixed 2026-11-28 (Joe: "Item 63 upload check").** With CCK 4 the Toolkit's **Check before
+upload** card runs the CCK's own `Validator.Validate` by reflection (`UploadPreflight.RunWithCck`),
+polled across editor updates behind a "The CCK's own check is running" row, and lists its errors in
+the CCK's words; warnings are counted in one row. Older CCKs and the conversion report keep the rules
+below (the report is written synchronously mid-convert, so it cannot wait on the CCK).
+`Dev/Probes/PreflightCckProbe` passes: on Ampwave the validation took 31 ms, its 3 errors show once
+each, the 3 matching refusals agree, and the waiting row goes. Not yet timed on a heavy avatar.
 
 Both are stated in the README's upload entry, so the CCK's panel has the last word.
 - The CCK reads each material once, from the first component its queue reaches
@@ -747,7 +755,27 @@ Chosen 2026-11-18 as the next big work. It shares no code with the converter, so
 own private repository with its own plan, decisions and work queue; this entry is only the pointer.
 Converter work it turns up (a check that fails in a lab) comes back here as a normal item.
 
-### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06. Step 1 BUILT on dev 2026-11-28; steps 2-3 approved the same night
+### A VRChat accessory onto a ChilloutVR avatar: find and attach. Joe's idea 2026-10-24. ACCELERATED 2026-11-06. Steps 1-3 BUILT on dev 2026-11-28; toggles not yet seen in game
+
+**Steps 2 and 3, built the same night.** Step 2 carries the logic: the output's FX layers that touch
+a carried object (or that VRCFury made, by name), the parameters those layers read, and the AAS menu
+entries for them go into a copy of the avatar's shipped controller (and override controller) in the
+accessories' folder, wired into every slot by `PhysBonesInPlace.Wire`; the avatar's own controller
+is never edited. A layer or parameter name the avatar already has is renamed or reported, and the
+summed sync cost past 3200 bits is a warning. Step 3 is `Editor/Core/AccessoryRecord.cs`: each press
+writes `Accessories record.asset` (the dropped prefabs, their parents and poses, the copies made, the
+controller swap and the menu entries added); **Detach** undoes that press, **Re-attach** drops the
+same prefabs and converts them again. `AccessoryAttachTest` passes 36 checks, including the glasses
+toggle hiding and showing them through the animator, Detach, Re-attach and Ctrl+Z on each.
+
+**Wide probe.** `Dev/Probes/AccessoryWideProbe` harvests prefab accessories (VRCFury, MA, PhysBones)
+from the corpus scenes and drops each on another avatar. On the step 1 build it passed 22 of 30.
+The failure classes, all fixed since: a prefab nested inside an accessory was taken alone (now the
+highest replaceable prefab around it, never one holding the avatar's Hips); the avatar's own
+diagnostics errors read as the accessory's; an accessory whose VRCFury or MA bake failed came back
+stripped (now nothing changes); an accessory with nothing to render (a menu or locomotion prefab) was
+left behind (now it goes and leaves its toggles); and two probe bugs (a target already wearing the
+same accessory, and a nested find counted as missing).
 
 **Step 1, built 2026-11-28 (Joe: "Go, MVP first").** The Toolkit's **VRChat accessories** card
 (`Editor/Core/AccessoryAttach.cs`, hooked in like the PhysBones card). `Dev/Tests/AccessoryAttachTest`
